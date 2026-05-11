@@ -1,3 +1,7 @@
+export interface Metadata {
+  title: string;
+}
+
 export interface HeadingNode {
   type: "heading";
   depth: number;
@@ -33,9 +37,7 @@ export interface VideoNode {
 }
 
 export interface DocumentNode {
-  metadata: {
-    title: string;
-  };
+  metadata: Metadata;
   body: CourseNode[];
 }
 

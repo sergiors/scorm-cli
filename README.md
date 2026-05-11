@@ -19,6 +19,7 @@ scorm-cli/
 Parser that transforms `.mdx` files into a SCORM data structure.
 
 **Usage:**
+
 ```ts
 import { parseFile } from "@scorm-cli/parser";
 
@@ -30,6 +31,7 @@ const result = await parseFile("./course/index.mdx");
 React components for rendering SCORM content.
 
 **Components:**
+
 - `<Grid>` - Grid layout
 - `<Card>` - Navigable cards
 - `<Image>` - Images
@@ -60,4 +62,12 @@ import { Grid, Card, Image } from "@scorm-cli/components";
 </Grid>
 
 <Image src="./assets/diagram.png" alt="Diagram" />
+```
+
+## 📝 License
+
+GNU General Public License v3.0 - see [LICENSE](LICENSE.md) for details.
+
+```
+
 ```
