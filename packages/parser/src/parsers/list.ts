@@ -1,8 +1,9 @@
-import { toString } from "mdast-util-to-string";
+import { ListNode } from "../types/ast";
+import { getText } from "./utils";
 
-export function parseList(node: any) {
+export function parseList(node: any): ListNode {
   return {
     type: "list",
-    items: node.children?.map((item: any) => toString(item)) ?? [],
+    items: node.children?.map((item: any) => getText(item)) ?? [],
   };
 }

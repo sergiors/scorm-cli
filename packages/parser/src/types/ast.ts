@@ -11,7 +11,6 @@ export interface ParagraphNode {
 
 export interface ListNode {
   type: "list";
-  ordered: boolean;
   items: string[];
 }
 
@@ -28,6 +27,7 @@ export interface QuestionNode {
 }
 
 export interface VideoNode {
+  type: "video";
   url: string;
   title?: string;
 }
@@ -39,6 +39,7 @@ export interface CardNode {
 
 export interface GridNode {
   type: "grid";
+  columns: number;
   items: CardNode[];
 }
 

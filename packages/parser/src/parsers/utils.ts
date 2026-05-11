@@ -1,10 +1,10 @@
 import { toString } from "mdast-util-to-string";
 
-export function getText(node: any) {
+export function getText(node: any): string {
   return toString(node);
 }
 
-export function hasAttribute(node: any, name: string) {
+export function hasAttribute(node: any, name: string): boolean {
   return node.attributes?.some((attr: any) => attr.name === name) ?? false;
 }
 
@@ -22,7 +22,7 @@ export function flattenChildren(children: any[]) {
   });
 }
 
-export function isMdxNode(node: any, name?: string) {
+export function isMdxNode(node: any, name?: string): boolean {
   const isMdx =
     node?.type === "mdxJsxFlowElement" || node?.type === "mdxJsxTextElement";
 

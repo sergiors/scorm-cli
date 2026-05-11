@@ -55,7 +55,6 @@ async function resolveNode(node: any, currentFile: string) {
 
   // Image
   if (node.type === "image") {
-    console.log(node);
     const resolvedSrc = path.resolve(path.dirname(currentFile), node.src);
 
     return {

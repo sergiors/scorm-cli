@@ -1,8 +1,8 @@
+import { GridNode } from "../types/ast";
+import { parseCard } from "./card";
 import { flattenChildren, getAttribute, isMdxNode } from "./utils";
 
-import { parseCard } from "./card";
-
-export function parseGrid(node: any) {
+export function parseGrid(node: any): GridNode {
   const children = flattenChildren(node.children);
 
   return {

@@ -1,8 +1,9 @@
-import { toString } from "mdast-util-to-string";
+import { ParagraphNode } from "../types/ast";
+import { getText } from "./utils";
 
-export function parseParagraph(node: any) {
+export function parseParagraph(node: any): ParagraphNode {
   return {
     type: "paragraph",
-    text: toString(node),
+    text: getText(node),
   };
 }
