@@ -1,13 +1,11 @@
 {
   "name": "scorm-cli",
   "version": "0.0.1",
+  "private": true,
   "type": "module",
-  "bin": {
-    "scorm-cli": "./dist/index.js"
-  },
   "scripts": {
-    "dev": "tsx packages/parser/src/index.ts",
-    "build": "tsup"
+    "build": "pnpm -r run build",
+    "dev": "pnpm -r run dev"
   },
   "devDependencies": {
     "@types/node": "^25.6.2",
@@ -15,13 +13,5 @@
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   },
-  "dependencies": {
-    "@mdx-js/mdx": "^3.1.1",
-    "gray-matter": "^4.0.3",
-    "mdast-util-to-string": "^4.0.0",
-    "remark-mdx": "^3.1.1",
-    "remark-parse": "^11.0.0",
-    "unified": "^11.0.5",
-    "zod": "^4.4.3"
-  }
+  "packageManager": "pnpm@9.0.0"
 }

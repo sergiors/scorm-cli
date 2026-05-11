@@ -1,14 +1,29 @@
 {
   "name": "@scorm-cli/react",
+  "version": "0.0.1",
   "type": "module",
-  "dependencies": {
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "peerDependencies": {
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "@scorm-cli/parser": "*"
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "@scorm-cli/parser": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsup"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "typescript": "^5.0.0"
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
   }
 }

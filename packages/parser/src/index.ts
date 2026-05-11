@@ -1,5 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 import matter from "gray-matter";
 import remarkMdx from "remark-mdx";
@@ -8,6 +11,7 @@ import { unified } from "unified";
 import { z } from "zod";
 
 import { parsers } from "./parsers";
+export * from "./types/ast";
 
 const metadataSchema = z.object({
   title: z.string(),
@@ -83,7 +87,8 @@ export async function parseFile(filePath: string) {
 }
 
 async function main() {
-  const result = await parseFile("./examples/nr10/index.mdx");
+  const projectRoot = path.resolve(__dirname, "../../..");
+  const result = await parseFile(`${projectRoot}/examples/nr10/index.mdx`);
 
   console.log(JSON.stringify(result, null, 2));
 }

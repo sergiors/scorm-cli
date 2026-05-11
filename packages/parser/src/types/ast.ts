@@ -32,9 +32,17 @@ export interface VideoNode {
   title?: string;
 }
 
+export interface DocumentNode {
+  metadata: {
+    title: string;
+  };
+  body: CourseNode[];
+}
+
 export interface CardNode {
   type: "card";
   href: string;
+  document: DocumentNode;
 }
 
 export interface GridNode {

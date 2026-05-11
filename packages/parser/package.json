@@ -1,17 +1,31 @@
 {
   "name": "@scorm-cli/parser",
+  "version": "0.0.1",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsup"
+  },
   "dependencies": {
     "gray-matter": "^4.0.3",
     "mdast-util-to-string": "^4.0.0",
-    "remark-mdx": "^3.0.0",
+    "remark-mdx": "^3.1.1",
     "remark-parse": "^11.0.0",
-    "unified": "^11.0.0",
-    "zod": "^3.24.0"
+    "unified": "^11.0.5",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "tsx": "^4.0.0",
-    "typescript": "^5.0.0"
+    "@types/node": "^25.6.2",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
   }
 }
