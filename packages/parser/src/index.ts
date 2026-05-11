@@ -85,12 +85,3 @@ export async function parseFile(filePath: string) {
     body: resolvedBody,
   };
 }
-
-async function main() {
-  const projectRoot = path.resolve(__dirname, "../../..");
-  const result = await parseFile(`${projectRoot}/examples/nr10/index.mdx`);
-
-  console.log(JSON.stringify(result, null, 2));
-}
-
-main();

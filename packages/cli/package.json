@@ -1,0 +1,23 @@
+{
+  "name": "@scorm-cli/cli",
+  "version": "0.0.1",
+  "type": "module",
+  "bin": {
+    "scorm": "./dist/index.js",
+    "scorm-parse": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@scorm-cli/parser": "workspace:*",
+    "cac": "^6.7.14"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.2",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}

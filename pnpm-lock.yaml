@@ -21,6 +21,28 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  packages/cli:
+    dependencies:
+      '@scorm-cli/parser':
+        specifier: workspace:*
+        version: link:../parser
+      cac:
+        specifier: ^6.7.14
+        version: 6.7.14
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.2
+        version: 25.6.2
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(@microsoft/api-extractor@7.58.7(@types/node@25.6.2))(postcss@8.5.14)(tsx@4.21.0)(typescript@6.0.3)
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/parser:
     dependencies:
       gray-matter:
