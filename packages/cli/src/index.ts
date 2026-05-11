@@ -3,7 +3,7 @@ import { parseFile } from "@scorm-cli/parser";
 import { cac } from "cac";
 import path from "node:path";
 
-const cli = cac("scorm-parse");
+const cli = cac("scorm-cli");
 
 cli
   .command("[file]", "Parse an MDX file")

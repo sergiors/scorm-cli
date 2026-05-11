@@ -47,6 +47,9 @@ pnpm run build
 
 # Dev mode (runs all packages)
 pnpm run dev
+
+# Run tests
+pnpm run test
 ```
 
 ## MDX Components

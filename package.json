@@ -6,6 +6,7 @@
   "scripts": {
     "build": "pnpm -r run build",
     "dev": "pnpm -r run dev",
+    "test": "pnpm -r run test",
     "scorm-cli": "node packages/cli/dist/index.js"
   },
   "devDependencies": {
