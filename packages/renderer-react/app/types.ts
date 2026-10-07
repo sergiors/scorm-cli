@@ -1,4 +1,3 @@
-export { parseCourse } from "./course";
 export type {
   ContentNode,
   Course,

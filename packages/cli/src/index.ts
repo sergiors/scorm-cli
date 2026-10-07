@@ -1,28 +1,24 @@
 #!/usr/bin/env node
-import { parseFile } from "@scorm-cli/parser";
 import { cac } from "cac";
-import path from "node:path";
+import { buildPackage } from "./build";
 
-const cli = cac("scorm-cli");
+const cli = cac("scorm");
 
 cli
-  .command("[file]", "Parse an MDX file")
-  .example("scorm-cli examples/nodejs/index.mdx")
-  .action(async (file: string) => {
-    if (!file) {
-      console.error("Error: Please provide a file path");
-      console.error("\nUsage: scorm-cli <file.mdx>");
-      process.exit(1);
-    }
-
-    const resolvedPath = path.resolve(file);
-
+  .command("build <course>", "Build a SCORM 1.2 package from a course")
+  .option(
+    "-o, --output <path>",
+    "Output ZIP path (default: dist/<course-name>.zip",
+  )
+  .example("scorm build examples/typescript-course")
+  .action(async (course: string, options: { output?: string }) => {
     try {
-      const result = await parseFile(resolvedPath);
-      console.log(JSON.stringify(result, null, 2));
+      const output = await buildPackage(course, options.output);
+      console.log(`SCORM package written to ${output}`);
     } catch (error) {
-      console.error(`Error parsing ${file}:`, error);
-      process.exit(1);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Error: ${message}`);
+      process.exitCode = 1;
     }
   });
 

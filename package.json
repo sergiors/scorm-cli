@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm -r run build",
-    "dev": "pnpm -r run dev",
-    "test": "pnpm -r run test",
-    "scorm-cli": "node packages/cli/dist/index.js"
+    "build": "pnpm -r --if-present --workspace-concurrency=1 run build",
+    "dev": "pnpm --filter @scorm-cli/cli dev",
+    "test": "pnpm build && pnpm -r --if-present run test",
+    "typecheck": "pnpm build && pnpm -r --if-present run typecheck",
+    "scorm": "node packages/cli/dist/index.js"
   },
   "devDependencies": {
     "@types/node": "^25.6.2",

@@ -1,0 +1,16 @@
+---
+title: Typed functions
+description: Make inputs and outputs explicit.
+---
+
+# Functions as contracts
+
+A function signature communicates what callers must provide and what they receive in return.
+
+```ts
+function completionPercent(done: number, total: number): number {
+  return total === 0 ? 0 : Math.round((done / total) * 100);
+}
+```
+
+The return type helps TypeScript detect accidental values on every code path.

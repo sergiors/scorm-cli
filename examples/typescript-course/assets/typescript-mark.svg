@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title">
+  <title id="title">TypeScript TS mark</title>
+  <rect width="160" height="160" rx="20" fill="#3178c6"/>
+  <path fill="#fff" d="M20 79h57v17H56v16H75v16H56v28H37v-60H20zm62 40c8 7 18 11 29 11 8 0 12-3 12-8 0-4-3-6-16-10-17-5-24-12-24-25 0-15 12-25 31-25 12 0 22 3 31 10l-10 14c-7-5-13-8-21-8-7 0-11 3-11 7 0 5 4 7 17 11 17 5 24 12 24 24 0 16-12 26-32 26-14 0-27-4-38-13z"/>
+</svg>

@@ -13,20 +13,19 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsup",
-    "test": "vitest",
-    "test:ui": "vitest --ui"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@scorm-cli/core": "workspace:*",
     "gray-matter": "^4.0.3",
     "mdast-util-to-string": "^4.0.0",
     "remark-mdx": "^3.1.1",
     "remark-parse": "^11.0.0",
-    "unified": "^11.0.5",
-    "zod": "^4.4.3"
+    "unified": "^11.0.5"
   },
   "devDependencies": {
     "@types/node": "^25.6.2",
-    "@vitest/ui": "^3.0.0",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",

@@ -1,76 +1,46 @@
 # SCORM CLI
 
-CLI for creating SCORM content using MDX.
-
-## Monorepo Structure
-
-```
-scorm-cli/
-├── packages/
-│   ├── parser/      # MDX to AST parser
-│   └── react/       # React components for rendering
-└── examples/        # Course examples
-```
+Build SCORM 1.2 packages from authored MDX courses.
 
 ## Packages
 
-### @scorm-cli/parser
+- `@scorm-cli/core` — shared course model and renderer contracts.
+- `@scorm-cli/parser` — validates and parses a course into that model.
+- `@scorm-cli/renderer-react` — renders the model as a static course player.
+- `@scorm-cli/scorm` — packages rendered output as SCORM 1.2.
+- `@scorm-cli/cli` — command-line build interface.
 
-Parser that transforms `.mdx` files into a SCORM data structure.
+## Author a course
 
-**Usage:**
-
-```ts
-import { parseFile } from "@scorm-cli/parser";
-
-const result = await parseFile("./course/index.mdx");
-```
-
-### @scorm-cli/react
-
-React components for rendering SCORM content.
-
-**Components:**
-
-- `<Grid>` - Grid layout
-- `<Card>` - Navigable cards
-- `<Image>` - Images
-
-## Commands
-
-```bash
-# Install dependencies
-pnpm install
-
-# Build all packages
-pnpm run build
-
-# Dev mode (runs all packages)
-pnpm run dev
-
-# Run tests
-pnpm run test
-```
-
-## MDX Components
-
-In your MDX files, use the components:
+A course directory contains an `index.mdx` entry file and item MDX files. The entry file has `title` frontmatter and declares its structure with `<Item>` and nested `<Section>` components:
 
 ```mdx
-import { Grid, Card, Image } from "@scorm-cli/components";
+---
+title: My Course
+---
 
-<Grid>
-  <Card href="./lesson1.mdx" />
-  <Card href="./lesson2.mdx" />
-</Grid>
+<Item src="lessons/intro.mdx" />
 
-<Image src="./assets/diagram.png" alt="Diagram" />
+<Section title="Lessons" layout="grid" columns={2}>
+  <Item src="lessons/one.mdx" />
+  <Item src="lessons/two.mdx" />
+</Section>
 ```
 
-## 📝 License
+Each item file requires `title` frontmatter and can contain Markdown plus the supported static components such as `<Image>`, `<Video>`, and `<Question>` with `<Answer>` children. MDX JavaScript and imports are not supported; course files are parsed as data and never execute author code.
+
+## Install and build
+
+```sh
+pnpm install
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm scorm build examples/typescript-course
+```
+
+The example build writes `dist/typescript-course.zip` by default. Pass `--output <path>` to choose a different ZIP path.
+
+## License
 
 GNU General Public License v3.0 - see [LICENSE](LICENSE.md) for details.
-
-```
-
-```
