@@ -23,7 +23,7 @@ function clampHeading(
 export interface ContentRendererProps {
   nodes: ContentNode[];
   /**
-   * Shifts every heading down so item content nests under the player's
+   * Shifts every heading down so item content nests under the package view's
    * headings. Defaults to 0, keeping the source depth untouched.
    */
   headingOffset?: number;

@@ -1,22 +1,32 @@
-export interface Course {
-  metadata: { title: string; description?: string };
-  children: CourseStructureNode[];
+export interface PackageMetadata {
+  title: string;
+  description?: string;
 }
 
-export type CourseStructureNode = SectionNode | ItemNode;
+export interface ContentPackage {
+  metadata: PackageMetadata;
+  children: StructureNode[];
+}
+
+export type StructureNode = SectionNode | ItemNode;
+
+export type SectionLayout = 'list' | 'grid' | 'sequence';
+
+export type ItemOpenMode = 'page' | 'modal';
 
 export interface SectionNode {
   type: 'section';
   id: string;
   title?: string;
-  presentation: { layout: 'list' | 'grid'; columns?: number };
-  children: CourseStructureNode[];
+  presentation: { layout: SectionLayout; columns?: number };
+  children: ItemNode[];
 }
 
 export interface ItemNode {
   type: 'item';
   id: string;
   source: string;
+  presentation: { open: ItemOpenMode };
   metadata: { title: string; description?: string; thumbnail?: string };
   content: ContentNode[];
 }
@@ -48,31 +58,33 @@ export interface RenderResult {
 }
 
 export interface Renderer {
-  build(course: Course, options: RenderOptions): Promise<RenderResult>;
+  build(content: ContentPackage, options: RenderOptions): Promise<RenderResult>;
 }
 
-/** Completion is deliberately renderer-agnostic: a course is complete after every item is visited. */
-export function isCourseComplete(
-  course: Course,
+/** Completion is renderer-agnostic: a package is complete after every item is visited. */
+export function isPackageComplete(
+  contentPackage: ContentPackage,
   visitedItemIds: Iterable<string>,
 ): boolean {
   const visited =
     visitedItemIds instanceof Set ? visitedItemIds : new Set(visitedItemIds);
   const itemIds: string[] = [];
-  const walk = (nodes: CourseStructureNode[]) => {
+  const walk = (nodes: StructureNode[]) => {
     for (const node of nodes) {
       if (node.type === 'item') itemIds.push(node.id);
       else walk(node.children);
     }
   };
-  walk(course.children);
+  walk(contentPackage.children);
   return itemIds.length > 0 && itemIds.every((id) => visited.has(id));
 }
 
-/** Local references in the course AST are normalized relative to the course root. */
-export function collectAssetReferences(course: Course): string[] {
+/** Local references in the content AST are normalized relative to the package root. */
+export function collectAssetReferences(
+  contentPackage: ContentPackage,
+): string[] {
   const refs = new Set<string>();
-  const visit = (nodes: CourseStructureNode[]) => {
+  const visit = (nodes: StructureNode[]) => {
     for (const node of nodes) {
       if (node.type === 'section') {
         visit(node.children);
@@ -90,7 +102,7 @@ export function collectAssetReferences(course: Course): string[] {
       }
     }
   };
-  visit(course.children);
+  visit(contentPackage.children);
   return [...refs].sort();
 }
 

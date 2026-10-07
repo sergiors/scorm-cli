@@ -1,5 +1,5 @@
-declare module 'virtual:course-data' {
-  import type { Course } from '@scorm-cli/core';
-  const course: Course;
-  export default course;
+declare module 'virtual:package-data' {
+  import type { ContentPackage } from '@scorm-cli/core';
+  const contentPackage: ContentPackage;
+  export default contentPackage;
 }

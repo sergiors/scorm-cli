@@ -1,9 +1,9 @@
-import type { Course } from '@scorm-cli/core';
+import type { ContentPackage } from '@scorm-cli/core';
 
-export const sampleCourse: Course = {
+export const samplePackage: ContentPackage = {
   metadata: {
     title: 'Rendering Fundamentals',
-    description: 'A short course used by the renderer test suite.',
+    description: 'A short package used by the renderer test suite.',
   },
   children: [
     {
@@ -16,9 +16,10 @@ export const sampleCourse: Course = {
           type: 'item',
           id: 'intro',
           source: 'intro.mdx',
+          presentation: { open: 'page' },
           metadata: {
             title: 'Introduction',
-            description: 'What this course covers.',
+            description: 'What this package covers.',
             thumbnail: './assets/thumb.svg',
           },
           content: [
@@ -37,7 +38,7 @@ export const sampleCourse: Course = {
             {
               type: 'image',
               src: './assets/thumb.svg',
-              alt: 'Course thumbnail',
+              alt: 'Package thumbnail',
             },
             {
               type: 'video',
@@ -79,6 +80,7 @@ export const sampleCourse: Course = {
           type: 'item',
           id: 'setup',
           source: 'setup.mdx',
+          presentation: { open: 'page' },
           metadata: {
             title: 'Setting things up',
             thumbnail: './assets/setup.svg',
@@ -87,19 +89,48 @@ export const sampleCourse: Course = {
         },
         {
           type: 'item',
-          id: 'wrap-up',
-          source: 'wrap-up.mdx',
-          metadata: { title: 'Wrap up' },
-          content: [{ type: 'paragraph', text: 'Final words.' }],
+          id: 'details',
+          source: 'details.mdx',
+          presentation: { open: 'modal' },
+          metadata: {
+            title: 'Extra details',
+            description: 'Opens in a modal.',
+            thumbnail: './assets/details.svg',
+          },
+          content: [{ type: 'paragraph', text: 'Modal body content.' }],
+        },
+      ],
+    },
+    {
+      type: 'section',
+      id: 'walkthrough',
+      title: 'Walkthrough',
+      presentation: { layout: 'sequence' },
+      children: [
+        {
+          type: 'item',
+          id: 'step-one',
+          source: 'step-one.mdx',
+          presentation: { open: 'page' },
+          metadata: { title: 'Step one' },
+          content: [{ type: 'paragraph', text: 'First step.' }],
+        },
+        {
+          type: 'item',
+          id: 'step-two',
+          source: 'step-two.mdx',
+          presentation: { open: 'page' },
+          metadata: { title: 'Step two' },
+          content: [{ type: 'paragraph', text: 'Second step.' }],
         },
       ],
     },
   ],
 };
 
-export function makeEmptyCourse(): Course {
+export function makeEmptyPackage(): ContentPackage {
   return {
-    metadata: { title: 'Empty course' },
+    metadata: { title: 'Empty package' },
     children: [],
   };
 }

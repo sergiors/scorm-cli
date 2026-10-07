@@ -17,9 +17,9 @@ export function CompletionNotice({ complete }: CompletionNoticeProps) {
     >
       <CheckCircle2 aria-hidden='true' className='size-5 shrink-0' />
       <div>
-        <p className='font-medium'>Course complete</p>
+        <p className='font-medium'>Package complete</p>
         <p className='text-sm text-emerald-900/80 dark:text-emerald-200/80'>
-          You have visited every item in this course.
+          You have visited every item in this package.
         </p>
       </div>
     </div>

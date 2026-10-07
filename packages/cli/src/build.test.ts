@@ -19,23 +19,23 @@ afterEach(async () => {
 describe('CLI build orchestration', () => {
   it('parses, forwards assets to the renderer, and packages a SCORM ZIP', async () => {
     temp = await mkdtemp(path.join(os.tmpdir(), 'scorm-cli-test-'));
-    const courseDir = path.join(temp, 'course');
-    await mkdir(path.join(courseDir, 'media'), { recursive: true });
+    const contentDir = path.join(temp, 'content');
+    await mkdir(path.join(contentDir, 'media'), { recursive: true });
     await writeFile(
-      path.join(courseDir, 'index.mdx'),
+      path.join(contentDir, 'index.mdx'),
       `---\ntitle: Demo\n---\n<Item src="lesson.mdx" />`,
     );
     await writeFile(
-      path.join(courseDir, 'lesson.mdx'),
+      path.join(contentDir, 'lesson.mdx'),
       `---\ntitle: Lesson\n---\n<Image src="media/picture.svg" />`,
     );
-    await writeFile(path.join(courseDir, 'media', 'picture.svg'), '<svg/>');
+    await writeFile(path.join(contentDir, 'media', 'picture.svg'), '<svg/>');
     const output = path.join(temp, 'out.zip');
     let seenAssets: unknown;
     const zipPath = await buildPackage(
-      courseDir,
+      contentDir,
       output,
-      async (_course, options) => {
+      async (_contentPackage, options) => {
         seenAssets = options.assets;
         await mkdir(options.outputDirectory, { recursive: true });
         await writeFile(
@@ -47,7 +47,7 @@ describe('CLI build orchestration', () => {
     );
     expect(seenAssets).toEqual([
       {
-        sourcePath: path.join(courseDir, 'media', 'picture.svg'),
+        sourcePath: path.join(contentDir, 'media', 'picture.svg'),
         targetPath: 'media/picture.svg',
       },
     ]);

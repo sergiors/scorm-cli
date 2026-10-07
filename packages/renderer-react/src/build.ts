@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import type { Course } from '@scorm-cli/core';
+import type { ContentPackage } from '@scorm-cli/core';
 import { build as viteBuild, type Plugin } from 'vite';
 import type {
   RenderAsset,
@@ -14,7 +14,7 @@ import type {
 } from './types';
 
 const ENTRYPOINT = 'index.html';
-const COURSE_DATA_ID = 'virtual:course-data';
+const PACKAGE_DATA_ID = 'virtual:package-data';
 
 function findPackageRoot(startDirectory: string): string {
   let directory = startDirectory;
@@ -42,26 +42,26 @@ function escapeHtml(value: string): string {
 }
 
 /**
- * Inlines the already-parsed course as a virtual module so the generated
- * application ships with deterministic, self-contained data. No network
- * request is ever made to load the course.
+ * Inlines the already-parsed content package as a virtual module so the
+ * generated application ships with deterministic, self-contained data. No
+ * network request is ever made to load the package.
  */
-function courseDataPlugin(course: Course): Plugin {
-  const resolvedId = `\0${COURSE_DATA_ID}`;
+function packageDataPlugin(contentPackage: ContentPackage): Plugin {
+  const resolvedId = `\0${PACKAGE_DATA_ID}`;
 
   return {
-    name: 'scorm-cli:course-data',
+    name: 'scorm-cli:package-data',
     resolveId(id) {
-      return id === COURSE_DATA_ID ? resolvedId : null;
+      return id === PACKAGE_DATA_ID ? resolvedId : null;
     },
     load(id) {
       if (id !== resolvedId) {
         return null;
       }
-      return `export default ${JSON.stringify(course)};`;
+      return `export default ${JSON.stringify(contentPackage)};`;
     },
     transformIndexHtml(html) {
-      const title = escapeHtml(course.metadata.title || 'Course');
+      const title = escapeHtml(contentPackage.metadata.title || 'Content');
       return html.replace(
         /<title>[\s\S]*?<\/title>/,
         () => `<title>${title}</title>`,
@@ -101,17 +101,18 @@ async function copyAssets(
 }
 
 /**
- * Builds a standalone static React player for `course` into
+ * Builds a standalone static React view for `contentPackage` into
  * `options.outputDirectory`, returning the generated entrypoint.
  *
- * The course must already be parsed; this renderer never reads or parses MDX.
+ * The content package must already be parsed; this renderer never reads or
+ * parses MDX.
  */
-export async function buildReactCourse(
-  course: Course,
+export async function renderReactPackage(
+  contentPackage: ContentPackage,
   options: RenderOptions,
 ): Promise<RenderResult> {
   if (!options?.outputDirectory) {
-    throw new Error('buildReactCourse requires an outputDirectory option.');
+    throw new Error('renderReactPackage requires an outputDirectory option.');
   }
 
   const outputDirectory = path.resolve(options.outputDirectory);
@@ -137,7 +138,7 @@ export async function buildReactCourse(
     root: appRoot,
     base: './',
     logLevel: 'warn',
-    plugins: [react(), tailwindcss(), courseDataPlugin(course)],
+    plugins: [react(), tailwindcss(), packageDataPlugin(contentPackage)],
     build: {
       outDir: outputDirectory,
       emptyOutDir: true,
@@ -157,4 +158,4 @@ export async function buildReactCourse(
   return { directory: outputDirectory, entrypoint: ENTRYPOINT };
 }
 
-export const reactRenderer: Renderer = { build: buildReactCourse };
+export const reactRenderer: Renderer = { build: renderReactPackage };

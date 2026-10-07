@@ -7,10 +7,11 @@ import remarkParse from 'remark-parse';
 import { unified } from 'unified';
 import type {
   ContentNode,
-  Course,
-  CourseStructureNode,
+  ContentPackage,
+  ItemOpenMode,
   ItemNode,
   SectionNode,
+  StructureNode,
 } from '@scorm-cli/core';
 import { isRemoteReference } from '@scorm-cli/core';
 
@@ -127,11 +128,11 @@ function normalizedRelative(
   if (!rel || rel === '.')
     fail(
       file,
-      `${label} must refer to a file inside the course directory`,
+      `${label} must refer to a file inside the content package directory`,
       node,
     );
   if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
-    fail(file, `${label} resolves outside the course directory`, node);
+    fail(file, `${label} resolves outside the content package directory`, node);
   }
   return rel.split(path.sep).join('/');
 }
@@ -173,7 +174,11 @@ async function assetReference(
     realRelative.startsWith(`..${path.sep}`) ||
     path.isAbsolute(realRelative)
   ) {
-    fail(file, `asset "${value}" resolves outside the course directory`, node);
+    fail(
+      file,
+      `asset "${value}" resolves outside the content package directory`,
+      node,
+    );
   }
   return relative;
 }
@@ -406,6 +411,7 @@ async function parseItem(
   declaredIn: string,
   root: string,
   ids: Set<string>,
+  open: ItemOpenMode,
   itemId?: unknown,
 ): Promise<ItemNode> {
   const sourcePath = path.resolve(path.dirname(declaredIn), src);
@@ -432,7 +438,7 @@ async function parseItem(
   ) {
     fail(
       declaredIn,
-      `Item source "${src}" resolves outside the course directory`,
+      `Item source "${src}" resolves outside the content package directory`,
       node,
     );
   }
@@ -469,7 +475,7 @@ async function parseItem(
     (typeof itemId !== 'string' || !explicitIdPattern.test(itemId))
   )
     fail(declaredIn, `invalid id "${String(itemId)}"`, node);
-  if (ids.has(id)) fail(sourcePath, `duplicate course node id "${id}"`, node);
+  if (ids.has(id)) fail(sourcePath, `duplicate package node id "${id}"`, node);
   ids.add(id);
   const metadata: ItemNode['metadata'] = { title };
   if (parsed.data.description !== undefined)
@@ -498,7 +504,14 @@ async function parseItem(
     }
     content.push(...(await parseContentNodes(child, sourcePath, root)));
   }
-  return { type: 'item', id, source, metadata, content };
+  return {
+    type: 'item',
+    id,
+    source,
+    presentation: { open },
+    metadata,
+    content,
+  };
 }
 
 async function parseStructure(
@@ -507,8 +520,9 @@ async function parseStructure(
   root: string,
   pathIndices: number[],
   ids: Set<string>,
-): Promise<CourseStructureNode[]> {
-  const result: CourseStructureNode[] = [];
+  allowSections = true,
+): Promise<StructureNode[]> {
+  const result: StructureNode[] = [];
   let index = 0;
   for (const node of nodes) {
     if (node.type === 'text' && !String(node.value ?? '').trim()) continue;
@@ -524,19 +538,36 @@ async function parseStructure(
     }
     const values = attrs(node, declaredIn);
     if (node.name === 'Item') {
-      assertAttributes(values, ['src', 'id'], declaredIn, node);
+      assertAttributes(values, ['src', 'id', 'open'], declaredIn, node);
       const src = requiredString(values.src, 'src', declaredIn, node);
+      const open = values.open ?? 'page';
+      if (open !== 'page' && open !== 'modal')
+        fail(declaredIn, 'Item "open" must be "page" or "modal"', node);
       const itemId =
         values.id === undefined
           ? undefined
           : requiredString(values.id, 'id', declaredIn, node);
-      const item = await parseItem(src, node, declaredIn, root, ids, itemId);
+      const item = await parseItem(
+        src,
+        node,
+        declaredIn,
+        root,
+        ids,
+        open,
+        itemId,
+      );
       result.push(item);
       index++;
       continue;
     }
     if (node.name !== 'Section')
       fail(declaredIn, `unknown MDX component <${node.name}>`, node);
+    if (!allowSections)
+      fail(
+        declaredIn,
+        'Section children may only contain <Item> components',
+        node,
+      );
     assertAttributes(
       values,
       ['id', 'title', 'layout', 'columns'],
@@ -544,9 +575,19 @@ async function parseStructure(
       node,
     );
     const layout = values.layout ?? 'list';
-    if (layout !== 'list' && layout !== 'grid')
-      fail(declaredIn, 'Section "layout" must be "list" or "grid"', node);
+    if (layout !== 'list' && layout !== 'grid' && layout !== 'sequence')
+      fail(
+        declaredIn,
+        'Section "layout" must be "list", "grid", or "sequence"',
+        node,
+      );
     const columns = values.columns;
+    if (columns !== undefined && layout !== 'grid')
+      fail(
+        declaredIn,
+        'Section "columns" is only valid with layout="grid"',
+        node,
+      );
     if (
       columns !== undefined &&
       (!Number.isInteger(columns) ||
@@ -566,7 +607,7 @@ async function parseStructure(
     if (!explicitIdPattern.test(sectionId))
       fail(declaredIn, `invalid id "${sectionId}"`, node);
     if (ids.has(sectionId))
-      fail(declaredIn, `duplicate course node id "${sectionId}"`, node);
+      fail(declaredIn, `duplicate package node id "${sectionId}"`, node);
     ids.add(sectionId);
     const children = await parseStructure(
       node.children ?? [],
@@ -574,6 +615,7 @@ async function parseStructure(
       root,
       [...pathIndices, index],
       ids,
+      false,
     );
     const section: SectionNode = {
       type: 'section',
@@ -585,7 +627,7 @@ async function parseStructure(
         layout,
         ...(columns !== undefined ? { columns: Number(columns) } : {}),
       },
-      children,
+      children: children as ItemNode[],
     };
     result.push(section);
     index++;
@@ -593,14 +635,14 @@ async function parseStructure(
   return result;
 }
 
-/** Parse an entry MDX file, or a directory containing index.mdx, into the public course model. */
-export async function parseCourse(pathOrDir: string): Promise<Course> {
+/** Parse an entry MDX file, or a directory containing index.mdx, into a content package. */
+export async function parsePackage(pathOrDir: string): Promise<ContentPackage> {
   const absolute = path.resolve(pathOrDir);
   let stat;
   try {
     stat = await fs.stat(absolute);
   } catch {
-    throw new Error(`${absolute}: course path does not exist`);
+    throw new Error(`${absolute}: content package path does not exist`);
   }
   const entry = stat.isDirectory()
     ? path.join(absolute, 'index.mdx')
@@ -610,7 +652,7 @@ export async function parseCourse(pathOrDir: string): Promise<Course> {
   try {
     source = await fs.readFile(entry, 'utf8');
   } catch {
-    throw new Error(`${entry}: unable to read course entry`);
+    throw new Error(`${entry}: unable to read content package entry`);
   }
   const parsed = matter(source);
   assertFrontmatterKeys(
@@ -635,7 +677,7 @@ export async function parseCourse(pathOrDir: string): Promise<Course> {
     [],
     new Set(),
   );
-  const course: Course = {
+  const contentPackage: ContentPackage = {
     metadata: {
       title,
       ...(parsed.data.description !== undefined
@@ -644,5 +686,5 @@ export async function parseCourse(pathOrDir: string): Promise<Course> {
     },
     children,
   };
-  return course;
+  return contentPackage;
 }

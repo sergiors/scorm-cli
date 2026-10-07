@@ -2,7 +2,7 @@
   "name": "@scorm-cli/renderer-react",
   "version": "0.0.1",
   "type": "module",
-  "description": "Deterministic static React course renderer for @scorm-cli/core courses.",
+  "description": "Deterministic static React renderer for @scorm-cli/core content packages.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

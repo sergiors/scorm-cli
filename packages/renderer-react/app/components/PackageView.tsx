@@ -1,48 +1,75 @@
 import { BookOpen, ChevronLeft, ChevronRight, ListTree } from 'lucide-react';
 import { useState } from 'react';
-import type { Course } from '../types';
+import type { ContentPackage, ItemNode } from '../types';
 import {
   addVisited,
+  findItem,
   getAdjacentItems,
-  getCourseItems,
-  isCourseComplete,
-} from '../lib/course-helpers';
-import { useCourseRuntime } from '../lib/use-course-runtime';
+  getPackageItems,
+  isPackageComplete,
+} from '../lib/content-helpers';
+import { useScormBridge } from '../lib/use-scorm-bridge';
 import { CompletionNotice } from './CompletionNotice';
 import { ContentRenderer } from './ContentRenderer';
-import { CourseNavigation } from './CourseNavigation';
+import { PackageOutline } from './PackageOutline';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
+import { Modal } from './ui/modal';
 
-export interface CoursePlayerProps {
-  course: Course;
+export interface PackageViewProps {
+  contentPackage: ContentPackage;
 }
 
-export function CoursePlayer({ course }: CoursePlayerProps) {
-  const items = getCourseItems(course);
+export function PackageView({ contentPackage }: PackageViewProps) {
+  const items = getPackageItems(contentPackage);
   const firstItemId = items[0]?.id;
   const [currentItemId, setCurrentItemId] = useState<string | undefined>(
     firstItemId,
   );
+  const [modalItemId, setModalItemId] = useState<string | undefined>(undefined);
   const [visited, setVisited] = useState<Set<string>>(() =>
     firstItemId ? new Set([firstItemId]) : new Set(),
   );
 
   const adjacent = getAdjacentItems(items, currentItemId);
   const currentItem = adjacent.index >= 0 ? items[adjacent.index] : undefined;
-  const complete = isCourseComplete(course, visited);
+  const modalItem = findItem(items, modalItemId);
+  const activeItemId = modalItemId ?? currentItemId;
+  const complete = isPackageComplete(contentPackage, visited);
 
-  useCourseRuntime(complete);
+  useScormBridge(complete);
 
-  const selectItem = (itemId: string) => {
-    setCurrentItemId(itemId);
-    setVisited((previous) => addVisited(previous, itemId));
+  /**
+   * Selecting from the outline or a card honours the item's `presentation.open`:
+   * modal items open a dialog and leave the primary content item untouched.
+   */
+  const selectItem = (item: ItemNode) => {
+    setVisited((previous) => addVisited(previous, item.id));
+    if (item.presentation.open === 'modal') {
+      setModalItemId(item.id);
+      return;
+    }
+    setModalItemId(undefined);
+    setCurrentItemId(item.id);
   };
+
+  /**
+   * Linear previous/next always advance the primary content item in document
+   * order so traversal can reach every item without stalling; open mode only
+   * governs selection from the outline and cards.
+   */
+  const navigateTo = (itemId: string) => {
+    setVisited((previous) => addVisited(previous, itemId));
+    setModalItemId(undefined);
+    setCurrentItemId(itemId);
+  };
+
+  const closeModal = () => setModalItemId(undefined);
 
   return (
     <div className='min-h-screen bg-background text-foreground'>
       <a
-        href='#course-content'
+        href='#package-content'
         className='sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground'
       >
         Skip to content
@@ -54,14 +81,14 @@ export function CoursePlayer({ course }: CoursePlayerProps) {
             <div className='flex items-center gap-3'>
               <BookOpen aria-hidden='true' className='size-6 text-primary' />
               <h1 className='text-xl font-semibold tracking-tight sm:text-2xl'>
-                {course.metadata.title}
+                {contentPackage.metadata.title}
               </h1>
             </div>
             {complete ? <Badge variant='success'>Completed</Badge> : null}
           </div>
-          {course.metadata.description ? (
+          {contentPackage.metadata.description ? (
             <p className='max-w-3xl text-sm text-muted-foreground'>
-              {course.metadata.description}
+              {contentPackage.metadata.description}
             </p>
           ) : null}
         </div>
@@ -71,12 +98,12 @@ export function CoursePlayer({ course }: CoursePlayerProps) {
         <details className='rounded-lg border border-border bg-card p-4 lg:hidden'>
           <summary className='flex cursor-pointer items-center gap-2 font-medium'>
             <ListTree aria-hidden='true' className='size-4' />
-            Course contents
+            Package contents
           </summary>
-          <nav aria-label='Course navigation' className='mt-4'>
-            <CourseNavigation
-              nodes={course.children}
-              currentItemId={currentItemId}
+          <nav aria-label='Package navigation' className='mt-4'>
+            <PackageOutline
+              nodes={contentPackage.children}
+              currentItemId={activeItemId}
               visited={visited}
               onSelect={selectItem}
             />
@@ -84,17 +111,17 @@ export function CoursePlayer({ course }: CoursePlayerProps) {
         </details>
 
         <aside className='hidden lg:block'>
-          <nav aria-label='Course navigation' className='sticky top-6'>
-            <CourseNavigation
-              nodes={course.children}
-              currentItemId={currentItemId}
+          <nav aria-label='Package navigation' className='sticky top-6'>
+            <PackageOutline
+              nodes={contentPackage.children}
+              currentItemId={activeItemId}
               visited={visited}
               onSelect={selectItem}
             />
           </nav>
         </aside>
 
-        <main id='course-content' tabIndex={-1} className='min-w-0 space-y-6'>
+        <main id='package-content' tabIndex={-1} className='min-w-0 space-y-6'>
           {currentItem ? (
             <article className='space-y-4'>
               <header className='space-y-1'>
@@ -115,7 +142,7 @@ export function CoursePlayer({ course }: CoursePlayerProps) {
             </article>
           ) : (
             <p className='text-sm text-muted-foreground'>
-              This course does not contain any items.
+              This package does not contain any items.
             </p>
           )}
 
@@ -126,7 +153,7 @@ export function CoursePlayer({ course }: CoursePlayerProps) {
               type='button'
               variant='outline'
               onClick={() =>
-                adjacent.previous && selectItem(adjacent.previous.id)
+                adjacent.previous && navigateTo(adjacent.previous.id)
               }
               disabled={!adjacent.previous}
             >
@@ -136,7 +163,7 @@ export function CoursePlayer({ course }: CoursePlayerProps) {
             <Button
               type='button'
               variant='outline'
-              onClick={() => adjacent.next && selectItem(adjacent.next.id)}
+              onClick={() => adjacent.next && navigateTo(adjacent.next.id)}
               disabled={!adjacent.next}
             >
               Next
@@ -145,6 +172,17 @@ export function CoursePlayer({ course }: CoursePlayerProps) {
           </div>
         </main>
       </div>
+
+      <Modal
+        open={modalItem !== undefined}
+        onClose={closeModal}
+        title={modalItem?.metadata.title ?? ''}
+        description={modalItem?.metadata.description}
+      >
+        {modalItem ? (
+          <ContentRenderer nodes={modalItem.content} headingOffset={2} />
+        ) : null}
+      </Modal>
     </div>
   );
 }

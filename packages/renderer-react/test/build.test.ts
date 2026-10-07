@@ -9,9 +9,9 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildReactCourse, reactRenderer } from '../src';
+import { renderReactPackage, reactRenderer } from '../src';
 import type { RenderResult } from '../src';
-import { sampleCourse } from './fixtures';
+import { samplePackage } from './fixtures';
 
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>`;
 
@@ -28,7 +28,7 @@ beforeAll(async () => {
   await writeFile(path.join(outputDirectory, 'stale.txt'), 'should be removed');
   await writeFile(path.join(workDir, 'thumb.svg'), SVG);
 
-  entrypoint = await buildReactCourse(sampleCourse, {
+  entrypoint = await renderReactPackage(samplePackage, {
     outputDirectory,
     assets: [
       {
@@ -51,7 +51,7 @@ afterAll(async () => {
   }
 });
 
-describe('buildReactCourse', () => {
+describe('renderReactPackage', () => {
   it('returns the output directory and index.html entrypoint', () => {
     expect(entrypoint.directory).toBe(path.resolve(outputDirectory));
     expect(entrypoint.entrypoint).toBe('index.html');
@@ -73,11 +73,11 @@ describe('buildReactCourse', () => {
     ).rejects.toThrow();
   });
 
-  it('embeds deterministic course data in the bundle', () => {
+  it('embeds deterministic package data in the bundle', () => {
     expect(appJs).toContain('Introduction');
     expect(appJs).toContain('Rendering Fundamentals');
-    // No runtime JSON fetch is used to load the course.
-    expect(appJs).not.toContain('virtual:course-data');
+    // No runtime JSON fetch is used to load the package.
+    expect(appJs).not.toContain('virtual:package-data');
   });
 
   it('emits a compiled stylesheet', async () => {
@@ -101,7 +101,7 @@ describe('buildReactCourse', () => {
 
   it('rejects an asset target that escapes the output directory', async () => {
     await expect(
-      buildReactCourse(sampleCourse, {
+      renderReactPackage(samplePackage, {
         outputDirectory,
         assets: [
           {
@@ -115,13 +115,13 @@ describe('buildReactCourse', () => {
 
   it('requires an output directory', async () => {
     await expect(
-      buildReactCourse(sampleCourse, { outputDirectory: '' }),
+      renderReactPackage(samplePackage, { outputDirectory: '' }),
     ).rejects.toThrow(/outputDirectory/);
   });
 });
 
 describe('reactRenderer', () => {
-  it('exposes buildReactCourse through the renderer contract', () => {
-    expect(reactRenderer.build).toBe(buildReactCourse);
+  it('exposes renderReactPackage through the renderer contract', () => {
+    expect(reactRenderer.build).toBe(renderReactPackage);
   });
 });

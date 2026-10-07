@@ -5,15 +5,15 @@ import { buildPackage } from './build';
 const cli = cac('scorm');
 
 cli
-  .command('build <course>', 'Build a SCORM 1.2 package from a course')
+  .command('build <content>', 'Build a SCORM 1.2 package from authored content')
   .option(
     '-o, --output <path>',
-    'Output ZIP path (default: dist/<course-name>.zip',
+    'Output ZIP path (default: dist/<content-name>.zip)',
   )
-  .example('scorm build examples/typescript-course')
-  .action(async (course: string, options: { output?: string }) => {
+  .example('scorm build examples/typescript-content')
+  .action(async (content: string, options: { output?: string }) => {
     try {
-      const output = await buildPackage(course, options.output);
+      const output = await buildPackage(content, options.output);
       console.log(`SCORM package written to ${output}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

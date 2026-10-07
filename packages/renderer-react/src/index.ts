@@ -1,4 +1,4 @@
-export { buildReactCourse, reactRenderer } from './build';
+export { renderReactPackage, reactRenderer } from './build';
 export type {
   RenderAsset,
   RenderOptions,

@@ -1,8 +1,11 @@
-export { parseCourse } from './course';
+export { parsePackage } from './package';
 export type {
   ContentNode,
-  Course,
-  CourseStructureNode,
+  ContentPackage,
+  ItemOpenMode,
   ItemNode,
+  PackageMetadata,
+  SectionLayout,
   SectionNode,
+  StructureNode,
 } from '@scorm-cli/core';

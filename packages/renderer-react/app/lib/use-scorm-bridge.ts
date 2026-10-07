@@ -1,15 +1,15 @@
 import { useEffect, useRef } from 'react';
 
 /**
- * Wires the optional `window.courseRuntime` bridge:
+ * Wires the optional `window.scormBridge` contract:
  * - calls `markCompleted()` once, after every item has been visited;
  * - calls `finish()` when the page is being unloaded.
  *
- * All calls are guarded so the static application keeps working with no
- * runtime present. SCORM API discovery is intentionally out of scope here;
- * the LMS injects its own runtime script.
+ * All calls are guarded so the static application keeps working with no bridge
+ * present. SCORM API discovery is intentionally out of scope here; the LMS
+ * injects its own runtime script which installs the bridge.
  */
-export function useCourseRuntime(complete: boolean): void {
+export function useScormBridge(complete: boolean): void {
   const markedRef = useRef(false);
 
   useEffect(() => {
@@ -18,7 +18,7 @@ export function useCourseRuntime(complete: boolean): void {
     }
     markedRef.current = true;
     if (typeof window !== 'undefined') {
-      window.courseRuntime?.markCompleted?.();
+      window.scormBridge?.markCompleted?.();
     }
   }, [complete]);
 
@@ -26,7 +26,7 @@ export function useCourseRuntime(complete: boolean): void {
     if (typeof window === 'undefined') {
       return;
     }
-    const finish = () => window.courseRuntime?.finish?.();
+    const finish = () => window.scormBridge?.finish?.();
     window.addEventListener('pagehide', finish);
     return () => window.removeEventListener('pagehide', finish);
   }, []);

@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { collectAssetReferences, isCourseComplete, type Course } from './index';
+import {
+  collectAssetReferences,
+  isPackageComplete,
+  type ContentPackage,
+} from './index';
 
-const course: Course = {
-  metadata: { title: 'Course' },
+const contentPackage: ContentPackage = {
+  metadata: { title: 'Package' },
   children: [
     {
       type: 'item',
       id: 'a',
       source: 'a.mdx',
+      presentation: { open: 'page' },
       metadata: { title: 'A', thumbnail: 'images/a.png' },
       content: [
         { type: 'image', src: 'images/z.png', alt: 'Z' },
@@ -23,6 +28,7 @@ const course: Course = {
           type: 'item',
           id: 'b',
           source: 'b.mdx',
+          presentation: { open: 'modal' },
           metadata: { title: 'B' },
           content: [],
         },
@@ -31,17 +37,17 @@ const course: Course = {
   ],
 };
 
-describe('core course helpers', () => {
+describe('core package helpers', () => {
   it('defines completion as all items visited', () => {
-    expect(isCourseComplete(course, ['a'])).toBe(false);
-    expect(isCourseComplete(course, ['a', 'b'])).toBe(true);
+    expect(isPackageComplete(contentPackage, ['a'])).toBe(false);
+    expect(isPackageComplete(contentPackage, ['a', 'b'])).toBe(true);
     expect(
-      isCourseComplete({ metadata: { title: 'Empty' }, children: [] }, []),
+      isPackageComplete({ metadata: { title: 'Empty' }, children: [] }, []),
     ).toBe(false);
   });
 
   it('collects sorted unique local asset references', () => {
-    expect(collectAssetReferences(course)).toEqual([
+    expect(collectAssetReferences(contentPackage)).toEqual([
       'images/a.png',
       'images/z.png',
     ]);

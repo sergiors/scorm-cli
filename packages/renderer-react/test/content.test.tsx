@@ -16,7 +16,7 @@ describe('ContentRenderer', () => {
     expect(html).toContain('Welcome');
   });
 
-  it('applies a heading offset so content nests under player headings', () => {
+  it('applies a heading offset so content nests under package headings', () => {
     const html = render([{ type: 'heading', depth: 1, text: 'Deep' }], 2);
     expect(html).toContain('<h3');
   });

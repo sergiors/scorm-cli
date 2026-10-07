@@ -1,28 +1,28 @@
 import type {
-  Course,
-  CourseStructureNode,
+  ContentPackage,
   ItemNode,
   SectionNode,
+  StructureNode,
 } from '../types';
 
 /**
  * Re-exported from `@scorm-cli/core` so completion semantics stay canonical
- * across the CLI and the renderer. In particular, an empty course is never
+ * across the CLI and the renderer. In particular, an empty package is never
  * considered complete.
  */
-export { isCourseComplete } from '@scorm-cli/core';
+export { isPackageComplete } from '@scorm-cli/core';
 
 /**
- * Flattens every item in the course in document order (depth-first).
+ * Flattens every item in the package in document order (depth-first).
  *
- * This mirrors the `getCourseItems` helper exported by `@scorm-cli/core`;
- * the renderer app ships its own pure implementation so the browser bundle
- * stays independent from the Node-side core package.
+ * This mirrors the helper exported by `@scorm-cli/core`; the renderer app ships
+ * its own pure implementation so the browser bundle stays independent from the
+ * Node-side core package.
  */
-export function getCourseItems(course: Course): ItemNode[] {
+export function getPackageItems(contentPackage: ContentPackage): ItemNode[] {
   const items: ItemNode[] = [];
 
-  const visit = (nodes: CourseStructureNode[]): void => {
+  const visit = (nodes: StructureNode[]): void => {
     for (const node of nodes) {
       if (node.type === 'item') {
         items.push(node);
@@ -32,7 +32,7 @@ export function getCourseItems(course: Course): ItemNode[] {
     }
   };
 
-  visit(course.children);
+  visit(contentPackage.children);
   return items;
 }
 
@@ -58,6 +58,16 @@ export function getAdjacentItems(
   };
 }
 
+export function findItem(
+  items: ItemNode[],
+  itemId: string | undefined,
+): ItemNode | undefined {
+  if (!itemId) {
+    return undefined;
+  }
+  return items.find((item) => item.id === itemId);
+}
+
 /**
  * Returns a new visited set with `id` added. Keeps referential identity when
  * the id is already present so React state updates can be skipped.
@@ -71,8 +81,10 @@ export function addVisited(visited: Set<string>, id: string): Set<string> {
   return next;
 }
 
-export function getCourseSections(course: Course): SectionNode[] {
-  return course.children.filter(
+export function getPackageSections(
+  contentPackage: ContentPackage,
+): SectionNode[] {
+  return contentPackage.children.filter(
     (node): node is SectionNode => node.type === 'section',
   );
 }

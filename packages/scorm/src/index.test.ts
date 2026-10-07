@@ -73,9 +73,9 @@ describe('SCORM 1.2 package', () => {
     await writeFile(path.join(renderDir, 'app.js'), 'window.booted = true;');
     await writeFile(path.join(renderDir, 'assets', 'photo.svg'), '<svg/>');
     const output = await packageScorm({
-      courseMetadata: { title: 'A course' },
+      metadata: { title: 'A package' },
       renderResult: { directory: renderDir, entrypoint: 'index.html' },
-      outputPath: path.join(temp, 'course.zip'),
+      outputPath: path.join(temp, 'content-package.zip'),
     });
     const zip = await JSZip.loadAsync(await readFile(output));
     expect(Object.keys(zip.files)).toContain('imsmanifest.xml');
@@ -126,9 +126,19 @@ describe('SCORM 1.2 package', () => {
     };
     windowMock.parent = windowMock;
     vm.runInNewContext(scormRuntime, { window: windowMock });
-    windowMock.courseRuntime.markCompleted();
-    windowMock.courseRuntime.finish();
+    windowMock.scormBridge.markCompleted();
+    windowMock.scormBridge.finish();
     handlers.beforeunload();
+    expect(calls).toEqual([
+      ['init', ''],
+      ['get', 'cmi.core.lesson_status'],
+      ['set', 'cmi.core.lesson_status', 'incomplete'],
+      ['commit', ''],
+      ['set', 'cmi.core.lesson_status', 'completed'],
+      ['commit', ''],
+      ['commit', ''],
+      ['finish', ''],
+    ]);
     expect(calls.filter(([name]) => name === 'set')).toContainEqual([
       'set',
       'cmi.core.lesson_status',

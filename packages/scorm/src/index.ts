@@ -3,11 +3,11 @@ import path from 'node:path';
 import os from 'node:os';
 import JSZip from 'jszip';
 import { create } from 'xmlbuilder2';
-import type { RenderResult } from '@scorm-cli/core';
+import type { PackageMetadata, RenderResult } from '@scorm-cli/core';
 import { scormRuntime } from './runtime';
 
 export interface PackageScormOptions {
-  courseMetadata: { title: string; description?: string };
+  metadata: PackageMetadata;
   renderResult: RenderResult;
   outputPath: string;
 }
@@ -17,11 +17,11 @@ function identifier(value: string): string {
     .normalize('NFKD')
     .replace(/[^A-Za-z0-9_.-]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  return safe || 'scorm-course';
+  return safe || 'scorm-package';
 }
 
 export function createManifest(
-  metadata: PackageScormOptions['courseMetadata'],
+  metadata: PackageScormOptions['metadata'],
   files: string[],
 ): string {
   const id = identifier(metadata.title);
@@ -150,7 +150,7 @@ export async function packageScorm(
     const files = await walkFiles(stage);
     await fs.writeFile(
       path.join(stage, 'imsmanifest.xml'),
-      createManifest(options.courseMetadata, files),
+      createManifest(options.metadata, files),
       'utf8',
     );
     const zip = new JSZip();

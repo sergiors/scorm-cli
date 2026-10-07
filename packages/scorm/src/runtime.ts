@@ -46,7 +46,7 @@ export const scormRuntime = `;(function () {
     call("LMSFinish", "");
   }
 
-  window.courseRuntime = {
+  window.scormBridge = {
     markCompleted: function () {
       if (!api || !initialized || alreadyComplete) return;
       if (call("LMSSetValue", "cmi.core.lesson_status", "completed") === "true") {

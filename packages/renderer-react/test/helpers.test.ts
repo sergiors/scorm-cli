@@ -1,59 +1,77 @@
 import { describe, expect, it } from 'vitest';
 import {
   addVisited,
+  findItem,
   getAdjacentItems,
-  getCourseItems,
-  getCourseSections,
-  isCourseComplete,
-} from '../app/lib/course-helpers';
-import { makeEmptyCourse, sampleCourse } from './fixtures';
+  getPackageItems,
+  getPackageSections,
+  isPackageComplete,
+} from '../app/lib/content-helpers';
+import { makeEmptyPackage, samplePackage } from './fixtures';
 
-describe('getCourseItems', () => {
+describe('getPackageItems', () => {
   it('flattens items in document order', () => {
-    expect(getCourseItems(sampleCourse).map((item) => item.id)).toEqual([
+    expect(getPackageItems(samplePackage).map((item) => item.id)).toEqual([
       'intro',
       'setup',
-      'wrap-up',
+      'details',
+      'step-one',
+      'step-two',
     ]);
   });
 
-  it('returns an empty list for an empty course', () => {
-    expect(getCourseItems(makeEmptyCourse())).toEqual([]);
+  it('returns an empty list for an empty package', () => {
+    expect(getPackageItems(makeEmptyPackage())).toEqual([]);
   });
 });
 
-describe('getCourseSections', () => {
+describe('getPackageSections', () => {
   it('returns only top-level sections', () => {
     expect(
-      getCourseSections(sampleCourse).map((section) => section.id),
-    ).toEqual(['getting-started', 'media']);
+      getPackageSections(samplePackage).map((section) => section.id),
+    ).toEqual(['getting-started', 'media', 'walkthrough']);
   });
 });
 
-describe('isCourseComplete', () => {
+describe('findItem', () => {
+  it('resolves an item by id and returns undefined otherwise', () => {
+    const items = getPackageItems(samplePackage);
+    expect(findItem(items, 'details')?.id).toBe('details');
+    expect(findItem(items, 'missing')).toBeUndefined();
+    expect(findItem(items, undefined)).toBeUndefined();
+  });
+});
+
+describe('isPackageComplete', () => {
   it('is false until every item has been visited', () => {
-    expect(isCourseComplete(sampleCourse, ['intro', 'setup'])).toBe(false);
+    expect(isPackageComplete(samplePackage, ['intro', 'setup'])).toBe(false);
   });
 
   it('is true once every item has been visited', () => {
-    expect(isCourseComplete(sampleCourse, ['intro', 'setup', 'wrap-up'])).toBe(
-      true,
-    );
+    expect(
+      isPackageComplete(samplePackage, [
+        'intro',
+        'setup',
+        'details',
+        'step-one',
+        'step-two',
+      ]),
+    ).toBe(true);
   });
 
-  it('is false for an empty course', () => {
-    expect(isCourseComplete(makeEmptyCourse(), [])).toBe(false);
+  it('is false for an empty package', () => {
+    expect(isPackageComplete(makeEmptyPackage(), [])).toBe(false);
   });
 });
 
 describe('getAdjacentItems', () => {
-  const items = getCourseItems(sampleCourse);
+  const items = getPackageItems(samplePackage);
 
   it('resolves current, previous and next', () => {
-    const adjacent = getAdjacentItems(items, 'setup');
-    expect(adjacent.index).toBe(1);
-    expect(adjacent.previous?.id).toBe('intro');
-    expect(adjacent.next?.id).toBe('wrap-up');
+    const adjacent = getAdjacentItems(items, 'details');
+    expect(adjacent.index).toBe(2);
+    expect(adjacent.previous?.id).toBe('setup');
+    expect(adjacent.next?.id).toBe('step-one');
   });
 
   it('has no previous for the first item', () => {
@@ -63,8 +81,8 @@ describe('getAdjacentItems', () => {
   });
 
   it('has no next for the last item', () => {
-    const adjacent = getAdjacentItems(items, 'wrap-up');
-    expect(adjacent.previous?.id).toBe('setup');
+    const adjacent = getAdjacentItems(items, 'step-two');
+    expect(adjacent.previous?.id).toBe('step-one');
     expect(adjacent.next).toBeUndefined();
   });
 

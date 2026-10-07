@@ -1,7 +1,10 @@
 export type {
   ContentNode,
-  Course,
-  CourseStructureNode,
+  ContentPackage,
   ItemNode,
+  ItemOpenMode,
+  PackageMetadata,
+  SectionLayout,
   SectionNode,
+  StructureNode,
 } from '@scorm-cli/core';
