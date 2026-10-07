@@ -8,7 +8,7 @@ Build SCORM 1.2 packages from authored MDX content packages.
 - `@scorm-cli/parser` — validates and parses authored content into that model.
 - `@scorm-cli/renderer-react` — renders the model as a static content player.
 - `@scorm-cli/scorm` — packages rendered output as SCORM 1.2.
-- `@scorm-cli/cli` — command-line build interface.
+- `@scorm-cli/cli` — command-line build and development preview interface.
 
 ## Author a content package
 
@@ -41,9 +41,11 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm scorm build examples/typescript-content
+pnpm scorm dev examples/typescript-content
 ```
 
 The example build writes `dist/typescript-content.zip` by default. Pass `--output <path>` to choose a different ZIP path.
+`scorm dev <content>` starts a local preview, watches the content directory, and reports validation errors without stopping the preview. Pass `--port <port>` to choose the preview port.
 
 ## License
 

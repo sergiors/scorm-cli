@@ -16,7 +16,8 @@
     "@scorm-cli/parser": "workspace:*",
     "@scorm-cli/renderer-react": "workspace:*",
     "@scorm-cli/scorm": "workspace:*",
-    "cac": "^6.7.14"
+    "cac": "^6.7.14",
+    "chokidar": "^4.0.3"
   },
   "devDependencies": {
     "@types/node": "^25.6.2",

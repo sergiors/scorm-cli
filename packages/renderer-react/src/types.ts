@@ -1,6 +1,12 @@
 import type { RenderOptions } from '@scorm-cli/core';
 
-export type { Renderer, RenderOptions, RenderResult } from '@scorm-cli/core';
+export type {
+  Renderer,
+  RendererDevOptions,
+  RendererDevServer,
+  RenderOptions,
+  RenderResult,
+} from '@scorm-cli/core';
 
 /**
  * A single asset to copy into the generated output directory.

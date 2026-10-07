@@ -1,74 +1,15 @@
-import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import type { ContentPackage } from '@scorm-cli/core';
-import { build as viteBuild, type Plugin } from 'vite';
-import type {
-  RenderAsset,
-  RenderOptions,
-  RenderResult,
-  Renderer,
-} from './types';
-
-const ENTRYPOINT = 'index.html';
-const PACKAGE_DATA_ID = 'virtual:package-data';
-
-function findPackageRoot(startDirectory: string): string {
-  let directory = startDirectory;
-  for (;;) {
-    if (existsSync(path.join(directory, 'package.json'))) {
-      return directory;
-    }
-    const parent = path.dirname(directory);
-    if (parent === directory) {
-      throw new Error(
-        'Could not locate the renderer-react package root (no package.json found).',
-      );
-    }
-    directory = parent;
-  }
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-/**
- * Inlines the already-parsed content package as a virtual module so the
- * generated application ships with deterministic, self-contained data. No
- * network request is ever made to load the package.
- */
-function packageDataPlugin(contentPackage: ContentPackage): Plugin {
-  const resolvedId = `\0${PACKAGE_DATA_ID}`;
-
-  return {
-    name: 'scorm-cli:package-data',
-    resolveId(id) {
-      return id === PACKAGE_DATA_ID ? resolvedId : null;
-    },
-    load(id) {
-      if (id !== resolvedId) {
-        return null;
-      }
-      return `export default ${JSON.stringify(contentPackage)};`;
-    },
-    transformIndexHtml(html) {
-      const title = escapeHtml(contentPackage.metadata.title || 'Content');
-      return html.replace(
-        /<title>[\s\S]*?<\/title>/,
-        () => `<title>${title}</title>`,
-      );
-    },
-  };
-}
+import { build as viteBuild } from 'vite';
+import type { RenderAsset, RenderOptions, RenderResult } from './types';
+import {
+  createPackageDataPlugin,
+  ENTRYPOINT,
+  resolveAppRoot,
+} from './vite-app';
 
 function resolveAssetTargets(
   assets: RenderAsset[] | undefined,
@@ -116,18 +57,8 @@ export async function renderReactPackage(
   }
 
   const outputDirectory = path.resolve(options.outputDirectory);
-  const packageRoot = findPackageRoot(
-    path.dirname(fileURLToPath(import.meta.url)),
-  );
-  const appRoot = path.join(packageRoot, 'app');
+  const appRoot = resolveAppRoot(import.meta.url);
   const indexHtml = path.join(appRoot, ENTRYPOINT);
-
-  if (!existsSync(indexHtml)) {
-    throw new Error(
-      `Renderer app template not found. Expected ${indexHtml}. ` +
-        "The 'app' directory must be shipped with the package.",
-    );
-  }
 
   await fs.mkdir(outputDirectory, { recursive: true });
 
@@ -138,7 +69,11 @@ export async function renderReactPackage(
     root: appRoot,
     base: './',
     logLevel: 'warn',
-    plugins: [react(), tailwindcss(), packageDataPlugin(contentPackage)],
+    plugins: [
+      react(),
+      tailwindcss(),
+      createPackageDataPlugin({ current: contentPackage }),
+    ],
     build: {
       outDir: outputDirectory,
       emptyOutDir: true,
@@ -157,5 +92,3 @@ export async function renderReactPackage(
 
   return { directory: outputDirectory, entrypoint: ENTRYPOINT };
 }
-
-export const reactRenderer: Renderer = { build: renderReactPackage };

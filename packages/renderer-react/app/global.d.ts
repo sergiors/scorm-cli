@@ -1,3 +1,5 @@
+import type { PreviewHotContext } from './lib/preview-events';
+
 export {};
 
 declare global {
@@ -13,5 +15,14 @@ declare global {
 
   interface Window {
     scormBridge?: ScormBridge;
+  }
+
+  /**
+   * Vite's HMR context. Declared structurally (rather than pulling in
+   * `vite/client`) so the app only depends on the events it actually uses.
+   * `undefined` outside Vite dev mode.
+   */
+  interface ImportMeta {
+    readonly hot?: PreviewHotContext;
   }
 }

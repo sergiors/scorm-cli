@@ -3,20 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Renderer } from '@scorm-cli/core';
 import { collectAssetReferences } from '@scorm-cli/core';
-import { parsePackage } from '@scorm-cli/parser';
 import { packageScorm } from '@scorm-cli/scorm';
-
-async function loadRendererBuild(): Promise<Renderer['build']> {
-  const rendererPackage = '@scorm-cli/renderer-react';
-  const renderer = (await import(rendererPackage)) as {
-    renderReactPackage: Renderer['build'];
-  };
-  if (typeof renderer.renderReactPackage !== 'function')
-    throw new Error(
-      '@scorm-cli/renderer-react does not export renderReactPackage',
-    );
-  return renderer.renderReactPackage;
-}
+import { loadPackage } from './content';
+import { loadRenderer } from './renderer';
 
 function packageName(contentPath: string): string {
   const absolute = path.resolve(contentPath);
@@ -32,17 +21,15 @@ export async function buildPackage(
   outputPath?: string,
   rendererBuild?: Renderer['build'],
 ): Promise<string> {
-  const contentPackage = await parsePackage(contentPath);
+  const { content: contentPackage, contentRoot } =
+    await loadPackage(contentPath);
   const output = path.resolve(
     outputPath ?? path.join('dist', `${packageName(contentPath)}.zip`),
   );
-  const renderer = rendererBuild ?? (await loadRendererBuild());
+  const renderer = rendererBuild ?? (await loadRenderer()).build;
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'scorm-cli-build-'));
   const renderedDirectory = path.join(tempRoot, 'rendered');
   try {
-    const contentRoot = (await fs.stat(path.resolve(contentPath))).isDirectory()
-      ? path.resolve(contentPath)
-      : path.dirname(path.resolve(contentPath));
     const assets = collectAssetReferences(contentPackage).map((reference) => ({
       sourcePath: path.resolve(contentRoot, reference),
       targetPath: reference,

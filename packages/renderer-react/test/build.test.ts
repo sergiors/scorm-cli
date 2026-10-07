@@ -80,6 +80,12 @@ describe('renderReactPackage', () => {
     expect(appJs).not.toContain('virtual:package-data');
   });
 
+  it('does not ship the dev-only preview error channel', () => {
+    expect(appJs).not.toContain('scorm:preview-error');
+    expect(appJs).not.toContain('scorm:preview-clear');
+    expect(appJs).not.toContain('import.meta.hot');
+  });
+
   it('emits a compiled stylesheet', async () => {
     const assets = await readdir(path.join(outputDirectory, 'assets'));
     const cssFile = assets.find((name) => name.endsWith('.css'));

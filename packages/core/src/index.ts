@@ -57,8 +57,25 @@ export interface RenderResult {
   entrypoint: string;
 }
 
+export interface RendererDevOptions {
+  contentRoot: string;
+  port?: number;
+  host?: string;
+}
+
+export interface RendererDevServer {
+  url: string;
+  update(content: ContentPackage): Promise<void>;
+  reportError(message: string): void;
+  close(): Promise<void>;
+}
+
 export interface Renderer {
   build(content: ContentPackage, options: RenderOptions): Promise<RenderResult>;
+  dev?(
+    content: ContentPackage,
+    options: RendererDevOptions,
+  ): Promise<RendererDevServer>;
 }
 
 /** Completion is renderer-agnostic: a package is complete after every item is visited. */
