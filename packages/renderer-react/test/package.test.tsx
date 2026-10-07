@@ -25,7 +25,12 @@ const sequencePackage: ContentPackage = {
           source: 'step-one.mdx',
           presentation: { open: 'page' },
           metadata: { title: 'Step one' },
-          content: [{ type: 'paragraph', text: 'First step.' }],
+          content: [
+            {
+              type: 'paragraph',
+              children: [{ type: 'text', value: 'First step.' }],
+            },
+          ],
         },
         {
           type: 'item',
@@ -33,7 +38,12 @@ const sequencePackage: ContentPackage = {
           source: 'step-two.mdx',
           presentation: { open: 'page' },
           metadata: { title: 'Step two' },
-          content: [{ type: 'paragraph', text: 'Second step.' }],
+          content: [
+            {
+              type: 'paragraph',
+              children: [{ type: 'text', value: 'Second step.' }],
+            },
+          ],
         },
       ],
     },

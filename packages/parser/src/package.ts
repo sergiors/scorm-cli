@@ -1,17 +1,26 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import matter from 'gray-matter';
-import { toString } from 'mdast-util-to-string';
 import remarkMdx from 'remark-mdx';
 import remarkParse from 'remark-parse';
 import { unified } from 'unified';
 import type {
+  CalloutNode,
   ContentNode,
   ContentPackage,
+  ExampleNode,
+  ImageNode,
+  InlineNode,
   ItemOpenMode,
   ItemNode,
+  ListItemNode,
+  QuestionNode,
+  QuestionOption,
+  QuestionType,
   SectionNode,
+  StepNode,
   StructureNode,
+  VideoNode,
 } from '@scorm-cli/core';
 import { isRemoteReference } from '@scorm-cli/core';
 
@@ -19,9 +28,12 @@ type AstNode = {
   type: string;
   name?: string | null;
   value?: unknown;
+  alt?: string | null;
   url?: string;
+  identifier?: string;
   depth?: number;
   ordered?: boolean | null;
+  start?: number | null;
   lang?: string | null;
   children?: AstNode[];
   position?: { start?: { line?: number; column?: number } };
@@ -35,6 +47,13 @@ type AstNode = {
 
 const processor = unified().use(remarkParse).use(remarkMdx);
 const explicitIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+const flowComponents = new Set([
+  'Video',
+  'Callout',
+  'Example',
+  'Question',
+  'Steps',
+]);
 
 function location(file: string, node?: AstNode): string {
   const line = node?.position?.start?.line;
@@ -183,13 +202,10 @@ async function assetReference(
   return relative;
 }
 
-function plainText(node: AstNode): string {
-  return toString(node as never).trim();
-}
-
 function parseMdx(source: string, file: string): { children: AstNode[] } {
+  let tree: { children: AstNode[] };
   try {
-    return processor.parse(source) as unknown as { children: AstNode[] };
+    tree = processor.parse(source) as unknown as { children: AstNode[] };
   } catch (error) {
     const detail = error as {
       message?: string;
@@ -201,6 +217,132 @@ function parseMdx(source: string, file: string): { children: AstNode[] } {
       : '';
     throw new Error(`${file}${position}: ${detail.message ?? String(error)}`);
   }
+  const definitions = new Map(
+    tree.children
+      .filter(
+        (node) => node.type === 'definition' && node.identifier && node.url,
+      )
+      .map((node) => [node.identifier!.toLowerCase(), node.url!]),
+  );
+  const resolveReferences = (nodes: AstNode[]) => {
+    for (const node of nodes) {
+      if (node.type === 'linkReference' || node.type === 'imageReference') {
+        const url = definitions.get(node.identifier?.toLowerCase() ?? '');
+        if (!url)
+          fail(
+            file,
+            `undefined Markdown reference "${node.identifier ?? ''}"`,
+            node,
+          );
+        node.type = node.type === 'linkReference' ? 'link' : 'image';
+        node.url = url;
+      }
+      if (node.children) resolveReferences(node.children);
+    }
+  };
+  resolveReferences(tree.children);
+  tree.children = tree.children.filter((node) => node.type !== 'definition');
+  return tree;
+}
+
+function isJsx(node: AstNode): boolean {
+  return node.type === 'mdxJsxFlowElement' || node.type === 'mdxJsxTextElement';
+}
+
+function whitespace(node: AstNode): boolean {
+  return node.type === 'text' && !String(node.value ?? '').trim();
+}
+
+async function parseInlineNodes(
+  nodes: AstNode[],
+  sourceFile: string,
+  root: string,
+): Promise<InlineNode[]> {
+  const output: InlineNode[] = [];
+  for (const node of nodes) {
+    switch (node.type) {
+      case 'text':
+        output.push({ type: 'text', value: String(node.value ?? '') });
+        break;
+      case 'emphasis':
+        output.push({
+          type: 'emphasis',
+          children: await parseInlineNodes(
+            node.children ?? [],
+            sourceFile,
+            root,
+          ),
+        });
+        break;
+      case 'strong':
+        output.push({
+          type: 'strong',
+          children: await parseInlineNodes(
+            node.children ?? [],
+            sourceFile,
+            root,
+          ),
+        });
+        break;
+      case 'inlineCode':
+        output.push({ type: 'inlineCode', value: String(node.value ?? '') });
+        break;
+      case 'link':
+        output.push({
+          type: 'link',
+          href: node.url ?? '',
+          children: await parseInlineNodes(
+            node.children ?? [],
+            sourceFile,
+            root,
+          ),
+        });
+        break;
+      case 'image':
+        output.push(await parseMarkdownImage(node, sourceFile, root));
+        break;
+      case 'break':
+        output.push({ type: 'break' });
+        break;
+      case 'mdxJsxTextElement':
+        if (node.name !== 'Image') {
+          if (
+            ['Video', 'Callout', 'Example', 'Question', 'Steps'].includes(
+              node.name ?? '',
+            )
+          )
+            fail(
+              sourceFile,
+              `component <${node.name}> is block-only and cannot be used inline`,
+              node,
+            );
+          fail(sourceFile, `unknown MDX component <${node.name ?? ''}>`, node);
+        }
+        output.push(await parseImageComponent(node, sourceFile, root));
+        break;
+      default:
+        fail(sourceFile, `unsupported inline node "${node.type}"`, node);
+    }
+  }
+  return output;
+}
+
+async function parseMarkdownImage(
+  node: AstNode,
+  sourceFile: string,
+  root: string,
+): Promise<ImageNode> {
+  return {
+    type: 'image',
+    src: await assetReference(
+      node.url ?? '',
+      sourceFile,
+      root,
+      sourceFile,
+      node,
+    ),
+    alt: String(node.alt ?? node.value ?? ''),
+  };
 }
 
 async function parseContentNode(
@@ -210,29 +352,35 @@ async function parseContentNode(
 ): Promise<ContentNode> {
   switch (node.type) {
     case 'heading':
-      return { type: 'heading', depth: node.depth ?? 1, text: plainText(node) };
+      return {
+        type: 'heading',
+        depth: node.depth ?? 1,
+        children: await parseInlineNodes(node.children ?? [], sourceFile, root),
+      };
     case 'paragraph':
-      return { type: 'paragraph', text: plainText(node) };
+      return {
+        type: 'paragraph',
+        children: await parseInlineNodes(node.children ?? [], sourceFile, root),
+      };
     case 'list':
       return {
         type: 'list',
         ordered: Boolean(node.ordered),
-        items: (node.children ?? []).map((item) => plainText(item)),
-      };
-    case 'link':
-      return { type: 'link', href: node.url ?? '', text: plainText(node) };
-    case 'image':
-      return {
-        type: 'image',
-        src: await assetReference(
-          node.url ?? '',
-          sourceFile,
-          root,
-          sourceFile,
-          node,
+        ...(node.ordered && node.start != null && node.start !== 1
+          ? { start: node.start }
+          : {}),
+        items: await Promise.all(
+          (node.children ?? []).map(async (item): Promise<ListItemNode> => ({
+            children: await contentChildren(
+              item.children ?? [],
+              sourceFile,
+              root,
+            ),
+          })),
         ),
-        alt: String(node.value ?? ''),
       };
+    case 'image':
+      return parseMarkdownImage(node, sourceFile, root);
     case 'code':
       return {
         type: 'code',
@@ -240,14 +388,21 @@ async function parseContentNode(
         ...(node.lang ? { language: node.lang } : {}),
       };
     case 'blockquote':
-      return { type: 'quote', text: plainText(node) };
+      return {
+        type: 'quote',
+        children: await contentChildren(node.children ?? [], sourceFile, root),
+      };
     case 'mdxJsxFlowElement':
-    case 'mdxJsxTextElement':
       return parseContentComponent(node, sourceFile, root);
+    case 'mdxJsxTextElement':
+      if (node.name !== 'Image')
+        if (flowComponents.has(node.name ?? ''))
+          return parseContentComponent(node, sourceFile, root);
+        else
+          fail(sourceFile, `unknown MDX component <${node.name ?? ''}>`, node);
+      return parseImageComponent(node, sourceFile, root);
     default:
-      throw new Error(
-        `${location(sourceFile, node)}: unsupported content node "${node.type}"`,
-      );
+      fail(sourceFile, `unsupported content node "${node.type}"`, node);
   }
 }
 
@@ -256,30 +411,67 @@ async function parseContentNodes(
   sourceFile: string,
   root: string,
 ): Promise<ContentNode[]> {
+  if (
+    [
+      'text',
+      'emphasis',
+      'strong',
+      'inlineCode',
+      'link',
+      'image',
+      'break',
+    ].includes(node.type)
+  ) {
+    return [
+      {
+        type: 'paragraph',
+        children: await parseInlineNodes([node], sourceFile, root),
+      },
+    ];
+  }
+  if (node.type === 'mdxJsxTextElement') {
+    return [await parseContentNode(node, sourceFile, root)];
+  }
   if (node.type !== 'paragraph')
     return [await parseContentNode(node, sourceFile, root)];
   const output: ContentNode[] = [];
-  let text = '';
-  const flushText = () => {
-    const value = text.trim();
-    if (value) output.push({ type: 'paragraph', text: value });
-    text = '';
+  let inlineNodes: AstNode[] = [];
+  const flushInline = async () => {
+    if (!inlineNodes.length) return;
+    const parsed = await parseInlineNodes(inlineNodes, sourceFile, root);
+    if (
+      parsed.some((child) => child.type !== 'text' || child.value.trim() !== '')
+    ) {
+      output.push({ type: 'paragraph', children: parsed });
+    }
+    inlineNodes = [];
   };
   for (const child of node.children ?? []) {
     if (
-      child.type === 'mdxJsxTextElement' ||
       child.type === 'mdxJsxFlowElement' ||
-      child.type === 'link' ||
-      child.type === 'image'
+      (child.type === 'mdxJsxTextElement' &&
+        flowComponents.has(child.name ?? ''))
     ) {
-      flushText();
+      const index = (node.children ?? []).indexOf(child);
+      const previous = node.children?.[index - 1];
+      const next = node.children?.[index + 1];
+      if (
+        child.type === 'mdxJsxTextElement' &&
+        ((previous && !whitespace(previous)) || (next && !whitespace(next)))
+      ) {
+        fail(
+          sourceFile,
+          `component <${child.name ?? ''}> is block-only and cannot be used inline`,
+          child,
+        );
+      }
+      await flushInline();
       output.push(await parseContentNode(child, sourceFile, root));
     } else {
-      text += `${text ? ' ' : ''}${plainText(child)}`;
+      inlineNodes.push(child);
     }
   }
-  flushText();
-  if (!output.length) output.push({ type: 'paragraph', text: plainText(node) });
+  await flushInline();
   return output;
 }
 
@@ -292,117 +484,300 @@ async function parseContentComponent(
   const file = sourceFile;
   const values = attrs(node, file);
   if (name === 'Image') {
-    assertAttributes(values, ['src', 'alt'], file, node);
-    const src = requiredString(values.src, 'src', file, node);
-    return {
-      type: 'image',
-      src: await assetReference(src, sourceFile, root, file, node),
-      alt: String(values.alt ?? ''),
-    };
+    return parseImageComponent(node, sourceFile, root);
   }
   if (name === 'Video') {
-    assertAttributes(values, ['src', 'url', 'title'], file, node);
-    const src = requiredString(values.src ?? values.url, 'src', file, node);
+    assertAttributes(
+      values,
+      ['src', 'title', 'poster', 'captions'],
+      file,
+      node,
+    );
+    const src = requiredString(values.src, 'src', file, node);
     const title = optionalString(values.title, 'title', file, node);
-    return {
+    const poster = optionalString(values.poster, 'poster', file, node);
+    const captions = optionalString(values.captions, 'captions', file, node);
+    const video: VideoNode = {
       type: 'video',
-      src: isRemoteReference(src)
-        ? src
-        : await assetReference(src, sourceFile, root, file, node),
+      src: await assetReference(src, sourceFile, root, file, node),
       ...(title ? { title } : {}),
+      ...(poster
+        ? { poster: await assetReference(poster, sourceFile, root, file, node) }
+        : {}),
+      ...(captions
+        ? {
+            captions: await assetReference(
+              captions,
+              sourceFile,
+              root,
+              file,
+              node,
+            ),
+          }
+        : {}),
     };
+    return video;
   }
-  if (name === 'Question') return parseQuestion(node, sourceFile);
+  if (name === 'Callout') return parseCallout(node, sourceFile, root);
+  if (name === 'Example') return parseExample(node, sourceFile, root);
+  if (name === 'Question') return parseQuestion(node, sourceFile, root);
+  if (name === 'Steps') return parseSteps(node, sourceFile, root);
   fail(file, `unknown MDX component <${name}>`, node);
 }
 
-function parseQuestion(node: AstNode, file: string): ContentNode {
-  const values = attrs(node, file);
-  assertAttributes(values, ['questionType', 'type', 'question'], file, node);
-  const rawType = values.questionType ?? values.type;
-  const questionType =
-    rawType === 'single-choice' || rawType === 'single'
-      ? 'single-choice'
-      : rawType === 'multiple-choice' || rawType === 'multiple'
-        ? 'multiple-choice'
-        : undefined;
-  if (!questionType)
-    fail(
-      file,
-      'Question "questionType" must be "single-choice" or "multiple-choice"',
-      node,
-    );
-  const questionChildren = (node.children ?? []).flatMap((child) =>
-    child.type === 'paragraph' ? (child.children ?? []) : [child],
-  );
-  const promptChild = questionChildren.find(
-    (child) =>
-      (child.type === 'mdxJsxFlowElement' ||
-        child.type === 'mdxJsxTextElement') &&
-      child.name === 'Prompt',
-  );
-  const question = requiredString(
-    values.question ?? (promptChild ? plainText(promptChild) : undefined),
-    'question',
-    file,
-    node,
-  );
-  const answerNodes = questionChildren.filter(
-    (child) =>
-      (child.type === 'mdxJsxFlowElement' ||
-        child.type === 'mdxJsxTextElement') &&
-      (child.name === 'Answer' || child.name === 'Option'),
-  );
-  for (const child of questionChildren) {
-    if (child.type === 'text' && !String(child.value ?? '').trim()) continue;
-    if (
-      child.type === 'paragraph' ||
-      child === promptChild ||
-      answerNodes.includes(child)
-    )
-      continue;
-    if (
-      child.type === 'mdxJsxFlowElement' ||
-      child.type === 'mdxJsxTextElement'
-    ) {
-      if (child.name !== 'Prompt')
-        fail(file, `unknown Question child <${child.name}>`, child);
+async function parseImageComponent(
+  node: AstNode,
+  sourceFile: string,
+  root: string,
+): Promise<ImageNode> {
+  const values = attrs(node, sourceFile);
+  assertAttributes(values, ['src', 'alt', 'caption'], sourceFile, node);
+  const src = requiredString(values.src, 'src', sourceFile, node);
+  if (typeof values.alt !== 'string')
+    fail(sourceFile, 'Image requires an explicit string "alt" attribute', node);
+  const caption = optionalString(values.caption, 'caption', sourceFile, node);
+  return {
+    type: 'image',
+    src: await assetReference(src, sourceFile, root, sourceFile, node),
+    alt: values.alt,
+    ...(caption ? { caption } : {}),
+  };
+}
+
+async function contentChildren(
+  nodes: AstNode[],
+  sourceFile: string,
+  root: string,
+): Promise<ContentNode[]> {
+  const output: ContentNode[] = [];
+  let inline: AstNode[] = [];
+  const flushInline = async () => {
+    if (!inline.length) return;
+    const children = await parseInlineNodes(inline, sourceFile, root);
+    if (children.some((child) => child.type !== 'text' || child.value.trim()))
+      output.push({ type: 'paragraph', children });
+    inline = [];
+  };
+  for (const child of nodes) {
+    if (whitespace(child)) {
+      if (
+        child.type === 'text' &&
+        inline.length &&
+        !/[\r\n]/.test(String(child.value ?? ''))
+      ) {
+        inline.push(child);
+      } else {
+        await flushInline();
+      }
       continue;
     }
-    fail(file, `unsupported Question child "${child.type}"`, child);
+    if (child.type === 'mdxjsEsm')
+      fail(sourceFile, 'MDX JavaScript and imports are not supported', child);
+    const inlineType = [
+      'text',
+      'emphasis',
+      'strong',
+      'inlineCode',
+      'link',
+      'image',
+      'break',
+    ].includes(child.type);
+    const inlineImage =
+      child.type === 'mdxJsxTextElement' && child.name === 'Image';
+    if (inlineType || inlineImage) inline.push(child);
+    else {
+      await flushInline();
+      output.push(...(await parseContentNodes(child, sourceFile, root)));
+    }
   }
-  if (answerNodes.length < 2)
-    fail(file, 'Question must contain at least two Answer components', node);
-  const answers = answerNodes.map((answer) => {
-    if (
-      (answer.children ?? []).some(
-        (child) =>
-          child.type === 'mdxJsxFlowElement' ||
-          child.type === 'mdxJsxTextElement',
-      )
-    ) {
-      fail(file, 'Answer content cannot contain components', answer);
-    }
-    const answerValues = attrs(answer, file);
-    assertAttributes(answerValues, ['correct'], file, answer);
-    if (
-      answerValues.correct !== undefined &&
-      typeof answerValues.correct !== 'boolean'
-    ) {
-      fail(file, 'Answer "correct" must be a boolean', answer);
-    }
-    return { text: plainText(answer), correct: answerValues.correct === true };
-  });
-  const correctCount = answers.filter((answer) => answer.correct).length;
-  if (correctCount === 0)
-    fail(file, 'Question must have at least one correct answer', node);
-  if (questionType === 'single-choice' && correctCount !== 1)
+  await flushInline();
+  return output;
+}
+
+async function parseCallout(
+  node: AstNode,
+  sourceFile: string,
+  root: string,
+): Promise<CalloutNode> {
+  const values = attrs(node, sourceFile);
+  assertAttributes(values, ['type'], sourceFile, node);
+  const variant = values.type;
+  if (
+    variant !== 'info' &&
+    variant !== 'tip' &&
+    variant !== 'warning' &&
+    variant !== 'important'
+  ) {
     fail(
-      file,
-      'single-choice Question must have exactly one correct answer',
+      sourceFile,
+      'Callout "type" must be "info", "tip", "warning", or "important"',
       node,
     );
-  return { type: 'question', questionType, question, answers };
+  }
+  return {
+    type: 'callout',
+    variant,
+    children: await contentChildren(node.children ?? [], sourceFile, root),
+  };
+}
+
+async function parseExample(
+  node: AstNode,
+  sourceFile: string,
+  root: string,
+): Promise<ExampleNode> {
+  const values = attrs(node, sourceFile);
+  assertAttributes(values, ['title'], sourceFile, node);
+  const title = optionalString(values.title, 'title', sourceFile, node);
+  return {
+    type: 'example',
+    ...(title ? { title } : {}),
+    children: await contentChildren(node.children ?? [], sourceFile, root),
+  };
+}
+
+function significantChildren(node: AstNode): AstNode[] {
+  return (node.children ?? []).filter((child) => !whitespace(child));
+}
+
+async function parseQuestion(
+  node: AstNode,
+  file: string,
+  root: string,
+): Promise<QuestionNode> {
+  const values = attrs(node, file);
+  assertAttributes(values, ['type'], file, node);
+  const rawType = values.type;
+  if (
+    rawType !== 'single-choice' &&
+    rawType !== 'multiple-choice' &&
+    rawType !== 'true-false'
+  )
+    fail(
+      file,
+      'Question "type" must be "single-choice", "multiple-choice", or "true-false"',
+      node,
+    );
+  const children = (node.children ?? [])
+    .flatMap((child) => {
+      if (
+        child.type === 'paragraph' &&
+        (child.children ?? []).every(
+          (nested) =>
+            whitespace(nested) ||
+            (isJsx(nested) &&
+              (nested.name === 'Prompt' || nested.name === 'Option')),
+        )
+      ) {
+        return child.children ?? [];
+      }
+      return [child];
+    })
+    .filter((child) => !whitespace(child));
+  const prompts: AstNode[] = [];
+  const options: AstNode[] = [];
+  for (const child of children) {
+    if (!isJsx(child))
+      fail(
+        file,
+        'Question may contain only <Prompt> and <Option> components',
+        child,
+      );
+    if (child.name === 'Prompt') prompts.push(child);
+    else if (child.name === 'Option') options.push(child);
+    else fail(file, `unknown Question child <${child.name ?? ''}>`, child);
+  }
+  if (prompts.length !== 1)
+    fail(
+      file,
+      `Question must contain exactly 1 Prompt; found ${prompts.length}`,
+      node,
+    );
+  if (options.length < 2)
+    fail(
+      file,
+      `Question must contain at least 2 Options; found ${options.length}`,
+      node,
+    );
+  const promptNode = prompts[0]!;
+  const promptAttrs = attrs(promptNode, file);
+  assertAttributes(promptAttrs, [], file, promptNode);
+  const prompt = await contentChildren(promptNode.children ?? [], file, root);
+  const seenValues = new Set<string>();
+  const parsedOptions: QuestionOption[] = [];
+  for (const option of options) {
+    const optionAttrs = attrs(option, file);
+    assertAttributes(optionAttrs, ['value', 'correct'], file, option);
+    const value = requiredString(optionAttrs.value, 'value', file, option);
+    if (seenValues.has(value))
+      fail(file, `Option value "${value}" must be unique`, option);
+    seenValues.add(value);
+    if (
+      optionAttrs.correct !== undefined &&
+      typeof optionAttrs.correct !== 'boolean'
+    )
+      fail(file, 'Option "correct" must be a boolean', option);
+    parsedOptions.push({
+      value,
+      correct: optionAttrs.correct === true,
+      content: await contentChildren(option.children ?? [], file, root),
+    });
+  }
+  const correctCount = parsedOptions.filter((option) => option.correct).length;
+  if (rawType === 'single-choice' && correctCount !== 1)
+    fail(
+      file,
+      'single-choice Question must have exactly one correct Option',
+      node,
+    );
+  if (rawType === 'multiple-choice' && correctCount < 1)
+    fail(
+      file,
+      'multiple-choice Question must have at least one correct Option',
+      node,
+    );
+  if (rawType === 'true-false' && parsedOptions.length !== 2)
+    fail(file, 'true-false Question must have exactly 2 Options', node);
+  if (rawType === 'true-false' && correctCount !== 1)
+    fail(
+      file,
+      'true-false Question must have exactly one correct Option',
+      node,
+    );
+  return {
+    type: 'question',
+    questionType: rawType as QuestionType,
+    prompt,
+    options: parsedOptions,
+  };
+}
+
+async function parseSteps(
+  node: AstNode,
+  file: string,
+  root: string,
+): Promise<ContentNode> {
+  const values = attrs(node, file);
+  assertAttributes(values, [], file, node);
+  const stepNodes: AstNode[] = [];
+  for (const child of significantChildren(node)) {
+    if (!isJsx(child) || child.name !== 'Step')
+      fail(file, 'Steps may contain only <Step> components', child);
+    stepNodes.push(child);
+  }
+  if (!stepNodes.length)
+    fail(file, 'Steps must contain at least one Step', node);
+  const steps: StepNode[] = [];
+  for (const step of stepNodes) {
+    const stepAttrs = attrs(step, file);
+    assertAttributes(stepAttrs, ['title'], file, step);
+    const title = optionalString(stepAttrs.title, 'title', file, step);
+    steps.push({
+      ...(title ? { title } : {}),
+      children: await contentChildren(step.children ?? [], file, root),
+    });
+  }
+  return { type: 'steps', steps };
 }
 
 async function parseItem(

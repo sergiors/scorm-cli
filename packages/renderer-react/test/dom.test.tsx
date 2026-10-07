@@ -26,7 +26,12 @@ const modalPackage: ContentPackage = {
           source: 'intro.mdx',
           presentation: { open: 'page' },
           metadata: { title: 'Intro' },
-          content: [{ type: 'paragraph', text: 'Intro body.' }],
+          content: [
+            {
+              type: 'paragraph',
+              children: [{ type: 'text', value: 'Intro body.' }],
+            },
+          ],
         },
         {
           type: 'item',
@@ -34,7 +39,12 @@ const modalPackage: ContentPackage = {
           source: 'details.mdx',
           presentation: { open: 'modal' },
           metadata: { title: 'Details' },
-          content: [{ type: 'paragraph', text: 'Modal body content.' }],
+          content: [
+            {
+              type: 'paragraph',
+              children: [{ type: 'text', value: 'Modal body content.' }],
+            },
+          ],
         },
       ],
     },

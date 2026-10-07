@@ -31,21 +31,142 @@ export interface ItemNode {
   content: ContentNode[];
 }
 
+export type InlineNode =
+  | TextNode
+  | EmphasisNode
+  | StrongNode
+  | InlineCodeNode
+  | LinkNode
+  | ImageNode
+  | BreakNode;
+
+export interface TextNode {
+  type: 'text';
+  value: string;
+}
+
+export interface EmphasisNode {
+  type: 'emphasis';
+  children: InlineNode[];
+}
+
+export interface StrongNode {
+  type: 'strong';
+  children: InlineNode[];
+}
+
+export interface InlineCodeNode {
+  type: 'inlineCode';
+  value: string;
+}
+
+export interface LinkNode {
+  type: 'link';
+  href: string;
+  children: InlineNode[];
+}
+
+export interface ImageNode {
+  type: 'image';
+  src: string;
+  alt: string;
+  caption?: string;
+}
+
+export interface BreakNode {
+  type: 'break';
+}
+
+export type QuestionType = 'single-choice' | 'multiple-choice' | 'true-false';
+
 export type ContentNode =
-  | { type: 'heading'; depth: number; text: string }
-  | { type: 'paragraph'; text: string }
-  | { type: 'list'; ordered: boolean; items: string[] }
-  | { type: 'link'; href: string; text: string }
-  | { type: 'image'; src: string; alt: string }
-  | { type: 'video'; src: string; title?: string }
-  | {
-      type: 'question';
-      questionType: 'single-choice' | 'multiple-choice';
-      question: string;
-      answers: { text: string; correct: boolean }[];
-    }
-  | { type: 'code'; value: string; language?: string }
-  | { type: 'quote'; text: string };
+  | HeadingNode
+  | ParagraphNode
+  | ListNode
+  | CodeNode
+  | QuoteNode
+  | ImageNode
+  | VideoNode
+  | CalloutNode
+  | ExampleNode
+  | QuestionNode
+  | StepsNode;
+
+export interface HeadingNode {
+  type: 'heading';
+  depth: number;
+  children: InlineNode[];
+}
+
+export interface ParagraphNode {
+  type: 'paragraph';
+  children: InlineNode[];
+}
+
+export interface ListNode {
+  type: 'list';
+  ordered: boolean;
+  start?: number;
+  items: ListItemNode[];
+}
+
+export interface ListItemNode {
+  children: ContentNode[];
+}
+
+export interface CodeNode {
+  type: 'code';
+  value: string;
+  language?: string;
+}
+
+export interface QuoteNode {
+  type: 'quote';
+  children: ContentNode[];
+}
+
+export interface VideoNode {
+  type: 'video';
+  src: string;
+  title?: string;
+  poster?: string;
+  captions?: string;
+}
+
+export interface CalloutNode {
+  type: 'callout';
+  variant: 'info' | 'tip' | 'warning' | 'important';
+  children: ContentNode[];
+}
+
+export interface ExampleNode {
+  type: 'example';
+  title?: string;
+  children: ContentNode[];
+}
+
+export interface QuestionNode {
+  type: 'question';
+  questionType: QuestionType;
+  prompt: ContentNode[];
+  options: QuestionOption[];
+}
+
+export interface QuestionOption {
+  value: string;
+  correct: boolean;
+  content: ContentNode[];
+}
+
+export interface StepsNode {
+  type: 'steps';
+  steps: StepNode[];
+}
+
+export interface StepNode {
+  title?: string;
+  children: ContentNode[];
+}
 
 export interface RenderOptions {
   outputDirectory: string;
@@ -112,10 +233,56 @@ export function collectAssetReferences(
         !isRemoteReference(node.metadata.thumbnail)
       )
         refs.add(node.metadata.thumbnail);
-      for (const content of node.content) {
-        if (content.type === 'image' || content.type === 'video') {
-          if (!isRemoteReference(content.src)) refs.add(content.src);
-        }
+      visitContent(node.content);
+    }
+  };
+  const addLocal = (value: string | undefined) => {
+    if (value && !isRemoteReference(value)) refs.add(value);
+  };
+  const visitInline = (nodes: InlineNode[]) => {
+    for (const node of nodes) {
+      if (node.type === 'image') addLocal(node.src);
+      else if (
+        node.type === 'emphasis' ||
+        node.type === 'strong' ||
+        node.type === 'link'
+      ) {
+        visitInline(node.children);
+      }
+    }
+  };
+  const visitContent = (nodes: ContentNode[]) => {
+    for (const node of nodes) {
+      switch (node.type) {
+        case 'heading':
+        case 'paragraph':
+          visitInline(node.children);
+          break;
+        case 'image':
+          addLocal(node.src);
+          break;
+        case 'video':
+          addLocal(node.src);
+          addLocal(node.poster);
+          addLocal(node.captions);
+          break;
+        case 'list':
+          for (const item of node.items) visitContent(item.children);
+          break;
+        case 'quote':
+        case 'callout':
+        case 'example':
+          visitContent(node.children);
+          break;
+        case 'question':
+          visitContent(node.prompt);
+          for (const option of node.options) visitContent(option.content);
+          break;
+        case 'steps':
+          for (const step of node.steps) visitContent(step.children);
+          break;
+        case 'code':
+          break;
       }
     }
   };
