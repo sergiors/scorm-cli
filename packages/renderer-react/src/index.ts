@@ -1,7 +1,7 @@
-export { buildReactCourse, reactRenderer } from "./build";
+export { buildReactCourse, reactRenderer } from './build';
 export type {
   RenderAsset,
   RenderOptions,
   RenderResult,
   Renderer,
-} from "./types";
+} from './types';

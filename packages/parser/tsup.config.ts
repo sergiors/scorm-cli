@@ -1,15 +1,15 @@
-import { defineConfig } from "tsup";
+import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ["src/index.ts"],
-  format: ["esm"],
+  entry: ['src/index.ts'],
+  format: ['esm'],
   clean: true,
   dts: {
     compilerOptions: {
-      ignoreDeprecations: "6.0",
+      ignoreDeprecations: '6.0',
     },
   },
   splitting: false,
-  outDir: "dist",
+  outDir: 'dist',
   shims: true,
 });

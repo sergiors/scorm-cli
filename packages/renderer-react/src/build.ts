@@ -1,31 +1,31 @@
-import { existsSync } from "node:fs";
-import fs from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import tailwindcss from "@tailwindcss/vite";
-import react from "@vitejs/plugin-react";
-import type { Course } from "@scorm-cli/core";
-import { build as viteBuild, type Plugin } from "vite";
+import { existsSync } from 'node:fs';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import tailwindcss from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
+import type { Course } from '@scorm-cli/core';
+import { build as viteBuild, type Plugin } from 'vite';
 import type {
   RenderAsset,
   RenderOptions,
   RenderResult,
   Renderer,
-} from "./types";
+} from './types';
 
-const ENTRYPOINT = "index.html";
-const COURSE_DATA_ID = "virtual:course-data";
+const ENTRYPOINT = 'index.html';
+const COURSE_DATA_ID = 'virtual:course-data';
 
 function findPackageRoot(startDirectory: string): string {
   let directory = startDirectory;
   for (;;) {
-    if (existsSync(path.join(directory, "package.json"))) {
+    if (existsSync(path.join(directory, 'package.json'))) {
       return directory;
     }
     const parent = path.dirname(directory);
     if (parent === directory) {
       throw new Error(
-        "Could not locate the renderer-react package root (no package.json found).",
+        'Could not locate the renderer-react package root (no package.json found).',
       );
     }
     directory = parent;
@@ -34,11 +34,11 @@ function findPackageRoot(startDirectory: string): string {
 
 function escapeHtml(value: string): string {
   return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /**
@@ -50,7 +50,7 @@ function courseDataPlugin(course: Course): Plugin {
   const resolvedId = `\0${COURSE_DATA_ID}`;
 
   return {
-    name: "scorm-cli:course-data",
+    name: 'scorm-cli:course-data',
     resolveId(id) {
       return id === COURSE_DATA_ID ? resolvedId : null;
     },
@@ -61,7 +61,7 @@ function courseDataPlugin(course: Course): Plugin {
       return `export default ${JSON.stringify(course)};`;
     },
     transformIndexHtml(html) {
-      const title = escapeHtml(course.metadata.title || "Course");
+      const title = escapeHtml(course.metadata.title || 'Course');
       return html.replace(
         /<title>[\s\S]*?<\/title>/,
         () => `<title>${title}</title>`,
@@ -111,14 +111,14 @@ export async function buildReactCourse(
   options: RenderOptions,
 ): Promise<RenderResult> {
   if (!options?.outputDirectory) {
-    throw new Error("buildReactCourse requires an outputDirectory option.");
+    throw new Error('buildReactCourse requires an outputDirectory option.');
   }
 
   const outputDirectory = path.resolve(options.outputDirectory);
   const packageRoot = findPackageRoot(
     path.dirname(fileURLToPath(import.meta.url)),
   );
-  const appRoot = path.join(packageRoot, "app");
+  const appRoot = path.join(packageRoot, 'app');
   const indexHtml = path.join(appRoot, ENTRYPOINT);
 
   if (!existsSync(indexHtml)) {
@@ -135,8 +135,8 @@ export async function buildReactCourse(
   await viteBuild({
     configFile: false,
     root: appRoot,
-    base: "./",
-    logLevel: "warn",
+    base: './',
+    logLevel: 'warn',
     plugins: [react(), tailwindcss(), courseDataPlugin(course)],
     build: {
       outDir: outputDirectory,
@@ -144,9 +144,9 @@ export async function buildReactCourse(
       rollupOptions: {
         input: indexHtml,
         output: {
-          entryFileNames: "assets/app.js",
-          chunkFileNames: "assets/[name].js",
-          assetFileNames: "assets/[name][extname]",
+          entryFileNames: 'assets/app.js',
+          chunkFileNames: 'assets/[name].js',
+          assetFileNames: 'assets/[name][extname]',
         },
       },
     },

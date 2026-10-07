@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef } from 'react';
 
 /**
  * Wires the optional `window.courseRuntime` bridge:
@@ -17,17 +17,17 @@ export function useCourseRuntime(complete: boolean): void {
       return;
     }
     markedRef.current = true;
-    if (typeof window !== "undefined") {
+    if (typeof window !== 'undefined') {
       window.courseRuntime?.markCompleted?.();
     }
   }, [complete]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === 'undefined') {
       return;
     }
     const finish = () => window.courseRuntime?.finish?.();
-    window.addEventListener("pagehide", finish);
-    return () => window.removeEventListener("pagehide", finish);
+    window.addEventListener('pagehide', finish);
+    return () => window.removeEventListener('pagehide', finish);
   }, []);
 }

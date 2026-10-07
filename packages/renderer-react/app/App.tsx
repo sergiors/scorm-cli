@@ -1,5 +1,5 @@
-import type { Course } from "./types";
-import { CoursePlayer } from "./components/CoursePlayer";
+import type { Course } from './types';
+import { CoursePlayer } from './components/CoursePlayer';
 
 export interface CourseAppProps {
   course: Course;

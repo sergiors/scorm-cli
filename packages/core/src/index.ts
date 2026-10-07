@@ -6,15 +6,15 @@ export interface Course {
 export type CourseStructureNode = SectionNode | ItemNode;
 
 export interface SectionNode {
-  type: "section";
+  type: 'section';
   id: string;
   title?: string;
-  presentation: { layout: "list" | "grid"; columns?: number };
+  presentation: { layout: 'list' | 'grid'; columns?: number };
   children: CourseStructureNode[];
 }
 
 export interface ItemNode {
-  type: "item";
+  type: 'item';
   id: string;
   source: string;
   metadata: { title: string; description?: string; thumbnail?: string };
@@ -22,20 +22,20 @@ export interface ItemNode {
 }
 
 export type ContentNode =
-  | { type: "heading"; depth: number; text: string }
-  | { type: "paragraph"; text: string }
-  | { type: "list"; ordered: boolean; items: string[] }
-  | { type: "link"; href: string; text: string }
-  | { type: "image"; src: string; alt: string }
-  | { type: "video"; src: string; title?: string }
+  | { type: 'heading'; depth: number; text: string }
+  | { type: 'paragraph'; text: string }
+  | { type: 'list'; ordered: boolean; items: string[] }
+  | { type: 'link'; href: string; text: string }
+  | { type: 'image'; src: string; alt: string }
+  | { type: 'video'; src: string; title?: string }
   | {
-      type: "question";
-      questionType: "single-choice" | "multiple-choice";
+      type: 'question';
+      questionType: 'single-choice' | 'multiple-choice';
       question: string;
       answers: { text: string; correct: boolean }[];
     }
-  | { type: "code"; value: string; language?: string }
-  | { type: "quote"; text: string };
+  | { type: 'code'; value: string; language?: string }
+  | { type: 'quote'; text: string };
 
 export interface RenderOptions {
   outputDirectory: string;
@@ -61,7 +61,7 @@ export function isCourseComplete(
   const itemIds: string[] = [];
   const walk = (nodes: CourseStructureNode[]) => {
     for (const node of nodes) {
-      if (node.type === "item") itemIds.push(node.id);
+      if (node.type === 'item') itemIds.push(node.id);
       else walk(node.children);
     }
   };
@@ -74,7 +74,7 @@ export function collectAssetReferences(course: Course): string[] {
   const refs = new Set<string>();
   const visit = (nodes: CourseStructureNode[]) => {
     for (const node of nodes) {
-      if (node.type === "section") {
+      if (node.type === 'section') {
         visit(node.children);
         continue;
       }
@@ -84,7 +84,7 @@ export function collectAssetReferences(course: Course): string[] {
       )
         refs.add(node.metadata.thumbnail);
       for (const content of node.content) {
-        if (content.type === "image" || content.type === "video") {
+        if (content.type === 'image' || content.type === 'video') {
           if (!isRemoteReference(content.src)) refs.add(content.src);
         }
       }

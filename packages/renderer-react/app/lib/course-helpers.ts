@@ -3,14 +3,14 @@ import type {
   CourseStructureNode,
   ItemNode,
   SectionNode,
-} from "../types";
+} from '../types';
 
 /**
  * Re-exported from `@scorm-cli/core` so completion semantics stay canonical
  * across the CLI and the renderer. In particular, an empty course is never
  * considered complete.
  */
-export { isCourseComplete } from "@scorm-cli/core";
+export { isCourseComplete } from '@scorm-cli/core';
 
 /**
  * Flattens every item in the course in document order (depth-first).
@@ -24,7 +24,7 @@ export function getCourseItems(course: Course): ItemNode[] {
 
   const visit = (nodes: CourseStructureNode[]): void => {
     for (const node of nodes) {
-      if (node.type === "item") {
+      if (node.type === 'item') {
         items.push(node);
       } else {
         visit(node.children);
@@ -73,6 +73,6 @@ export function addVisited(visited: Set<string>, id: string): Set<string> {
 
 export function getCourseSections(course: Course): SectionNode[] {
   return course.children.filter(
-    (node): node is SectionNode => node.type === "section",
+    (node): node is SectionNode => node.type === 'section',
   );
 }

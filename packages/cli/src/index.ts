@@ -1,16 +1,16 @@
 #!/usr/bin/env node
-import { cac } from "cac";
-import { buildPackage } from "./build";
+import { cac } from 'cac';
+import { buildPackage } from './build';
 
-const cli = cac("scorm");
+const cli = cac('scorm');
 
 cli
-  .command("build <course>", "Build a SCORM 1.2 package from a course")
+  .command('build <course>', 'Build a SCORM 1.2 package from a course')
   .option(
-    "-o, --output <path>",
-    "Output ZIP path (default: dist/<course-name>.zip",
+    '-o, --output <path>',
+    'Output ZIP path (default: dist/<course-name>.zip',
   )
-  .example("scorm build examples/typescript-course")
+  .example('scorm build examples/typescript-course')
   .action(async (course: string, options: { output?: string }) => {
     try {
       const output = await buildPackage(course, options.output);

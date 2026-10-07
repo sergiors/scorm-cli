@@ -4,4 +4,4 @@ export type {
   CourseStructureNode,
   ItemNode,
   SectionNode,
-} from "@scorm-cli/core";
+} from '@scorm-cli/core';

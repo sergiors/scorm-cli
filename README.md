@@ -19,11 +19,11 @@ A course directory contains an `index.mdx` entry file and item MDX files. The en
 title: My Course
 ---
 
-<Item src="lessons/intro.mdx" />
+<Item src='lessons/intro.mdx' />
 
-<Section title="Lessons" layout="grid" columns={2}>
-  <Item src="lessons/one.mdx" />
-  <Item src="lessons/two.mdx" />
+<Section title='Lessons' layout='grid' columns={2}>
+  <Item src='lessons/one.mdx' />
+  <Item src='lessons/two.mdx' />
 </Section>
 ```
 
