@@ -1,5 +1,11 @@
 import { useId, useRef } from 'react';
-import type { AnswerValue, QuestionnaireNode, QuestionNode } from '../types';
+import type {
+  AnswerValue,
+  PageNode,
+  PlayerPageState,
+  QuestionnaireNode,
+  QuestionNode,
+} from '../types';
 import { ContentRenderer } from './ContentRenderer';
 import {
   Questionnaire,
@@ -45,7 +51,35 @@ export interface QuestionnaireViewProps {
    * correctness is never revealed.
    */
   onSubmitted?: (id: string) => void;
+  /**
+   * The root presentation's pages, so a Path authored inside a question prompt
+   * or option resolves its references to display metadata. Forwarded unchanged
+   * to every nested {@link ContentRenderer}.
+   */
+  pathPages?: readonly PageNode[];
+  /**
+   * Persisted state per root page id, so a nested Path can read which referenced
+   * pages are already visited. Forwarded unchanged to every nested
+   * {@link ContentRenderer}.
+   */
+  pageStates?: Record<string, PlayerPageState>;
+  /**
+   * Opens a referenced root page through the presentation's existing page
+   * switching, so a nested Path can offer navigation. Forwarded unchanged to
+   * every nested {@link ContentRenderer}.
+   */
+  onNavigatePathPage?: (pageId: string) => void;
 }
+
+/**
+ * The Path rendering context forwarded verbatim to every nested
+ * {@link ContentRenderer}, so a Path authored inside a questionnaire prompt or
+ * option behaves exactly like one authored at the page top level.
+ */
+type NestedPathContext = Pick<
+  QuestionnaireViewProps,
+  'pathPages' | 'pageStates' | 'onNavigatePathPage'
+>;
 
 /**
  * A grouped questionnaire rendered through the shadcn questionnaire UI: one
@@ -68,7 +102,9 @@ export interface QuestionnaireViewProps {
  * The renderer neither grades answers nor reveals which option was correct. The
  * rich prompt and each option are rendered as content, and the submission
  * callback bubbles through them so nested block content can still surface
- * questionnaires.
+ * questionnaires. The Path rendering context is forwarded the same way, so a
+ * Path authored in a prompt or option resolves its references and navigates
+ * exactly like one at the page level.
  */
 export function QuestionnaireView({
   node,
@@ -76,15 +112,30 @@ export function QuestionnaireView({
   submitted = false,
   onAnswer,
   onSubmitted,
+  pathPages,
+  pageStates,
+  onNavigatePathPage,
 }: QuestionnaireViewProps) {
   const submittedRef = useRef(false);
+  // Bundled once so it can be forwarded verbatim to every nested renderer.
+  const pathContext: NestedPathContext = {
+    pathPages,
+    pageStates,
+    onNavigatePathPage,
+  };
 
   if (node.questions.length === 0) {
     return null;
   }
 
   if (submitted) {
-    return <SubmittedQuestionnaire node={node} answers={answers} />;
+    return (
+      <SubmittedQuestionnaire
+        node={node}
+        answers={answers}
+        pathContext={pathContext}
+      />
+    );
   }
 
   // The primitive owns the selection only when the owner supplies neither
@@ -126,6 +177,7 @@ export function QuestionnaireView({
               value={answers?.[question.id]}
               onAnswer={onAnswer}
               onQuestionnaireSubmitted={onSubmitted}
+              pathContext={pathContext}
             />
           ))}
 
@@ -157,12 +209,14 @@ function QuestionnaireQuestion({
   value,
   onAnswer,
   onQuestionnaireSubmitted,
+  pathContext,
 }: {
   node: QuestionNode;
   controlled: boolean;
   value: AnswerValue | undefined;
   onAnswer?: (questionId: string, value: AnswerValue) => void;
   onQuestionnaireSubmitted?: (id: string) => void;
+  pathContext: NestedPathContext;
 }) {
   const promptId = useId();
   // Single-choice and true-false become radios; multiple-choice checkboxes.
@@ -199,6 +253,7 @@ function QuestionnaireQuestion({
         <ContentRenderer
           nodes={node.prompt}
           onQuestionnaireSubmitted={onQuestionnaireSubmitted}
+          {...pathContext}
         />
       </QuestionnaireTitle>
 
@@ -219,6 +274,7 @@ function QuestionnaireQuestion({
             <ContentRenderer
               nodes={option.content}
               onQuestionnaireSubmitted={onQuestionnaireSubmitted}
+              {...pathContext}
             />
           </QuestionnaireChoice>
         ))}
@@ -244,9 +300,11 @@ function QuestionnaireQuestion({
 function SubmittedQuestionnaire({
   node,
   answers,
+  pathContext,
 }: {
   node: QuestionnaireNode;
   answers?: Record<string, AnswerValue>;
+  pathContext: NestedPathContext;
 }) {
   return (
     <Card className='not-prose '>
@@ -256,6 +314,7 @@ function SubmittedQuestionnaire({
             key={question.id}
             question={question}
             value={answers?.[question.id]}
+            pathContext={pathContext}
           />
         ))}
       </CardContent>
@@ -266,9 +325,11 @@ function SubmittedQuestionnaire({
 function SubmittedQuestion({
   question,
   value,
+  pathContext,
 }: {
   question: QuestionNode;
   value: AnswerValue | undefined;
+  pathContext: NestedPathContext;
 }) {
   const promptId = useId();
   // Single-choice and true-false become radios; multiple-choice checkboxes.
@@ -282,7 +343,7 @@ function SubmittedQuestion({
         aria-labelledby={promptId}
       >
         <QuestionnaireTitle id={promptId}>
-          <ContentRenderer nodes={question.prompt} />
+          <ContentRenderer nodes={question.prompt} {...pathContext} />
         </QuestionnaireTitle>
 
         <QuestionnaireChoices>
@@ -293,7 +354,7 @@ function SubmittedQuestion({
               disabled
               checked={isSelected(question, value, option.value)}
             >
-              <ContentRenderer nodes={option.content} />
+              <ContentRenderer nodes={option.content} {...pathContext} />
             </QuestionnaireChoice>
           ))}
         </QuestionnaireChoices>

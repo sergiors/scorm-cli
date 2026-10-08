@@ -125,6 +125,19 @@ export function ScrollPresentation({
     goToPage(Math.min(lastIndex, currentIndex + 1));
   }, [currentIndex, goToPage, lastIndex]);
 
+  // Opens a page referenced by a Path node through the same page switching the
+  // previous/continue controls use, so a Path never mounts a second copy of the
+  // page. An id that is not a root page is ignored.
+  const navigateToPageId = useCallback(
+    (pageId: string) => {
+      const index = pages.findIndex((page) => page.id === pageId);
+      if (index >= 0) {
+        goToPage(index);
+      }
+    },
+    [pages, goToPage],
+  );
+
   const handleTopChange = useCallback((visible: boolean) => {
     setAtTop(visible);
   }, []);
@@ -147,12 +160,19 @@ export function ScrollPresentation({
 
   return (
     <div ref={scrollRef} className='h-dvh overflow-y-auto'>
+      {currentIndex > 0 && atTop ? (
+        <PreviousControl onClick={goToPrevious} />
+      ) : null}
+
       <PageScene
         key={currentPage.id}
         page={currentPage}
         index={currentIndex}
         hasPrev={currentIndex > 0}
         rootRef={scrollRef}
+        pathPages={pages}
+        pageStates={pageStates}
+        onNavigatePathPage={navigateToPageId}
         pageState={pageState}
         onTopChange={handleTopChange}
         onEndChange={handleEndChange}
@@ -167,10 +187,6 @@ export function ScrollPresentation({
         complete={pageComplete}
         onPageCompleted={onPageCompleted}
       />
-
-      {currentIndex > 0 && atTop ? (
-        <PreviousControl onClick={goToPrevious} />
-      ) : null}
 
       {currentIndex < lastIndex && pageComplete ? (
         <NextControl onClick={goToNext} />
@@ -240,6 +256,12 @@ interface PageSceneProps {
   /** Whether a preceding page exists; the first page offers nothing to return to. */
   hasPrev: boolean;
   rootRef: RefObject<HTMLDivElement | null>;
+  /** Root pages, so a Path on this page can resolve its references. */
+  pathPages: readonly PageNode[];
+  /** Persisted state per root page id, for Path visited status. */
+  pageStates: Record<string, PlayerPageState>;
+  /** Opens a page referenced by a Path through the presentation's switching. */
+  onNavigatePathPage: (pageId: string) => void;
   pageState?: PlayerPageState;
   onTopChange: (visible: boolean) => void;
   onEndChange: (visible: boolean) => void;
@@ -259,6 +281,9 @@ function PageScene({
   index,
   hasPrev,
   rootRef,
+  pathPages,
+  pageStates,
+  onNavigatePathPage,
   pageState,
   onTopChange,
   onEndChange,
@@ -346,6 +371,9 @@ function PageScene({
       <section className='prose prose-stone max-w-none!'>
         <ContentRenderer
           nodes={page.content}
+          pathPages={pathPages}
+          pageStates={pageStates}
+          onNavigatePathPage={onNavigatePathPage}
           answers={pageState?.answers}
           submittedQuestionnaires={pageState?.submittedQuestionnaires}
           onAnswer={(questionId, value) => onAnswer(page.id, questionId, value)}
@@ -365,15 +393,22 @@ function PageScene({
   );
 }
 
-/** Minimal floating control that returns to the previous page. */
+/**
+ * In-flow control at the top of the page that returns to the previous page.
+ * It occupies layout space ahead of the scene instead of floating over it, so
+ * it never obscures the scrollable page content.
+ */
 function PreviousControl({ onClick }: { onClick: () => void }) {
   return (
-    <div className='pointer-events-none fixed inset-x-0 top-0 z-10 flex justify-center py-2.5 bg-background/5 backdrop-blur-sm'>
+    <div
+      data-scroll-previous
+      className='flex justify-center px-6 pt-4 pb-2'
+    >
       <Button
         type='button'
         variant='secondary'
         onClick={onClick}
-        className='cursor-pointer pointer-events-auto rounded-full'
+        className='cursor-pointer rounded-full'
       >
         <ArrowUp aria-hidden='true' />
         Previous page

@@ -14,6 +14,7 @@ import type {
   ItemNode,
   ListItemNode,
   PageNode,
+  PathNode,
   QuestionNode,
   QuestionOption,
   QuestionType,
@@ -47,7 +48,7 @@ type AstNode = {
 };
 
 const processor = unified().use(remarkParse).use(remarkMdx);
-const flowComponents = new Set(['Video', 'Question', 'Questionnaire']);
+const flowComponents = new Set(['Video', 'Question', 'Questionnaire', 'Path']);
 
 function location(file: string, node?: AstNode): string {
   const line = node?.position?.start?.line;
@@ -360,6 +361,7 @@ async function parseContentNode(
   node: AstNode,
   sourceFile: string,
   root: string,
+  rootPageSources?: Set<string>,
 ): Promise<ContentNode> {
   switch (node.type) {
     case 'heading':
@@ -389,7 +391,12 @@ async function parseContentNode(
         items: await Promise.all(
           (node.children ?? []).map(async (item): Promise<ListItemNode> => ({
             children: normalizeListItemChildren(
-              await contentChildren(item.children ?? [], sourceFile, root),
+              await contentChildren(
+                item.children ?? [],
+                sourceFile,
+                root,
+                rootPageSources,
+              ),
               tight,
             ),
           })),
@@ -407,14 +414,19 @@ async function parseContentNode(
     case 'blockquote':
       return {
         type: 'quote',
-        children: await contentChildren(node.children ?? [], sourceFile, root),
+        children: await contentChildren(
+          node.children ?? [],
+          sourceFile,
+          root,
+          rootPageSources,
+        ),
       };
     case 'mdxJsxFlowElement':
-      return parseContentComponent(node, sourceFile, root);
+      return parseContentComponent(node, sourceFile, root, rootPageSources);
     case 'mdxJsxTextElement':
       if (node.name !== 'Image')
         if (flowComponents.has(node.name ?? ''))
-          return parseContentComponent(node, sourceFile, root);
+          return parseContentComponent(node, sourceFile, root, rootPageSources);
         else
           fail(sourceFile, `unknown MDX component <${node.name ?? ''}>`, node);
       return parseImageComponent(node, sourceFile, root);
@@ -427,6 +439,7 @@ async function parseContentNodes(
   node: AstNode,
   sourceFile: string,
   root: string,
+  rootPageSources?: Set<string>,
 ): Promise<ContentNode[]> {
   if (
     [
@@ -447,10 +460,10 @@ async function parseContentNodes(
     ];
   }
   if (node.type === 'mdxJsxTextElement') {
-    return [await parseContentNode(node, sourceFile, root)];
+    return [await parseContentNode(node, sourceFile, root, rootPageSources)];
   }
   if (node.type !== 'paragraph')
-    return [await parseContentNode(node, sourceFile, root)];
+    return [await parseContentNode(node, sourceFile, root, rootPageSources)];
   const output: ContentNode[] = [];
   let inlineNodes: AstNode[] = [];
   const flushInline = async () => {
@@ -485,7 +498,9 @@ async function parseContentNodes(
         );
       }
       await flushInline();
-      output.push(await parseContentNode(child, sourceFile, root));
+      output.push(
+        await parseContentNode(child, sourceFile, root, rootPageSources),
+      );
     } else {
       inlineNodes.push(child);
     }
@@ -498,13 +513,16 @@ async function parseContentComponent(
   node: AstNode,
   sourceFile: string,
   root: string,
+  rootPageSources?: Set<string>,
 ): Promise<ContentNode> {
   const name = node.name ?? '';
   const file = sourceFile;
   if (name === 'Question')
     fail(file, '<Question> must be inside <Questionnaire>', node);
   if (name === 'Questionnaire')
-    return parseQuestionnaire(node, sourceFile, root);
+    return parseQuestionnaire(node, sourceFile, root, rootPageSources);
+  if (name === 'Path')
+    return parsePath(node, sourceFile, root, rootPageSources);
   const values = attrs(node, file);
   if (name === 'Image') {
     return parseImageComponent(node, sourceFile, root);
@@ -567,6 +585,7 @@ async function contentChildren(
   nodes: AstNode[],
   sourceFile: string,
   root: string,
+  rootPageSources?: Set<string>,
 ): Promise<ContentNode[]> {
   const output: ContentNode[] = [];
   let inline: AstNode[] = [];
@@ -606,17 +625,96 @@ async function contentChildren(
     if (inlineType || inlineImage) inline.push(child);
     else {
       await flushInline();
-      output.push(...(await parseContentNodes(child, sourceFile, root)));
+      output.push(
+        ...(await parseContentNodes(child, sourceFile, root, rootPageSources)),
+      );
     }
   }
   await flushInline();
   return output;
 }
 
+async function parsePath(
+  node: AstNode,
+  file: string,
+  root: string,
+  rootPageSources?: Set<string>,
+): Promise<PathNode> {
+  const values = attrs(node, file);
+  assertAttributes(values, [], file, node);
+  const children = (node.children ?? [])
+    .flatMap((child) => {
+      if (
+        child.type === 'paragraph' &&
+        (child.children ?? []).every(
+          (nested) =>
+            whitespace(nested) || (isJsx(nested) && nested.name === 'Page'),
+        )
+      ) {
+        return child.children ?? [];
+      }
+      return [child];
+    })
+    .filter((child) => !whitespace(child));
+
+  if (children.length === 0)
+    fail(
+      file,
+      'Path requires at least one direct <Page ref="..." /> child',
+      node,
+    );
+
+  const pageIds: string[] = [];
+  const seen = new Set<string>();
+  for (const child of children) {
+    if (child.type !== 'mdxJsxFlowElement' || child.name !== 'Page') {
+      const found = child.name ? `<${child.name}>` : child.type;
+      fail(
+        file,
+        `Path may contain only direct <Page ref="..." /> children; found ${found}`,
+        child,
+      );
+    }
+    if (meaningfulChildren(child.children ?? []).length > 0)
+      fail(
+        file,
+        '<Page> inside <Path> must be self-closing and cannot contain children',
+        child,
+      );
+    const pageValues = attrs(child, file);
+    assertAttributes(pageValues, ['ref'], file, child);
+    const ref = requiredString(pageValues.ref, 'ref', file, child);
+    if (!rootPageSources)
+      fail(
+        file,
+        'Path references are only valid for pages declared directly in a root <Scroll> presentation',
+        child,
+      );
+    const source = normalizedRelative(
+      root,
+      path.resolve(root, ref),
+      file,
+      child,
+      'Path Page ref',
+    );
+    if (!rootPageSources.has(source))
+      fail(
+        file,
+        `Path Page ref "${ref}" does not match a root <Page src="..." /> in the root <Scroll> presentation`,
+        child,
+      );
+    if (seen.has(source)) fail(file, `duplicate Path Page ref "${ref}"`, child);
+    seen.add(source);
+    pageIds.push(`page:${source}`);
+  }
+  return { type: 'path', pageIds };
+}
+
 async function parseQuestion(
   node: AstNode,
   file: string,
   root: string,
+  rootPageSources?: Set<string>,
 ): Promise<QuestionNode> {
   const values = attrs(node, file);
   assertAttributes(values, ['type'], file, node);
@@ -675,7 +773,12 @@ async function parseQuestion(
   const promptNode = prompts[0]!;
   const promptAttrs = attrs(promptNode, file);
   assertAttributes(promptAttrs, [], file, promptNode);
-  const prompt = await contentChildren(promptNode.children ?? [], file, root);
+  const prompt = await contentChildren(
+    promptNode.children ?? [],
+    file,
+    root,
+    rootPageSources,
+  );
   const seenValues = new Set<string>();
   const parsedOptions: QuestionOption[] = [];
   for (const option of options) {
@@ -693,7 +796,12 @@ async function parseQuestion(
     parsedOptions.push({
       value,
       correct: optionAttrs.correct === true,
-      content: await contentChildren(option.children ?? [], file, root),
+      content: await contentChildren(
+        option.children ?? [],
+        file,
+        root,
+        rootPageSources,
+      ),
     });
   }
   const correctCount = parsedOptions.filter((option) => option.correct).length;
@@ -752,6 +860,7 @@ async function parseQuestionnaire(
   node: AstNode,
   file: string,
   root: string,
+  rootPageSources?: Set<string>,
 ): Promise<QuestionnaireNode> {
   const values = attrs(node, file);
   assertAttributes(values, [], file, node);
@@ -787,7 +896,7 @@ async function parseQuestionnaire(
         child,
       );
     }
-    questions.push(await parseQuestion(child, file, root));
+    questions.push(await parseQuestion(child, file, root, rootPageSources));
   }
 
   return {
@@ -804,6 +913,7 @@ async function parseReference<T extends PageNode | ItemNode>(
   declaredIn: string,
   root: string,
   ids: Set<string>,
+  rootPageSources?: Set<string>,
 ): Promise<T> {
   const sourcePath = path.resolve(path.dirname(declaredIn), src);
   const source = normalizedRelative(
@@ -840,7 +950,7 @@ async function parseReference<T extends PageNode | ItemNode>(
   const parsed = matter(raw!);
   assertFrontmatterKeys(
     parsed.data as Record<string, unknown>,
-    ['title'],
+    kind === 'page' ? ['title', 'description'] : ['title'],
     sourcePath,
   );
   const title = requiredString(parsed.data.title, 'title', sourcePath, {
@@ -849,14 +959,27 @@ async function parseReference<T extends PageNode | ItemNode>(
   const id = `${kind}:${source}`;
   if (ids.has(id)) fail(sourcePath, `duplicate package node id "${id}"`, node);
   ids.add(id);
-  const metadata = { title };
+  const description =
+    kind === 'page'
+      ? optionalString(parsed.data.description, 'description', sourcePath, {
+          type: 'frontmatter',
+        })
+      : undefined;
+  const metadata = { title, ...(description ? { description } : {}) };
   const tree = parseMdx(parsed.content, sourcePath);
   const content: ContentNode[] = [];
   for (const child of tree.children) {
     if (child.type === 'mdxjsEsm') {
       fail(sourcePath, 'MDX JavaScript and imports are not supported', child);
     }
-    content.push(...(await parseContentNodes(child, sourcePath, root)));
+    content.push(
+      ...(await parseContentNodes(
+        child,
+        sourcePath,
+        root,
+        kind === 'page' ? rootPageSources : undefined,
+      )),
+    );
   }
   return {
     type: kind,
@@ -877,6 +1000,7 @@ async function parsePresentationChildren<T extends PageNode | ItemNode>(
   declaredIn: string,
   root: string,
   ids: Set<string>,
+  rootPageSources?: Set<string>,
 ): Promise<T[]> {
   const output: T[] = [];
   const expected = kind === 'page' ? 'Page' : 'Item';
@@ -901,10 +1025,46 @@ async function parsePresentationChildren<T extends PageNode | ItemNode>(
     assertAttributes(values, ['src'], declaredIn, node);
     const src = requiredString(values.src, 'src', declaredIn, node);
     output.push(
-      await parseReference<T>(kind, src, node, declaredIn, root, ids),
+      await parseReference<T>(
+        kind,
+        src,
+        node,
+        declaredIn,
+        root,
+        ids,
+        kind === 'page' ? rootPageSources : undefined,
+      ),
     );
   }
   return output;
+}
+
+function declaredRootPageSources(
+  nodes: AstNode[],
+  entry: string,
+  root: string,
+): Set<string> {
+  const sources = new Set<string>();
+  for (const node of meaningfulChildren(nodes)) {
+    // The normal presentation validator reports malformed children. This
+    // preliminary pass only gathers valid root Page declarations so content
+    // can resolve forward references while each Page is parsed exactly once.
+    if (node.type !== 'mdxJsxFlowElement' || node.name !== 'Page') continue;
+    if (meaningfulChildren(node.children ?? []).length > 0) continue;
+    const values = attrs(node, entry);
+    assertAttributes(values, ['src'], entry, node);
+    const src = requiredString(values.src, 'src', entry, node);
+    sources.add(
+      normalizedRelative(
+        root,
+        path.resolve(path.dirname(entry), src),
+        entry,
+        node,
+        'Page src',
+      ),
+    );
+  }
+  return sources;
 }
 
 async function parseRootPresentation(
@@ -943,6 +1103,7 @@ async function parseRootPresentation(
       entry,
       root,
       ids,
+      declaredRootPageSources(node.children ?? [], entry, root),
     );
     if (!pages.length)
       fail(entry, '<Scroll> must contain at least one <Page>; found 0', node);

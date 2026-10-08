@@ -18,7 +18,7 @@ export interface PageNode {
   type: 'page';
   id: string;
   source: string;
-  metadata: { title: string };
+  metadata: { title: string; description?: string };
   content: ContentNode[];
 }
 
@@ -92,7 +92,14 @@ export type ContentNode =
   | QuoteNode
   | ImageNode
   | VideoNode
+  | PathNode
   | QuestionnaireNode;
+
+/** An ordered reference to existing root Scroll pages, keyed by stable page ID. */
+export interface PathNode {
+  type: 'path';
+  pageIds: string[];
+}
 
 export interface HeadingNode {
   type: 'heading';
@@ -315,6 +322,7 @@ export function collectAssetReferences(
             for (const option of question.options) visitContent(option.content);
           }
           break;
+        case 'path':
         case 'code':
           break;
       }

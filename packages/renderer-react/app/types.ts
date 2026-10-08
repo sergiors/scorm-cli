@@ -9,6 +9,7 @@ export type {
   ItemNode,
   PageNode,
   PackageMetadata,
+  PathNode,
   PlayerPageState,
   PlayerState,
   QuestionnaireNode,

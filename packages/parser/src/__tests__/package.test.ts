@@ -993,7 +993,7 @@ describe('parsePackage', () => {
   it('rejects description, thumbnail, and id frontmatter on referenced docs', async () => {
     for (const kind of ['page', 'item'] as const) {
       for (const field of [
-        'description: Not supported',
+        ...(kind === 'item' ? ['description: Not supported'] : []),
         'thumbnail: cover.svg',
         'id: custom',
       ]) {
@@ -1015,5 +1015,101 @@ describe('parsePackage', () => {
         temp = '';
       }
     }
+  });
+
+  it('parses Paths as ordered references to root Scroll page IDs', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'content-package-'));
+    temp = root;
+    await mkdir(path.join(root, 'lessons'));
+    await writeFile(
+      path.join(root, 'index.mdx'),
+      '---\ntitle: Package\n---\n<Scroll><Page src="lessons/start.mdx" /><Page src="lessons/types.mdx" /></Scroll>',
+    );
+    await writeFile(
+      path.join(root, 'lessons/start.mdx'),
+      '---\ntitle: Start\n---\n<Path><Page ref="lessons/types.mdx" /></Path>',
+    );
+    await writeFile(
+      path.join(root, 'lessons/types.mdx'),
+      '---\ntitle: Types\ndescription: Learn about types\n---\n# Types',
+    );
+
+    const parsed = await parsePackage(root);
+    expect(parsed.presentation).toMatchObject({
+      type: 'scroll',
+      pages: [
+        {
+          id: 'page:lessons/start.mdx',
+          content: [{ type: 'path', pageIds: ['page:lessons/types.mdx'] }],
+        },
+        {
+          id: 'page:lessons/types.mdx',
+          metadata: { title: 'Types', description: 'Learn about types' },
+        },
+      ],
+    });
+    const pages =
+      parsed.presentation.type === 'scroll' ? parsed.presentation.pages : [];
+    expect(pages[0]?.content[0]).toEqual({
+      type: 'path',
+      pageIds: ['page:lessons/types.mdx'],
+    });
+    expect(pages[0]?.content[0]).not.toHaveProperty('source');
+  });
+
+  it('rejects an empty Path with a useful child requirement', async () => {
+    for (const content of ['<Path />', '<Path></Path>']) {
+      const root = await makeLesson(content);
+      await expect(parsePackage(root)).rejects.toThrow(
+        /Path requires at least one direct <Page ref="\.\.\." \/> child/,
+      );
+      await rm(root, { recursive: true, force: true });
+      temp = '';
+    }
+  });
+
+  it('validates Path children, refs, attributes, uniqueness, and root Scroll context', async () => {
+    for (const [content, error] of [
+      ['<Path><Page /></Path>', /"ref" must be a non-empty string/],
+      [
+        '<Path title="Journey"><Page ref="lesson.mdx" /></Path>',
+        /unknown attribute "title"/,
+      ],
+      [
+        '<Path><Page ref="lesson.mdx"><Video src="x" /></Page></Path>',
+        /Page> inside <Path> must be self-closing/,
+      ],
+      [
+        '<Path><Page ref="lesson.mdx" /><Page ref="./lesson.mdx" /></Path>',
+        /duplicate Path Page ref/,
+      ],
+      [
+        '<Path><Page ref="missing.mdx" /></Path>',
+        /does not match a root <Page src=/,
+      ],
+      [
+        '<Path><Video src="x" /></Path>',
+        /Path may contain only direct <Page ref=/,
+      ],
+    ] as const) {
+      const root = await makeLesson(content);
+      await expect(parsePackage(root)).rejects.toThrow(error);
+      await rm(root, { recursive: true, force: true });
+      temp = '';
+    }
+
+    const root = await mkdtemp(path.join(os.tmpdir(), 'content-package-'));
+    temp = root;
+    await writeFile(
+      path.join(root, 'index.mdx'),
+      '---\ntitle: Package\n---\n<Grid><Item src="lesson.mdx" /></Grid>',
+    );
+    await writeFile(
+      path.join(root, 'lesson.mdx'),
+      '---\ntitle: Lesson\n---\n<Path><Page ref="lesson.mdx" /></Path>',
+    );
+    await expect(parsePackage(root)).rejects.toThrow(
+      /only valid for pages declared directly in a root <Scroll>/,
+    );
   });
 });

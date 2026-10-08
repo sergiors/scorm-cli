@@ -1,8 +1,14 @@
 import { Fragment } from 'react';
 import type { ComponentType, ReactNode } from 'react';
-import type { AnswerValue, ContentNode } from '../types';
+import type {
+  AnswerValue,
+  ContentNode,
+  PageNode,
+  PlayerPageState,
+} from '../types';
 import { cn } from '../lib/utils';
 import { InlineContent } from './InlineContent';
+import { PathView } from './PathView';
 import { QuestionnaireView } from './QuestionnaireView';
 
 const HEADING_TAGS = {
@@ -47,6 +53,25 @@ export interface ContentRendererProps {
    * every questionnaire so nested answers are saved under the same namespace.
    */
   onAnswer?: (questionId: string, value: AnswerValue) => void;
+  /**
+   * The root presentation's pages, so a Path node can resolve its referenced
+   * ids to display metadata. Threaded unchanged through nested blocks; only a
+   * scroll presentation supplies it.
+   */
+  pathPages?: readonly PageNode[];
+  /**
+   * Persisted state per root page id, so Path entries can read which referenced
+   * pages are already visited. Path reuses this state and persists none of its
+   * own.
+   */
+  pageStates?: Record<string, PlayerPageState>;
+  /**
+   * Opens a referenced root page through the presentation's existing page
+   * switching, without mounting a second copy of the page. Absent when the
+   * surrounding presentation cannot switch pages, in which case Path entries
+   * render inert.
+   */
+  onNavigatePathPage?: (pageId: string) => void;
 }
 
 /**
@@ -85,7 +110,7 @@ type ContentNodeRenderers = {
 function HeadingView({ node }: ContentNodeViewProps<'heading'>) {
   const Tag = HEADING_TAGS[clampHeading(node.depth)];
   return (
-    <Tag className='scroll-mt-24 text-xl font-semibold text-foreground'>
+    <Tag className='scroll-mt-24'>
       <InlineContent nodes={node.children} />
     </Tag>
   );
@@ -221,7 +246,9 @@ function VideoView({ node }: ContentNodeViewProps<'video'>) {
 
 /**
  * Delegates a questionnaire block to {@link QuestionnaireView}, translating the
- * threaded context into its props.
+ * threaded context into its props. The Path context is forwarded too, because a
+ * questionnaire prompt or option may itself contain a Path block, which then
+ * resolves its references and navigation through the same presentation.
  */
 function QuestionnaireBlockView({
   node,
@@ -234,6 +261,25 @@ function QuestionnaireBlockView({
       submitted={context.submittedQuestionnaires?.includes(node.id) ?? false}
       onAnswer={context.onAnswer}
       onSubmitted={context.onQuestionnaireSubmitted}
+      pathPages={context.pathPages}
+      pageStates={context.pageStates}
+      onNavigatePathPage={context.onNavigatePathPage}
+    />
+  );
+}
+
+/**
+ * Delegates a Path block to {@link PathView}, translating the threaded context
+ * into its props. Navigation stays owned by the presentation, so this only
+ * forwards the callback it was given.
+ */
+function PathBlockView({ node, context }: ContentNodeViewProps<'path'>) {
+  return (
+    <PathView
+      node={node}
+      pathPages={context.pathPages}
+      pageStates={context.pageStates}
+      onNavigatePathPage={context.onNavigatePathPage}
     />
   );
 }
@@ -251,6 +297,7 @@ const contentNodeRenderers = {
   image: BlockImageView,
   video: VideoView,
   questionnaire: QuestionnaireBlockView,
+  path: PathBlockView,
 } satisfies ContentNodeRenderers;
 
 export function ContentRenderer({ nodes, ...context }: ContentRendererProps) {

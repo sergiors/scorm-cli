@@ -527,6 +527,34 @@ describe('PackageView scroll navigation controls', () => {
     expect(previousButtons()).toHaveLength(0);
   });
 
+  it('keeps the previous control in the page flow instead of a fixed overlay', () => {
+    act(() =>
+      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
+    );
+    setEndIntersecting(0, true);
+    act(() => nextButtons()[0]?.click());
+
+    const control = container.querySelector<HTMLElement>(
+      '[data-scroll-previous]',
+    );
+    const scene = container.querySelector<HTMLElement>('[data-scene-index="1"]');
+    if (!control || !scene) {
+      throw new Error('Previous control or page scene not found');
+    }
+
+    // It lives inside the scroll container, ahead of the page scene, so it takes
+    // layout space at the top of the page rather than floating over the content.
+    expect(scroller().contains(control)).toBe(true);
+    expect(
+      control.compareDocumentPosition(scene) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // Regression: the control must not be a fixed overlay obscuring the scroll.
+    expect(control.closest('.fixed')).toBeNull();
+    // The button is still rendered and operable from the control.
+    expect(previousButtons()).toHaveLength(1);
+  });
+
   it('returns to the previous page when the previous control is activated', () => {
     act(() =>
       root.render(<PackageView contentPackage={plainTwoPagePackage} />),

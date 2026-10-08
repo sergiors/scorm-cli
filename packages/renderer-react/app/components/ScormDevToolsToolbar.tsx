@@ -56,15 +56,7 @@ export function ScormDevToolsToolbar({
             Dev tools
           </Button>
         </PopoverTrigger>
-        <PopoverContent
-          align='end'
-          aria-label='Dev tools'
-          className='w-80 max-w-[calc(100vw-1.5rem)]'
-        >
-          <PopoverHeader>
-            <PopoverTitle>LMS persistence</PopoverTitle>
-          </PopoverHeader>
-
+        <PopoverContent align='end' aria-label='Dev tools' className='w-80'>
           <CmiPersistenceControl />
         </PopoverContent>
       </Popover>
@@ -125,7 +117,7 @@ function CmiPersistenceControl() {
       <Field
         orientation='horizontal'
         data-disabled={disabled ? true : undefined}
-        className='items-start gap-2'
+        className='items-start gap-2.5'
       >
         <Checkbox
           id={checkboxId}
@@ -135,11 +127,11 @@ function CmiPersistenceControl() {
           onCheckedChange={(checked) => handleChange(checked === true)}
           className='mt-0.5'
         />
-        <div className='min-w-0'>
-          <FieldLabel htmlFor={checkboxId} className='text-xs font-medium'>
+        <div className='space-y-1.5'>
+          <FieldLabel htmlFor={checkboxId} className='font-medium'>
             Persist CMI data
           </FieldLabel>
-          <FieldDescription id={descriptionId} className='text-[11px]'>
+          <FieldDescription id={descriptionId} className='text-xs'>
             Saves the <code>cmi.*</code> values in this browser&apos;s
             localStorage and restores them on the next preview. Turning this off
             clears the saved data.
@@ -148,7 +140,7 @@ function CmiPersistenceControl() {
       </Field>
 
       {state.status === 'ready' ? null : (
-        <p role='status' className='text-[11px] text-destructive'>
+        <p role='status' className='text-xs text-destructive'>
           {state.status === 'unavailable'
             ? 'Dev tools are unavailable, so CMI persistence cannot be changed.'
             : `CMI persistence is unavailable: ${state.message}`}
