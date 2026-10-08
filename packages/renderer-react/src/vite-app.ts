@@ -3,6 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ContentPackage } from '@scorm-cli/core';
 import type { Plugin } from 'vite';
+import {
+  documentLanguage,
+  resolveLanguage,
+  SUPPORTED_LOCALES,
+} from '../app/lib/i18n';
 
 /** HTML template shipped with the package and used by both build and dev. */
 export const ENTRYPOINT = 'index.html';
@@ -61,6 +66,26 @@ function escapeHtml(value: string): string {
 }
 
 /**
+ * Rewrites the document's `lang` attribute to `language`, adding it when the
+ * template has none. The declared language is preserved even when it is not a
+ * supported UI locale, so the browser and assistive tech still see it.
+ */
+function setDocumentLanguage(html: string, language: string): string {
+  const escaped = escapeHtml(language);
+  return html.replace(/<html\b[^>]*>/i, (tag) => {
+    // Require an attribute boundary (whitespace) before `lang` so look-alikes
+    // such as `data-lang` or `xml:lang` are not matched and rewritten.
+    if (/(\s)lang\s*=/i.test(tag)) {
+      return tag.replace(
+        /(\s)lang\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i,
+        `$1lang="${escaped}"`,
+      );
+    }
+    return tag.replace(/^<html/i, `<html lang="${escaped}"`);
+  });
+}
+
+/**
  * Mutable holder for the current package. Dev mode replaces `current` in place
  * so the plugin always serves the latest authored content without re-creating
  * the Vite server.
@@ -75,6 +100,10 @@ export interface PackageDataHandle {
  * network request is ever made to load the package.
  */
 export function createPackageDataPlugin(handle: PackageDataHandle): Plugin {
+  // Dedupe warnings per declared language so a dev server does not warn on
+  // every request (and every reload) for the same unsupported package.
+  const warnedLanguages = new Set<string>();
+
   return {
     name: 'scorm-cli:package-data',
     resolveId(id) {
@@ -87,11 +116,30 @@ export function createPackageDataPlugin(handle: PackageDataHandle): Plugin {
       return `export default ${JSON.stringify(handle.current)};`;
     },
     transformIndexHtml(html) {
-      const title = escapeHtml(handle.current.metadata.title || 'Content');
-      return html.replace(
+      const { metadata } = handle.current;
+      const title = escapeHtml(metadata.title || 'Content');
+      const language = documentLanguage(metadata.lang);
+
+      const resolved = resolveLanguage(metadata.lang);
+      if (
+        !resolved.supported &&
+        resolved.language &&
+        !warnedLanguages.has(resolved.language)
+      ) {
+        warnedLanguages.add(resolved.language);
+        console.warn(
+          `[scorm-cli] Unsupported content language "${resolved.language}". ` +
+            `Rendering the player in English; supported languages are ${SUPPORTED_LOCALES.join(
+              ', ',
+            )}.`,
+        );
+      }
+
+      const withTitle = html.replace(
         /<title>[\s\S]*?<\/title>/,
         () => `<title>${title}</title>`,
       );
+      return setDocumentLanguage(withTitle, language);
     },
   };
 }

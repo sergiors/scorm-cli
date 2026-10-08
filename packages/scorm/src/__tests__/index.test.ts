@@ -93,6 +93,19 @@ describe('SCORM 1.2 package', () => {
     );
   });
 
+  it('writes package language in IEEE LOM metadata, defaulting to English', () => {
+    const namespace = 'http://ltsc.ieee.org/xsd/LOM';
+    for (const [metadata, expected] of [
+      [{ title: 'Portuguese package', lang: 'pt-BR' }, 'pt-BR'],
+      [{ title: 'English package' }, 'en'],
+    ] as const) {
+      const root = create(createManifest(metadata, [])).root().node as any;
+      const languages = root.getElementsByTagNameNS(namespace, 'language');
+      expect(languages).toHaveLength(1);
+      expect(languages[0].textContent).toBe(expected);
+    }
+  });
+
   it('writes the exact content dictionary to the ZIP and references it in imsmanifest', async () => {
     temp = await mkdtemp(path.join(os.tmpdir(), 'scorm-test-'));
     const renderDir = path.join(temp, 'render');

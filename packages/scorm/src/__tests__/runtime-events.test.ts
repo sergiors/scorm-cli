@@ -6,6 +6,7 @@ import { createScormRuntime } from '../runtime';
 const manifest: ContentManifest = {
   schemaVersion: 1,
   title: 'Runtime events',
+  lang: 'en',
   presentation: 'scroll',
   pages: {
     '0': { id: 'page-one', title: 'One', questions: {} },
@@ -17,6 +18,7 @@ const runtime = createScormRuntime(manifest);
 const suspendManifest: ContentManifest = {
   schemaVersion: 1,
   title: 'Suspend events',
+  lang: 'en',
   presentation: 'scroll',
   pages: {
     '0': {

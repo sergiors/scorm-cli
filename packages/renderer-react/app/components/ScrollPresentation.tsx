@@ -8,6 +8,7 @@ import {
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import type { AnswerValue, PageNode, PlayerPageState } from '../types';
 import { collectQuestionnaireIds } from '../lib/content-helpers';
+import { useI18n } from '../lib/use-i18n';
 import { Button } from './ui/button';
 import { ContentRenderer } from './ContentRenderer';
 
@@ -414,10 +415,11 @@ function PageScene({
  * ignores pointer events while the button itself stays clickable.
  */
 function PreviousControl({ onClick }: { onClick: () => void }) {
+  const { t } = useI18n();
   return (
     <div
       data-scroll-previous
-      className='pointer-events-none fixed inset-x-0 top-0 z-10 flex justify-center py-2.5 bg-background/5 backdrop-blur-sm'
+      className='pointer-events-none fixed left-1/2 top-0 z-10 -translate-x-1/2 bg-background/5 py-2.5 backdrop-blur-sm'
     >
       <Button
         type='button'
@@ -426,7 +428,7 @@ function PreviousControl({ onClick }: { onClick: () => void }) {
         className='pointer-events-auto cursor-pointer rounded-full'
       >
         <ArrowUp aria-hidden='true' />
-        Previous page
+        {t.scrollPreviousPage}
       </Button>
     </div>
   );
@@ -440,10 +442,11 @@ function PreviousControl({ onClick }: { onClick: () => void }) {
  * stays clickable while the wrapper ignores pointer events.
  */
 function NextControl({ onClick }: { onClick: () => void }) {
+  const { t } = useI18n();
   return (
     <div
       data-scroll-next
-      className='pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center py-2.5 bg-background/5 backdrop-blur-sm'
+      className='pointer-events-none fixed bottom-0 left-1/2 z-10 -translate-x-1/2 bg-background/5 py-2.5 backdrop-blur-sm'
     >
       <Button
         type='button'
@@ -451,7 +454,7 @@ function NextControl({ onClick }: { onClick: () => void }) {
         onClick={onClick}
         className='cursor-pointer pointer-events-auto rounded-full px-4'
       >
-        Continue to next page
+        {t.scrollContinueNextPage}
         <ArrowDown aria-hidden='true' />
       </Button>
     </div>

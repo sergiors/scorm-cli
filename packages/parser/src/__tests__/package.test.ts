@@ -41,6 +41,38 @@ async function lessonContent(root: string) {
 }
 
 describe('parsePackage', () => {
+  it('defaults package language to English and canonicalizes valid BCP-47 tags', async () => {
+    for (const [frontmatter, expected] of [
+      ['', 'en'],
+      ['lang: en\n', 'en'],
+      ['lang: pt-br\n', 'pt-BR'],
+    ] as const) {
+      const root = await makePackage(
+        `---\ntitle: Package\n${frontmatter}---\n<Scroll><Page src="lesson.mdx" /></Scroll>`,
+      );
+      await writeFile(path.join(root, 'lesson.mdx'), '---\ntitle: Lesson\n---');
+      const parsed = await parsePackage(root);
+      expect(parsed.metadata.lang).toBe(expected);
+      await rm(root, { recursive: true, force: true });
+      temp = '';
+    }
+  });
+
+  it('rejects invalid or empty package language tags with a useful error', async () => {
+    for (const [language, error] of [
+      ['not_a_tag', /"lang" must be a valid BCP-47 language tag/],
+      ['', /"lang" must be a non-empty string/],
+    ] as const) {
+      const root = await makePackage(
+        `---\ntitle: Package\nlang: "${language}"\n---\n<Scroll><Page src="lesson.mdx" /></Scroll>`,
+      );
+      await writeFile(path.join(root, 'lesson.mdx'), '---\ntitle: Lesson\n---');
+      await expect(parsePackage(root)).rejects.toThrow(error);
+      await rm(root, { recursive: true, force: true });
+      temp = '';
+    }
+  });
+
   it('preserves Markdown inline semantics and nested formatting', async () => {
     const root = await makeLesson(
       '# Hello **bold *nested*** and [a *rich* link](https://example.test) with `code`\n\n' +
@@ -813,7 +845,7 @@ describe('parsePackage', () => {
       '---\ntitle: Quiz\n---',
     );
     const parsedScroll = await parsePackage(root);
-    expect(parsedScroll.metadata).toEqual({ title: 'TypeScript' });
+    expect(parsedScroll.metadata).toEqual({ title: 'TypeScript', lang: 'en' });
     expect(parsedScroll.presentation).toMatchObject({
       type: 'scroll',
       pages: [
@@ -994,6 +1026,7 @@ describe('parsePackage', () => {
     for (const kind of ['page', 'item'] as const) {
       for (const field of [
         ...(kind === 'item' ? ['description: Not supported'] : []),
+        'lang: pt-BR',
         'thumbnail: cover.svg',
         'id: custom',
       ]) {

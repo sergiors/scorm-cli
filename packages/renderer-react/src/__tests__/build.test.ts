@@ -76,6 +76,8 @@ describe('renderReactPackage', () => {
     expect(indexHtml).toContain('rel="stylesheet"');
     expect(indexHtml).toContain('href="./assets/');
     expect(indexHtml).toContain('<title>Rendering Fundamentals</title>');
+    // No authored language means the parser default, English.
+    expect(indexHtml).toContain('<html lang="en">');
     // Relative base so the output works from the file system or any subpath.
     expect(indexHtml).not.toContain('src="/assets');
   });

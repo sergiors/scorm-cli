@@ -1,5 +1,7 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Settings2 } from 'lucide-react';
+import type { Locale } from '../lib/i18n';
+import { useI18n } from '../lib/use-i18n';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Field, FieldDescription, FieldLabel } from './ui/field';
@@ -10,6 +12,55 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from './ui/popover';
+
+interface DevToolsMessages {
+  devTools: string;
+  lmsPersistence: string;
+  persistCmiData: string;
+  persistCmiDescription: (code: ReactNode) => ReactNode;
+  devToolsUnavailable: string;
+  cmiPersistenceUnavailable: (message: string) => string;
+  localStorageUnavailable: string;
+}
+
+/**
+ * Dev-only copy, kept local so the whole module (and its strings) is dropped
+ * from the production bundle along with the toolbar itself.
+ */
+const DEV_TOOLS_MESSAGES: Record<Locale, DevToolsMessages> = {
+  en: {
+    devTools: 'Dev tools',
+    lmsPersistence: 'LMS persistence',
+    persistCmiData: 'Persist CMI data',
+    persistCmiDescription: (code) => (
+      <>
+        Saves the {code} values in this browser&apos;s localStorage and restores
+        them on the next preview. Turning this off clears the saved data.
+      </>
+    ),
+    devToolsUnavailable:
+      'Dev tools are unavailable, so CMI persistence cannot be changed.',
+    cmiPersistenceUnavailable: (message) =>
+      `CMI persistence is unavailable: ${message}`,
+    localStorageUnavailable: 'Local storage is unavailable.',
+  },
+  'pt-BR': {
+    devTools: 'Ferramentas de desenvolvimento',
+    lmsPersistence: 'Persistência do LMS',
+    persistCmiData: 'Persistir dados CMI',
+    persistCmiDescription: (code) => (
+      <>
+        Salva os valores {code} no localStorage deste navegador e os restaura na
+        próxima pré-visualização. Desativar esta opção limpa os dados salvos.
+      </>
+    ),
+    devToolsUnavailable:
+      'As ferramentas de desenvolvimento estão indisponíveis, portanto a persistência de CMI não pode ser alterada.',
+    cmiPersistenceUnavailable: (message) =>
+      `A persistência de CMI está indisponível: ${message}`,
+    localStorageUnavailable: 'O armazenamento local está indisponível.',
+  },
+};
 
 export interface ScormDevToolsToolbarProps {
   /**
@@ -36,11 +87,15 @@ export interface ScormDevToolsToolbarProps {
 export function ScormDevToolsToolbar({
   enabled = Boolean(import.meta.hot),
 }: ScormDevToolsToolbarProps) {
+  const { locale } = useI18n();
+
   // The toolbar has no meaning outside `scorm dev`; keeping it inert also lets
   // the production bundle tree-shake the whole module away.
   if (!enabled) {
     return null;
   }
+
+  const copy = DEV_TOOLS_MESSAGES[locale];
 
   return (
     <div className='fixed right-3 top-3 z-40 print:hidden'>
@@ -53,10 +108,13 @@ export function ScormDevToolsToolbar({
             className='shadow-md'
           >
             <Settings2 aria-hidden='true' />
-            Dev tools
+            {copy.devTools}
           </Button>
         </PopoverTrigger>
-        <PopoverContent align='end' aria-label='Dev tools' className='w-80'>
+        <PopoverContent align='end' aria-label={copy.devTools} className='w-80'>
+          <PopoverHeader>
+            <PopoverTitle>{copy.lmsPersistence}</PopoverTitle>
+          </PopoverHeader>
           <CmiPersistenceControl />
         </PopoverContent>
       </Popover>
@@ -80,8 +138,10 @@ interface CmiPersistenceState {
  * toolbar.
  */
 function CmiPersistenceControl() {
+  const { locale } = useI18n();
+  const copy = DEV_TOOLS_MESSAGES[locale];
   const [state, setState] = useState<CmiPersistenceState>(() =>
-    readCmiPersistenceState(),
+    readCmiPersistenceState(copy),
   );
   const checkboxId = useId();
   const descriptionId = useId();
@@ -107,7 +167,7 @@ function CmiPersistenceControl() {
       setState((previous) => ({
         ...previous,
         status: 'error',
-        message: describePersistenceError(error),
+        message: describePersistenceError(error, copy.localStorageUnavailable),
       }));
     }
   }
@@ -129,12 +189,10 @@ function CmiPersistenceControl() {
         />
         <div className='space-y-1.5'>
           <FieldLabel htmlFor={checkboxId} className='font-medium'>
-            Persist CMI data
+            {copy.persistCmiData}
           </FieldLabel>
           <FieldDescription id={descriptionId} className='text-xs'>
-            Saves the <code>cmi.*</code> values in this browser&apos;s
-            localStorage and restores them on the next preview. Turning this off
-            clears the saved data.
+            {copy.persistCmiDescription(<code>cmi.*</code>)}
           </FieldDescription>
         </div>
       </Field>
@@ -142,8 +200,8 @@ function CmiPersistenceControl() {
       {state.status === 'ready' ? null : (
         <p role='status' className='text-xs text-destructive'>
           {state.status === 'unavailable'
-            ? 'Dev tools are unavailable, so CMI persistence cannot be changed.'
-            : `CMI persistence is unavailable: ${state.message}`}
+            ? copy.devToolsUnavailable
+            : copy.cmiPersistenceUnavailable(state.message ?? '')}
         </p>
       )}
     </div>
@@ -157,7 +215,7 @@ function getScormDevTools(): ScormDevTools | undefined {
   return window.scormDevTools;
 }
 
-function readCmiPersistenceState(): CmiPersistenceState {
+function readCmiPersistenceState(copy: DevToolsMessages): CmiPersistenceState {
   const bridge = getScormDevTools();
   if (!bridge) {
     return { enabled: false, status: 'unavailable' };
@@ -171,14 +229,14 @@ function readCmiPersistenceState(): CmiPersistenceState {
     return {
       enabled: false,
       status: 'error',
-      message: describePersistenceError(error),
+      message: describePersistenceError(error, copy.localStorageUnavailable),
     };
   }
 }
 
-function describePersistenceError(error: unknown): string {
+function describePersistenceError(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) {
     return error.message;
   }
-  return 'Local storage is unavailable.';
+  return fallback;
 }

@@ -6,6 +6,7 @@ import type {
   PageNode,
   PlayerPageState,
 } from '../types';
+import { useI18n } from '../lib/use-i18n';
 import { cn } from '../lib/utils';
 import { InlineContent } from './InlineContent';
 import { PathView } from './PathView';
@@ -194,7 +195,7 @@ function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
       alt={node.alt}
       loading='lazy'
       className={cn(
-        'h-auto max-w-full rounded-lg border border-border',
+        'h-auto max-w-full rounded-2xl overflow-hidden',
         node.caption ? undefined : '',
       )}
     />
@@ -213,13 +214,14 @@ function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
 }
 
 function VideoView({ node }: ContentNodeViewProps<'video'>) {
+  const { t } = useI18n();
   return (
     <figure className='space-y-2'>
       <video
         controls
         preload='metadata'
         poster={node.poster}
-        aria-label={node.title ?? 'Video'}
+        aria-label={node.title ?? t.videoLabel}
         className='w-full rounded-2xl'
       >
         <source src={node.src} />
@@ -230,11 +232,12 @@ function VideoView({ node }: ContentNodeViewProps<'video'>) {
             kind='captions'
             src={node.captions}
             srcLang='und'
-            label='Captions'
+            label={t.videoCaptions}
             default
           />
         ) : null}
       </video>
+
       {node.title ? (
         <figcaption className='text-sm text-muted-foreground'>
           {node.title}

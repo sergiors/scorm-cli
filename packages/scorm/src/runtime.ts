@@ -4,6 +4,7 @@ import { browserCodecSource } from './state-codec';
 const emptyManifest: ContentManifest = {
   schemaVersion: 1,
   title: '',
+  lang: 'en',
   presentation: 'scroll',
   pages: {},
 };

@@ -1,5 +1,6 @@
 import { Check, Circle, Lock } from 'lucide-react';
 import type { PageNode, PathNode, PlayerPageState } from '../types';
+import { useI18n } from '../lib/use-i18n';
 import { cn } from '../lib/utils';
 import {
   Item,
@@ -37,9 +38,11 @@ export function canOpenPathPage(
   if (index <= 0) {
     return true;
   }
+
   if (visited[index]) {
     return true;
   }
+
   return visited[index - 1] === true;
 }
 
@@ -50,14 +53,9 @@ function pathPageStatus(
   if (visited[index]) {
     return 'visited';
   }
+
   return canOpenPathPage(index, visited) ? 'available' : 'locked';
 }
-
-const STATUS_LABELS: Record<PathPageStatus, string> = {
-  visited: 'Visited',
-  available: 'Available',
-  locked: 'Locked',
-};
 
 const STATUS_ICONS = {
   visited: Check,
@@ -67,17 +65,20 @@ const STATUS_ICONS = {
 
 export interface PathViewProps {
   node: PathNode;
+
   /**
    * The root presentation's pages, used to resolve each referenced id to its
    * display metadata. A Path only references root Scroll pages; unresolved ids
    * fall back to the raw id so a malformed reference is still visible.
    */
   pathPages?: readonly PageNode[];
+
   /**
    * Persisted state per page id. Only `visited` is consulted, so Path adds no
    * state of its own and never persists anything.
    */
   pageStates?: Record<string, PlayerPageState>;
+
   /**
    * Opens a referenced page through the presentation's existing page switching.
    * When absent the whole Path renders inert, without offering dead controls;
@@ -99,30 +100,35 @@ export function PathView({
   pageStates = {},
   onNavigatePathPage,
 }: PathViewProps) {
+  const { t } = useI18n();
+
   const pagesById = new Map(pathPages.map((page) => [page.id, page]));
+
   const visited = node.pageIds.map((id) => pageStates[id]?.visited === true);
 
   return (
-    <nav aria-label='Path' data-slot='path' className='not-prose space-y-2.5'>
-      <>
-        {node.pageIds.map((id, index) => {
-          const page = pagesById.get(id);
-          const status = pathPageStatus(index, visited);
+    <nav
+      aria-label={t.pathLabel}
+      data-slot='path'
+      className='not-prose space-y-2.5'
+    >
+      {node.pageIds.map((id, index) => {
+        const page = pagesById.get(id);
+        const status = pathPageStatus(index, visited);
 
-          return (
-            <PathEntry
-              key={id}
-              title={page?.metadata.title ?? id}
-              description={page?.metadata.description}
-              status={status}
-              disabled={status === 'locked' || onNavigatePathPage === undefined}
-              onOpen={
-                onNavigatePathPage ? () => onNavigatePathPage(id) : undefined
-              }
-            />
-          );
-        })}
-      </>
+        return (
+          <PathEntry
+            key={id}
+            title={page?.metadata.title ?? id}
+            description={page?.metadata.description}
+            status={status}
+            disabled={status === 'locked' || onNavigatePathPage === undefined}
+            onOpen={
+              onNavigatePathPage ? () => onNavigatePathPage(id) : undefined
+            }
+          />
+        );
+      })}
     </nav>
   );
 }
@@ -141,20 +147,36 @@ function PathEntry({
   onOpen?: () => void;
 }) {
   const Icon = STATUS_ICONS[status];
+  const { t } = useI18n();
+
+  const label =
+    status === 'visited'
+      ? t.pathStatusVisited
+      : status === 'available'
+        ? t.pathStatusAvailable
+        : t.pathStatusLocked;
 
   return (
     <Item data-path-entry data-path-status={status} variant='outline' asChild>
-      <button onClick={onOpen} disabled={disabled}>
+      <button
+        type='button'
+        onClick={onOpen}
+        disabled={disabled}
+        className='cursor-pointer not-disabled:hover:border-foreground/20 not-disabled:hover:bg-muted/50 disabled:cursor-not-allowed'
+      >
         <ItemMedia>
           <Icon aria-hidden='true' className='size-4' />
         </ItemMedia>
+
         <ItemContent>
           <ItemTitle>{title}</ItemTitle>
+
           {description ? (
             <ItemDescription>{description}</ItemDescription>
           ) : null}
         </ItemContent>
-        <ItemActions>{STATUS_LABELS[status]}</ItemActions>
+
+        <ItemActions>{label}</ItemActions>
       </button>
     </Item>
   );

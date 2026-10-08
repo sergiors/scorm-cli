@@ -9,6 +9,7 @@ import type {
 export interface ContentManifest {
   schemaVersion: 1;
   title: string;
+  lang: string;
   presentation: 'scroll' | 'grid';
   pages: Record<
     string,
@@ -157,6 +158,7 @@ export function createContentManifest(
   return {
     schemaVersion: 1,
     title: contentPackage.metadata.title,
+    lang: contentPackage.metadata.lang ?? 'en',
     presentation: contentPackage.presentation.type,
     pages,
   };

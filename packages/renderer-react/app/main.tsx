@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import contentPackage from 'virtual:package-data';
 import { PackageApp } from './App';
 import { ScormDevToolsToolbar } from './components/ScormDevToolsToolbar';
+import { I18nProvider } from './lib/use-i18n';
 import './styles.css';
 
 const container = document.getElementById('root');
@@ -11,7 +12,7 @@ if (container) {
   createRoot(container).render(
     <StrictMode>
       <PackageApp contentPackage={contentPackage} />
-      <DevInspector />
+      <DevInspector lang={contentPackage.metadata.lang} />
     </StrictMode>,
   );
 }
@@ -22,9 +23,13 @@ if (container) {
  * this branch (and the toolbar module it imports) is removed from the SCORM
  * output entirely.
  */
-function DevInspector() {
+function DevInspector({ lang }: { lang?: string }) {
   if (!import.meta.hot) {
     return null;
   }
-  return <ScormDevToolsToolbar />;
+  return (
+    <I18nProvider lang={lang}>
+      <ScormDevToolsToolbar />
+    </I18nProvider>
+  );
 }

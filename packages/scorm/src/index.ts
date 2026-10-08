@@ -43,6 +43,11 @@ export function createManifest(
   const manifestMetadata = manifest.ele('metadata');
   manifestMetadata.ele('schema').txt('ADL SCORM');
   manifestMetadata.ele('schemaversion').txt('1.2');
+  manifestMetadata
+    .ele('lom:lom', { 'xmlns:lom': 'http://ltsc.ieee.org/xsd/LOM' })
+    .ele('lom:general')
+    .ele('lom:language')
+    .txt(metadata.lang ?? 'en');
 
   const organization = manifest
     .ele('organizations', { default: `ORG-${id}` })

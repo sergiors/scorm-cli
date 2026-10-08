@@ -71,7 +71,6 @@ function LinkView({ node }: InlineNodeViewProps<'link'>) {
       href={node.href}
       target={isExternal ? '_blank' : undefined}
       rel={isExternal ? 'noreferrer noopener' : undefined}
-      className='font-medium text-primary underline underline-offset-4 hover:text-primary/80'
     >
       <InlineContent nodes={node.children} />
       {isExternal ? (
@@ -91,14 +90,16 @@ function InlineImageView({ node }: InlineNodeViewProps<'image'>) {
       alt={node.alt}
       loading='lazy'
       className={cn(
-        'h-auto max-w-full rounded',
+        'h-auto max-w-full',
         node.caption ? undefined : 'inline align-middle',
       )}
     />
   );
+
   if (!node.caption) {
     return image;
   }
+
   return (
     <span className='inline-flex flex-col items-start align-middle'>
       {image}

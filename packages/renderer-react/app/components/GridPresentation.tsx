@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from 'react';
 import type { AnswerValue, ItemNode, PlayerPageState } from '../types';
+import { useI18n } from '../lib/use-i18n';
 import { cn } from '../lib/utils';
 import { ContentRenderer } from './ContentRenderer';
 import { Button } from './ui/button';
@@ -58,6 +59,7 @@ export function GridPresentation({
   onAnswer,
   onQuestionnaireSubmitted,
 }: GridPresentationProps) {
+  const { t } = useI18n();
   const [selected, setSelected] = useState<ItemNode | undefined>(() =>
     items.find((item) => item.id === initialItemId),
   );
@@ -94,7 +96,7 @@ export function GridPresentation({
             <DialogTitle>{selected?.metadata.title}</DialogTitle>
             {selected ? (
               <DialogDescription className='sr-only'>
-                Content for {selected.metadata.title}
+                {t.contentFor(selected.metadata.title)}
               </DialogDescription>
             ) : null}
           </DialogHeader>

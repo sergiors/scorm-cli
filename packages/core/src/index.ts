@@ -1,5 +1,7 @@
 export interface PackageMetadata {
   title: string;
+  /** BCP-47 language tag. Optional for compatibility with existing packages. */
+  lang?: string;
 }
 
 export interface ContentPackage {

@@ -138,6 +138,7 @@ describe('content manifest', () => {
     expect(first).toMatchObject({
       schemaVersion: 1,
       title: 'Course',
+      lang: 'en',
       presentation: 'scroll',
       pages: {
         '0': {
@@ -160,6 +161,20 @@ describe('content manifest', () => {
       },
     });
     expect(JSON.stringify(first)).not.toMatch(/correct|quiz-a|Before/);
+  });
+
+  it('includes the package language and defaults legacy package metadata to English', () => {
+    const content: ContentPackage = {
+      metadata: { title: 'Localized', lang: 'pt-BR' },
+      presentation: { type: 'scroll', pages: [] },
+    };
+    expect(createContentManifest(content).lang).toBe('pt-BR');
+    expect(
+      createContentManifest({
+        ...content,
+        metadata: { title: 'Legacy' },
+      }).lang,
+    ).toBe('en');
   });
 
   it('indexes grid items using stable item and question ids', () => {

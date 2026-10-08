@@ -6,6 +6,7 @@ import type {
   QuestionnaireNode,
   QuestionNode,
 } from '../types';
+import { useI18n } from '../lib/use-i18n';
 import { ContentRenderer } from './ContentRenderer';
 import {
   Questionnaire,
@@ -117,6 +118,7 @@ export function QuestionnaireView({
   onNavigatePathPage,
 }: QuestionnaireViewProps) {
   const submittedRef = useRef(false);
+  const { t } = useI18n();
   // Bundled once so it can be forwarded verbatim to every nested renderer.
   const pathContext: NestedPathContext = {
     pathPages,
@@ -182,9 +184,11 @@ export function QuestionnaireView({
           ))}
 
           <QuestionnaireActions>
-            <QuestionnairePrevious>Previous question</QuestionnairePrevious>
-            <QuestionnaireNext>Next question</QuestionnaireNext>
-            <QuestionnaireSubmit>Submit questionnaire</QuestionnaireSubmit>
+            <QuestionnairePrevious>
+              {t.questionnairePrevious}
+            </QuestionnairePrevious>
+            <QuestionnaireNext>{t.questionnaireNext}</QuestionnaireNext>
+            <QuestionnaireSubmit>{t.questionnaireSubmit}</QuestionnaireSubmit>
           </QuestionnaireActions>
         </Questionnaire>
       </CardContent>

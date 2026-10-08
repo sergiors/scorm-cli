@@ -1,8 +1,32 @@
 import { TriangleAlert } from 'lucide-react';
+import type { Locale } from '../lib/i18n';
+import { useI18n } from '../lib/use-i18n';
 
 export interface PreviewErrorOverlayProps {
   message: string;
 }
+
+interface PreviewMessages {
+  contentError: string;
+  contentErrorHint: string;
+}
+
+/**
+ * Kept local (rather than in the shared player dictionary) so the dev-only
+ * copy stays beside the component it belongs to.
+ */
+const PREVIEW_MESSAGES: Record<Locale, PreviewMessages> = {
+  en: {
+    contentError: 'Content error',
+    contentErrorHint:
+      'Fix the content and save. The preview reloads automatically once the content is valid again.',
+  },
+  'pt-BR': {
+    contentError: 'Erro de conteúdo',
+    contentErrorHint:
+      'Corrija o conteúdo e salve. A pré-visualização recarrega automaticamente assim que o conteúdo for válido novamente.',
+  },
+};
 
 /**
  * Author-facing overlay shown when `scorm dev` reports a content error.
@@ -12,6 +36,9 @@ export interface PreviewErrorOverlayProps {
  * content. The dev server clears it and reloads on the next successful update.
  */
 export function PreviewErrorOverlay({ message }: PreviewErrorOverlayProps) {
+  const { locale } = useI18n();
+  const copy = PREVIEW_MESSAGES[locale];
+
   return (
     <div
       role='alert'
@@ -24,11 +51,10 @@ export function PreviewErrorOverlay({ message }: PreviewErrorOverlayProps) {
           className='mt-0.5 size-5 shrink-0 text-destructive'
         />
         <div className='min-w-0 flex-1 space-y-1'>
-          <p className='font-medium'>Content error</p>
+          <p className='font-medium'>{copy.contentError}</p>
           <p className='break-words text-sm text-muted-foreground'>{message}</p>
           <p className='text-xs text-muted-foreground'>
-            Fix the content and save. The preview reloads automatically once the
-            content is valid again.
+            {copy.contentErrorHint}
           </p>
         </div>
       </div>

@@ -111,6 +111,17 @@ function optionalString(
   return requiredString(value, name, file, node);
 }
 
+function canonicalLanguage(value: string | undefined, file: string): string {
+  if (value === undefined) return 'en';
+  try {
+    return Intl.getCanonicalLocales(value)[0]!;
+  } catch {
+    throw new Error(
+      `${file}: "lang" must be a valid BCP-47 language tag (for example, "en" or "pt-BR"); received "${value}"`,
+    );
+  }
+}
+
 function assertAttributes(
   values: Record<string, unknown>,
   allowed: string[],
@@ -1156,16 +1167,20 @@ export async function parsePackage(pathOrDir: string): Promise<ContentPackage> {
   const parsed = matter(source);
   assertFrontmatterKeys(
     parsed.data as Record<string, unknown>,
-    ['title'],
+    ['title', 'lang'],
     entry,
   );
   const title = requiredString(parsed.data.title, 'title', entry, {
     type: 'frontmatter',
   });
+  const lang = canonicalLanguage(
+    optionalString(parsed.data.lang, 'lang', entry, { type: 'frontmatter' }),
+    entry,
+  );
   const tree = parseMdx(parsed.content, entry);
   const presentation = await parseRootPresentation(tree.children, entry, root);
   const contentPackage: ContentPackage = {
-    metadata: { title },
+    metadata: { title, lang },
     presentation,
   };
   return contentPackage;

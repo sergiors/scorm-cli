@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Questionnaire as QuestionnairePrimitive } from '@shadcn/react/questionnaire';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/use-i18n';
 
 import { buttonVariants, type Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -217,6 +218,7 @@ function QuestionnairePrevious({
   ...props
 }: React.ComponentProps<typeof QuestionnairePrimitive.Previous> &
   Pick<React.ComponentProps<typeof Button>, 'size' | 'variant'>) {
+  const { t } = useI18n();
   return (
     <QuestionnairePrimitive.Previous
       data-slot='questionnaire-previous'
@@ -229,7 +231,7 @@ function QuestionnairePrevious({
       )}
       {...props}
     >
-      {children ?? 'Previous'}
+      {children ?? t.questionnaireDefaultPrevious}
     </QuestionnairePrimitive.Previous>
   );
 }
@@ -242,6 +244,7 @@ function QuestionnaireSkip({
   ...props
 }: React.ComponentProps<typeof QuestionnairePrimitive.Skip> &
   Pick<React.ComponentProps<typeof Button>, 'size' | 'variant'>) {
+  const { t } = useI18n();
   return (
     <QuestionnairePrimitive.Skip
       data-slot='questionnaire-skip'
@@ -254,7 +257,7 @@ function QuestionnaireSkip({
       )}
       {...props}
     >
-      {children ?? 'Skip'}
+      {children ?? t.questionnaireDefaultSkip}
     </QuestionnairePrimitive.Skip>
   );
 }
@@ -267,6 +270,7 @@ function QuestionnaireNext({
   ...props
 }: React.ComponentProps<typeof QuestionnairePrimitive.Next> &
   Pick<React.ComponentProps<typeof Button>, 'size' | 'variant'>) {
+  const { t } = useI18n();
   return (
     <QuestionnairePrimitive.Next
       data-slot='questionnaire-next'
@@ -279,7 +283,7 @@ function QuestionnaireNext({
       )}
       {...props}
     >
-      {children ?? 'Next'}
+      {children ?? t.questionnaireDefaultNext}
     </QuestionnairePrimitive.Next>
   );
 }
@@ -292,6 +296,7 @@ function QuestionnaireSubmit({
   ...props
 }: React.ComponentProps<typeof QuestionnairePrimitive.Submit> &
   Pick<React.ComponentProps<typeof Button>, 'size' | 'variant'>) {
+  const { t } = useI18n();
   return (
     <QuestionnairePrimitive.Submit
       data-slot='questionnaire-submit'
@@ -304,7 +309,7 @@ function QuestionnaireSubmit({
       )}
       {...props}
     >
-      {children ?? 'Submit'}
+      {children ?? t.questionnaireDefaultSubmit}
     </QuestionnairePrimitive.Submit>
   );
 }

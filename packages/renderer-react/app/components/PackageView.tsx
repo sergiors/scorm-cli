@@ -12,6 +12,7 @@ import {
   saveState,
   useScormBridge,
 } from '../lib/use-scorm-bridge';
+import { useI18n } from '../lib/use-i18n';
 import { GridPresentation } from './GridPresentation';
 import { ScrollPresentation } from './ScrollPresentation';
 
@@ -186,9 +187,6 @@ export function PackageView({ contentPackage }: PackageViewProps) {
 }
 
 function EmptyPackage() {
-  return (
-    <p className='p-6 text-sm text-muted-foreground'>
-      This package does not contain any content.
-    </p>
-  );
+  const { t } = useI18n();
+  return <p className='p-6 text-sm text-muted-foreground'>{t.emptyPackage}</p>;
 }
