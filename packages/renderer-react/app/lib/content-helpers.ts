@@ -1,8 +1,9 @@
 import type {
+  ContentNode,
   ContentPackage,
   ItemNode,
-  SectionNode,
-  StructureNode,
+  PageNode,
+  QuestionnaireNode,
 } from '../types';
 
 /**
@@ -10,81 +11,62 @@ import type {
  * across the CLI and the renderer. In particular, an empty package is never
  * considered complete.
  */
-export { isPackageComplete } from '@scorm-cli/core';
+export { getPackageProgress, isPackageComplete } from '@scorm-cli/core';
 
 /**
- * Flattens every item in the package in document order (depth-first).
- *
- * This mirrors the helper exported by `@scorm-cli/core`; the renderer app ships
- * its own pure implementation so the browser bundle stays independent from the
- * Node-side core package.
+ * Flattens the authored presentation into the ordered list of leaf nodes it
+ * contains: the pages of a scroll presentation, or the items of a grid
+ * presentation. The two share the same shape (`id`, `source`, `metadata`,
+ * `content`), so callers can treat them uniformly for completion tracking.
  */
-export function getPackageItems(contentPackage: ContentPackage): ItemNode[] {
-  const items: ItemNode[] = [];
+export function getPresentationNodes(
+  contentPackage: ContentPackage,
+): Array<PageNode | ItemNode> {
+  const { presentation } = contentPackage;
+  return presentation.type === 'scroll'
+    ? presentation.pages
+    : presentation.items;
+}
 
-  const visit = (nodes: StructureNode[]): void => {
-    for (const node of nodes) {
-      if (node.type === 'item') {
-        items.push(node);
-      } else {
-        visit(node.children);
+/**
+ * Collects every questionnaire reachable from a set of block nodes, in document
+ * order. Block nesting (lists, quotes, and a question's own prompt or option
+ * content) is traversed the same way {@link ContentRenderer} renders it, so
+ * callers can reason about exactly the questionnaires the learner can reach.
+ */
+export function collectQuestionnaires(
+  nodes: ContentNode[],
+): QuestionnaireNode[] {
+  const found: QuestionnaireNode[] = [];
+  const visit = (list: ContentNode[]) => {
+    for (const node of list) {
+      switch (node.type) {
+        case 'list':
+          for (const item of node.items) visit(item.children);
+          break;
+        case 'quote':
+          visit(node.children);
+          break;
+        case 'questionnaire':
+          found.push(node);
+          for (const question of node.questions) {
+            visit(question.prompt);
+            for (const option of question.options) visit(option.content);
+          }
+          break;
+        default:
+          break;
       }
     }
   };
-
-  visit(contentPackage.children);
-  return items;
-}
-
-export interface AdjacentItems {
-  /** Index of `currentId` within `items`, or -1 when it is unknown. */
-  index: number;
-  previous: ItemNode | undefined;
-  next: ItemNode | undefined;
-}
-
-export function getAdjacentItems(
-  items: ItemNode[],
-  currentId: string | undefined,
-): AdjacentItems {
-  const index = currentId
-    ? items.findIndex((item) => item.id === currentId)
-    : -1;
-
-  return {
-    index,
-    previous: index > 0 ? items[index - 1] : undefined,
-    next: index >= 0 && index < items.length - 1 ? items[index + 1] : undefined,
-  };
-}
-
-export function findItem(
-  items: ItemNode[],
-  itemId: string | undefined,
-): ItemNode | undefined {
-  if (!itemId) {
-    return undefined;
-  }
-  return items.find((item) => item.id === itemId);
+  visit(nodes);
+  return found;
 }
 
 /**
- * Returns a new visited set with `id` added. Keeps referential identity when
- * the id is already present so React state updates can be skipped.
+ * Collects the ids of every questionnaire reachable from a set of block nodes,
+ * in document order. Scroll completion waits on exactly these wrapper ids.
  */
-export function addVisited(visited: Set<string>, id: string): Set<string> {
-  if (visited.has(id)) {
-    return visited;
-  }
-  const next = new Set(visited);
-  next.add(id);
-  return next;
-}
-
-export function getPackageSections(
-  contentPackage: ContentPackage,
-): SectionNode[] {
-  return contentPackage.children.filter(
-    (node): node is SectionNode => node.type === 'section',
-  );
+export function collectQuestionnaireIds(nodes: ContentNode[]): string[] {
+  return collectQuestionnaires(nodes).map((node) => node.id);
 }

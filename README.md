@@ -12,26 +12,48 @@ Build SCORM 1.2 packages from authored MDX content packages.
 
 ## Author a content package
 
-A content package directory contains an `index.mdx` root document and item MDX files. The root has `title` frontmatter and declares its structure with `<Item>` and `<Section>` components. Sections may contain items only; nested sections are not supported. Layout can be `list`, `grid`, or `sequence`. The optional `columns` attribute is only valid with `layout='grid'`. Items default to `open='page'` and may use `open='modal'`:
+A content package directory contains an `index.mdx` root document and referenced MDX documents. The root requires `title` frontmatter and exactly one presentation: a `<Scroll>` containing direct `<Page>` references, or a `<Grid>` containing direct `<Item>` references. These modes cannot be mixed; root Markdown, text, and other components are not allowed. A grid may set `columns` to an integer from 1 to 12:
 
 ```mdx
 ---
-title: My Content Package
+title: My Scroll Package
 ---
 
-<Item src='lessons/intro.mdx' />
-
-<Section title='Learning path' layout='sequence'>
-  <Item src='lessons/one.mdx' />
-  <Item src='lessons/two.mdx' />
-</Section>
-
-<Section title='Practice' layout='grid' columns={2}>
-  <Item src='lessons/check.mdx' open='modal' />
-</Section>
+<Scroll>
+  <Page src='lessons/intro.mdx' />
+  <Page src='lessons/one.mdx' />
+  <Page src='lessons/two.mdx' />
+</Scroll>
 ```
 
-Each item file requires `title` frontmatter and can contain Markdown plus the supported static components such as `<Image>`, `<Video>`, and `<Question>` with `<Answer>` children. MDX JavaScript and imports are not supported; content files are parsed as data and never execute author code.
+Grid packages use the same exact-one-root rule and reference item documents:
+
+```mdx
+---
+title: Practice Package
+---
+
+<Grid columns={2}>
+  <Item src='practice/check.mdx' />
+  <Item src='practice/recall.mdx' />
+</Grid>
+```
+
+Every referenced Page or Item document requires title-only frontmatter and can contain Markdown plus supported static components such as `<Image>`, `<Video>`, and `<Questionnaire>`. A questionnaire contains one or more `<Question>` elements, each with `<Prompt>` and `<Option>` children. MDX JavaScript and imports are not supported; content files are parsed as data and never execute author code.
+
+```mdx
+<Questionnaire>
+  <Question type='single-choice'>
+    <Prompt>What does TypeScript add to JavaScript?</Prompt>
+    <Option value='runtime' correct={false}>
+      A separate runtime
+    </Option>
+    <Option value='types' correct={true}>
+      Static types and tooling
+    </Option>
+  </Question>
+</Questionnaire>
+```
 
 ## Install and build
 

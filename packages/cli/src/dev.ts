@@ -4,6 +4,11 @@ import type {
   RendererDevOptions,
   RendererDevServer,
 } from '@scorm-cli/core';
+import {
+  createContentManifest,
+  createScormRuntime,
+  scormDevMock,
+} from '@scorm-cli/scorm';
 import type { LoadedPackage } from './content';
 import { loadPackage } from './content';
 import { loadRenderer } from './renderer';
@@ -39,6 +44,14 @@ const defaultDependencies: DevDependencies = {
   debounceMs: 100,
 };
 
+function scriptsFor(content: LoadedPackage['content']) {
+  const contentManifest = createContentManifest(content);
+  return [
+    { id: 'scorm-dev-mock', source: scormDevMock },
+    { id: 'scorm-runtime', source: createScormRuntime(contentManifest) },
+  ];
+}
+
 export interface StartDevOptions {
   port?: number;
   host?: string;
@@ -57,6 +70,7 @@ export async function startDevPackage(
 
   const rendererOptions: RendererDevOptions = {
     contentRoot: initialPackage.contentRoot,
+    scripts: scriptsFor(initialPackage.content),
     ...(options.port === undefined ? {} : { port: options.port }),
     ...(options.host === undefined ? {} : { host: options.host }),
   };
@@ -80,7 +94,11 @@ export async function startDevPackage(
           if (closed) return;
           try {
             const nextPackage = await dependencies.loadPackage(contentPath);
-            if (!closed) await server.update(nextPackage.content);
+            if (!closed)
+              await server.update(
+                nextPackage.content,
+                scriptsFor(nextPackage.content),
+              );
           } catch (error) {
             if (!closed)
               server.reportError(

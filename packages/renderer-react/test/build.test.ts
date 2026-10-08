@@ -20,6 +20,7 @@ let outputDirectory: string;
 let entrypoint: RenderResult;
 let indexHtml: string;
 let appJs: string;
+let bundleJs: string;
 
 beforeAll(async () => {
   workDir = await mkdtemp(path.join(os.tmpdir(), 'renderer-react-'));
@@ -43,6 +44,18 @@ beforeAll(async () => {
     path.join(outputDirectory, 'assets', 'app.js'),
     'utf-8',
   );
+
+  // Concatenate every emitted script (not just the entry) so the exclusion
+  // checks below cover lazily split dev-only chunks too.
+  const assetFiles = await readdir(path.join(outputDirectory, 'assets'));
+  const jsFiles = assetFiles.filter((name) => name.endsWith('.js'));
+  bundleJs = (
+    await Promise.all(
+      jsFiles.map((name) =>
+        readFile(path.join(outputDirectory, 'assets', name), 'utf-8'),
+      ),
+    )
+  ).join('\n');
 }, 120_000);
 
 afterAll(async () => {
@@ -84,6 +97,29 @@ describe('renderReactPackage', () => {
     expect(appJs).not.toContain('scorm:preview-error');
     expect(appJs).not.toContain('scorm:preview-clear');
     expect(appJs).not.toContain('import.meta.hot');
+  });
+
+  it('does not ship the SCORM runtime event inspector or its panel', () => {
+    for (const marker of [
+      'scorm:runtime-event',
+      '__SCORM_DEV_EVENT_BUFFER__',
+      'ScormRuntimeEventInspector',
+      'SCORM runtime event inspector',
+      'SCORM events',
+      'Mock LMS',
+      'No SCORM runtime events yet',
+      'Clear captured SCORM events',
+      'lms.api-found',
+      'lms.api-missing',
+      'lms.initialize',
+      'lms.get-value',
+      'lms.set-value',
+      'lms.commit',
+      'lms.finish',
+    ]) {
+      expect(bundleJs).not.toContain(marker);
+    }
+    expect(bundleJs).not.toContain('import.meta.hot');
   });
 
   it('emits a compiled stylesheet', async () => {

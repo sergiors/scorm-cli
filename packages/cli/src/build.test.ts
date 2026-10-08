@@ -8,6 +8,7 @@ import {
 } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import JSZip from 'jszip';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildPackage } from './build';
 
@@ -23,11 +24,11 @@ describe('CLI build orchestration', () => {
     await mkdir(path.join(contentDir, 'media'), { recursive: true });
     await writeFile(
       path.join(contentDir, 'index.mdx'),
-      `---\ntitle: Demo\n---\n<Item src="lesson.mdx" />`,
+      `---\ntitle: Demo\n---\n<Grid><Item src="lesson.mdx" /></Grid>`,
     );
     await writeFile(
       path.join(contentDir, 'lesson.mdx'),
-      `---\ntitle: Lesson\n---\n<Image src="media/picture.svg" />`,
+      `---\ntitle: Lesson\n---\n<Image src="media/picture.svg" alt="Picture" />`,
     );
     await writeFile(path.join(contentDir, 'media', 'picture.svg'), '<svg/>');
     const output = path.join(temp, 'out.zip');
@@ -54,5 +55,19 @@ describe('CLI build orchestration', () => {
     const archive = await readFile(zipPath);
     expect(archive.subarray(0, 2).toString()).toBe('PK');
     expect((await stat(zipPath)).size).toBeGreaterThan(100);
+    const zip = await JSZip.loadAsync(archive);
+    const contentManifest = JSON.parse(
+      await zip.file('content-manifest.json')!.async('string'),
+    );
+    expect(contentManifest).toMatchObject({
+      title: 'Demo',
+      presentation: 'grid',
+      pages: {
+        '0': { id: expect.any(String), title: 'Lesson', questions: {} },
+      },
+    });
+    expect(await zip.file('scorm-runtime.js')!.async('string')).toContain(
+      JSON.stringify(contentManifest),
+    );
   });
 });

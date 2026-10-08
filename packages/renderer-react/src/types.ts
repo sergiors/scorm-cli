@@ -3,6 +3,7 @@ import type { RenderOptions } from '@scorm-cli/core';
 export type {
   Renderer,
   RendererDevOptions,
+  RendererDevScript,
   RendererDevServer,
   RenderOptions,
   RenderResult,

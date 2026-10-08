@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ContentRenderer } from '../app/components/ContentRenderer';
 import { InlineContent } from '../app/components/InlineContent';
 import type { ContentNode, InlineNode } from '../app/types';
+import { multipleChoiceQuestion, singleChoiceQuestion } from './fixtures';
 
 function render(nodes: ContentNode[], headingOffset?: number): string {
   return renderToStaticMarkup(
@@ -341,201 +342,85 @@ describe('ContentRenderer images and video', () => {
   });
 });
 
-describe('ContentRenderer callouts and examples', () => {
-  it.each([
-    ['info', 'Info', 'text-sky-600'],
-    ['tip', 'Tip', 'text-emerald-600'],
-    ['warning', 'Warning', 'text-amber-600'],
-    ['important', 'Important', 'text-destructive'],
-  ] as const)(
-    'renders the %s callout with its own label and icon',
-    (variant, label, color) => {
-      const html = render([
-        {
-          type: 'callout',
-          variant,
-          children: [
-            {
-              type: 'paragraph',
-              children: [{ type: 'text', value: 'Body' }],
-            },
-          ],
-        },
-      ]);
-      expect(html).toContain('role="note"');
-      expect(html).toContain(`aria-label="${label}"`);
-      expect(html).toContain(color);
-      expect(html).toContain('Body');
-    },
-  );
-
-  it('renders an example with a title and nested content', () => {
-    const titled = render([
-      {
-        type: 'example',
-        title: 'Worked example',
-        children: [{ type: 'code', value: 'add(1, 2);' }],
-      },
-    ]);
-    expect(titled).toContain('Worked example');
-    expect(titled).toContain('<pre');
-
-    const untitled = render([
-      {
-        type: 'example',
-        children: [
-          {
-            type: 'paragraph',
-            children: [{ type: 'text', value: 'Body' }],
-          },
-        ],
-      },
-    ]);
-    expect(untitled).toContain('Example');
-  });
-});
-
-describe('ContentRenderer steps', () => {
-  it('renders an ordered procedure with titles and nested content', () => {
+describe('ContentRenderer questionnaires', () => {
+  it('renders a grouped questionnaire through a single shadcn questionnaire root', () => {
     const html = render([
       {
-        type: 'steps',
-        steps: [
-          {
-            title: 'Install',
-            children: [
-              {
-                type: 'paragraph',
-                children: [{ type: 'text', value: 'Run the installer.' }],
-              },
-            ],
-          },
-          {
-            children: [
-              {
-                type: 'paragraph',
-                children: [{ type: 'text', value: 'No title here.' }],
-              },
-            ],
-          },
-        ],
+        type: 'questionnaire',
+        id: 'questionnaire:lesson.mdx:1:1',
+        questions: [singleChoiceQuestion],
       },
     ]);
-    expect(html).toContain('<ol');
-    expect(html).toContain('<li');
-    expect(html).toContain('Install');
-    expect(html).toContain('Run the installer.');
-    expect(html).toContain('No title here.');
-  });
-});
-
-describe('ContentRenderer questions', () => {
-  it('renders a single-choice question as radios without grading', () => {
-    const html = render([
-      {
-        type: 'question',
-        questionType: 'single-choice',
-        prompt: [
-          {
-            type: 'paragraph',
-            children: [{ type: 'text', value: 'Pick one' }],
-          },
-        ],
-        options: [
-          {
-            value: 'yes',
-            correct: true,
-            content: [
-              { type: 'paragraph', children: [{ type: 'text', value: 'Yes' }] },
-            ],
-          },
-          {
-            value: 'no',
-            correct: false,
-            content: [
-              { type: 'paragraph', children: [{ type: 'text', value: 'No' }] },
-            ],
-          },
-        ],
-      },
-    ]);
+    expect(html).toContain('data-slot="questionnaire"');
+    expect(html).toContain('data-slot="questionnaire-item"');
+    expect(html).toContain('data-slot="questionnaire-choice"');
     expect(html).toContain('<fieldset');
-    expect(html).toContain('aria-labelledby');
-    expect(html).toContain('Pick one');
+    expect(html).toContain('aria-labelledby=');
+    expect(html).toContain('Which option is correct?');
     expect(html).toContain('type="radio"');
     expect(html).not.toContain('type="checkbox"');
-    expect(html).toContain('value="yes"');
-    expect(html).toContain('value="no"');
-    expect(html).toContain('Yes');
-    expect(html).toContain('No');
-    expect(html).toContain('not graded');
+    expect(html).toContain('value="first"');
+    expect(html).toContain('value="second"');
+    expect(html).toContain('Option A');
+    expect(html).toContain('Option B');
+    expect(html).toContain('Submit questionnaire');
     // Correctness must never be surfaced to the DOM.
     expect(html).not.toContain('correct=');
     expect(html).not.toContain('data-correct');
   });
 
-  it('renders a multiple-choice question as checkboxes', () => {
+  it('groups every question into one root instead of a wrapper per question', () => {
     const html = render([
       {
-        type: 'question',
-        questionType: 'multiple-choice',
-        prompt: [
-          {
-            type: 'paragraph',
-            children: [{ type: 'text', value: 'Pick many' }],
-          },
-        ],
-        options: [
-          {
-            value: 'a',
-            correct: true,
-            content: [
-              { type: 'paragraph', children: [{ type: 'text', value: 'A' }] },
-            ],
-          },
-          {
-            value: 'b',
-            correct: false,
-            content: [
-              { type: 'paragraph', children: [{ type: 'text', value: 'B' }] },
-            ],
-          },
-        ],
+        type: 'questionnaire',
+        id: 'questionnaire:lesson.mdx:1:1',
+        questions: [singleChoiceQuestion, multipleChoiceQuestion],
       },
     ]);
+    expect((html.match(/data-slot="questionnaire"/g) ?? []).length).toBe(1);
+    expect((html.match(/data-slot="questionnaire-item"/g) ?? []).length).toBe(
+      2,
+    );
+    expect(html).toContain('type="radio"');
     expect(html).toContain('type="checkbox"');
-    expect(html).not.toContain('type="radio"');
   });
 
   it('renders a true-false question as radios using the option values', () => {
     const html = render([
       {
-        type: 'question',
-        questionType: 'true-false',
-        prompt: [
+        type: 'questionnaire',
+        id: 'questionnaire:check.mdx:1:1',
+        questions: [
           {
-            type: 'paragraph',
-            children: [{ type: 'text', value: 'Is it true?' }],
-          },
-        ],
-        options: [
-          {
-            value: 'true',
-            correct: true,
-            content: [
+            type: 'question',
+            id: 'question:check.mdx:1:1',
+            questionType: 'true-false',
+            prompt: [
               {
                 type: 'paragraph',
-                children: [{ type: 'text', value: 'True' }],
+                children: [{ type: 'text', value: 'Is it true?' }],
               },
             ],
-          },
-          {
-            value: 'false',
-            correct: false,
-            content: [
+            options: [
               {
-                type: 'paragraph',
-                children: [{ type: 'text', value: 'False' }],
+                value: 'true',
+                correct: true,
+                content: [
+                  {
+                    type: 'paragraph',
+                    children: [{ type: 'text', value: 'True' }],
+                  },
+                ],
+              },
+              {
+                value: 'false',
+                correct: false,
+                content: [
+                  {
+                    type: 'paragraph',
+                    children: [{ type: 'text', value: 'False' }],
+                  },
+                ],
               },
             ],
           },
@@ -551,48 +436,55 @@ describe('ContentRenderer questions', () => {
   it('supports rich prompt and option content', () => {
     const html = render([
       {
-        type: 'question',
-        questionType: 'single-choice',
-        prompt: [
+        type: 'questionnaire',
+        id: 'questionnaire:check.mdx:1:1',
+        questions: [
           {
-            type: 'heading',
-            depth: 3,
-            children: [{ type: 'text', value: 'Context' }],
-          },
-          {
-            type: 'paragraph',
-            children: [
-              { type: 'text', value: 'Read the ' },
+            type: 'question',
+            id: 'question:check.mdx:1:1',
+            questionType: 'single-choice',
+            prompt: [
               {
-                type: 'strong',
-                children: [{ type: 'text', value: 'details' }],
+                type: 'heading',
+                depth: 3,
+                children: [{ type: 'text', value: 'Context' }],
               },
-              { type: 'text', value: '.' },
-            ],
-          },
-        ],
-        options: [
-          {
-            value: 'a',
-            correct: true,
-            content: [
               {
                 type: 'paragraph',
                 children: [
-                  { type: 'text', value: 'An ' },
+                  { type: 'text', value: 'Read the ' },
                   {
-                    type: 'emphasis',
-                    children: [{ type: 'text', value: 'emphasised' }],
+                    type: 'strong',
+                    children: [{ type: 'text', value: 'details' }],
                   },
-                  { type: 'text', value: ' option' },
+                  { type: 'text', value: '.' },
                 ],
               },
             ],
-          },
-          {
-            value: 'b',
-            correct: false,
-            content: [{ type: 'code', value: 'codeOption()' }],
+            options: [
+              {
+                value: 'a',
+                correct: true,
+                content: [
+                  {
+                    type: 'paragraph',
+                    children: [
+                      { type: 'text', value: 'An ' },
+                      {
+                        type: 'emphasis',
+                        children: [{ type: 'text', value: 'emphasised' }],
+                      },
+                      { type: 'text', value: ' option' },
+                    ],
+                  },
+                ],
+              },
+              {
+                value: 'b',
+                correct: false,
+                content: [{ type: 'code', value: 'codeOption()' }],
+              },
+            ],
           },
         ],
       },
@@ -602,6 +494,29 @@ describe('ContentRenderer questions', () => {
     expect(html).toContain('<em');
     expect(html).toContain('<pre');
     expect(html).toContain('codeOption()');
+  });
+
+  it('renders questionnaires nested in list items', () => {
+    const html = render([
+      {
+        type: 'list',
+        ordered: false,
+        items: [
+          {
+            children: [
+              {
+                type: 'questionnaire',
+                id: 'questionnaire:nested.mdx:1:1',
+                questions: [singleChoiceQuestion],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(html).toContain('<li');
+    expect(html).toContain('data-slot="questionnaire"');
+    expect(html).toContain('Which option is correct?');
   });
 });
 

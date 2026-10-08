@@ -1,106 +1,118 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addVisited,
-  findItem,
-  getAdjacentItems,
-  getPackageItems,
-  getPackageSections,
+  collectQuestionnaireIds,
+  collectQuestionnaires,
+  getPresentationNodes,
   isPackageComplete,
 } from '../app/lib/content-helpers';
-import { makeEmptyPackage, samplePackage } from './fixtures';
+import type { ContentNode, QuestionnaireNode } from '../app/types';
+import {
+  gridPackage,
+  makeEmptyGridPackage,
+  makeEmptyPackage,
+  questionnaireNode,
+  scrollPackage,
+} from './fixtures';
 
-describe('getPackageItems', () => {
-  it('flattens items in document order', () => {
-    expect(getPackageItems(samplePackage).map((item) => item.id)).toEqual([
-      'intro',
-      'setup',
-      'details',
-      'step-one',
-      'step-two',
+describe('getPresentationNodes', () => {
+  it('returns the pages of a scroll presentation in document order', () => {
+    expect(getPresentationNodes(scrollPackage).map((node) => node.id)).toEqual([
+      'page:intro.mdx',
+      'page:setup.mdx',
     ]);
   });
 
-  it('returns an empty list for an empty package', () => {
-    expect(getPackageItems(makeEmptyPackage())).toEqual([]);
+  it('returns the items of a grid presentation in document order', () => {
+    expect(getPresentationNodes(gridPackage).map((node) => node.id)).toEqual([
+      'item:functions.mdx',
+      'item:types.mdx',
+      'item:details.mdx',
+    ]);
   });
-});
 
-describe('getPackageSections', () => {
-  it('returns only top-level sections', () => {
-    expect(
-      getPackageSections(samplePackage).map((section) => section.id),
-    ).toEqual(['getting-started', 'media', 'walkthrough']);
-  });
-});
-
-describe('findItem', () => {
-  it('resolves an item by id and returns undefined otherwise', () => {
-    const items = getPackageItems(samplePackage);
-    expect(findItem(items, 'details')?.id).toBe('details');
-    expect(findItem(items, 'missing')).toBeUndefined();
-    expect(findItem(items, undefined)).toBeUndefined();
+  it('returns an empty list for an empty presentation', () => {
+    expect(getPresentationNodes(makeEmptyPackage())).toEqual([]);
+    expect(getPresentationNodes(makeEmptyGridPackage())).toEqual([]);
   });
 });
 
 describe('isPackageComplete', () => {
-  it('is false until every item has been visited', () => {
-    expect(isPackageComplete(samplePackage, ['intro', 'setup'])).toBe(false);
+  it('is false until every page has been visited', () => {
+    expect(isPackageComplete(scrollPackage, ['page:intro.mdx'])).toBe(false);
   });
 
-  it('is true once every item has been visited', () => {
+  it('is true once every page has been visited', () => {
     expect(
-      isPackageComplete(samplePackage, [
-        'intro',
-        'setup',
-        'details',
-        'step-one',
-        'step-two',
+      isPackageComplete(scrollPackage, ['page:intro.mdx', 'page:setup.mdx']),
+    ).toBe(true);
+  });
+
+  it('tracks grid items the same way', () => {
+    expect(isPackageComplete(gridPackage, ['item:functions.mdx'])).toBe(false);
+    expect(
+      isPackageComplete(gridPackage, [
+        'item:functions.mdx',
+        'item:types.mdx',
+        'item:details.mdx',
       ]),
     ).toBe(true);
   });
 
   it('is false for an empty package', () => {
     expect(isPackageComplete(makeEmptyPackage(), [])).toBe(false);
+    expect(isPackageComplete(makeEmptyGridPackage(), [])).toBe(false);
   });
 });
 
-describe('getAdjacentItems', () => {
-  const items = getPackageItems(samplePackage);
-
-  it('resolves current, previous and next', () => {
-    const adjacent = getAdjacentItems(items, 'details');
-    expect(adjacent.index).toBe(2);
-    expect(adjacent.previous?.id).toBe('setup');
-    expect(adjacent.next?.id).toBe('step-one');
+describe('collectQuestionnaireIds', () => {
+  it('returns no ids when no questionnaire is present', () => {
+    expect(
+      collectQuestionnaireIds([
+        { type: 'paragraph', children: [{ type: 'text', value: 'Plain' }] },
+      ]),
+    ).toEqual([]);
   });
 
-  it('has no previous for the first item', () => {
-    const adjacent = getAdjacentItems(items, 'intro');
-    expect(adjacent.previous).toBeUndefined();
-    expect(adjacent.next?.id).toBe('setup');
+  it('collects the id of a top-level questionnaire', () => {
+    const nodes: ContentNode[] = [questionnaireNode];
+    expect(collectQuestionnaireIds(nodes)).toEqual([questionnaireNode.id]);
   });
 
-  it('has no next for the last item', () => {
-    const adjacent = getAdjacentItems(items, 'step-two');
-    expect(adjacent.previous?.id).toBe('step-one');
-    expect(adjacent.next).toBeUndefined();
-  });
-
-  it('returns -1 when the current id is unknown', () => {
-    const adjacent = getAdjacentItems(items, 'missing');
-    expect(adjacent.index).toBe(-1);
-    expect(adjacent.previous).toBeUndefined();
-    expect(adjacent.next).toBeUndefined();
+  it('recurses through lists and quotes in document order', () => {
+    const nested: QuestionnaireNode = {
+      type: 'questionnaire',
+      id: 'questionnaire:nested.mdx:1:1',
+      questions: [questionnaireNode.questions[0]],
+    };
+    const nodes: ContentNode[] = [
+      {
+        type: 'list',
+        ordered: false,
+        items: [{ children: [questionnaireNode] }],
+      },
+      {
+        type: 'quote',
+        children: [nested],
+      },
+    ];
+    expect(collectQuestionnaireIds(nodes)).toEqual([
+      questionnaireNode.id,
+      nested.id,
+    ]);
   });
 });
 
-describe('addVisited', () => {
-  it('adds an id and preserves identity for duplicates', () => {
-    const initial = new Set(['intro']);
-    const added = addVisited(initial, 'setup');
-    expect([...added]).toEqual(['intro', 'setup']);
+describe('collectQuestionnaires', () => {
+  it('returns the questionnaire nodes themselves, not just their ids', () => {
+    const nodes: ContentNode[] = [questionnaireNode];
+    expect(collectQuestionnaires(nodes)).toEqual([questionnaireNode]);
+  });
 
-    const again = addVisited(added, 'setup');
-    expect(again).toBe(added);
+  it('returns an empty list for content without questionnaires', () => {
+    expect(
+      collectQuestionnaires([
+        { type: 'paragraph', children: [{ type: 'text', value: 'Plain' }] },
+      ]),
+    ).toEqual([]);
   });
 });

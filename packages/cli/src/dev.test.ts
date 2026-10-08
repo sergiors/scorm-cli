@@ -3,13 +3,29 @@ import type {
   Renderer,
   RendererDevOptions,
 } from '@scorm-cli/core';
+import {
+  createContentManifest,
+  createScormRuntime,
+  scormDevMock,
+} from '@scorm-cli/scorm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LoadedPackage } from './content';
 import { startDevPackage } from './dev';
 
 const content: ContentPackage = {
   metadata: { title: 'Demo' },
-  children: [],
+  presentation: {
+    type: 'grid',
+    items: [
+      {
+        type: 'item',
+        id: 'item:lesson.mdx',
+        source: 'lesson.mdx',
+        metadata: { title: 'Lesson' },
+        content: [],
+      },
+    ],
+  },
 };
 
 function loaded(title: string): LoadedPackage {
@@ -26,18 +42,37 @@ describe('CLI dev orchestration', () => {
   it('updates valid content, reports parse errors, recovers, and closes cleanly', async () => {
     vi.useFakeTimers();
     let loadMode: 'valid' | 'invalid' = 'valid';
+    let loadedTitle = 'Initial';
     let onChange = () => {};
     let watchClosed = 0;
     let serverClosed = 0;
-    const updates: ContentPackage[] = [];
+    const updates: Array<{
+      content: ContentPackage;
+      scripts?: RendererDevOptions['scripts'];
+    }> = [];
     const errors: string[] = [];
     const dev = vi.fn(
       async (_initial: ContentPackage, options: RendererDevOptions) => {
-        expect(options).toEqual({ contentRoot: '/content', port: 4173 });
+        expect(options).toEqual({
+          contentRoot: '/content',
+          scripts: [
+            { id: 'scorm-dev-mock', source: scormDevMock },
+            {
+              id: 'scorm-runtime',
+              source: createScormRuntime(
+                createContentManifest(loaded('Initial').content),
+              ),
+            },
+          ],
+          port: 4173,
+        });
         return {
           url: 'http://localhost:4173',
-          update: async (next: ContentPackage) => {
-            updates.push(next);
+          update: async (
+            next: ContentPackage,
+            scripts?: RendererDevOptions['scripts'],
+          ) => {
+            updates.push({ content: next, scripts });
           },
           reportError: (message: string) => errors.push(message),
           close: async () => {
@@ -53,7 +88,7 @@ describe('CLI dev orchestration', () => {
       {
         loadPackage: async () => {
           if (loadMode === 'invalid') throw new Error('invalid MDX');
-          return loaded('Updated');
+          return loaded(loadedTitle);
         },
         loadRenderer: async () => renderer,
         watch: async (_root, callback) => {
@@ -77,7 +112,12 @@ describe('CLI dev orchestration', () => {
     onChange();
     await vi.advanceTimersByTimeAsync(10);
     await Promise.resolve();
-    expect(updates.map((next) => next.metadata.title)).toEqual(['Updated']);
+    expect(updates.map(({ content: next }) => next.metadata.title)).toEqual([
+      'Initial',
+    ]);
+    expect(updates[0]?.scripts?.[1]?.source).toBe(
+      createScormRuntime(createContentManifest(loaded('Initial').content)),
+    );
 
     loadMode = 'invalid';
     onChange();
@@ -86,10 +126,14 @@ describe('CLI dev orchestration', () => {
     expect(errors).toEqual(['invalid MDX']);
 
     loadMode = 'valid';
+    loadedTitle = 'Updated';
     onChange();
     await vi.advanceTimersByTimeAsync(10);
     await Promise.resolve();
     expect(updates).toHaveLength(2);
+    expect(updates[1]?.scripts?.[1]?.source).toBe(
+      createScormRuntime(createContentManifest(loaded('Updated').content)),
+    );
 
     await session.close();
     expect(watchClosed).toBe(1);

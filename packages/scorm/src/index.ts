@@ -4,12 +4,14 @@ import os from 'node:os';
 import JSZip from 'jszip';
 import { create } from 'xmlbuilder2';
 import type { PackageMetadata, RenderResult } from '@scorm-cli/core';
-import { scormRuntime } from './runtime';
+import { createScormRuntime } from './runtime';
+import type { ContentManifest } from './content-manifest';
 
 export interface PackageScormOptions {
   metadata: PackageMetadata;
   renderResult: RenderResult;
   outputPath: string;
+  contentManifest: ContentManifest;
 }
 
 function identifier(value: string): string {
@@ -137,13 +139,19 @@ export async function packageScorm(
     const rendererFiles = await walkFiles(stage);
     if (
       rendererFiles.includes('imsmanifest.xml') ||
-      rendererFiles.includes('scorm-runtime.js')
+      rendererFiles.includes('scorm-runtime.js') ||
+      rendererFiles.includes('content-manifest.json')
     ) {
       throw new Error('renderer output uses a reserved SCORM package filename');
     }
     await fs.writeFile(
       path.join(stage, 'scorm-runtime.js'),
-      scormRuntime,
+      createScormRuntime(options.contentManifest),
+      'utf8',
+    );
+    await fs.writeFile(
+      path.join(stage, 'content-manifest.json'),
+      `${JSON.stringify(options.contentManifest, null, 2)}\n`,
       'utf8',
     );
     await injectRuntime(path.join(stage, 'index.html'));
@@ -173,4 +181,9 @@ export async function packageScorm(
   }
 }
 
-export { scormRuntime };
+export { scormDevMock } from './mock';
+export { createScormRuntime, scormRuntime } from './runtime';
+export { createContentManifest } from './content-manifest';
+export type { ContentManifest } from './content-manifest';
+export { decodeSuspendData, encodeSuspendData } from './state-codec';
+export type { CompactSuspendData } from './state-codec';

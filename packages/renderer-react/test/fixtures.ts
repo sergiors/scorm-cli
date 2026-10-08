@@ -1,9 +1,86 @@
-import type { ContentPackage, ContentNode } from '@scorm-cli/core';
+import type {
+  ContentPackage,
+  ContentNode,
+  GridNode,
+  ItemNode,
+  PageNode,
+  QuestionnaireNode,
+  QuestionNode,
+  ScrollNode,
+} from '@scorm-cli/core';
+
+/** A single-choice question as authored inside a questionnaire. */
+export const singleChoiceQuestion: QuestionNode = {
+  type: 'question',
+  id: 'question:intro.mdx:1:1',
+  questionType: 'single-choice',
+  prompt: [
+    {
+      type: 'paragraph',
+      children: [{ type: 'text', value: 'Which option is correct?' }],
+    },
+  ],
+  options: [
+    {
+      value: 'first',
+      correct: true,
+      content: [
+        { type: 'paragraph', children: [{ type: 'text', value: 'Option A' }] },
+      ],
+    },
+    {
+      value: 'second',
+      correct: false,
+      content: [
+        { type: 'paragraph', children: [{ type: 'text', value: 'Option B' }] },
+      ],
+    },
+  ],
+};
+
+/** A multiple-choice question, so grouping exercises both input types. */
+export const multipleChoiceQuestion: QuestionNode = {
+  type: 'question',
+  id: 'question:intro.mdx:1:2',
+  questionType: 'multiple-choice',
+  prompt: [
+    {
+      type: 'paragraph',
+      children: [{ type: 'text', value: 'Which options apply?' }],
+    },
+  ],
+  options: [
+    {
+      value: 'alpha',
+      correct: true,
+      content: [
+        { type: 'paragraph', children: [{ type: 'text', value: 'Alpha' }] },
+      ],
+    },
+    {
+      value: 'beta',
+      correct: false,
+      content: [
+        { type: 'paragraph', children: [{ type: 'text', value: 'Beta' }] },
+      ],
+    },
+  ],
+};
 
 /**
- * Rich content exercising every block and inline variant. Shared by the
- * package-level and DOM test suites; dedicated `content.test.tsx` cases build
- * focused nodes inline instead.
+ * A grouped questionnaire (single- then multiple-choice) with rich prompts and
+ * options. Shared by the questionnaire component and presentation tests.
+ */
+export const questionnaireNode: QuestionnaireNode = {
+  type: 'questionnaire',
+  id: 'questionnaire:intro.mdx:1:1',
+  questions: [singleChoiceQuestion, multipleChoiceQuestion],
+};
+
+/**
+ * Rich content exercising every supported block and inline variant. Shared by
+ * the package-level and DOM test suites; dedicated `content.test.tsx` cases
+ * build focused nodes inline instead.
  */
 export const richContent: ContentNode[] = [
   {
@@ -99,185 +176,83 @@ export const richContent: ContentNode[] = [
     poster: './assets/poster.png',
     captions: './assets/lesson.vtt',
   },
-  {
-    type: 'callout',
-    variant: 'tip',
-    children: [
-      {
-        type: 'paragraph',
-        children: [{ type: 'text', value: 'Try the exercise yourself.' }],
-      },
-    ],
-  },
-  {
-    type: 'example',
-    title: 'A worked example',
-    children: [{ type: 'code', value: 'add(1, 2);', language: 'ts' }],
-  },
-  {
-    type: 'question',
-    questionType: 'single-choice',
-    prompt: [
-      {
-        type: 'paragraph',
-        children: [{ type: 'text', value: 'Which option is correct?' }],
-      },
-    ],
-    options: [
-      {
-        value: 'a',
-        correct: true,
-        content: [
-          {
-            type: 'paragraph',
-            children: [{ type: 'text', value: 'Option A' }],
-          },
-        ],
-      },
-      {
-        value: 'b',
-        correct: false,
-        content: [
-          {
-            type: 'paragraph',
-            children: [{ type: 'text', value: 'Option B' }],
-          },
-        ],
-      },
-    ],
-  },
-  {
-    type: 'steps',
-    steps: [
-      {
-        title: 'Install',
-        children: [
-          {
-            type: 'paragraph',
-            children: [{ type: 'text', value: 'Run the installer.' }],
-          },
-        ],
-      },
-      {
-        title: 'Configure',
-        children: [
-          {
-            type: 'paragraph',
-            children: [{ type: 'text', value: 'Edit the config file.' }],
-          },
-        ],
-      },
-    ],
-  },
+  questionnaireNode,
 ];
 
-export const samplePackage: ContentPackage = {
-  metadata: {
-    title: 'Rendering Fundamentals',
-    description: 'A short package used by the renderer test suite.',
-  },
-  children: [
-    {
-      type: 'section',
-      id: 'getting-started',
-      title: 'Getting started',
-      presentation: { layout: 'list' },
-      children: [
-        {
-          type: 'item',
-          id: 'intro',
-          source: 'intro.mdx',
-          presentation: { open: 'page' },
-          metadata: {
-            title: 'Introduction',
-            description: 'What this package covers.',
-            thumbnail: './assets/thumb.svg',
-          },
-          content: richContent,
-        },
-      ],
-    },
-    {
-      type: 'section',
-      id: 'media',
-      title: 'Media',
-      presentation: { layout: 'grid', columns: 2 },
-      children: [
-        {
-          type: 'item',
-          id: 'setup',
-          source: 'setup.mdx',
-          presentation: { open: 'page' },
-          metadata: {
-            title: 'Setting things up',
-            thumbnail: './assets/setup.svg',
-          },
-          content: [
-            {
-              type: 'paragraph',
-              children: [{ type: 'text', value: 'Setup instructions.' }],
-            },
-          ],
-        },
-        {
-          type: 'item',
-          id: 'details',
-          source: 'details.mdx',
-          presentation: { open: 'modal' },
-          metadata: {
-            title: 'Extra details',
-            description: 'Opens in a modal.',
-            thumbnail: './assets/details.svg',
-          },
-          content: [
-            {
-              type: 'paragraph',
-              children: [{ type: 'text', value: 'Modal body content.' }],
-            },
-          ],
-        },
-      ],
-    },
-    {
-      type: 'section',
-      id: 'walkthrough',
-      title: 'Walkthrough',
-      presentation: { layout: 'sequence' },
-      children: [
-        {
-          type: 'item',
-          id: 'step-one',
-          source: 'step-one.mdx',
-          presentation: { open: 'page' },
-          metadata: { title: 'Step one' },
-          content: [
-            {
-              type: 'paragraph',
-              children: [{ type: 'text', value: 'First step.' }],
-            },
-          ],
-        },
-        {
-          type: 'item',
-          id: 'step-two',
-          source: 'step-two.mdx',
-          presentation: { open: 'page' },
-          metadata: { title: 'Step two' },
-          content: [
-            {
-              type: 'paragraph',
-              children: [{ type: 'text', value: 'Second step.' }],
-            },
-          ],
-        },
-      ],
-    },
-  ],
+function paragraph(value: string): ContentNode {
+  return { type: 'paragraph', children: [{ type: 'text', value }] };
+}
+
+export const introPage: PageNode = {
+  type: 'page',
+  id: 'page:intro.mdx',
+  source: 'intro.mdx',
+  metadata: { title: 'Introduction' },
+  content: richContent,
+};
+
+export const setupPage: PageNode = {
+  type: 'page',
+  id: 'page:setup.mdx',
+  source: 'setup.mdx',
+  metadata: { title: 'Setting things up' },
+  content: [paragraph('Setup instructions.')],
+};
+
+export const scrollPackage: ContentPackage = {
+  metadata: { title: 'Rendering Fundamentals' },
+  presentation: {
+    type: 'scroll',
+    pages: [introPage, setupPage],
+  } satisfies ScrollNode,
+};
+
+/** Alias kept for the build/dev suites that only need representative content. */
+export const samplePackage: ContentPackage = scrollPackage;
+
+export const functionsItem: ItemNode = {
+  type: 'item',
+  id: 'item:functions.mdx',
+  source: 'functions.mdx',
+  metadata: { title: 'Functions' },
+  content: [paragraph('Function body.')],
+};
+
+export const typesItem: ItemNode = {
+  type: 'item',
+  id: 'item:types.mdx',
+  source: 'types.mdx',
+  metadata: { title: 'Types' },
+  content: [paragraph('Type body.')],
+};
+
+export const detailsItem: ItemNode = {
+  type: 'item',
+  id: 'item:details.mdx',
+  source: 'details.mdx',
+  metadata: { title: 'Extra details' },
+  content: [paragraph('Modal body content.')],
+};
+
+export const gridPackage: ContentPackage = {
+  metadata: { title: 'Grid package' },
+  presentation: {
+    type: 'grid',
+    columns: 2,
+    items: [functionsItem, typesItem, detailsItem],
+  } satisfies GridNode,
 };
 
 export function makeEmptyPackage(): ContentPackage {
   return {
     metadata: { title: 'Empty package' },
-    children: [],
+    presentation: { type: 'scroll', pages: [] } satisfies ScrollNode,
+  };
+}
+
+export function makeEmptyGridPackage(): ContentPackage {
+  return {
+    metadata: { title: 'Empty grid package' },
+    presentation: { type: 'grid', items: [] } satisfies GridNode,
   };
 }

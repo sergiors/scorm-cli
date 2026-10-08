@@ -1,150 +1,111 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { PackageApp } from '../app/App';
-import { CompletionNotice } from '../app/components/CompletionNotice';
 import { PackageView } from '../app/components/PackageView';
 import type { ContentPackage } from '../app/types';
-import { makeEmptyPackage, samplePackage } from './fixtures';
+import {
+  gridPackage,
+  makeEmptyGridPackage,
+  makeEmptyPackage,
+  scrollPackage,
+} from './fixtures';
 
-function renderView(contentPackage: ContentPackage = samplePackage) {
+function renderView(contentPackage: ContentPackage) {
   return renderToStaticMarkup(<PackageView contentPackage={contentPackage} />);
 }
 
-const sequencePackage: ContentPackage = {
-  metadata: { title: 'Sequence only' },
-  children: [
-    {
-      type: 'section',
-      id: 'walkthrough',
-      title: 'Walkthrough',
-      presentation: { layout: 'sequence' },
-      children: [
-        {
-          type: 'item',
-          id: 'step-one',
-          source: 'step-one.mdx',
-          presentation: { open: 'page' },
-          metadata: { title: 'Step one' },
-          content: [
-            {
-              type: 'paragraph',
-              children: [{ type: 'text', value: 'First step.' }],
-            },
-          ],
-        },
-        {
-          type: 'item',
-          id: 'step-two',
-          source: 'step-two.mdx',
-          presentation: { open: 'page' },
-          metadata: { title: 'Step two' },
-          content: [
-            {
-              type: 'paragraph',
-              children: [{ type: 'text', value: 'Second step.' }],
-            },
-          ],
-        },
-      ],
-    },
-  ],
-};
-
-describe('PackageView', () => {
-  it('renders the package title and description', () => {
-    const html = renderView();
-    expect(html).toContain('Rendering Fundamentals');
-    expect(html).toContain('A short package used by the renderer test suite.');
-  });
-
-  it('renders both navigation landmarks without a router', () => {
-    const html = renderView();
-    const matches = html.match(/aria-label="Package navigation"/g) ?? [];
-    expect(matches.length).toBeGreaterThanOrEqual(1);
-    expect(html).toContain('Skip to content');
-  });
-
-  it('renders section titles following their presentation', () => {
-    const html = renderView();
-    expect(html).toContain('Getting started');
-    expect(html).toContain('Media');
-    expect(html).toContain('Walkthrough');
-    // list section stays a vertical flex column
-    expect(html).toContain('flex-col');
-    // grid section with 2 columns is exposed via a responsive card grid
-    expect(html).toContain('grid-cols-2');
-  });
-
-  it('renders grid thumbnails for items that provide one', () => {
-    const html = renderView();
-    expect(html).toContain('src="./assets/setup.svg"');
-  });
-
-  it('shows the first item as current and its content', () => {
-    const html = renderView();
-    expect(html).toContain('Item 1 of 5');
+describe('PackageView scroll presentation', () => {
+  it('renders only the first page', () => {
+    const html = renderView(scrollPackage);
     expect(html).toContain('Introduction');
     expect(html).toContain('Welcome');
-    expect(html).toContain('aria-current="page"');
-    expect(html).toContain('Current item');
+    expect(html).not.toContain('Setting things up');
+    expect(html).not.toContain('Setup instructions.');
   });
 
-  it('does not open a modal until a modal item is selected', () => {
-    const html = renderView();
-    expect(html).not.toContain('role="dialog"');
-    expect(html).not.toContain('Modal body content.');
+  it('does not render a package header, navigation shell or skip link', () => {
+    const html = renderView(scrollPackage);
+    expect(html).not.toContain('Rendering Fundamentals');
+    expect(html).not.toContain('Package navigation');
+    expect(html).not.toContain('Skip to content');
+    expect(html).not.toContain('Item 1 of');
   });
 
-  it('does not render package progress UI and disables previous on the first item', () => {
-    const html = renderView();
-    expect(html).not.toContain('role="progressbar"');
-    expect(html).not.toContain('items visited');
-    const previousButton = html.slice(html.indexOf('Previous'));
-    expect(previousButton).toContain('disabled');
+  it('renders the current page as a full-height scene without paging controls', () => {
+    const html = renderView(scrollPackage);
+    // The displayed page fills the viewport; no adjacent page peeks in.
+    expect(html).toContain('min-h-dvh');
+    expect(html).not.toContain('snap-proximity');
+    expect(html).not.toContain('snap-start');
+    // The package never exposes scroll paging controls; the questionnaire's
+    // own wizard controls are unrelated and may be present.
+    expect(html).not.toContain('Previous page');
+    expect(html).not.toContain('Continue to next page');
   });
 
-  it('does not show the completion notice before finishing', () => {
-    const html = renderView();
-    expect(html).not.toContain('Package complete');
-    expect(html).not.toContain('Completed');
-  });
-
-  it('opens a sequence package on its first item without a group presentation', () => {
-    const html = renderView(sequencePackage);
-    expect(html).toContain('Item 1 of 2');
-    expect(html).toContain('Step one');
-    expect(html).toContain('Step two');
-    // Sequence sections use a compact ordered reference, not list/grid cards.
-    expect(html).toContain('<ol');
-    expect(html).not.toContain('<img');
-  });
-
-  it('shows an empty state when the package has no items', () => {
+  it('shows an empty state when a scroll package has no pages', () => {
     const html = renderView(makeEmptyPackage());
-    expect(html).toContain('does not contain any items');
+    expect(html).toContain('does not contain any content');
   });
 });
 
-describe('CompletionNotice', () => {
-  it('renders nothing when incomplete', () => {
-    expect(renderToStaticMarkup(<CompletionNotice complete={false} />)).toBe(
-      '',
-    );
+describe('PackageView grid presentation', () => {
+  it('renders item cards using the authored titles', () => {
+    const html = renderView(gridPackage);
+    expect(html).toContain('Functions');
+    expect(html).toContain('Types');
+    expect(html).toContain('Extra details');
   });
 
-  it('renders an accessible completion status', () => {
-    const html = renderToStaticMarkup(<CompletionNotice complete />);
-    expect(html).toContain('role="status"');
-    expect(html).toContain('aria-live="polite"');
-    expect(html).toContain('Package complete');
+  it('does not render item content inline', () => {
+    const html = renderView(gridPackage);
+    expect(html).not.toContain('Function body.');
+    expect(html).not.toContain('Modal body content.');
+  });
+
+  it('carries the authored column count into the responsive grid', () => {
+    const html = renderView(gridPackage);
+    expect(html).toContain('grid-cols-1');
+    expect(html).toContain('--grid-columns:2');
+  });
+
+  it('does not open a dialog until a card is selected', () => {
+    const html = renderView(gridPackage);
+    expect(html).not.toContain('role="dialog"');
+    expect(html).not.toContain('data-slot="dialog-content"');
+  });
+
+  it('shows an empty state when a grid package has no items', () => {
+    const html = renderView(makeEmptyGridPackage());
+    expect(html).toContain('does not contain any content');
+  });
+});
+
+describe('PackageView shared', () => {
+  it('does not render any progress or completion UI', () => {
+    const scrollHtml = renderView(scrollPackage);
+    const gridHtml = renderView(gridPackage);
+    for (const html of [scrollHtml, gridHtml]) {
+      expect(html).not.toContain('role="progressbar"');
+      expect(html).not.toContain('items visited');
+      expect(html).not.toContain('Package complete');
+      expect(html).not.toContain('Completed');
+    }
   });
 });
 
 describe('PackageApp', () => {
-  it('renders the view for the provided content package', () => {
+  it('renders the authored scroll view for the provided content package', () => {
     const html = renderToStaticMarkup(
-      <PackageApp contentPackage={samplePackage} />,
+      <PackageApp contentPackage={scrollPackage} />,
     );
-    expect(html).toContain('Rendering Fundamentals');
+    expect(html).toContain('Introduction');
+  });
+
+  it('renders the authored grid view for the provided content package', () => {
+    const html = renderToStaticMarkup(
+      <PackageApp contentPackage={gridPackage} />,
+    );
+    expect(html).toContain('Functions');
   });
 });

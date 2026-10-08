@@ -1,27 +1,32 @@
 ---
 title: Knowledge check
-description: Check your understanding of static types.
 ---
 
-# One final question
+# Final questions
 
-<Question type='single-choice'>
-  <Prompt>
-    Consider this declaration. When does TypeScript catch the incompatible
-    assignment?
-
-    ```ts
-    const count: number = 'three';
-    ```
-
-  </Prompt>
-  <Option value='deployment' correct={false}>
-    Only after an application is deployed
-  </Option>
-  <Option value='development' correct={true}>
-    During development and compilation, before the code runs
-  </Option>
-  <Option value='form' correct={false}>
-    Only while a user is filling out a form
-  </Option>
-</Question>
+<Questionnaire>
+  <Question type='multiple-choice'>
+    <Prompt>
+      Consider `const count: number = 'three';`. When does TypeScript catch this
+      incompatible assignment?
+    </Prompt>
+    <Option value='deployment' correct={false}>
+      Only after an application is deployed
+    </Option>
+    <Option value='development' correct={true}>
+      During development and compilation, before the code runs
+    </Option>
+    <Option value='form' correct={false}>
+      Only while a user is filling out a form
+    </Option>
+  </Question>
+  <Question type='single-choice'>
+    <Prompt>What does TypeScript add to JavaScript?</Prompt>
+    <Option value='runtime' correct={false}>
+      A separate runtime that replaces JavaScript
+    </Option>
+    <Option value='types' correct={true}>
+      Static types and tooling that compile to JavaScript
+    </Option>
+  </Question>
+</Questionnaire>

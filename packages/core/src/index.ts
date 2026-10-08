@@ -1,33 +1,38 @@
 export interface PackageMetadata {
   title: string;
-  description?: string;
 }
 
 export interface ContentPackage {
   metadata: PackageMetadata;
-  children: StructureNode[];
+  presentation: RootPresentation;
 }
 
-export type StructureNode = SectionNode | ItemNode;
+export type RootPresentation = ScrollNode | GridNode;
 
-export type SectionLayout = 'list' | 'grid' | 'sequence';
+export interface ScrollNode {
+  type: 'scroll';
+  pages: PageNode[];
+}
 
-export type ItemOpenMode = 'page' | 'modal';
-
-export interface SectionNode {
-  type: 'section';
+export interface PageNode {
+  type: 'page';
   id: string;
-  title?: string;
-  presentation: { layout: SectionLayout; columns?: number };
-  children: ItemNode[];
+  source: string;
+  metadata: { title: string };
+  content: ContentNode[];
+}
+
+export interface GridNode {
+  type: 'grid';
+  columns?: number;
+  items: ItemNode[];
 }
 
 export interface ItemNode {
   type: 'item';
   id: string;
   source: string;
-  presentation: { open: ItemOpenMode };
-  metadata: { title: string; description?: string; thumbnail?: string };
+  metadata: { title: string };
   content: ContentNode[];
 }
 
@@ -87,10 +92,7 @@ export type ContentNode =
   | QuoteNode
   | ImageNode
   | VideoNode
-  | CalloutNode
-  | ExampleNode
-  | QuestionNode
-  | StepsNode;
+  | QuestionnaireNode;
 
 export interface HeadingNode {
   type: 'heading';
@@ -133,39 +135,39 @@ export interface VideoNode {
   captions?: string;
 }
 
-export interface CalloutNode {
-  type: 'callout';
-  variant: 'info' | 'tip' | 'warning' | 'important';
-  children: ContentNode[];
-}
-
-export interface ExampleNode {
-  type: 'example';
-  title?: string;
-  children: ContentNode[];
-}
-
 export interface QuestionNode {
   type: 'question';
+  id: string;
   questionType: QuestionType;
   prompt: ContentNode[];
   options: QuestionOption[];
+}
+
+export interface QuestionnaireNode {
+  type: 'questionnaire';
+  id: string;
+  questions: QuestionNode[];
+}
+
+export type AnswerValue = string | string[];
+
+/** Serializable learner progress, independent of renderer and SCORM details. */
+export interface PlayerPageState {
+  visited?: boolean;
+  completed?: boolean;
+  answers?: Record<string, AnswerValue>;
+  submittedQuestionnaires?: string[];
+}
+
+export interface PlayerState {
+  location?: string;
+  pages: Record<string, PlayerPageState>;
 }
 
 export interface QuestionOption {
   value: string;
   correct: boolean;
   content: ContentNode[];
-}
-
-export interface StepsNode {
-  type: 'steps';
-  steps: StepNode[];
-}
-
-export interface StepNode {
-  title?: string;
-  children: ContentNode[];
 }
 
 export interface RenderOptions {
@@ -178,15 +180,21 @@ export interface RenderResult {
   entrypoint: string;
 }
 
+export interface RendererDevScript {
+  id: string;
+  source: string;
+}
+
 export interface RendererDevOptions {
   contentRoot: string;
   port?: number;
   host?: string;
+  scripts?: RendererDevScript[];
 }
 
 export interface RendererDevServer {
   url: string;
-  update(content: ContentPackage): Promise<void>;
+  update(content: ContentPackage, scripts?: RendererDevScript[]): Promise<void>;
   reportError(message: string): void;
   close(): Promise<void>;
 }
@@ -199,22 +207,39 @@ export interface Renderer {
   ): Promise<RendererDevServer>;
 }
 
-/** Completion is renderer-agnostic: a package is complete after every item is visited. */
+/** Completion is renderer-agnostic: a package is complete after every page/item is visited. */
 export function isPackageComplete(
   contentPackage: ContentPackage,
   visitedItemIds: Iterable<string>,
 ): boolean {
   const visited =
     visitedItemIds instanceof Set ? visitedItemIds : new Set(visitedItemIds);
-  const itemIds: string[] = [];
-  const walk = (nodes: StructureNode[]) => {
-    for (const node of nodes) {
-      if (node.type === 'item') itemIds.push(node.id);
-      else walk(node.children);
-    }
-  };
-  walk(contentPackage.children);
-  return itemIds.length > 0 && itemIds.every((id) => visited.has(id));
+  const ids =
+    contentPackage.presentation.type === 'scroll'
+      ? contentPackage.presentation.pages.map((page) => page.id)
+      : contentPackage.presentation.items.map((item) => item.id);
+  return ids.length > 0 && ids.every((id) => visited.has(id));
+}
+
+/** Returns integer package progress, independently of any SCORM encoding. */
+export function getPackageProgress(
+  contentPackage: ContentPackage,
+  playerState: PlayerState,
+): number {
+  const nodes =
+    contentPackage.presentation.type === 'scroll'
+      ? contentPackage.presentation.pages
+      : contentPackage.presentation.items;
+  if (nodes.length === 0) return 0;
+  const count = nodes.reduce((total, node) => {
+    const state = playerState.pages[node.id];
+    const done =
+      contentPackage.presentation.type === 'scroll'
+        ? state?.completed === true
+        : state?.visited === true;
+    return total + (done ? 1 : 0);
+  }, 0);
+  return Math.max(0, Math.min(100, Math.round((count / nodes.length) * 100)));
 }
 
 /** Local references in the content AST are normalized relative to the package root. */
@@ -222,20 +247,10 @@ export function collectAssetReferences(
   contentPackage: ContentPackage,
 ): string[] {
   const refs = new Set<string>();
-  const visit = (nodes: StructureNode[]) => {
-    for (const node of nodes) {
-      if (node.type === 'section') {
-        visit(node.children);
-        continue;
-      }
-      if (
-        node.metadata.thumbnail &&
-        !isRemoteReference(node.metadata.thumbnail)
-      )
-        refs.add(node.metadata.thumbnail);
-      visitContent(node.content);
-    }
-  };
+  const nodes =
+    contentPackage.presentation.type === 'scroll'
+      ? contentPackage.presentation.pages
+      : contentPackage.presentation.items;
   const addLocal = (value: string | undefined) => {
     if (value && !isRemoteReference(value)) refs.add(value);
   };
@@ -270,23 +285,20 @@ export function collectAssetReferences(
           for (const item of node.items) visitContent(item.children);
           break;
         case 'quote':
-        case 'callout':
-        case 'example':
           visitContent(node.children);
           break;
-        case 'question':
-          visitContent(node.prompt);
-          for (const option of node.options) visitContent(option.content);
-          break;
-        case 'steps':
-          for (const step of node.steps) visitContent(step.children);
+        case 'questionnaire':
+          for (const question of node.questions) {
+            visitContent(question.prompt);
+            for (const option of question.options) visitContent(option.content);
+          }
           break;
         case 'code':
           break;
       }
     }
   };
-  visit(contentPackage.children);
+  for (const node of nodes) visitContent(node.content);
   return [...refs].sort();
 }
 

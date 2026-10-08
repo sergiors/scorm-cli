@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Renderer } from '@scorm-cli/core';
 import { collectAssetReferences } from '@scorm-cli/core';
-import { packageScorm } from '@scorm-cli/scorm';
+import { createContentManifest, packageScorm } from '@scorm-cli/scorm';
 import { loadPackage } from './content';
 import { loadRenderer } from './renderer';
 
@@ -23,6 +23,7 @@ export async function buildPackage(
 ): Promise<string> {
   const { content: contentPackage, contentRoot } =
     await loadPackage(contentPath);
+  const contentManifest = createContentManifest(contentPackage);
   const output = path.resolve(
     outputPath ?? path.join('dist', `${packageName(contentPath)}.zip`),
   );
@@ -42,6 +43,7 @@ export async function buildPackage(
       metadata: contentPackage.metadata,
       renderResult,
       outputPath: output,
+      contentManifest,
     });
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });

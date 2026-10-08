@@ -1,14 +1,7 @@
-import {
-  CircleAlert,
-  Info,
-  Lightbulb,
-  TriangleAlert,
-  type LucideIcon,
-} from 'lucide-react';
-import type { CalloutNode, ContentNode } from '../types';
+import type { AnswerValue, ContentNode } from '../types';
 import { cn } from '../lib/utils';
 import { InlineContent } from './InlineContent';
-import { QuestionView } from './QuestionView';
+import { QuestionnaireView } from './QuestionnaireView';
 
 const HEADING_TAGS = {
   1: 'h1',
@@ -27,48 +20,43 @@ function clampHeading(
   return level as keyof typeof HEADING_TAGS;
 }
 
-const CALLOUT_VARIANTS: Record<
-  CalloutNode['variant'],
-  { icon: LucideIcon; label: string; className: string; iconClassName: string }
-> = {
-  info: {
-    icon: Info,
-    label: 'Info',
-    className: 'border-sky-500/40 bg-sky-500/10',
-    iconClassName: 'text-sky-600 dark:text-sky-400',
-  },
-  tip: {
-    icon: Lightbulb,
-    label: 'Tip',
-    className: 'border-emerald-500/40 bg-emerald-500/10',
-    iconClassName: 'text-emerald-600 dark:text-emerald-400',
-  },
-  warning: {
-    icon: TriangleAlert,
-    label: 'Warning',
-    className: 'border-amber-500/40 bg-amber-500/10',
-    iconClassName: 'text-amber-600 dark:text-amber-400',
-  },
-  important: {
-    icon: CircleAlert,
-    label: 'Important',
-    className: 'border-destructive/40 bg-destructive/10',
-    iconClassName: 'text-destructive',
-  },
-};
-
 export interface ContentRendererProps {
   nodes: ContentNode[];
   /**
-   * Shifts every heading down so item content nests under the package view's
-   * headings. Defaults to 0, keeping the source depth untouched.
+   * Shifts every heading down so item content nests under the surrounding
+   * authored headings. Defaults to 0, keeping the source depth untouched.
    */
   headingOffset?: number;
+  /**
+   * Invoked once when a questionnaire in this subtree is submitted. Threaded
+   * recursively through nested lists, quotes and questionnaire content so the
+   * owning presentation sees every submission, however deeply it is authored.
+   */
+  onQuestionnaireSubmitted?: (id: string) => void;
+  /**
+   * Saved answers for the owning page/item, keyed by question id. Threaded to
+   * every questionnaire in the subtree so restored selections render.
+   */
+  answers?: Record<string, AnswerValue>;
+  /**
+   * Wrapper ids of the questionnaires already submitted on the owning
+   * page/item. Submitted questionnaires render read-only.
+   */
+  submittedQuestionnaires?: readonly string[];
+  /**
+   * Persists a single question answer for the owning page/item. Threaded to
+   * every questionnaire so nested answers are saved under the same namespace.
+   */
+  onAnswer?: (questionId: string, value: AnswerValue) => void;
 }
 
 export function ContentRenderer({
   nodes,
   headingOffset = 0,
+  onQuestionnaireSubmitted,
+  answers,
+  submittedQuestionnaires,
+  onAnswer,
 }: ContentRendererProps) {
   return (
     <>
@@ -77,6 +65,10 @@ export function ContentRenderer({
           key={`${node.type}-${index}`}
           node={node}
           headingOffset={headingOffset}
+          onQuestionnaireSubmitted={onQuestionnaireSubmitted}
+          answers={answers}
+          submittedQuestionnaires={submittedQuestionnaires}
+          onAnswer={onAnswer}
         />
       ))}
     </>
@@ -86,9 +78,17 @@ export function ContentRenderer({
 function ContentNodeView({
   node,
   headingOffset,
+  onQuestionnaireSubmitted,
+  answers,
+  submittedQuestionnaires,
+  onAnswer,
 }: {
   node: ContentNode;
   headingOffset: number;
+  onQuestionnaireSubmitted?: (id: string) => void;
+  answers?: Record<string, AnswerValue>;
+  submittedQuestionnaires?: readonly string[];
+  onAnswer?: (questionId: string, value: AnswerValue) => void;
 }) {
   switch (node.type) {
     case 'heading': {
@@ -120,6 +120,10 @@ function ContentNodeView({
               <ContentRenderer
                 nodes={item.children}
                 headingOffset={headingOffset}
+                onQuestionnaireSubmitted={onQuestionnaireSubmitted}
+                answers={answers}
+                submittedQuestionnaires={submittedQuestionnaires}
+                onAnswer={onAnswer}
               />
             </li>
           ))}
@@ -145,6 +149,10 @@ function ContentNodeView({
           <ContentRenderer
             nodes={node.children}
             headingOffset={headingOffset}
+            onQuestionnaireSubmitted={onQuestionnaireSubmitted}
+            answers={answers}
+            submittedQuestionnaires={submittedQuestionnaires}
+            onAnswer={onAnswer}
           />
         </blockquote>
       );
@@ -202,71 +210,17 @@ function ContentNodeView({
           ) : null}
         </figure>
       );
-    case 'callout': {
-      const variant = CALLOUT_VARIANTS[node.variant];
-      const Icon = variant.icon;
-      return (
-        <div
-          role='note'
-          aria-label={variant.label}
-          className={cn(
-            'my-4 flex items-start gap-3 rounded-lg border p-4',
-            variant.className,
-          )}
-        >
-          <Icon
-            aria-hidden='true'
-            className={cn('mt-0.5 size-5 shrink-0', variant.iconClassName)}
-          />
-          <div className='min-w-0 flex-1'>
-            <ContentRenderer
-              nodes={node.children}
-              headingOffset={headingOffset}
-            />
-          </div>
-        </div>
-      );
-    }
-    case 'example':
-      return (
-        <div className='my-4 rounded-lg border border-border bg-secondary/40 p-4'>
-          <p className='mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground'>
-            {node.title ?? 'Example'}
-          </p>
-          <ContentRenderer
-            nodes={node.children}
-            headingOffset={headingOffset}
-          />
-        </div>
-      );
-    case 'steps':
-      return (
-        <ol className='my-4 space-y-4'>
-          {node.steps.map((step, index) => (
-            <li key={index} className='flex items-start gap-3'>
-              <span
-                aria-hidden='true'
-                className='mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground'
-              >
-                {index + 1}
-              </span>
-              <div className='min-w-0 flex-1 space-y-2'>
-                {step.title ? (
-                  <p className='font-medium text-foreground'>{step.title}</p>
-                ) : null}
-                <ContentRenderer
-                  nodes={step.children}
-                  headingOffset={headingOffset}
-                />
-              </div>
-            </li>
-          ))}
-        </ol>
-      );
-    case 'question':
+    case 'questionnaire':
       return (
         <div className='my-4'>
-          <QuestionView node={node} headingOffset={headingOffset} />
+          <QuestionnaireView
+            node={node}
+            headingOffset={headingOffset}
+            answers={answers}
+            submitted={submittedQuestionnaires?.includes(node.id) ?? false}
+            onAnswer={onAnswer}
+            onSubmitted={onQuestionnaireSubmitted}
+          />
         </div>
       );
     default: {

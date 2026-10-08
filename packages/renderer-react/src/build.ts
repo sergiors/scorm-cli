@@ -69,6 +69,9 @@ export async function renderReactPackage(
     root: appRoot,
     base: './',
     logLevel: 'warn',
+    // Generated shadcn components import through the `@/` alias; resolve it to
+    // the shipped `app` directory.
+    resolve: { alias: { '@': appRoot } },
     plugins: [
       react(),
       tailwindcss(),

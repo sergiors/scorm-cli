@@ -108,6 +108,13 @@ beforeAll(async () => {
     contentRoot,
     port: 0,
     host: 'localhost',
+    scripts: [
+      { id: 'scorm-dev-mock', source: 'window.__SCORM_DEVTOOLS__ = true;' },
+      {
+        id: 'scorm-runtime',
+        source: 'window.scormBridge = { markCompleted: function () {} };',
+      },
+    ],
   });
 }, 120_000);
 
@@ -136,6 +143,18 @@ describe('reactRenderer.dev', () => {
     const response = await fetch(`${server.url}assets/pixel.svg`);
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(SVG);
+  });
+
+  it('injects the provided dev scripts in order, before the app module', async () => {
+    const html = await fetch(server.url).then((response) => response.text());
+
+    const mockIndex = html.indexOf('__SCORM_DEVTOOLS__');
+    const runtimeIndex = html.indexOf('markCompleted');
+    const appIndex = html.indexOf('main.tsx');
+
+    expect(mockIndex).toBeGreaterThan(-1);
+    expect(runtimeIndex).toBeGreaterThan(mockIndex);
+    expect(appIndex).toBeGreaterThan(runtimeIndex);
   });
 
   it('serves the virtual package data module', async () => {

@@ -6,9 +6,15 @@ import react from '@vitejs/plugin-react';
 import type {
   ContentPackage,
   RendererDevOptions,
+  RendererDevScript,
   RendererDevServer,
 } from '@scorm-cli/core';
-import { createServer, searchForWorkspaceRoot, type ViteDevServer } from 'vite';
+import {
+  createServer,
+  searchForWorkspaceRoot,
+  type Plugin,
+  type ViteDevServer,
+} from 'vite';
 import {
   PREVIEW_CLEAR_EVENT,
   PREVIEW_ERROR_EVENT,
@@ -31,6 +37,10 @@ const DEFAULT_HOST = 'localhost';
  * instead of copying them, and never produces a SCORM ZIP. Updates replace the
  * in-memory package and trigger a full reload, while authoring failures are
  * broadcast as a custom HMR event the app renders as an overlay.
+ *
+ * `options.scripts` (the `scorm dev` mock LMS API and the SCORM runtime) are
+ * injected as inline `<script>` tags at the start of `<head>`, so they run
+ * before the app module and can install `window.API`/`window.scormBridge`.
  */
 export async function renderReactDevServer(
   contentPackage: ContentPackage,
@@ -53,10 +63,18 @@ export async function renderReactDevServer(
     root: appRoot,
     base: '/',
     logLevel: 'warn',
+    // Generated shadcn components import through the `@/` alias; resolve it to
+    // the shipped `app` directory.
+    resolve: { alias: { '@': appRoot } },
     // Keep Vite's dep cache inside the package's node_modules instead of
     // creating a stray `app/node_modules` directory that would ship.
     cacheDir: path.resolve(appRoot, '..', 'node_modules', '.vite'),
-    plugins: [react(), tailwindcss(), createPackageDataPlugin(handle)],
+    plugins: [
+      createDevScriptsPlugin(options.scripts ?? []),
+      react(),
+      tailwindcss(),
+      createPackageDataPlugin(handle),
+    ],
     // Local references in the parsed AST are relative to the package root, so
     // serving that directory as static assets makes them resolve untouched.
     publicDir: existsSync(contentRoot) ? contentRoot : false,
@@ -104,6 +122,33 @@ export async function renderReactDevServer(
       await server.close();
     },
   };
+}
+
+/**
+ * Injects the caller-provided dev scripts as inline `<script>` tags at the
+ * start of `<head>`, preserving order so the mock LMS API is installed before
+ * the SCORM runtime that consumes it. This hook only exists on the dev server;
+ * production builds never receive these scripts.
+ */
+function createDevScriptsPlugin(scripts: RendererDevScript[]): Plugin {
+  return {
+    name: 'scorm-cli:dev-scripts',
+    transformIndexHtml() {
+      return scripts.map((script) => ({
+        tag: 'script',
+        children: escapeInlineScript(script.source),
+        injectTo: 'head-prepend' as const,
+      }));
+    },
+  };
+}
+
+/**
+ * Neutralises a `</script>` sequence in an inline script body so it cannot
+ * close the tag early and break the surrounding document.
+ */
+function escapeInlineScript(source: string): string {
+  return source.replace(/<\/script/gi, '<\\/script');
 }
 
 /**

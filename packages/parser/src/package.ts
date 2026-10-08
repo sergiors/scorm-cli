@@ -5,21 +5,20 @@ import remarkMdx from 'remark-mdx';
 import remarkParse from 'remark-parse';
 import { unified } from 'unified';
 import type {
-  CalloutNode,
   ContentNode,
   ContentPackage,
-  ExampleNode,
+  GridNode,
   ImageNode,
   InlineNode,
-  ItemOpenMode,
   ItemNode,
   ListItemNode,
+  PageNode,
   QuestionNode,
   QuestionOption,
   QuestionType,
-  SectionNode,
-  StepNode,
-  StructureNode,
+  QuestionnaireNode,
+  RootPresentation,
+  ScrollNode,
   VideoNode,
 } from '@scorm-cli/core';
 import { isRemoteReference } from '@scorm-cli/core';
@@ -46,14 +45,7 @@ type AstNode = {
 };
 
 const processor = unified().use(remarkParse).use(remarkMdx);
-const explicitIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
-const flowComponents = new Set([
-  'Video',
-  'Callout',
-  'Example',
-  'Question',
-  'Steps',
-]);
+const flowComponents = new Set(['Video', 'Question', 'Questionnaire']);
 
 function location(file: string, node?: AstNode): string {
   const line = node?.position?.start?.line;
@@ -306,11 +298,9 @@ async function parseInlineNodes(
         break;
       case 'mdxJsxTextElement':
         if (node.name !== 'Image') {
-          if (
-            ['Video', 'Callout', 'Example', 'Question', 'Steps'].includes(
-              node.name ?? '',
-            )
-          )
+          if (node.name === 'Question')
+            fail(sourceFile, '<Question> must be inside <Questionnaire>', node);
+          if (flowComponents.has(node.name ?? ''))
             fail(
               sourceFile,
               `component <${node.name}> is block-only and cannot be used inline`,
@@ -452,6 +442,8 @@ async function parseContentNodes(
       (child.type === 'mdxJsxTextElement' &&
         flowComponents.has(child.name ?? ''))
     ) {
+      if (child.name === 'Question')
+        fail(sourceFile, '<Question> must be inside <Questionnaire>', child);
       const index = (node.children ?? []).indexOf(child);
       const previous = node.children?.[index - 1];
       const next = node.children?.[index + 1];
@@ -482,6 +474,10 @@ async function parseContentComponent(
 ): Promise<ContentNode> {
   const name = node.name ?? '';
   const file = sourceFile;
+  if (name === 'Question')
+    fail(file, '<Question> must be inside <Questionnaire>', node);
+  if (name === 'Questionnaire')
+    return parseQuestionnaire(node, sourceFile, root);
   const values = attrs(node, file);
   if (name === 'Image') {
     return parseImageComponent(node, sourceFile, root);
@@ -518,10 +514,6 @@ async function parseContentComponent(
     };
     return video;
   }
-  if (name === 'Callout') return parseCallout(node, sourceFile, root);
-  if (name === 'Example') return parseExample(node, sourceFile, root);
-  if (name === 'Question') return parseQuestion(node, sourceFile, root);
-  if (name === 'Steps') return parseSteps(node, sourceFile, root);
   fail(file, `unknown MDX component <${name}>`, node);
 }
 
@@ -592,52 +584,6 @@ async function contentChildren(
   }
   await flushInline();
   return output;
-}
-
-async function parseCallout(
-  node: AstNode,
-  sourceFile: string,
-  root: string,
-): Promise<CalloutNode> {
-  const values = attrs(node, sourceFile);
-  assertAttributes(values, ['type'], sourceFile, node);
-  const variant = values.type;
-  if (
-    variant !== 'info' &&
-    variant !== 'tip' &&
-    variant !== 'warning' &&
-    variant !== 'important'
-  ) {
-    fail(
-      sourceFile,
-      'Callout "type" must be "info", "tip", "warning", or "important"',
-      node,
-    );
-  }
-  return {
-    type: 'callout',
-    variant,
-    children: await contentChildren(node.children ?? [], sourceFile, root),
-  };
-}
-
-async function parseExample(
-  node: AstNode,
-  sourceFile: string,
-  root: string,
-): Promise<ExampleNode> {
-  const values = attrs(node, sourceFile);
-  assertAttributes(values, ['title'], sourceFile, node);
-  const title = optionalString(values.title, 'title', sourceFile, node);
-  return {
-    type: 'example',
-    ...(title ? { title } : {}),
-    children: await contentChildren(node.children ?? [], sourceFile, root),
-  };
-}
-
-function significantChildren(node: AstNode): AstNode[] {
-  return (node.children ?? []).filter((child) => !whitespace(child));
 }
 
 async function parseQuestion(
@@ -746,62 +692,109 @@ async function parseQuestion(
     );
   return {
     type: 'question',
+    id: await sourceNodeId('question', node, file, root),
     questionType: rawType as QuestionType,
     prompt,
     options: parsedOptions,
   };
 }
 
-async function parseSteps(
+async function sourceNodeId(
+  kind: 'question' | 'questionnaire',
   node: AstNode,
   file: string,
   root: string,
-): Promise<ContentNode> {
-  const values = attrs(node, file);
-  assertAttributes(values, [], file, node);
-  const stepNodes: AstNode[] = [];
-  for (const child of significantChildren(node)) {
-    if (!isJsx(child) || child.name !== 'Step')
-      fail(file, 'Steps may contain only <Step> components', child);
-    stepNodes.push(child);
-  }
-  if (!stepNodes.length)
-    fail(file, 'Steps must contain at least one Step', node);
-  const steps: StepNode[] = [];
-  for (const step of stepNodes) {
-    const stepAttrs = attrs(step, file);
-    assertAttributes(stepAttrs, ['title'], file, step);
-    const title = optionalString(stepAttrs.title, 'title', file, step);
-    steps.push({
-      ...(title ? { title } : {}),
-      children: await contentChildren(step.children ?? [], file, root),
-    });
-  }
-  return { type: 'steps', steps };
+): Promise<string> {
+  const relativeFile = normalizedRelative(
+    root,
+    path.resolve(file),
+    file,
+    node,
+    `${kind === 'question' ? 'Question' : 'Questionnaire'} source`,
+  );
+  const raw = await fs.readFile(file, 'utf8');
+  const bodyStart = raw.indexOf(matter(raw).content);
+  const lineOffset =
+    raw.slice(0, Math.max(0, bodyStart)).split('\n').length - 1;
+  const line = lineOffset + (node.position?.start?.line ?? 1);
+  const column = node.position?.start?.column ?? 1;
+  return `${kind}:${relativeFile}:${line}:${column}`;
 }
 
-async function parseItem(
+async function parseQuestionnaire(
+  node: AstNode,
+  file: string,
+  root: string,
+): Promise<QuestionnaireNode> {
+  const values = attrs(node, file);
+  assertAttributes(values, [], file, node);
+
+  const children = (node.children ?? [])
+    .flatMap((child) => {
+      if (
+        child.type === 'paragraph' &&
+        (child.children ?? []).every(
+          (nested) =>
+            whitespace(nested) || (isJsx(nested) && nested.name === 'Question'),
+        )
+      ) {
+        return child.children ?? [];
+      }
+      return [child];
+    })
+    .filter((child) => !whitespace(child));
+  if (!children.length)
+    fail(
+      file,
+      'Questionnaire must contain at least one direct <Question>',
+      node,
+    );
+
+  const questions: QuestionNode[] = [];
+  for (const child of children) {
+    if (!isJsx(child) || child.name !== 'Question') {
+      const found = child.name ? `<${child.name}>` : child.type;
+      fail(
+        file,
+        `Questionnaire may contain only direct <Question> children; found ${found}`,
+        child,
+      );
+    }
+    questions.push(await parseQuestion(child, file, root));
+  }
+
+  return {
+    type: 'questionnaire',
+    id: await sourceNodeId('questionnaire', node, file, root),
+    questions,
+  };
+}
+
+async function parseReference<T extends PageNode | ItemNode>(
+  kind: 'page' | 'item',
   src: string,
   node: AstNode,
   declaredIn: string,
   root: string,
   ids: Set<string>,
-  open: ItemOpenMode,
-  itemId?: unknown,
-): Promise<ItemNode> {
+): Promise<T> {
   const sourcePath = path.resolve(path.dirname(declaredIn), src);
   const source = normalizedRelative(
     root,
     sourcePath,
     declaredIn,
     node,
-    'Item src',
+    `${kind === 'page' ? 'Page' : 'Item'} src`,
   );
   let raw: string;
   try {
     raw = await fs.readFile(sourcePath, 'utf8');
   } catch {
-    fail(declaredIn, `Item source "${src}" does not exist`, node);
+    fail(
+      declaredIn,
+      `${kind === 'page' ? 'Page' : 'Item'} source "${src}" does not exist`,
+      node,
+    );
   }
   const realRoot = await fs.realpath(root);
   const realSource = await fs.realpath(sourcePath);
@@ -813,64 +806,23 @@ async function parseItem(
   ) {
     fail(
       declaredIn,
-      `Item source "${src}" resolves outside the content package directory`,
+      `${kind === 'page' ? 'Page' : 'Item'} source "${src}" resolves outside the content package directory`,
       node,
     );
   }
   const parsed = matter(raw!);
   assertFrontmatterKeys(
     parsed.data as Record<string, unknown>,
-    ['title', 'description', 'thumbnail', 'id'],
+    ['title'],
     sourcePath,
   );
-  const title = requiredString(parsed.data.title, 'title', sourcePath, node);
-  if (
-    parsed.data.description !== undefined &&
-    typeof parsed.data.description !== 'string'
-  ) {
-    fail(sourcePath, 'frontmatter "description" must be a string', node);
-  }
-  const explicit = parsed.data.id;
-  if (
-    explicit !== undefined &&
-    (typeof explicit !== 'string' || !explicitIdPattern.test(explicit))
-  ) {
-    fail(
-      sourcePath,
-      'frontmatter "id" must contain only letters, numbers, ., _, :, or -',
-      node,
-    );
-  }
-  const id =
-    (itemId as string | undefined) ??
-    (explicit as string | undefined) ??
-    `item:${source}`;
-  if (
-    itemId !== undefined &&
-    (typeof itemId !== 'string' || !explicitIdPattern.test(itemId))
-  )
-    fail(declaredIn, `invalid id "${String(itemId)}"`, node);
+  const title = requiredString(parsed.data.title, 'title', sourcePath, {
+    type: 'frontmatter',
+  });
+  const id = `${kind}:${source}`;
   if (ids.has(id)) fail(sourcePath, `duplicate package node id "${id}"`, node);
   ids.add(id);
-  const metadata: ItemNode['metadata'] = { title };
-  if (parsed.data.description !== undefined)
-    metadata.description = parsed.data.description;
-  if (parsed.data.thumbnail !== undefined) {
-    if (
-      typeof parsed.data.thumbnail !== 'string' ||
-      !parsed.data.thumbnail.trim()
-    )
-      fail(sourcePath, 'frontmatter "thumbnail" must be a path or URL', node);
-    metadata.thumbnail = isRemoteReference(parsed.data.thumbnail)
-      ? parsed.data.thumbnail
-      : await assetReference(
-          parsed.data.thumbnail,
-          sourcePath,
-          root,
-          sourcePath,
-          node,
-        );
-  }
+  const metadata = { title };
   const tree = parseMdx(parsed.content, sourcePath);
   const content: ContentNode[] = [];
   for (const child of tree.children) {
@@ -880,134 +832,118 @@ async function parseItem(
     content.push(...(await parseContentNodes(child, sourcePath, root)));
   }
   return {
-    type: 'item',
+    type: kind,
     id,
     source,
-    presentation: { open },
     metadata,
     content,
-  };
+  } as T;
 }
 
-async function parseStructure(
+function meaningfulChildren(nodes: AstNode[]): AstNode[] {
+  return nodes.filter((node) => !whitespace(node));
+}
+
+async function parsePresentationChildren<T extends PageNode | ItemNode>(
   nodes: AstNode[],
+  kind: 'page' | 'item',
   declaredIn: string,
   root: string,
-  pathIndices: number[],
   ids: Set<string>,
-  allowSections = true,
-): Promise<StructureNode[]> {
-  const result: StructureNode[] = [];
-  let index = 0;
-  for (const node of nodes) {
-    if (node.type === 'text' && !String(node.value ?? '').trim()) continue;
-    if (node.type === 'mdxjsEsm') {
+): Promise<T[]> {
+  const output: T[] = [];
+  const expected = kind === 'page' ? 'Page' : 'Item';
+  for (const node of meaningfulChildren(nodes)) {
+    if (node.type === 'mdxjsEsm')
       fail(declaredIn, 'MDX JavaScript and imports are not supported', node);
-    }
-    if (node.type !== 'mdxJsxFlowElement' || !node.name) {
+    if (node.type !== 'mdxJsxFlowElement' || node.name !== expected) {
+      const found = node.name ? `<${node.name}>` : node.type;
       fail(
         declaredIn,
-        `entry structure only accepts <Section> and <Item>; found ${node.type}`,
+        `${kind === 'page' ? '<Scroll>' : '<Grid>'} children may only contain direct <${expected} src="..." /> components; found ${found}`,
         node,
       );
     }
+    if (meaningfulChildren(node.children ?? []).length > 0)
+      fail(
+        declaredIn,
+        `<${expected}> must be self-closing and cannot contain children`,
+        node,
+      );
     const values = attrs(node, declaredIn);
-    if (node.name === 'Item') {
-      assertAttributes(values, ['src', 'id', 'open'], declaredIn, node);
-      const src = requiredString(values.src, 'src', declaredIn, node);
-      const open = values.open ?? 'page';
-      if (open !== 'page' && open !== 'modal')
-        fail(declaredIn, 'Item "open" must be "page" or "modal"', node);
-      const itemId =
-        values.id === undefined
-          ? undefined
-          : requiredString(values.id, 'id', declaredIn, node);
-      const item = await parseItem(
-        src,
-        node,
-        declaredIn,
-        root,
-        ids,
-        open,
-        itemId,
-      );
-      result.push(item);
-      index++;
-      continue;
-    }
-    if (node.name !== 'Section')
-      fail(declaredIn, `unknown MDX component <${node.name}>`, node);
-    if (!allowSections)
-      fail(
-        declaredIn,
-        'Section children may only contain <Item> components',
-        node,
-      );
-    assertAttributes(
-      values,
-      ['id', 'title', 'layout', 'columns'],
-      declaredIn,
+    assertAttributes(values, ['src'], declaredIn, node);
+    const src = requiredString(values.src, 'src', declaredIn, node);
+    output.push(
+      await parseReference<T>(kind, src, node, declaredIn, root, ids),
+    );
+  }
+  return output;
+}
+
+async function parseRootPresentation(
+  nodes: AstNode[],
+  entry: string,
+  root: string,
+): Promise<RootPresentation> {
+  const directNodes = meaningfulChildren(nodes);
+  if (directNodes.length !== 1) {
+    fail(
+      entry,
+      `root must contain exactly one <Scroll> or <Grid> presentation; found ${directNodes.length}`,
+      directNodes[0],
+    );
+  }
+  const node = directNodes[0]!;
+  if (
+    node.type !== 'mdxJsxFlowElement' ||
+    (node.name !== 'Scroll' && node.name !== 'Grid')
+  ) {
+    const found = node.name ? `<${node.name}>` : node.type;
+    fail(
+      entry,
+      `root must contain exactly one <Scroll> or <Grid> presentation; found 1 direct node (${found})`,
       node,
     );
-    const layout = values.layout ?? 'list';
-    if (layout !== 'list' && layout !== 'grid' && layout !== 'sequence')
-      fail(
-        declaredIn,
-        'Section "layout" must be "list", "grid", or "sequence"',
-        node,
-      );
-    const columns = values.columns;
-    if (columns !== undefined && layout !== 'grid')
-      fail(
-        declaredIn,
-        'Section "columns" is only valid with layout="grid"',
-        node,
-      );
-    if (
-      columns !== undefined &&
-      (!Number.isInteger(columns) ||
-        Number(columns) < 1 ||
-        Number(columns) > 12)
-    ) {
-      fail(
-        declaredIn,
-        'Section "columns" must be an integer from 1 to 12',
-        node,
-      );
-    }
-    const sectionId =
-      values.id === undefined
-        ? `section:${[...pathIndices, index].join('.')}`
-        : requiredString(values.id, 'id', declaredIn, node);
-    if (!explicitIdPattern.test(sectionId))
-      fail(declaredIn, `invalid id "${sectionId}"`, node);
-    if (ids.has(sectionId))
-      fail(declaredIn, `duplicate package node id "${sectionId}"`, node);
-    ids.add(sectionId);
-    const children = await parseStructure(
-      node.children ?? [],
-      declaredIn,
-      root,
-      [...pathIndices, index],
-      ids,
-      false,
-    );
-    const section: SectionNode = {
-      type: 'section',
-      id: sectionId,
-      ...(values.title !== undefined
-        ? { title: requiredString(values.title, 'title', declaredIn, node) }
-        : {}),
-      presentation: {
-        layout,
-        ...(columns !== undefined ? { columns: Number(columns) } : {}),
-      },
-      children: children as ItemNode[],
-    };
-    result.push(section);
-    index++;
   }
-  return result;
+
+  const ids = new Set<string>();
+  const values = attrs(node, entry);
+  if (node.name === 'Scroll') {
+    assertAttributes(values, [], entry, node);
+    const pages = await parsePresentationChildren<PageNode>(
+      node.children ?? [],
+      'page',
+      entry,
+      root,
+      ids,
+    );
+    if (!pages.length)
+      fail(entry, '<Scroll> must contain at least one <Page>; found 0', node);
+    return { type: 'scroll', pages } satisfies ScrollNode;
+  }
+
+  assertAttributes(values, ['columns'], entry, node);
+  const columns = values.columns;
+  if (
+    columns !== undefined &&
+    (!Number.isInteger(columns) || Number(columns) < 1 || Number(columns) > 12)
+  ) {
+    fail(entry, '<Grid> "columns" must be an integer from 1 to 12', node);
+  }
+  const items = await parsePresentationChildren<ItemNode>(
+    node.children ?? [],
+    'item',
+    entry,
+    root,
+    ids,
+  );
+  if (!items.length)
+    fail(entry, '<Grid> must contain at least one <Item>; found 0', node);
+  return {
+    type: 'grid',
+    ...(columns !== undefined ? { columns: Number(columns) } : {}),
+    items,
+  } satisfies GridNode;
 }
 
 /** Parse an entry MDX file, or a directory containing index.mdx, into a content package. */
@@ -1032,34 +968,17 @@ export async function parsePackage(pathOrDir: string): Promise<ContentPackage> {
   const parsed = matter(source);
   assertFrontmatterKeys(
     parsed.data as Record<string, unknown>,
-    ['title', 'description'],
+    ['title'],
     entry,
   );
   const title = requiredString(parsed.data.title, 'title', entry, {
     type: 'frontmatter',
   });
-  if (
-    parsed.data.description !== undefined &&
-    typeof parsed.data.description !== 'string'
-  ) {
-    fail(entry, 'frontmatter "description" must be a string');
-  }
   const tree = parseMdx(parsed.content, entry);
-  const children = await parseStructure(
-    tree.children,
-    entry,
-    root,
-    [],
-    new Set(),
-  );
+  const presentation = await parseRootPresentation(tree.children, entry, root);
   const contentPackage: ContentPackage = {
-    metadata: {
-      title,
-      ...(parsed.data.description !== undefined
-        ? { description: parsed.data.description }
-        : {}),
-    },
-    children,
+    metadata: { title },
+    presentation,
   };
   return contentPackage;
 }
