@@ -353,12 +353,8 @@ describe('compact suspend-data codec', () => {
         LMSFinish: () => 'true',
       },
       addEventListener: () => undefined,
-      dispatchEvent: (event: any) => events.push(event.detail),
-      CustomEvent: class {
-        detail: any;
-        constructor(_name: string, options: any) {
-          this.detail = options.detail;
-        }
+      console: {
+        log: (_message: string, event: { name: string }) => events.push(event),
       },
     };
     window.parent = window;

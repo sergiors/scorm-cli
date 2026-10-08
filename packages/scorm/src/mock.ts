@@ -1,24 +1,20 @@
 /** Local-preview-only LMS API. Production SCORM archives never include this script. */
 export const scormDevMock = `;(function () {
   window.__SCORM_DEVTOOLS__ = true;
-  window.__SCORM_DEV_EVENT_BUFFER__ = [];
 
   var preferenceKey = "scorm-cli:dev:persist-cmi";
   var stateKey = "scorm-cli:dev:cmi-state";
   var persistenceEnabled = false;
 
+  // Dev-only diagnostics. Every event is written straight to the browser
+  // console and never buffered, so the full, uncapped stream is always visible.
   function emit(name, details) {
+    if (window.__SCORM_DEVTOOLS__ !== true) return;
     var event = { name: name, at: Date.now(), details: details || {} };
-    var buffer = window.__SCORM_DEV_EVENT_BUFFER__;
-    if (!Array.isArray(buffer)) {
-      buffer = [];
-      window.__SCORM_DEV_EVENT_BUFFER__ = buffer;
-    }
-    buffer.push(event);
-    if (buffer.length > 100) buffer.splice(0, buffer.length - 100);
-    if (!window.dispatchEvent || !window.CustomEvent) return;
     try {
-      window.dispatchEvent(new window.CustomEvent("scorm:runtime-event", { detail: event }));
+      if (window.console && typeof window.console.log === "function") {
+        window.console.log("[scorm] " + name, event);
+      }
     } catch (_) {}
   }
 

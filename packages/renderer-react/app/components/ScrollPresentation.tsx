@@ -332,7 +332,7 @@ function PageScene({
     <div
       data-scene-index={index}
       aria-label={page.metadata.title}
-      className='mx-auto flex min-h-dvh container max-w-3xl flex-col justify-center px-6 py-16'
+      className='mx-auto flex min-h-dvh container max-w-3xl flex-col justify-center px-6 py-18'
     >
       {hasPrev ? (
         <div
@@ -368,7 +368,7 @@ function PageScene({
 /** Minimal floating control that returns to the previous page. */
 function PreviousControl({ onClick }: { onClick: () => void }) {
   return (
-    <div className='pointer-events-none fixed inset-x-0 top-0 z-10 flex justify-center py-4 bg-background/5 backdrop-blur-sm'>
+    <div className='pointer-events-none fixed inset-x-0 top-0 z-10 flex justify-center py-2.5 bg-background/5 backdrop-blur-sm'>
       <Button
         type='button'
         variant='secondary'
@@ -385,7 +385,7 @@ function PreviousControl({ onClick }: { onClick: () => void }) {
 /** Minimal floating control that advances to the next page. */
 function NextControl({ onClick }: { onClick: () => void }) {
   return (
-    <div className='pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center py-4 bg-background/5 backdrop-blur-sm'>
+    <div className='pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center py-2.5 bg-background/5 backdrop-blur-sm'>
       <Button
         type='button'
         variant='secondary'

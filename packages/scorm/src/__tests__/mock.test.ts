@@ -110,6 +110,50 @@ describe('SCORM dev mock CMI persistence', () => {
     expect(window.API.LMSGetValue('cmi.core.lesson_location')).toBe('lesson-3');
   });
 
+  it('logs dev events straight to the console and buffers nothing', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      stateKey,
+      JSON.stringify({ 'cmi.core.lesson_location': 'saved' }),
+    );
+    const logs: unknown[][] = [];
+    const window: Record<string, any> = {
+      localStorage: storage,
+      console: { log: (...args: unknown[]) => logs.push(args) },
+    };
+
+    vm.runInNewContext(scormDevMock, { window });
+
+    expect(window.__SCORM_DEV_EVENT_BUFFER__).toBeUndefined();
+    expect(logs).toHaveLength(1);
+    expect(logs[0]?.[0]).toBe('[scorm] cmi.persistence-restored');
+    expect(logs[0]?.[1]).toMatchObject({
+      name: 'cmi.persistence-restored',
+      details: { count: 1 },
+    });
+  });
+
+  it('reports storage errors through the console log', () => {
+    const logs: unknown[][] = [];
+    const window: Record<string, any> = {
+      console: { log: (...args: unknown[]) => logs.push(args) },
+    };
+    Object.defineProperty(window, 'localStorage', {
+      get() {
+        throw new Error('storage unavailable');
+      },
+    });
+
+    vm.runInNewContext(scormDevMock, { window });
+
+    expect(
+      logs.some((args) => {
+        const event = args[1] as { name?: string } | undefined;
+        return event?.name === 'cmi.persistence-error';
+      }),
+    ).toBe(true);
+  });
+
   it('does not crash when localStorage is unavailable', () => {
     const window: Record<string, any> = {};
     Object.defineProperty(window, 'localStorage', {

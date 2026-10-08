@@ -99,23 +99,17 @@ describe('renderReactPackage', () => {
     expect(appJs).not.toContain('import.meta.hot');
   });
 
-  it('does not ship the SCORM runtime event inspector or its panel', () => {
+  it('does not ship the SCORM dev-tools toolbar or its controls', () => {
     for (const marker of [
       'scorm:runtime-event',
       '__SCORM_DEV_EVENT_BUFFER__',
+      'ScormDevToolsToolbar',
       'ScormRuntimeEventInspector',
-      'SCORM runtime event inspector',
-      'SCORM events',
-      'Mock LMS',
-      'No SCORM runtime events yet',
-      'Clear captured SCORM events',
-      'lms.api-found',
-      'lms.api-missing',
-      'lms.initialize',
-      'lms.get-value',
-      'lms.set-value',
-      'lms.commit',
-      'lms.finish',
+      'Dev tools',
+      'LMS persistence',
+      'Persist CMI data',
+      // The dev-only shadcn Popover must not leak into the packaged app.
+      'popover-content',
     ]) {
       expect(bundleJs).not.toContain(marker);
     }

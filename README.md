@@ -62,12 +62,20 @@ pnpm install
 pnpm typecheck
 pnpm test
 pnpm build
-pnpm scorm build examples/typescript-content
-pnpm scorm dev examples/typescript-content
 ```
 
-The example build writes `dist/typescript-content.zip` by default. Pass `--output <path>` to choose a different ZIP path.
-`scorm dev <content>` starts a local preview, watches the content directory, and reports validation errors without stopping the preview. Pass `--port <port>` to choose the preview port.
+## Example packages
+
+The examples demonstrate the supported package presentations and content components:
+
+| Package                             | What it demonstrates                                                                                | Build                                                | Preview                                            |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------- |
+| `examples/typescript-content`       | A Scroll course with Markdown, a local image, a video reference, code samples, and questionnaires.  | `pnpm scorm build examples/typescript-content`       | `pnpm scorm dev examples/typescript-content`       |
+| `examples/typescript-grid`          | A two-column Grid of short practice items using Markdown.                                           | `pnpm scorm build examples/typescript-grid`          | `pnpm scorm dev examples/typescript-grid`          |
+| `examples/accessibility-basics`     | A Scroll course with practical accessibility guidance and a knowledge-check questionnaire.          | `pnpm scorm build examples/accessibility-basics`     | `pnpm scorm dev examples/accessibility-basics`     |
+| `examples/nr-01-disposicoes-gerais` | A short Scroll pocket guide to NR-01 with practical risk-prevention guidance and a knowledge check. | `pnpm scorm build examples/nr-01-disposicoes-gerais` | `pnpm scorm dev examples/nr-01-disposicoes-gerais` |
+
+Builds write `dist/<content-name>.zip` by default (for example, `dist/accessibility-basics.zip`). Pass `--output <path>` to choose a different ZIP path. `scorm dev <content>` starts a local preview, watches the content directory, and reports validation errors without stopping the preview. Pass `--port <port>` to choose the preview port.
 
 ## License
 

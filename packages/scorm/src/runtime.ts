@@ -21,19 +21,12 @@ export function createScormRuntime(manifest: ContentManifest): string {
   var resumeState = { pages: {} };
 
   function emit(name, details) {
+    if (window.__SCORM_DEVTOOLS__ !== true) return;
     var event = { name: name, at: Date.now(), details: details || {} };
-    if (window.__SCORM_DEVTOOLS__ === true) {
-      var buffer = window.__SCORM_DEV_EVENT_BUFFER__;
-      if (!Array.isArray(buffer)) {
-        buffer = [];
-        window.__SCORM_DEV_EVENT_BUFFER__ = buffer;
-      }
-      buffer.push(event);
-      if (buffer.length > 100) buffer.splice(0, buffer.length - 100);
-    }
-    if (!window.dispatchEvent || !window.CustomEvent) return;
     try {
-      window.dispatchEvent(new window.CustomEvent("scorm:runtime-event", { detail: event }));
+      if (window.console && typeof window.console.log === "function") {
+        window.console.log("[scorm] " + name, event);
+      }
     } catch (_) {}
   }
 
@@ -77,9 +70,12 @@ ${browserCodecSource()}
     var details = window.__SCORM_DEVTOOLS__ === true ? { method: name } : null;
     var eventValue = secondValue === undefined ? value : secondValue;
     if (details && key !== undefined) details.key = key;
-    if (details && eventValue !== undefined) {
+    // For reads the payload is only known after the LMS responds, so value
+    // and length are populated on success below. Writes report the attempted
+    // value up front even when the LMS later rejects it.
+    if (details && eventValue !== undefined && eventName !== "lms.get-value") {
+      details.value = eventValue;
       if (key === "cmi.suspend_data") details.length = String(eventValue).length;
-      else details.value = eventValue;
     }
     if (!api) {
       if (details) details.reason = "api-not-found";
@@ -97,10 +93,10 @@ ${browserCodecSource()}
         : api[name](String(value), String(secondValue));
       result = result == null ? "" : String(result);
       if (details) {
-        details.result = key === "cmi.suspend_data" && eventName === "lms.get-value" ? "redacted" : result;
+        details.result = result;
         if (eventName === "lms.get-value") {
+          details.value = result;
           if (key === "cmi.suspend_data") details.length = result.length;
-          else details.value = result;
         }
       }
       emit(eventName, details);

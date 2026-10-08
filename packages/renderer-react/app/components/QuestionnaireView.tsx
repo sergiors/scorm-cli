@@ -13,6 +13,7 @@ import {
   QuestionnaireSubmit,
   QuestionnaireTitle,
 } from './ui/questionnaire';
+import { Card, CardContent } from './ui/card';
 
 export type { QuestionNode };
 
@@ -101,37 +102,41 @@ export function QuestionnaireView({
   }));
 
   return (
-    <Questionnaire
-      items={items}
-      onSubmit={(event) => {
-        // The root only reaches this handler once every required item has an
-        // answer. Never let the browser navigate away, and forward the
-        // submission once even if the learner submits repeatedly.
-        event.preventDefault();
-        if (submittedRef.current) {
-          return;
-        }
-        submittedRef.current = true;
-        onSubmitted?.(node.id);
-      }}
-    >
-      {node.questions.map((question) => (
-        <QuestionnaireQuestion
-          key={question.id}
-          node={question}
-          controlled={controlled}
-          value={answers?.[question.id]}
-          onAnswer={onAnswer}
-          onQuestionnaireSubmitted={onSubmitted}
-        />
-      ))}
+    <Card>
+      <CardContent>
+        <Questionnaire
+          items={items}
+          onSubmit={(event) => {
+            // The root only reaches this handler once every required item has an
+            // answer. Never let the browser navigate away, and forward the
+            // submission once even if the learner submits repeatedly.
+            event.preventDefault();
+            if (submittedRef.current) {
+              return;
+            }
+            submittedRef.current = true;
+            onSubmitted?.(node.id);
+          }}
+        >
+          {node.questions.map((question) => (
+            <QuestionnaireQuestion
+              key={question.id}
+              node={question}
+              controlled={controlled}
+              value={answers?.[question.id]}
+              onAnswer={onAnswer}
+              onQuestionnaireSubmitted={onSubmitted}
+            />
+          ))}
 
-      <QuestionnaireActions>
-        <QuestionnairePrevious>Previous question</QuestionnairePrevious>
-        <QuestionnaireNext>Next question</QuestionnaireNext>
-        <QuestionnaireSubmit>Submit questionnaire</QuestionnaireSubmit>
-      </QuestionnaireActions>
-    </Questionnaire>
+          <QuestionnaireActions>
+            <QuestionnairePrevious>Previous question</QuestionnairePrevious>
+            <QuestionnaireNext>Next question</QuestionnaireNext>
+            <QuestionnaireSubmit>Submit questionnaire</QuestionnaireSubmit>
+          </QuestionnaireActions>
+        </Questionnaire>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -244,15 +249,17 @@ function SubmittedQuestionnaire({
   answers?: Record<string, AnswerValue>;
 }) {
   return (
-    <div className='not-prose space-y-8'>
-      {node.questions.map((question) => (
-        <SubmittedQuestion
-          key={question.id}
-          question={question}
-          value={answers?.[question.id]}
-        />
-      ))}
-    </div>
+    <Card className='not-prose '>
+      <CardContent className='space-y-6'>
+        {node.questions.map((question) => (
+          <SubmittedQuestion
+            key={question.id}
+            question={question}
+            value={answers?.[question.id]}
+          />
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
