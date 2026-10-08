@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { PackageApp } from '../../app/App';
 import { PackageView } from '../../app/components/PackageView';
+import { PlayerI18nProvider } from '../../app/lib/player-i18n';
 import type { ContentPackage } from '../../app/types';
 import {
   gridPackage,
@@ -28,7 +29,11 @@ const headingScrollPackage: ContentPackage = {
 };
 
 function renderView(contentPackage: ContentPackage) {
-  return renderToStaticMarkup(<PackageView contentPackage={contentPackage} />);
+  return renderToStaticMarkup(
+    <PlayerI18nProvider lang={contentPackage.metadata.lang}>
+      <PackageView contentPackage={contentPackage} />
+    </PlayerI18nProvider>,
+  );
 }
 
 describe('PackageView scroll presentation', () => {

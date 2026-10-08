@@ -6,7 +6,7 @@ import type {
   PageNode,
   PlayerPageState,
 } from '../types';
-import { useI18n } from '../lib/use-i18n';
+import { useIntl } from 'react-intl';
 import { cn } from '../lib/utils';
 import { InlineContent } from './InlineContent';
 import { PathView } from './PathView';
@@ -214,14 +214,14 @@ function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
 }
 
 function VideoView({ node }: ContentNodeViewProps<'video'>) {
-  const { t } = useI18n();
+  const intl = useIntl();
   return (
     <figure className='space-y-2'>
       <video
         controls
         preload='metadata'
         poster={node.poster}
-        aria-label={node.title ?? t.videoLabel}
+        aria-label={node.title ?? intl.formatMessage({ id: 'video.label' })}
         className='w-full rounded-2xl'
       >
         <source src={node.src} />
@@ -232,7 +232,7 @@ function VideoView({ node }: ContentNodeViewProps<'video'>) {
             kind='captions'
             src={node.captions}
             srcLang='und'
-            label={t.videoCaptions}
+            label={intl.formatMessage({ id: 'video.captions' })}
             default
           />
         ) : null}

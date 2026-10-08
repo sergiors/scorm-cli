@@ -3,11 +3,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ContentPackage } from '@scorm-cli/core';
 import type { Plugin } from 'vite';
-import {
-  documentLanguage,
-  resolveLanguage,
-  SUPPORTED_LOCALES,
-} from '../app/lib/i18n';
 
 /** HTML template shipped with the package and used by both build and dev. */
 export const ENTRYPOINT = 'index.html';
@@ -66,6 +61,27 @@ function escapeHtml(value: string): string {
 }
 
 /**
+ * The document's declared language: the authored tag verbatim when present,
+ * else `en`. Only surrounding whitespace is trimmed, so a declared language is
+ * never rewritten to a canonical form and stays independent from the UI locale
+ * the generated player renders in.
+ */
+function declaredDocumentLanguage(lang: string | undefined): string {
+  const declared = lang?.trim();
+  return declared ? declared : 'en';
+}
+
+/**
+ * Whether the player ships a UI dictionary for the base language of an authored
+ * tag. This is a local authoring check only: it decides whether to warn that the
+ * chrome will render in English and never alters the declared document language.
+ */
+function hasPlayerDictionary(language: string): boolean {
+  const base = language.toLowerCase().split('-')[0];
+  return base === 'en' || base === 'pt';
+}
+
+/**
  * Rewrites the document's `lang` attribute to `language`, adding it when the
  * template has none. The declared language is preserved even when it is not a
  * supported UI locale, so the browser and assistive tech still see it.
@@ -118,20 +134,13 @@ export function createPackageDataPlugin(handle: PackageDataHandle): Plugin {
     transformIndexHtml(html) {
       const { metadata } = handle.current;
       const title = escapeHtml(metadata.title || 'Content');
-      const language = documentLanguage(metadata.lang);
+      const language = declaredDocumentLanguage(metadata.lang);
 
-      const resolved = resolveLanguage(metadata.lang);
-      if (
-        !resolved.supported &&
-        resolved.language &&
-        !warnedLanguages.has(resolved.language)
-      ) {
-        warnedLanguages.add(resolved.language);
+      if (!hasPlayerDictionary(language) && !warnedLanguages.has(language)) {
+        warnedLanguages.add(language);
         console.warn(
-          `[scorm-cli] Unsupported content language "${resolved.language}". ` +
-            `Rendering the player in English; supported languages are ${SUPPORTED_LOCALES.join(
-              ', ',
-            )}.`,
+          `[scorm-cli] Unsupported content language "${language}". ` +
+            `Rendering the player in English; supported languages are en, pt-BR.`,
         );
       }
 

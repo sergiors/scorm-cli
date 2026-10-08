@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { useIntl } from 'react-intl';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PackageView } from '../../app/components/PackageView';
 import {
@@ -10,7 +11,7 @@ import {
   DialogTitle,
 } from '../../app/components/ui/dialog';
 import type { ContentPackage } from '../../app/types';
-import { I18nProvider } from '../../app/lib/use-i18n';
+import { PlayerI18nProvider } from '../../app/lib/player-i18n';
 import { gridPackage } from './fixtures';
 
 declare global {
@@ -48,13 +49,30 @@ function findButton(prefix: string): HTMLButtonElement {
   return button;
 }
 
+/**
+ * Exercises the composition pattern the player uses: the translation-agnostic
+ * dialog primitive receives its localized close label from a caller that can
+ * read the catalog.
+ */
+function LocalizedCloseDialog() {
+  const closeLabel = useIntl().formatMessage({ id: 'dialog.close' });
+  return (
+    <Dialog open>
+      <DialogContent aria-describedby={undefined} closeLabel={closeLabel}>
+        <DialogTitle>Painel</DialogTitle>
+        <DialogFooter showCloseButton closeLabel={closeLabel} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 describe('i18n: grid dialog', () => {
   it('localizes the dialog description and close controls', () => {
     act(() =>
       root.render(
-        <I18nProvider lang='pt-BR'>
+        <PlayerI18nProvider lang='pt-BR'>
           <PackageView contentPackage={ptGridPackage} />
-        </I18nProvider>,
+        </PlayerI18nProvider>,
       ),
     );
 
@@ -72,14 +90,9 @@ describe('i18n: grid dialog', () => {
   it('localizes the footer fallback close button', () => {
     act(() =>
       root.render(
-        <I18nProvider lang='pt-BR'>
-          <Dialog open>
-            <DialogContent aria-describedby={undefined}>
-              <DialogTitle>Painel</DialogTitle>
-              <DialogFooter showCloseButton />
-            </DialogContent>
-          </Dialog>
-        </I18nProvider>,
+        <PlayerI18nProvider lang='pt-BR'>
+          <LocalizedCloseDialog />
+        </PlayerI18nProvider>,
       ),
     );
 

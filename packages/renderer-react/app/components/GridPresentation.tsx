@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from 'react';
+import { useIntl } from 'react-intl';
 import type { AnswerValue, ItemNode, PlayerPageState } from '../types';
-import { useI18n } from '../lib/use-i18n';
 import { cn } from '../lib/utils';
 import { ContentRenderer } from './ContentRenderer';
 import { Button } from './ui/button';
@@ -59,7 +59,7 @@ export function GridPresentation({
   onAnswer,
   onQuestionnaireSubmitted,
 }: GridPresentationProps) {
-  const { t } = useI18n();
+  const intl = useIntl();
   const [selected, setSelected] = useState<ItemNode | undefined>(() =>
     items.find((item) => item.id === initialItemId),
   );
@@ -91,12 +91,16 @@ export function GridPresentation({
         <DialogContent
           className='max-h-[85dvh] overflow-y-auto sm:max-w-2xl'
           aria-describedby={undefined}
+          closeLabel={intl.formatMessage({ id: 'dialog.close' })}
         >
           <DialogHeader>
             <DialogTitle>{selected?.metadata.title}</DialogTitle>
             {selected ? (
               <DialogDescription className='sr-only'>
-                {t.contentFor(selected.metadata.title)}
+                {intl.formatMessage(
+                  { id: 'content.for' },
+                  { title: selected.metadata.title },
+                )}
               </DialogDescription>
             ) : null}
           </DialogHeader>

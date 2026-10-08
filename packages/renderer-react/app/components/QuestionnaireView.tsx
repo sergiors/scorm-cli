@@ -1,4 +1,5 @@
 import { useId, useRef } from 'react';
+import { FormattedMessage, useIntl } from 'react-intl';
 import type {
   AnswerValue,
   PageNode,
@@ -6,7 +7,6 @@ import type {
   QuestionnaireNode,
   QuestionNode,
 } from '../types';
-import { useI18n } from '../lib/use-i18n';
 import { ContentRenderer } from './ContentRenderer';
 import {
   Questionnaire,
@@ -119,7 +119,7 @@ export function QuestionnaireView({
   onNavigatePathPage,
 }: QuestionnaireViewProps) {
   const submittedRef = useRef(false);
-  const { t } = useI18n();
+  const intl = useIntl();
   // Bundled once so it can be forwarded verbatim to every nested renderer.
   const pathContext: NestedPathContext = {
     pathPages,
@@ -178,11 +178,16 @@ export function QuestionnaireView({
               // but replace its hardcoded English progress label and text with
               // the localized equivalents for both the visible and announced
               // value.
-              const label = t.questionnaireProgress(state.current, state.total);
+              const label = intl.formatMessage(
+                { id: 'questionnaire.progress' },
+                { current: state.current, total: state.total },
+              );
               return (
                 <div
                   {...props}
-                  aria-label={t.questionnaireProgressLabel}
+                  aria-label={intl.formatMessage({
+                    id: 'questionnaire.progressLabel',
+                  })}
                   aria-valuetext={label}
                 >
                   {label}
@@ -205,10 +210,14 @@ export function QuestionnaireView({
 
           <QuestionnaireActions>
             <QuestionnairePrevious>
-              {t.questionnairePrevious}
+              <FormattedMessage id='questionnaire.previous' />
             </QuestionnairePrevious>
-            <QuestionnaireNext>{t.questionnaireNext}</QuestionnaireNext>
-            <QuestionnaireSubmit>{t.questionnaireSubmit}</QuestionnaireSubmit>
+            <QuestionnaireNext>
+              <FormattedMessage id='questionnaire.next' />
+            </QuestionnaireNext>
+            <QuestionnaireSubmit>
+              <FormattedMessage id='questionnaire.submit' />
+            </QuestionnaireSubmit>
           </QuestionnaireActions>
         </Questionnaire>
       </CardContent>

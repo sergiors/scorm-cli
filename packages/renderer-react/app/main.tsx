@@ -22,9 +22,10 @@ if (container) {
  * this branch (and the toolbar module it imports) is removed from the SCORM
  * output entirely.
  *
- * The toolbar is deliberately not wrapped in the player's `I18nProvider`: it is
- * a dev-only surface that ships English-only copy and never reaches production.
- * `PackageApp` still provides the localized dictionary for the bundled player.
+ * The toolbar is deliberately not wrapped in the player's `PlayerI18nProvider`:
+ * it is a dev-only surface that ships English-only copy and never reaches
+ * production. `PackageApp` still provides the localized catalog for the bundled
+ * player.
  */
 function DevInspector() {
   if (!import.meta.hot) {

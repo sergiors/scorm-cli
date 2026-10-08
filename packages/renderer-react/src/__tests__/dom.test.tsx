@@ -11,6 +11,20 @@ import type {
   QuestionnaireNode,
 } from '../../app/types';
 import { gridPackage, headingDepths, introPage, setupPage } from './fixtures';
+import { PlayerI18nProvider } from '../../app/lib/player-i18n';
+
+/**
+ * Renders a package under the player's i18n provider, mirroring `PackageApp`.
+ * The provider normally lives at the app boundary; these tests render
+ * `PackageView` directly, so they supply it here.
+ */
+function Player({ contentPackage }: { contentPackage: ContentPackage }) {
+  return (
+    <PlayerI18nProvider lang={contentPackage.metadata.lang}>
+      <PackageView contentPackage={contentPackage} />
+    </PlayerI18nProvider>
+  );
+}
 
 declare global {
   // eslint-disable-next-line no-var
@@ -351,7 +365,7 @@ const gridHeadingPackage: ContentPackage = {
 
 describe('PackageView scroll interactions', () => {
   it('renders only the first page, without previous/next page controls', () => {
-    act(() => root.render(<PackageView contentPackage={gatedPackage} />));
+    act(() => root.render(<Player contentPackage={gatedPackage} />));
 
     expect(sceneIndices()).toEqual([0]);
     // Only the displayed page's authored body is present. The metadata title is
@@ -367,18 +381,18 @@ describe('PackageView scroll interactions', () => {
     const markCompleted = vi.fn();
     window.scormBridge = { markCompleted };
 
-    act(() => root.render(<PackageView contentPackage={gatedPackage} />));
+    act(() => root.render(<Player contentPackage={gatedPackage} />));
     expect(markCompleted).not.toHaveBeenCalled();
   });
 
   it('works without any SCORM bridge', () => {
     expect(window.scormBridge).toBeUndefined();
-    act(() => root.render(<PackageView contentPackage={gatedPackage} />));
+    act(() => root.render(<Player contentPackage={gatedPackage} />));
     expect(text()).toContain('Welcome');
   });
 
   it('inverts the page content prose colors in dark mode', () => {
-    act(() => root.render(<PackageView contentPackage={gatedPackage} />));
+    act(() => root.render(<Player contentPackage={gatedPackage} />));
 
     const scene = container.querySelector<HTMLElement>(
       '[data-scene-index="0"]',
@@ -396,9 +410,7 @@ describe('PackageView scroll interactions', () => {
     const markCompleted = vi.fn();
     window.scormBridge = { markCompleted };
 
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
     expect(markCompleted).not.toHaveBeenCalled();
 
     setEndIntersecting(0, true);
@@ -412,9 +424,7 @@ describe('PackageView scroll interactions', () => {
     const saveState = vi.fn();
     window.scormBridge = { saveState };
 
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
 
     expect(saveState).toHaveBeenCalledTimes(1);
     expect(lastSaved(saveState)).toEqual({
@@ -436,9 +446,7 @@ describe('PackageView scroll interactions', () => {
       saveState,
     };
 
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
 
     expect(sceneIndices()).toEqual([1]);
     expect(saveState).not.toHaveBeenCalled();
@@ -447,7 +455,7 @@ describe('PackageView scroll interactions', () => {
 
 describe('PackageView scroll completion gating', () => {
   it('keeps the next control hidden at the page end until questionnaires submit', () => {
-    act(() => root.render(<PackageView contentPackage={gatedPackage} />));
+    act(() => root.render(<Player contentPackage={gatedPackage} />));
 
     setEndIntersecting(0, true);
     expect(nextButtons()).toHaveLength(0);
@@ -457,7 +465,7 @@ describe('PackageView scroll completion gating', () => {
   });
 
   it('waits for the page end when the questionnaire is submitted first', () => {
-    act(() => root.render(<PackageView contentPackage={gatedPackage} />));
+    act(() => root.render(<Player contentPackage={gatedPackage} />));
 
     answerQuestionnaire();
     expect(nextButtons()).toHaveLength(0);
@@ -470,7 +478,7 @@ describe('PackageView scroll completion gating', () => {
     const saveState = vi.fn();
     window.scormBridge = { saveState };
 
-    act(() => root.render(<PackageView contentPackage={gatedPackage} />));
+    act(() => root.render(<Player contentPackage={gatedPackage} />));
     const afterMount = saveState.mock.calls.length;
 
     setEndIntersecting(0, true);
@@ -482,7 +490,7 @@ describe('PackageView scroll completion gating', () => {
   });
 
   it('never renders a completion banner or progress UI', () => {
-    act(() => root.render(<PackageView contentPackage={progressPackage} />));
+    act(() => root.render(<Player contentPackage={progressPackage} />));
     setEndIntersecting(0, true);
 
     expect(container.querySelector('[role="status"]')).toBeNull();
@@ -493,18 +501,14 @@ describe('PackageView scroll completion gating', () => {
 
 describe('PackageView scroll navigation controls', () => {
   it('keeps the next control hidden until the page end is reached', () => {
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
 
     expect(container.querySelector('[data-scroll-end]')).not.toBeNull();
     expect(nextButtons()).toHaveLength(0);
   });
 
   it('shows the next control at the page end when another page follows', () => {
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
     setEndIntersecting(0, true);
 
     const buttons = nextButtons();
@@ -513,9 +517,7 @@ describe('PackageView scroll navigation controls', () => {
   });
 
   it('hides the next control after scrolling forward past the page end', () => {
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
     setEndIntersecting(0, true);
     expect(nextButtons()).toHaveLength(1);
 
@@ -524,9 +526,7 @@ describe('PackageView scroll navigation controls', () => {
   });
 
   it('advances to the next page and hides the previous content', () => {
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
     setEndIntersecting(0, true);
 
     act(() => nextButtons()[0]?.click());
@@ -540,18 +540,14 @@ describe('PackageView scroll navigation controls', () => {
   });
 
   it('never shows a previous control on the first page', () => {
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
 
     expect(container.querySelector('[data-scroll-start]')).toBeNull();
     expect(previousButtons()).toHaveLength(0);
   });
 
   it('keeps the previous control a fixed, clickable overlay above the page', () => {
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
     setEndIntersecting(0, true);
     act(() => nextButtons()[0]?.click());
 
@@ -583,9 +579,7 @@ describe('PackageView scroll navigation controls', () => {
   });
 
   it('returns to the previous page when the previous control is activated', () => {
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
     setEndIntersecting(0, true);
     act(() => nextButtons()[0]?.click());
 
@@ -598,18 +592,14 @@ describe('PackageView scroll navigation controls', () => {
   });
 
   it('never shows a next control on the final page', () => {
-    act(() =>
-      root.render(<PackageView contentPackage={plainOnePagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainOnePagePackage} />));
 
     setEndIntersecting(0, true);
     expect(nextButtons()).toHaveLength(0);
   });
 
   it('never shows a next control on the last page of a multi-page package', () => {
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
     setEndIntersecting(0, true);
     act(() => nextButtons()[0]?.click());
 
@@ -618,9 +608,7 @@ describe('PackageView scroll navigation controls', () => {
   });
 
   it('resets the document scroll to the top when the page changes', () => {
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
     // The initial page also opens at the top.
     expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'auto' });
 
@@ -634,7 +622,7 @@ describe('PackageView scroll navigation controls', () => {
   });
 
   it('shows both controls when short content exposes both boundaries', () => {
-    act(() => root.render(<PackageView contentPackage={progressPackage} />));
+    act(() => root.render(<Player contentPackage={progressPackage} />));
     setEndIntersecting(0, true);
     act(() => nextButtons()[0]?.click());
 
@@ -647,7 +635,7 @@ describe('PackageView scroll navigation controls', () => {
   });
 
   it('centres each control without spanning the viewport or covering the scrollbar', () => {
-    act(() => root.render(<PackageView contentPackage={progressPackage} />));
+    act(() => root.render(<Player contentPackage={progressPackage} />));
     setEndIntersecting(0, true);
     act(() => nextButtons()[0]?.click());
 
@@ -697,9 +685,7 @@ describe('PackageView scroll navigation controls', () => {
   });
 
   it('observes page boundaries against the viewport', () => {
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
 
     const sentinel = container.querySelector('[data-scroll-end="0"]');
     expect(sentinel).not.toBeNull();
@@ -709,9 +695,7 @@ describe('PackageView scroll navigation controls', () => {
   });
 
   it('observes the page end with a non-negative bottom margin', () => {
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
 
     const sentinel = container.querySelector('[data-scroll-end="0"]');
     expect(sentinel).not.toBeNull();
@@ -728,9 +712,7 @@ describe('PackageView scroll navigation controls', () => {
   });
 
   it('disconnects page boundary observers when the page changes', () => {
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
 
     const sentinel = container.querySelector('[data-scroll-end="0"]');
     expect(sentinel).not.toBeNull();
@@ -747,9 +729,7 @@ describe('PackageView scroll navigation controls', () => {
 
 describe('PackageView scroll viewport', () => {
   it('renders pages directly in the document without an internal scroll container', () => {
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
 
     // Scrolling belongs to the document, so the player renders no viewport-sized
     // overflow container of its own (see the stylesheet rules covered in
@@ -764,7 +744,7 @@ describe('PackageView scroll viewport', () => {
   });
 
   it('lays the page scene out in natural flow without vertical centering', () => {
-    act(() => root.render(<PackageView contentPackage={gatedPackage} />));
+    act(() => root.render(<Player contentPackage={gatedPackage} />));
 
     const scene = container.querySelector<HTMLElement>(
       '[data-scene-index="0"]',
@@ -791,7 +771,7 @@ describe('PackageView scroll viewport', () => {
   });
 
   it('renders the authored page body and names the scene after the page', () => {
-    act(() => root.render(<PackageView contentPackage={gatedPackage} />));
+    act(() => root.render(<Player contentPackage={gatedPackage} />));
 
     const scene = container.querySelector<HTMLElement>(
       '[data-scene-index="0"]',
@@ -810,9 +790,7 @@ describe('PackageView scroll viewport', () => {
   });
 
   it('resets the document scroll once for the initial page', () => {
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
 
     // Opening the page resets the document scroll exactly once, and the reset is
     // instantaneous rather than a smooth animation from an old offset.
@@ -821,9 +799,7 @@ describe('PackageView scroll viewport', () => {
   });
 
   it('keeps the next control clickable above the viewport', () => {
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
     setEndIntersecting(0, true);
 
     const button = nextButtons()[0];
@@ -845,7 +821,7 @@ describe('PackageView scroll location restore', () => {
       }),
     };
 
-    act(() => root.render(<PackageView contentPackage={progressPackage} />));
+    act(() => root.render(<Player contentPackage={progressPackage} />));
 
     expect(sceneIndices()).toEqual([2]);
     expect(text()).toContain('Body 3.');
@@ -869,9 +845,7 @@ describe('PackageView scroll location restore', () => {
       markCompleted,
     };
 
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
 
     expect(sceneIndices()).toEqual([1]);
     expect(markCompleted).not.toHaveBeenCalled();
@@ -900,7 +874,7 @@ describe('PackageView scroll location restore', () => {
       saveState,
     };
 
-    act(() => root.render(<PackageView contentPackage={gatedPackage} />));
+    act(() => root.render(<Player contentPackage={gatedPackage} />));
 
     // The restored submission renders read-only with both saved answers checked,
     // and counts as submitted, so reaching the page end completes it.
@@ -930,7 +904,7 @@ describe('PackageView scroll location restore', () => {
       }),
     };
 
-    act(() => root.render(<PackageView contentPackage={gatedPackage} />));
+    act(() => root.render(<Player contentPackage={gatedPackage} />));
 
     // Completion is resumed from the state, not inferred from the location, and
     // a completed scroll page is normalized to submitted, so its questionnaire
@@ -947,7 +921,7 @@ describe('PackageView scroll location restore', () => {
       restoreState: () => ({ location: 'page:missing.mdx', pages: {} }),
     };
 
-    act(() => root.render(<PackageView contentPackage={progressPackage} />));
+    act(() => root.render(<Player contentPackage={progressPackage} />));
 
     expect(sceneIndices()).toEqual([0]);
   });
@@ -956,7 +930,7 @@ describe('PackageView scroll location restore', () => {
     const saveState = vi.fn();
     window.scormBridge = { saveState };
 
-    act(() => root.render(<PackageView contentPackage={progressPackage} />));
+    act(() => root.render(<Player contentPackage={progressPackage} />));
 
     expect(sceneIndices()).toEqual([0]);
     expect(lastSaved(saveState).location).toBe('page:plain-1.mdx');
@@ -975,7 +949,7 @@ describe('PackageView scroll location restore', () => {
     act(() =>
       root.render(
         <StrictMode>
-          <PackageView contentPackage={progressPackage} />
+          <Player contentPackage={progressPackage} />
         </StrictMode>,
       ),
     );
@@ -995,7 +969,7 @@ describe('PackageView scroll state persistence', () => {
     const saveState = vi.fn();
     window.scormBridge = { saveState };
 
-    act(() => root.render(<PackageView contentPackage={gatedPackage} />));
+    act(() => root.render(<Player contentPackage={gatedPackage} />));
     act(() => input('first').click());
 
     expect(lastSaved(saveState).pages['page:intro.mdx']?.answers).toEqual({
@@ -1007,9 +981,7 @@ describe('PackageView scroll state persistence', () => {
     const saveState = vi.fn();
     window.scormBridge = { saveState };
 
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
     setEndIntersecting(0, true);
     act(() => nextButtons()[0]?.click());
 
@@ -1028,7 +1000,7 @@ describe('PackageView scroll state persistence', () => {
     const saveState = vi.fn();
     window.scormBridge = { saveState };
 
-    act(() => root.render(<PackageView contentPackage={progressPackage} />));
+    act(() => root.render(<Player contentPackage={progressPackage} />));
     setEndIntersecting(0, true);
     expect(lastProgress(saveState)).toBe(25);
     act(() => nextButtons()[0]?.click());
@@ -1042,9 +1014,7 @@ describe('PackageView scroll state persistence', () => {
     const saveState = vi.fn();
     window.scormBridge = { saveState };
 
-    act(() =>
-      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-    );
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
     setEndIntersecting(0, true);
     act(() => nextButtons()[0]?.click());
     act(() => previousButtons()[0]?.click());
@@ -1059,9 +1029,7 @@ describe('PackageView scroll state persistence', () => {
     const saveState = vi.fn();
     window.scormBridge = { saveState };
 
-    act(() =>
-      root.render(<PackageView contentPackage={sharedQuestionPackage} />),
-    );
+    act(() => root.render(<Player contentPackage={sharedQuestionPackage} />));
     act(() => input('yes').click());
     setEndIntersecting(0, true);
     act(() => findButton('Submit questionnaire').click());
@@ -1082,7 +1050,7 @@ describe('PackageView scroll state persistence', () => {
     const saveState = vi.fn();
     window.scormBridge = { saveState };
 
-    act(() => root.render(<PackageView contentPackage={gatedPackage} />));
+    act(() => root.render(<Player contentPackage={gatedPackage} />));
     act(() => input('first').click());
     act(() => findButton('Next question').click());
     act(() => input('alpha').click());
@@ -1109,9 +1077,7 @@ describe('PackageView scroll state persistence', () => {
     (window as unknown as { API?: typeof api }).API = api;
 
     try {
-      act(() =>
-        root.render(<PackageView contentPackage={plainTwoPagePackage} />),
-      );
+      act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
       setEndIntersecting(0, true);
       expect(
         Object.values(api).every((method) => method.mock.calls.length === 0),
@@ -1124,7 +1090,7 @@ describe('PackageView scroll state persistence', () => {
 
 describe('PackageView grid interactions', () => {
   it('renders cards and opens the selected item in a dialog', () => {
-    act(() => root.render(<PackageView contentPackage={gridPackage} />));
+    act(() => root.render(<Player contentPackage={gridPackage} />));
 
     expect(text()).toContain('Functions');
     expect(dialog()).toBeNull();
@@ -1135,7 +1101,7 @@ describe('PackageView grid interactions', () => {
   });
 
   it('wraps authored item content in prose typography', () => {
-    act(() => root.render(<PackageView contentPackage={gridPackage} />));
+    act(() => root.render(<Player contentPackage={gridPackage} />));
     act(() => findButton('Functions').click());
 
     const prose = dialog()?.querySelector('.prose');
@@ -1144,7 +1110,7 @@ describe('PackageView grid interactions', () => {
   });
 
   it('renders authored Markdown depths 1-6 as matching h1-h6 in the dialog', () => {
-    act(() => root.render(<PackageView contentPackage={gridHeadingPackage} />));
+    act(() => root.render(<Player contentPackage={gridHeadingPackage} />));
     act(() => findButton('Headings').click());
 
     const content = dialog();
@@ -1156,7 +1122,7 @@ describe('PackageView grid interactions', () => {
   });
 
   it('closes the dialog with the close button', () => {
-    act(() => root.render(<PackageView contentPackage={gridPackage} />));
+    act(() => root.render(<Player contentPackage={gridPackage} />));
     act(() => findButton('Functions').click());
     expect(dialog()).not.toBeNull();
 
@@ -1171,7 +1137,7 @@ describe('PackageView grid interactions', () => {
   });
 
   it('closes the dialog on Escape', () => {
-    act(() => root.render(<PackageView contentPackage={gridPackage} />));
+    act(() => root.render(<Player contentPackage={gridPackage} />));
     act(() => findButton('Functions').click());
     expect(dialog()).not.toBeNull();
 
@@ -1188,7 +1154,7 @@ describe('PackageView grid interactions', () => {
     const saveState = vi.fn();
     window.scormBridge = { saveState };
 
-    act(() => root.render(<PackageView contentPackage={gridPackage} />));
+    act(() => root.render(<Player contentPackage={gridPackage} />));
     act(() => findButton('Functions').click());
 
     expect(lastSaved(saveState)).toEqual({
@@ -1213,7 +1179,7 @@ describe('PackageView grid interactions', () => {
       }),
     };
 
-    act(() => root.render(<PackageView contentPackage={gridQuizPackage} />));
+    act(() => root.render(<Player contentPackage={gridQuizPackage} />));
 
     expect(dialog()).not.toBeNull();
     expect(documentText()).toContain('Shared prompt');
@@ -1227,7 +1193,7 @@ describe('PackageView grid interactions', () => {
     const finish = vi.fn();
     window.scormBridge = { markCompleted, finish };
 
-    act(() => root.render(<PackageView contentPackage={gridPackage} />));
+    act(() => root.render(<Player contentPackage={gridPackage} />));
     expect(markCompleted).not.toHaveBeenCalled();
 
     act(() => findButton('Functions').click());
@@ -1247,7 +1213,7 @@ describe('PackageView grid interactions', () => {
   });
 
   it('never renders a completion banner or progress UI', () => {
-    act(() => root.render(<PackageView contentPackage={gridPackage} />));
+    act(() => root.render(<Player contentPackage={gridPackage} />));
     expect(container.querySelector('[role="status"]')).toBeNull();
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
     expect(text()).not.toContain('Package complete');

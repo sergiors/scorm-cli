@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { act, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ContentRenderer } from '../../app/components/ContentRenderer';
-import { PackageView } from '../../app/components/PackageView';
+import { ContentRenderer as ContentRendererBase } from '../../app/components/ContentRenderer';
+import { PackageView as PackageViewBase } from '../../app/components/PackageView';
 import { canOpenPathPage } from '../../app/components/PathView';
-import { QuestionnaireView } from '../../app/components/QuestionnaireView';
+import { QuestionnaireView as QuestionnaireViewBase } from '../../app/components/QuestionnaireView';
+import { PlayerI18nProvider } from '../../app/lib/player-i18n';
 import type {
   ContentNode,
   ContentPackage,
@@ -16,6 +17,37 @@ import type {
   PlayerState,
   QuestionnaireNode,
 } from '../../app/types';
+
+/**
+ * Wraps a player component in the i18n provider, matching how `PackageApp`
+ * renders the tree. These tests render players directly, so they supply the
+ * provider here; the wrappers keep every call site unchanged.
+ */
+function ContentRenderer(props: ComponentProps<typeof ContentRendererBase>) {
+  return (
+    <PlayerI18nProvider>
+      <ContentRendererBase {...props} />
+    </PlayerI18nProvider>
+  );
+}
+
+function QuestionnaireView(
+  props: ComponentProps<typeof QuestionnaireViewBase>,
+) {
+  return (
+    <PlayerI18nProvider>
+      <QuestionnaireViewBase {...props} />
+    </PlayerI18nProvider>
+  );
+}
+
+function PackageView(props: ComponentProps<typeof PackageViewBase>) {
+  return (
+    <PlayerI18nProvider lang={props.contentPackage.metadata.lang}>
+      <PackageViewBase {...props} />
+    </PlayerI18nProvider>
+  );
+}
 
 declare global {
   // eslint-disable-next-line no-var

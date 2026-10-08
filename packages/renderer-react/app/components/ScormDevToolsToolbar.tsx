@@ -61,9 +61,6 @@ export function ScormDevToolsToolbar({
           </Button>
         </PopoverTrigger>
         <PopoverContent align='end' aria-label='Dev tools' className='w-80'>
-          <PopoverHeader>
-            <PopoverTitle>LMS persistence</PopoverTitle>
-          </PopoverHeader>
           <CmiPersistenceControl />
         </PopoverContent>
       </Popover>

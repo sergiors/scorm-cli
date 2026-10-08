@@ -1,14 +1,30 @@
 // @vitest-environment jsdom
-import { act, useState } from 'react';
+import { act, useState, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { QuestionnaireView } from '../../app/components/QuestionnaireView';
+import { QuestionnaireView as QuestionnaireViewBase } from '../../app/components/QuestionnaireView';
+import { PlayerI18nProvider } from '../../app/lib/player-i18n';
 import type { AnswerValue, ContentNode } from '../../app/types';
 import {
   multipleChoiceQuestion,
   questionnaireNode,
   singleChoiceQuestion,
 } from './fixtures';
+
+/**
+ * Wraps the questionnaire in the player's i18n provider, matching how a page
+ * renders it. These tests exercise questionnaire behaviour, so they only need
+ * the provider to supply the localized chrome.
+ */
+function QuestionnaireView(
+  props: ComponentProps<typeof QuestionnaireViewBase>,
+) {
+  return (
+    <PlayerI18nProvider>
+      <QuestionnaireViewBase {...props} />
+    </PlayerI18nProvider>
+  );
+}
 
 type QuestionNode = Extract<
   ContentNode,

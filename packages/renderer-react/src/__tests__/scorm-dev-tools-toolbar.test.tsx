@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ScormDevToolsToolbar } from '../../app/components/ScormDevToolsToolbar';
-import { I18nProvider } from '../../app/lib/use-i18n';
+import { PlayerI18nProvider } from '../../app/lib/player-i18n';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -174,9 +174,9 @@ describe('ScormDevToolsToolbar', () => {
     // depend on the player's localized chrome.
     act(() =>
       root.render(
-        <I18nProvider lang='pt-BR'>
+        <PlayerI18nProvider lang='pt-BR'>
           <ScormDevToolsToolbar enabled />
-        </I18nProvider>,
+        </PlayerI18nProvider>,
       ),
     );
 

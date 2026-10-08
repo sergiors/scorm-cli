@@ -16,11 +16,13 @@ import {
   QuestionnaireSubmit,
 } from '../../app/components/ui/questionnaire';
 import type { ContentPackage, PageNode, PathNode } from '../../app/types';
-import { I18nProvider } from '../../app/lib/use-i18n';
+import { PlayerI18nProvider } from '../../app/lib/player-i18n';
 import { questionnaireNode } from './fixtures';
 
 function render(lang: string | undefined, ui: ReactNode): string {
-  return renderToStaticMarkup(<I18nProvider lang={lang}>{ui}</I18nProvider>);
+  return renderToStaticMarkup(
+    <PlayerI18nProvider lang={lang}>{ui}</PlayerI18nProvider>,
+  );
 }
 
 const videoNode = {
@@ -150,6 +152,26 @@ describe('player i18n: English', () => {
     );
     expect(html).toContain('This package does not contain any content.');
   });
+
+  it('renders the Path navigation label and statuses', () => {
+    const html = render(
+      undefined,
+      <PathView
+        node={pathNode}
+        pathPages={pathPages}
+        pageStates={{ 'page:a.mdx': { visited: true } }}
+        onNavigatePathPage={() => {}}
+      />,
+    );
+    expect(html).toContain('aria-label="Path"');
+    expect(html).toContain('Visited');
+    expect(html).toContain('Available');
+    expect(html).toContain('Locked');
+    // Authored titles and descriptions pass through untouched.
+    expect(html).toContain('First authored');
+    expect(html).toContain('Descrição autoral');
+    expect(html).not.toContain('Trilha');
+  });
 });
 
 describe('player i18n: Brazilian Portuguese', () => {
@@ -187,12 +209,15 @@ describe('player i18n: Brazilian Portuguese', () => {
     expect(html).toContain('Which option is correct?');
   });
 
-  it('renders the shadcn questionnaire default actions', () => {
+  it('leaves the primitive action defaults untranslated', () => {
+    // The UI primitive layer is translation-agnostic: localized action labels
+    // are supplied by the composition layer (QuestionnaireView), so the bare
+    // primitives keep their own untranslated defaults here.
     const html = render('pt-BR', <QuestionnaireDefaults />);
-    expect(html).toContain('Anterior');
-    expect(html).toContain('Pular');
-    expect(html).toContain('Próxima');
-    expect(html).toContain('Enviar');
+    expect(html).not.toContain('Anterior');
+    expect(html).not.toContain('Pular');
+    expect(html).not.toContain('Próxima');
+    expect(html).not.toContain('Enviar');
   });
 
   it('renders the Path navigation label and statuses', () => {

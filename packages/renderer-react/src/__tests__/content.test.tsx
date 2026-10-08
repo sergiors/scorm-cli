@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ContentRenderer } from '../../app/components/ContentRenderer';
 import { InlineContent } from '../../app/components/InlineContent';
+import { PlayerI18nProvider } from '../../app/lib/player-i18n';
 import type { ContentNode, InlineNode } from '../../app/types';
 import {
   headingDepths,
@@ -11,7 +12,11 @@ import {
 } from './fixtures';
 
 function render(nodes: ContentNode[]): string {
-  return renderToStaticMarkup(<ContentRenderer nodes={nodes} />);
+  return renderToStaticMarkup(
+    <PlayerI18nProvider>
+      <ContentRenderer nodes={nodes} />
+    </PlayerI18nProvider>,
+  );
 }
 
 function renderInline(nodes: InlineNode[]): string {
@@ -829,37 +834,39 @@ describe('ContentRenderer questionnaires', () => {
 describe('ContentRenderer context propagation', () => {
   it('threads answers and submitted state through nested blocks', () => {
     const html = renderToStaticMarkup(
-      <ContentRenderer
-        nodes={[
-          {
-            type: 'quote',
-            children: [
-              {
-                type: 'heading',
-                depth: 1,
-                children: [{ type: 'text', value: 'Context' }],
-              },
-              {
-                type: 'list',
-                ordered: false,
-                items: [
-                  {
-                    children: [
-                      {
-                        type: 'questionnaire',
-                        id: 'questionnaire:nested.mdx:1:1',
-                        questions: [singleChoiceQuestion],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        ]}
-        answers={{ [singleChoiceQuestion.id]: 'second' }}
-        submittedQuestionnaires={['questionnaire:nested.mdx:1:1']}
-      />,
+      <PlayerI18nProvider>
+        <ContentRenderer
+          nodes={[
+            {
+              type: 'quote',
+              children: [
+                {
+                  type: 'heading',
+                  depth: 1,
+                  children: [{ type: 'text', value: 'Context' }],
+                },
+                {
+                  type: 'list',
+                  ordered: false,
+                  items: [
+                    {
+                      children: [
+                        {
+                          type: 'questionnaire',
+                          id: 'questionnaire:nested.mdx:1:1',
+                          questions: [singleChoiceQuestion],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ]}
+          answers={{ [singleChoiceQuestion.id]: 'second' }}
+          submittedQuestionnaires={['questionnaire:nested.mdx:1:1']}
+        />
+      </PlayerI18nProvider>,
     );
 
     // A heading nested inside a quote keeps its authored depth...

@@ -3,7 +3,6 @@ import { cn } from 'cn';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 
 import { Button } from '@/components/ui/button';
-import { useI18n } from '@/lib/use-i18n';
 import { XIcon } from 'lucide-react';
 
 function Dialog({
@@ -50,11 +49,17 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  closeLabel,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
+  /**
+   * Accessible name for the icon close button. This primitive is
+   * translation-agnostic, so callers pass a localized string; when omitted the
+   * icon button renders without a screen-reader label.
+   */
+  closeLabel?: string;
 }) {
-  const { t } = useI18n();
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -75,7 +80,9 @@ function DialogContent({
               size='icon-sm'
             >
               <XIcon />
-              <span className='sr-only'>{t.dialogClose}</span>
+              {closeLabel ? (
+                <span className='sr-only'>{closeLabel}</span>
+              ) : null}
             </Button>
           </DialogPrimitive.Close>
         )}
@@ -97,12 +104,17 @@ function DialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
 function DialogFooter({
   className,
   showCloseButton = false,
+  closeLabel,
   children,
   ...props
 }: React.ComponentProps<'div'> & {
   showCloseButton?: boolean;
+  /**
+   * Visible label for the fallback close button. This primitive is
+   * translation-agnostic, so callers pass a localized string.
+   */
+  closeLabel?: string;
 }) {
-  const { t } = useI18n();
   return (
     <div
       data-slot='dialog-footer'
@@ -115,7 +127,7 @@ function DialogFooter({
       {children}
       {showCloseButton && (
         <DialogPrimitive.Close asChild>
-          <Button variant='outline'>{t.dialogClose}</Button>
+          <Button variant='outline'>{closeLabel}</Button>
         </DialogPrimitive.Close>
       )}
     </div>

@@ -12,7 +12,7 @@ import {
   saveState,
   useScormBridge,
 } from '../lib/use-scorm-bridge';
-import { useI18n } from '../lib/use-i18n';
+import { FormattedMessage } from 'react-intl';
 import { GridPresentation } from './GridPresentation';
 import { ScrollPresentation } from './ScrollPresentation';
 
@@ -187,6 +187,9 @@ export function PackageView({ contentPackage }: PackageViewProps) {
 }
 
 function EmptyPackage() {
-  const { t } = useI18n();
-  return <p className='p-6 text-sm text-muted-foreground'>{t.emptyPackage}</p>;
+  return (
+    <p className='p-6 text-sm text-muted-foreground'>
+      <FormattedMessage id='package.empty' />
+    </p>
+  );
 }

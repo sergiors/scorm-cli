@@ -1,5 +1,5 @@
 import { TriangleAlert } from 'lucide-react';
-import { useI18n } from '../lib/use-i18n';
+import { FormattedMessage } from 'react-intl';
 
 export interface PreviewErrorOverlayProps {
   message: string;
@@ -19,8 +19,6 @@ export interface PreviewErrorOverlayProps {
  * in the bundle. The diagnostic `message` is not translated.
  */
 export function PreviewErrorOverlay({ message }: PreviewErrorOverlayProps) {
-  const { t } = useI18n();
-
   return (
     <div
       role='alert'
@@ -33,9 +31,13 @@ export function PreviewErrorOverlay({ message }: PreviewErrorOverlayProps) {
           className='mt-0.5 size-5 shrink-0 text-destructive'
         />
         <div className='min-w-0 flex-1 space-y-1'>
-          <p className='font-medium'>{t.previewErrorTitle}</p>
+          <p className='font-medium'>
+            <FormattedMessage id='previewError.title' />
+          </p>
           <p className='break-words text-sm text-muted-foreground'>{message}</p>
-          <p className='text-xs text-muted-foreground'>{t.previewErrorHint}</p>
+          <p className='text-xs text-muted-foreground'>
+            <FormattedMessage id='previewError.hint' />
+          </p>
         </div>
       </div>
     </div>

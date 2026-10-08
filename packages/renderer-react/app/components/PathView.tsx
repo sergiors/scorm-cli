@@ -1,6 +1,7 @@
 import { Check, Circle, Lock } from 'lucide-react';
+import { useIntl } from 'react-intl';
 import type { PageNode, PathNode, PlayerPageState } from '../types';
-import { useI18n } from '../lib/use-i18n';
+import type { MessageId } from '../lib/messages';
 import { cn } from '../lib/utils';
 import {
   Item,
@@ -63,6 +64,13 @@ const STATUS_ICONS = {
   locked: Lock,
 } as const;
 
+/** Message id for each entry status, kept in sync with the icon registry. */
+const STATUS_MESSAGES = {
+  visited: 'path.visited',
+  available: 'path.available',
+  locked: 'path.locked',
+} as const satisfies Record<PathPageStatus, MessageId>;
+
 export interface PathViewProps {
   node: PathNode;
 
@@ -100,7 +108,7 @@ export function PathView({
   pageStates = {},
   onNavigatePathPage,
 }: PathViewProps) {
-  const { t } = useI18n();
+  const intl = useIntl();
 
   const pagesById = new Map(pathPages.map((page) => [page.id, page]));
 
@@ -108,7 +116,7 @@ export function PathView({
 
   return (
     <nav
-      aria-label={t.pathLabel}
+      aria-label={intl.formatMessage({ id: 'path.label' })}
       data-slot='path'
       className='not-prose space-y-2.5'
     >
@@ -147,14 +155,9 @@ function PathEntry({
   onOpen?: () => void;
 }) {
   const Icon = STATUS_ICONS[status];
-  const { t } = useI18n();
+  const intl = useIntl();
 
-  const label =
-    status === 'visited'
-      ? t.pathStatusVisited
-      : status === 'available'
-        ? t.pathStatusAvailable
-        : t.pathStatusLocked;
+  const label = intl.formatMessage({ id: STATUS_MESSAGES[status] });
 
   return (
     <Item data-path-entry data-path-status={status} variant='outline' asChild>
