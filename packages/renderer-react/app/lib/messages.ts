@@ -27,9 +27,6 @@ export const en = {
   'questionnaire.progress': 'Question {current} of {total}',
   'dialog.close': 'Close',
   'package.empty': 'This package does not contain any content.',
-  'previewError.title': 'Content error',
-  'previewError.hint':
-    'Fix the content and save. The preview reloads automatically once the content is valid again.',
   'content.for': 'Content for {title}',
 } as const;
 
@@ -57,9 +54,6 @@ export const ptBR: Record<MessageId, string> = {
   'questionnaire.progress': 'Pergunta {current} de {total}',
   'dialog.close': 'Fechar',
   'package.empty': 'Este pacote não contém nenhum conteúdo.',
-  'previewError.title': 'Erro de conteúdo',
-  'previewError.hint':
-    'Corrija o conteúdo e salve. A pré-visualização recarrega automaticamente assim que o conteúdo for válido novamente.',
   'content.for': 'Conteúdo de {title}',
 };
 

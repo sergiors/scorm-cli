@@ -1,4 +1,5 @@
 export { parsePackage } from './package';
+export { authoringComponentNames } from './package';
 export type {
   AnswerValue,
   BreakNode,

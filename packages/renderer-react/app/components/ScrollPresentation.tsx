@@ -369,7 +369,7 @@ function PageScene({
     <div
       data-scene-index={index}
       aria-label={page.metadata.title}
-      className='mx-auto min-h-dvh w-full max-w-3xl px-6 pt-20 pb-24'
+      className='mx-auto min-h-dvh w-full max-w-3xl px-6 py-18 flex flex-col justify-center'
     >
       {hasPrev ? (
         <div

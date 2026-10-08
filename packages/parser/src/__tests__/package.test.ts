@@ -814,17 +814,17 @@ describe('parsePackage', () => {
     );
   });
 
-  it('rejects unsupported Markdown nodes and MDX imports with locations', async () => {
+  it('rejects unsupported Markdown nodes and MDX JavaScript with locations', async () => {
     const root = await makeLesson('<span>Unsupported raw HTML</span>');
     await expect(parsePackage(root)).rejects.toThrow(
       /lesson\.mdx:\d+: unknown MDX component <span>/,
     );
     await writeFile(
       path.join(root, 'lesson.mdx'),
-      '---\ntitle: Lesson\n---\nimport Video from "./Video";',
+      "---\ntitle: Lesson\n---\nexport const runtime = 'edge';",
     );
     await expect(parsePackage(root)).rejects.toThrow(
-      /MDX JavaScript and imports are not supported/,
+      /MDX JavaScript is not supported/,
     );
   });
 

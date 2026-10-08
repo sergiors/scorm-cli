@@ -3,18 +3,28 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "exports": {
+    "./authoring": {
+      "types": "./authoring/dist/index.d.ts",
+      "import": "./authoring/dist/index.js"
+    }
+  },
   "scripts": {
-    "build": "pnpm -r --if-present --workspace-concurrency=1 run build",
+    "build": "pnpm run build:authoring && pnpm -r --if-present --workspace-concurrency=1 run build",
+    "build:authoring": "tsup --config authoring/tsup.config.ts",
     "dev": "pnpm --filter @scorm-cli/cli dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm build && pnpm -r --if-present run test",
-    "typecheck": "pnpm build && pnpm -r --if-present run typecheck",
+    "typecheck": "pnpm build && pnpm run typecheck:authoring && pnpm -r --if-present run typecheck",
+    "typecheck:authoring": "tsc -p authoring/tsconfig.json",
     "scorm": "node packages/cli/dist/index.js"
   },
   "devDependencies": {
     "@types/node": "^25.6.2",
+    "@types/react": "^19.0.0",
     "prettier": "3.9.9",
+    "react": "^19.0.0",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"

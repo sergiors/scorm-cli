@@ -1,5 +1,4 @@
 import { TriangleAlert } from 'lucide-react';
-import { FormattedMessage } from 'react-intl';
 
 export interface PreviewErrorOverlayProps {
   message: string;
@@ -31,12 +30,11 @@ export function PreviewErrorOverlay({ message }: PreviewErrorOverlayProps) {
           className='mt-0.5 size-5 shrink-0 text-destructive'
         />
         <div className='min-w-0 flex-1 space-y-1'>
-          <p className='font-medium'>
-            <FormattedMessage id='previewError.title' />
-          </p>
+          <p className='font-medium'>Content error</p>
           <p className='break-words text-sm text-muted-foreground'>{message}</p>
           <p className='text-xs text-muted-foreground'>
-            <FormattedMessage id='previewError.hint' />
+            Fix the content and save. The preview reloads automatically once the
+            content is valid again.
           </p>
         </div>
       </div>

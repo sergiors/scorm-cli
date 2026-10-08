@@ -12,12 +12,16 @@ Build SCORM 1.2 packages from authored MDX content packages.
 
 ## Author a content package
 
-A content package directory contains an `index.mdx` root document and referenced MDX documents. The root requires `title` frontmatter and exactly one presentation: a `<Scroll>` containing direct `<Page>` references, or a `<Grid>` containing direct `<Item>` references. These modes cannot be mixed; root Markdown, text, and other components are not allowed. A grid may set `columns` to an integer from 1 to 12:
+A content package directory contains an `index.mdx` root document and referenced MDX documents. Components are imported from the typed `scorm-cli/authoring` subpath so editors can complete names and check props. The import is inert: the CLI resolves the named bindings (and aliases) to its canonical vocabulary while parsing, but content files are parsed as data and never executed. Imports from other modules are ignored, and MDX JavaScript is not supported.
+
+The root requires `title` frontmatter and exactly one presentation: a `<Scroll>` containing direct `<Page>` references, or a `<Grid>` containing direct `<Item>` references. These modes cannot be mixed; root Markdown, text, and other components are not allowed. A grid may set `columns` to an integer from 1 to 12:
 
 ```mdx
 ---
 title: My Scroll Package
 ---
+
+import { Scroll, Page } from 'scorm-cli/authoring';
 
 <Scroll>
   <Page src='lessons/intro.mdx' />
@@ -33,15 +37,19 @@ Grid packages use the same exact-one-root rule and reference item documents:
 title: Practice Package
 ---
 
+import { Grid, Item } from 'scorm-cli/authoring';
+
 <Grid columns={2}>
   <Item src='practice/check.mdx' />
   <Item src='practice/recall.mdx' />
 </Grid>
 ```
 
-Every referenced Page or Item document requires title-only frontmatter and can contain Markdown plus supported static components such as `<Image>`, `<Video>`, and `<Questionnaire>`. A questionnaire contains one or more `<Question>` elements, each with `<Prompt>` and `<Option>` children. MDX JavaScript and imports are not supported; content files are parsed as data and never execute author code.
+Every referenced Page or Item document requires title-only frontmatter and can contain Markdown plus supported static components such as `<Image>`, `<Video>`, and `<Questionnaire>`. A Page can also include a `<Path>` whose `<Page ref='...' />` children point at pages already declared in the root `<Scroll>`. MDX JavaScript is not supported.
 
 ```mdx
+import { Questionnaire, Question, Prompt, Option } from 'scorm-cli/authoring';
+
 <Questionnaire>
   <Question type='single-choice'>
     <Prompt>What does TypeScript add to JavaScript?</Prompt>
@@ -53,6 +61,17 @@ Every referenced Page or Item document requires title-only frontmatter and can c
     </Option>
   </Question>
 </Questionnaire>
+```
+
+Paths reference pages that the root `<Scroll>` already declares:
+
+```mdx
+import { Path, Page } from 'scorm-cli/authoring';
+
+<Path>
+  <Page ref='lessons/one.mdx' />
+  <Page ref='lessons/two.mdx' />
+</Path>
 ```
 
 ## Install and build
