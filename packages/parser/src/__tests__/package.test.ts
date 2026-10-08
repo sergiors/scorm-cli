@@ -350,6 +350,38 @@ describe('parsePackage', () => {
     ]);
   });
 
+  it('preserves authored Question option order and types for manifest index mapping', async () => {
+    const root = await makeLesson(
+      `<Questionnaire>\n` +
+        `<Question type="multiple-choice">\n<Prompt>Pick all</Prompt>\n` +
+        `<Option value="zebra" correct={true}>Zebra</Option>\n` +
+        `<Option value="mango" correct={false}>Mango</Option>\n` +
+        `<Option value="apple" correct={true}>Apple</Option>\n` +
+        `</Question>\n` +
+        `<Question type="single-choice">\n<Prompt>Pick one</Prompt>\n` +
+        `<Option value="beta" correct={false}>Beta</Option>\n` +
+        `<Option value="alpha" correct={true}>Alpha</Option>\n` +
+        `</Question>\n</Questionnaire>`,
+    );
+    const content = await lessonContent(root);
+    const questionnaire = content[0];
+    if (questionnaire?.type !== 'questionnaire')
+      throw new Error('Expected a questionnaire');
+    expect(
+      questionnaire.questions.map((question) => question.questionType),
+    ).toEqual(['multiple-choice', 'single-choice']);
+    const authored = questionnaire.questions.map((question) =>
+      question.options.map((option) => option.value),
+    );
+    // Authored order is deliberately not alphabetical so the manifest cannot
+    // reindex by sorting values; option indexes must follow the source order.
+    expect(authored).toEqual([
+      ['zebra', 'mango', 'apple'],
+      ['beta', 'alpha'],
+    ]);
+    expect([...authored[0]!].sort()).not.toEqual(authored[0]);
+  });
+
   it('validates Prompt counts with a source line and count', async () => {
     for (const [inside, count] of [
       ['<Option value="a"/><Option value="b"/>', 0],
