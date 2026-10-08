@@ -2,14 +2,14 @@
 import { StrictMode, act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PackageView } from '../app/components/PackageView';
+import { PackageView } from '../../app/components/PackageView';
 import type {
   ContentPackage,
   ItemNode,
   PageNode,
   PlayerState,
   QuestionnaireNode,
-} from '../app/types';
+} from '../../app/types';
 import { gridPackage, introPage, setupPage } from './fixtures';
 
 declare global {

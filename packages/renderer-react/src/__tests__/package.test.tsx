@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { PackageApp } from '../app/App';
-import { PackageView } from '../app/components/PackageView';
-import type { ContentPackage } from '../app/types';
+import { PackageApp } from '../../app/App';
+import { PackageView } from '../../app/components/PackageView';
+import type { ContentPackage } from '../../app/types';
 import {
   gridPackage,
   makeEmptyGridPackage,

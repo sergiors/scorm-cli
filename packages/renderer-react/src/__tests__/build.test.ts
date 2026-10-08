@@ -9,8 +9,8 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { renderReactPackage, reactRenderer } from '../src';
-import type { RenderResult } from '../src';
+import { renderReactPackage, reactRenderer } from '..';
+import type { RenderResult } from '..';
 import { samplePackage } from './fixtures';
 
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>`;

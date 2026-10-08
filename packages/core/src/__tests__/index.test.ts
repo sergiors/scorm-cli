@@ -4,7 +4,7 @@ import {
   getPackageProgress,
   isPackageComplete,
   type ContentPackage,
-} from './index';
+} from '../index';
 
 const contentPackage: ContentPackage = {
   metadata: { title: 'Package' },

@@ -7,7 +7,7 @@ import {
   SCORM_RUNTIME_EVENT_NAME,
   subscribeToScormRuntimeEvents,
   type ScormRuntimeEvent,
-} from '../app/lib/scorm-runtime-events';
+} from '../../app/lib/scorm-runtime-events';
 
 function makeEvent(name: string, at: number): ScormRuntimeEvent {
   return { name, at, details: {} };

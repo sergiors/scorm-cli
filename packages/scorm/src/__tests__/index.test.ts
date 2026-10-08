@@ -12,7 +12,7 @@ import {
   encodeSuspendData,
   packageScorm,
   scormDevMock,
-} from './index';
+} from '../index';
 
 let temp: string;
 afterEach(async () => {

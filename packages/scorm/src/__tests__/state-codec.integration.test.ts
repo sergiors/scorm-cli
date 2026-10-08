@@ -7,13 +7,13 @@ import type {
   QuestionOption,
   QuestionType,
 } from '@scorm-cli/core';
-import { createContentManifest } from './content-manifest';
+import { createContentManifest } from '../content-manifest';
 import {
   browserCodecSource,
   decodeSuspendData,
   encodeSuspendData,
-} from './state-codec';
-import { createScormRuntime } from './runtime';
+} from '../state-codec';
+import { createScormRuntime } from '../runtime';
 
 function option(value: string, label: string): QuestionOption {
   return {

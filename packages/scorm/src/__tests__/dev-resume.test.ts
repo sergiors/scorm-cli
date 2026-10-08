@@ -1,9 +1,9 @@
 import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import type { ContentPackage } from '@scorm-cli/core';
-import { createContentManifest } from './content-manifest';
-import { scormDevMock } from './mock';
-import { createScormRuntime } from './runtime';
+import { createContentManifest } from '../content-manifest';
+import { scormDevMock } from '../mock';
+import { createScormRuntime } from '../runtime';
 
 class MemoryStorage {
   private values = new Map<string, string>();

@@ -4,8 +4,8 @@ import {
   collectQuestionnaires,
   getPresentationNodes,
   isPackageComplete,
-} from '../app/lib/content-helpers';
-import type { ContentNode, QuestionnaireNode } from '../app/types';
+} from '../../app/lib/content-helpers';
+import type { ContentNode, QuestionnaireNode } from '../../app/types';
 import {
   gridPackage,
   makeEmptyGridPackage,

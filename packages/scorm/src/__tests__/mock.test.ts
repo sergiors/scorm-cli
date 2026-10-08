@@ -1,6 +1,6 @@
 import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
-import { scormDevMock } from './mock';
+import { scormDevMock } from '../mock';
 
 const preferenceKey = 'scorm-cli:dev:persist-cmi';
 const stateKey = 'scorm-cli:dev:cmi-state';

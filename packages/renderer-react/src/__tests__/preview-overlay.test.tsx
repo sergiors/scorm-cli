@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { PreviewErrorOverlay } from '../app/components/PreviewErrorOverlay';
+import { PreviewErrorOverlay } from '../../app/components/PreviewErrorOverlay';
 
 describe('PreviewErrorOverlay', () => {
   it('renders an accessible alert with the author-facing message', () => {

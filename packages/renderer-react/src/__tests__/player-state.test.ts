@@ -5,8 +5,8 @@ import {
   sameAnswer,
   updatePageState,
   withLocation,
-} from '../app/lib/player-state';
-import type { ContentPackage, PlayerState } from '../app/types';
+} from '../../app/lib/player-state';
+import type { ContentPackage, PlayerState } from '../../app/types';
 import { questionnaireNode, scrollPackage } from './fixtures';
 
 /** A scroll package whose first page carries the shared questionnaire fixture. */

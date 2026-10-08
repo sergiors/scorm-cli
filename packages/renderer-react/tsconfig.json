@@ -17,6 +17,6 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src", "app", "test", "vitest.config.ts"],
+  "include": ["src", "app", "vitest.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

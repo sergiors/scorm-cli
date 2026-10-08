@@ -2,11 +2,11 @@
 import { act, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ScormRuntimeEventInspector } from '../app/components/ScormRuntimeEventInspector';
+import { ScormRuntimeEventInspector } from '../../app/components/ScormRuntimeEventInspector';
 import {
   MAX_SCORM_RUNTIME_EVENTS,
   SCORM_RUNTIME_EVENT_NAME,
-} from '../app/lib/scorm-runtime-events';
+} from '../../app/lib/scorm-runtime-events';
 
 let container: HTMLDivElement;
 let root: Root;

@@ -9,8 +9,8 @@ import {
   scormDevMock,
 } from '@scorm-cli/scorm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { LoadedPackage } from './content';
-import { startDevPackage } from './dev';
+import type { LoadedPackage } from '../content';
+import { startDevPackage } from '../dev';
 
 const content: ContentPackage = {
   metadata: { title: 'Demo' },

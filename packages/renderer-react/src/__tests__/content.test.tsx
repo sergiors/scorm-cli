@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { ContentRenderer } from '../app/components/ContentRenderer';
-import { InlineContent } from '../app/components/InlineContent';
-import type { ContentNode, InlineNode } from '../app/types';
+import { ContentRenderer } from '../../app/components/ContentRenderer';
+import { InlineContent } from '../../app/components/InlineContent';
+import type { ContentNode, InlineNode } from '../../app/types';
 import { multipleChoiceQuestion, singleChoiceQuestion } from './fixtures';
 
 function render(nodes: ContentNode[], headingOffset?: number): string {

@@ -4,7 +4,7 @@ import type {
   ContentPackage,
   QuestionOption,
 } from '@scorm-cli/core';
-import { createContentManifest } from './content-manifest';
+import { createContentManifest } from '../content-manifest';
 
 const question = (
   id: string,

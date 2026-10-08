@@ -1,9 +1,9 @@
 import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import type { ContentPackage, PlayerState } from '@scorm-cli/core';
-import { createContentManifest } from './content-manifest';
-import { decodeSuspendData, encodeSuspendData } from './state-codec';
-import { createScormRuntime } from './runtime';
+import { createContentManifest } from '../content-manifest';
+import { decodeSuspendData, encodeSuspendData } from '../state-codec';
+import { createScormRuntime } from '../runtime';
 
 const packageContent: ContentPackage = {
   metadata: { title: 'Codec test' },

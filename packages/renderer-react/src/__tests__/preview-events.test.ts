@@ -5,7 +5,7 @@ import {
   PREVIEW_ERROR_EVENT,
   subscribeToPreviewEvents,
   type PreviewHotContext,
-} from '../app/lib/preview-events';
+} from '../../app/lib/preview-events';
 
 function makeHot(): {
   hot: PreviewHotContext;
