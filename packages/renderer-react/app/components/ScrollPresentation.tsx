@@ -368,7 +368,7 @@ function PageScene({
         />
       ) : null}
 
-      <section className='prose prose-stone max-w-none!'>
+      <section className='prose prose-stone max-w-none! dark:prose-invert'>
         <ContentRenderer
           nodes={page.content}
           pathPages={pathPages}
@@ -402,7 +402,7 @@ function PreviousControl({ onClick }: { onClick: () => void }) {
   return (
     <div
       data-scroll-previous
-      className='flex justify-center px-6 pt-4 pb-2'
+      className='pointer-events-none fixed inset-x-0 top-0 z-10 flex justify-center py-2.5 bg-background/5 backdrop-blur-sm'
     >
       <Button
         type='button'

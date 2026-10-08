@@ -371,6 +371,19 @@ describe('PackageView scroll interactions', () => {
     expect(text()).toContain('Introduction');
   });
 
+  it('inverts the page content prose colors in dark mode', () => {
+    act(() => root.render(<PackageView contentPackage={gatedPackage} />));
+
+    const scene = container.querySelector<HTMLElement>('[data-scene-index="0"]');
+    const prose = scene?.querySelector<HTMLElement>('.prose');
+    expect(prose).not.toBeNull();
+    // Light mode keeps the stone palette...
+    expect(prose?.classList.contains('prose-stone')).toBe(true);
+    // ...and dark mode inverts it, so typography colors do not stay in the
+    // light palette when the surrounding theme is dark.
+    expect(prose?.classList.contains('dark:prose-invert')).toBe(true);
+  });
+
   it('completes a questionnaire-free page at its end', () => {
     const markCompleted = vi.fn();
     window.scormBridge = { markCompleted };
