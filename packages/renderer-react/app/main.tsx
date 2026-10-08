@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client';
 import contentPackage from 'virtual:package-data';
 import { PackageApp } from './App';
 import { ScormDevToolsToolbar } from './components/ScormDevToolsToolbar';
-import { I18nProvider } from './lib/use-i18n';
 import './styles.css';
 
 const container = document.getElementById('root');
@@ -12,7 +11,7 @@ if (container) {
   createRoot(container).render(
     <StrictMode>
       <PackageApp contentPackage={contentPackage} />
-      <DevInspector lang={contentPackage.metadata.lang} />
+      <DevInspector />
     </StrictMode>,
   );
 }
@@ -22,14 +21,14 @@ if (container) {
  * Vite replaces `import.meta.hot` with `undefined` in production builds, so
  * this branch (and the toolbar module it imports) is removed from the SCORM
  * output entirely.
+ *
+ * The toolbar is deliberately not wrapped in the player's `I18nProvider`: it is
+ * a dev-only surface that ships English-only copy and never reaches production.
+ * `PackageApp` still provides the localized dictionary for the bundled player.
  */
-function DevInspector({ lang }: { lang?: string }) {
+function DevInspector() {
   if (!import.meta.hot) {
     return null;
   }
-  return (
-    <I18nProvider lang={lang}>
-      <ScormDevToolsToolbar />
-    </I18nProvider>
-  );
+  return <ScormDevToolsToolbar />;
 }

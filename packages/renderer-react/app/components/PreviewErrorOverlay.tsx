@@ -1,32 +1,9 @@
 import { TriangleAlert } from 'lucide-react';
-import type { Locale } from '../lib/i18n';
 import { useI18n } from '../lib/use-i18n';
 
 export interface PreviewErrorOverlayProps {
   message: string;
 }
-
-interface PreviewMessages {
-  contentError: string;
-  contentErrorHint: string;
-}
-
-/**
- * Kept local (rather than in the shared player dictionary) so the dev-only
- * copy stays beside the component it belongs to.
- */
-const PREVIEW_MESSAGES: Record<Locale, PreviewMessages> = {
-  en: {
-    contentError: 'Content error',
-    contentErrorHint:
-      'Fix the content and save. The preview reloads automatically once the content is valid again.',
-  },
-  'pt-BR': {
-    contentError: 'Erro de conteúdo',
-    contentErrorHint:
-      'Corrija o conteúdo e salve. A pré-visualização recarrega automaticamente assim que o conteúdo for válido novamente.',
-  },
-};
 
 /**
  * Author-facing overlay shown when `scorm dev` reports a content error.
@@ -34,10 +11,15 @@ const PREVIEW_MESSAGES: Record<Locale, PreviewMessages> = {
  * It is intentionally non-blocking (a bottom banner rather than a full-screen
  * modal) so the last valid preview stays inspectable while the author fixes the
  * content. The dev server clears it and reloads on the next successful update.
+ *
+ * It only ever appears in `scorm dev` — the error is delivered over Vite's HMR
+ * channel — but this module is statically imported by `PackageApp` and therefore
+ * ships in the generated bundle. Its fixed copy is localized through the shared
+ * dictionary so it follows the package language instead of hardcoding English
+ * in the bundle. The diagnostic `message` is not translated.
  */
 export function PreviewErrorOverlay({ message }: PreviewErrorOverlayProps) {
-  const { locale } = useI18n();
-  const copy = PREVIEW_MESSAGES[locale];
+  const { t } = useI18n();
 
   return (
     <div
@@ -51,11 +33,9 @@ export function PreviewErrorOverlay({ message }: PreviewErrorOverlayProps) {
           className='mt-0.5 size-5 shrink-0 text-destructive'
         />
         <div className='min-w-0 flex-1 space-y-1'>
-          <p className='font-medium'>{copy.contentError}</p>
+          <p className='font-medium'>{t.previewErrorTitle}</p>
           <p className='break-words text-sm text-muted-foreground'>{message}</p>
-          <p className='text-xs text-muted-foreground'>
-            {copy.contentErrorHint}
-          </p>
+          <p className='text-xs text-muted-foreground'>{t.previewErrorHint}</p>
         </div>
       </div>
     </div>

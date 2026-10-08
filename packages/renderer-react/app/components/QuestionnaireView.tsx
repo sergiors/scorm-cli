@@ -17,6 +17,7 @@ import {
   QuestionnaireItem,
   QuestionnaireNext,
   QuestionnairePrevious,
+  QuestionnaireProgress,
   QuestionnaireSubmit,
   QuestionnaireTitle,
 } from './ui/questionnaire';
@@ -171,6 +172,25 @@ export function QuestionnaireView({
             onSubmitted?.(node.id);
           }}
         >
+          <QuestionnaireProgress
+            render={(props, state) => {
+              // Keep the primitive's role/ARIA/data-slot and merged classes,
+              // but replace its hardcoded English progress label and text with
+              // the localized equivalents for both the visible and announced
+              // value.
+              const label = t.questionnaireProgress(state.current, state.total);
+              return (
+                <div
+                  {...props}
+                  aria-label={t.questionnaireProgressLabel}
+                  aria-valuetext={label}
+                >
+                  {label}
+                </div>
+              );
+            }}
+          />
+
           {node.questions.map((question) => (
             <QuestionnaireQuestion
               key={question.id}

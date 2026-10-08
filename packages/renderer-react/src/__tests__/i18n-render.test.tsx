@@ -118,6 +118,24 @@ describe('player i18n: English', () => {
     expect(html).toContain('Submit questionnaire');
   });
 
+  it('renders the questionnaire progress counter with progressbar semantics', () => {
+    const html = render(
+      undefined,
+      <QuestionnaireView node={questionnaireNode} />,
+    );
+    expect(html).toContain('role="progressbar"');
+    // English keeps the primitive's default accessible name unchanged.
+    expect(html).toContain('aria-label="Questionnaire progress"');
+    // The numeric range is preserved alongside the announced value.
+    expect(html).toContain('aria-valuemin="1"');
+    expect(html).toContain('aria-valuemax="2"');
+    expect(html).toContain('aria-valuenow="1"');
+    // The announced value is localized rather than the primitive's English.
+    expect(html).toContain('aria-valuetext="Question 1 of 2"');
+    // The visible counter shows the same localized label.
+    expect(html).toContain('>Question 1 of 2</div>');
+  });
+
   it('renders the shadcn questionnaire default actions', () => {
     const html = render(undefined, <QuestionnaireDefaults />);
     expect(html).toContain('Previous');
@@ -149,6 +167,24 @@ describe('player i18n: Brazilian Portuguese', () => {
     expect(html).toContain('Pergunta anterior');
     expect(html).toContain('Próxima pergunta');
     expect(html).toContain('Enviar questionário');
+  });
+
+  it('renders the questionnaire progress counter with progressbar semantics', () => {
+    const html = render(
+      'pt-BR',
+      <QuestionnaireView node={questionnaireNode} />,
+    );
+    expect(html).toContain('role="progressbar"');
+    // The accessible name is localized rather than the primitive's English.
+    expect(html).toContain('aria-label="Progresso do questionário"');
+    // The numeric range is preserved alongside the announced value.
+    expect(html).toContain('aria-valuemin="1"');
+    expect(html).toContain('aria-valuemax="2"');
+    expect(html).toContain('aria-valuenow="1"');
+    expect(html).toContain('aria-valuetext="Pergunta 1 de 2"');
+    expect(html).toContain('>Pergunta 1 de 2</div>');
+    // The authored prompt is never translated.
+    expect(html).toContain('Which option is correct?');
   });
 
   it('renders the shadcn questionnaire default actions', () => {

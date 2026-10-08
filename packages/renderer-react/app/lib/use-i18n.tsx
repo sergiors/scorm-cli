@@ -4,7 +4,7 @@ import { DEFAULT_LOCALE, resolveLocale, type Locale } from './i18n';
 /**
  * Every string the player generates itself, as opposed to authored content.
  * Titles, descriptions, prompts and options are never translated; only this
- * fixed chrome is. Values that interpolate authored data are functions so the
+ * fixed chrome is. Values that interpolate runtime data are functions so the
  * type records that they must not be pre-formatted.
  */
 export interface Messages {
@@ -19,12 +19,16 @@ export interface Messages {
   questionnairePrevious: string;
   questionnaireNext: string;
   questionnaireSubmit: string;
+  questionnaireProgressLabel: string;
+  questionnaireProgress: (current: number, total: number) => string;
   questionnaireDefaultPrevious: string;
   questionnaireDefaultSkip: string;
   questionnaireDefaultNext: string;
   questionnaireDefaultSubmit: string;
   dialogClose: string;
   emptyPackage: string;
+  previewErrorTitle: string;
+  previewErrorHint: string;
   contentFor: (title: string) => string;
 }
 
@@ -40,12 +44,17 @@ const en: Messages = {
   questionnairePrevious: 'Previous question',
   questionnaireNext: 'Next question',
   questionnaireSubmit: 'Submit questionnaire',
+  questionnaireProgressLabel: 'Questionnaire progress',
+  questionnaireProgress: (current, total) => `Question ${current} of ${total}`,
   questionnaireDefaultPrevious: 'Previous',
   questionnaireDefaultSkip: 'Skip',
   questionnaireDefaultNext: 'Next',
   questionnaireDefaultSubmit: 'Submit',
   dialogClose: 'Close',
   emptyPackage: 'This package does not contain any content.',
+  previewErrorTitle: 'Content error',
+  previewErrorHint:
+    'Fix the content and save. The preview reloads automatically once the content is valid again.',
   contentFor: (title) => `Content for ${title}`,
 };
 
@@ -61,12 +70,17 @@ const ptBR: Messages = {
   questionnairePrevious: 'Pergunta anterior',
   questionnaireNext: 'Próxima pergunta',
   questionnaireSubmit: 'Enviar questionário',
+  questionnaireProgressLabel: 'Progresso do questionário',
+  questionnaireProgress: (current, total) => `Pergunta ${current} de ${total}`,
   questionnaireDefaultPrevious: 'Anterior',
   questionnaireDefaultSkip: 'Pular',
   questionnaireDefaultNext: 'Próxima',
   questionnaireDefaultSubmit: 'Enviar',
   dialogClose: 'Fechar',
   emptyPackage: 'Este pacote não contém nenhum conteúdo.',
+  previewErrorTitle: 'Erro de conteúdo',
+  previewErrorHint:
+    'Corrija o conteúdo e salve. A pré-visualização recarrega automaticamente assim que o conteúdo for válido novamente.',
   contentFor: (title) => `Conteúdo de ${title}`,
 };
 

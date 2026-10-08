@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ScormDevToolsToolbar } from '../../app/components/ScormDevToolsToolbar';
+import { I18nProvider } from '../../app/lib/use-i18n';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -105,7 +106,7 @@ describe('ScormDevToolsToolbar', () => {
     expect(container.textContent).not.toContain('SCORM events');
   });
 
-  it('opens a portaled shadcn popover with its slots and title', () => {
+  it('opens a portaled shadcn popover anchored to its trigger', () => {
     act(() => root.render(<ScormDevToolsToolbar enabled />));
     togglePopover();
 
@@ -166,6 +167,35 @@ describe('ScormDevToolsToolbar', () => {
     // Expanded popover: title, labels, description and helper copy.
     expect(popover()).not.toBeNull();
     expect(document.body.textContent ?? '').not.toMatch(/mock/i);
+  });
+
+  it('keeps its copy English-only under a Portuguese package language', () => {
+    // The dev toolbar is dropped from the production bundle, so it must not
+    // depend on the player's localized chrome.
+    act(() =>
+      root.render(
+        <I18nProvider lang='pt-BR'>
+          <ScormDevToolsToolbar enabled />
+        </I18nProvider>,
+      ),
+    );
+
+    // `toolbarToggle` only matches the English label, so this also proves the
+    // trigger never switched to Portuguese.
+    expect(toolbarToggle().textContent).toContain('Dev tools');
+
+    togglePopover();
+
+    const label = document.querySelector('[data-slot="field-label"]');
+    expect(label?.textContent).toBe('Persist CMI data');
+    // The restored heading stays English as well.
+    const heading = document.querySelector('[data-slot="popover-title"]');
+    expect(heading?.textContent).toBe('LMS persistence');
+    expect(document.body.textContent).not.toContain(
+      'Ferramentas de desenvolvimento',
+    );
+    expect(document.body.textContent).not.toContain('Persistir dados CMI');
+    expect(document.body.textContent).not.toContain('Persistência do LMS');
   });
 
   it('shows only the persistence toggle, never a clear action or event list', () => {
