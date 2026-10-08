@@ -520,6 +520,54 @@ describe('ContentRenderer questionnaires', () => {
   });
 });
 
+describe('ContentRenderer context propagation', () => {
+  it('threads offset, answers and submitted state through nested blocks', () => {
+    const html = renderToStaticMarkup(
+      <ContentRenderer
+        nodes={[
+          {
+            type: 'quote',
+            children: [
+              {
+                type: 'heading',
+                depth: 1,
+                children: [{ type: 'text', value: 'Context' }],
+              },
+              {
+                type: 'list',
+                ordered: false,
+                items: [
+                  {
+                    children: [
+                      {
+                        type: 'questionnaire',
+                        id: 'questionnaire:nested.mdx:1:1',
+                        questions: [singleChoiceQuestion],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ]}
+        headingOffset={2}
+        answers={{ [singleChoiceQuestion.id]: 'second' }}
+        submittedQuestionnaires={['questionnaire:nested.mdx:1:1']}
+      />,
+    );
+
+    // The heading offset reaches a heading nested inside a quote...
+    expect(html).toContain('<h3');
+    // ...and saved answers/submitted state reach a questionnaire nested inside
+    // a list, rendered read-only with the restored selection.
+    expect(html).toContain('value="second"');
+    expect(html).toContain('checked');
+    expect(html).toContain('disabled');
+    expect(html).not.toContain('Submit questionnaire');
+  });
+});
+
 describe('ContentRenderer safety', () => {
   it('escapes unsafe text in paragraphs and code', () => {
     const html = render([
@@ -566,5 +614,19 @@ describe('ContentRenderer safety', () => {
         },
       ]),
     ).toThrow(/Unsupported inline node type/);
+  });
+
+  it('does not treat inherited object keys as node renderers', () => {
+    expect(() =>
+      render([{ type: 'toString' } as unknown as ContentNode]),
+    ).toThrow(/Unsupported content node type: toString/);
+    expect(() =>
+      render([
+        {
+          type: 'paragraph',
+          children: [{ type: 'constructor' } as unknown as InlineNode],
+        },
+      ]),
+    ).toThrow(/Unsupported inline node type: constructor/);
   });
 });
