@@ -34,7 +34,8 @@ function renderView(contentPackage: ContentPackage) {
 describe('PackageView scroll presentation', () => {
   it('renders only the first page', () => {
     const html = renderView(scrollPackage);
-    expect(html).toContain('Introduction');
+    // The scene is named after the page metadata; the visible body is authored.
+    expect(html).toContain('aria-label="Introduction"');
     expect(html).toContain('Welcome');
     expect(html).not.toContain('Setting things up');
     expect(html).not.toContain('Setup instructions.');
@@ -124,7 +125,7 @@ describe('PackageApp', () => {
     const html = renderToStaticMarkup(
       <PackageApp contentPackage={scrollPackage} />,
     );
-    expect(html).toContain('Introduction');
+    expect(html).toContain('Welcome');
   });
 
   it('renders the authored grid view for the provided content package', () => {

@@ -63,6 +63,9 @@ beforeEach(() => {
   originalIntersectionObserver = globalThis.IntersectionObserver;
   globalThis.IntersectionObserver =
     FakeIntersectionObserver as unknown as typeof IntersectionObserver;
+  // The player resets the document scroll through `window.scrollTo`; jsdom does
+  // not implement it, so spy on it to observe the reset without side effects.
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -201,13 +204,14 @@ function nextButtons(): HTMLButtonElement[] {
   );
 }
 
-/** The scroll container that hosts the single displayed page. */
-function scroller(): HTMLElement {
-  const element = container.firstElementChild;
-  if (!(element instanceof HTMLElement)) {
-    throw new Error('Scroll container not found');
-  }
-  return element;
+/**
+ * Any internal scroll wrapper the player must never render now that scrolling
+ * belongs to the document itself.
+ */
+function scrollWrappers(): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>('.overflow-y-auto'),
+  );
 }
 
 /** Indices of the mounted scenes; at most one is ever present. */
@@ -350,8 +354,10 @@ describe('PackageView scroll interactions', () => {
     act(() => root.render(<PackageView contentPackage={gatedPackage} />));
 
     expect(sceneIndices()).toEqual([0]);
-    expect(text()).toContain('Introduction');
-    expect(text()).not.toContain('Setting things up');
+    // Only the displayed page's authored body is present. The metadata title is
+    // exposed as the scene's accessible name, never injected as visible text.
+    expect(text()).toContain('Welcome');
+    expect(text()).not.toContain('Setup instructions.');
     expect(previousButtons()).toHaveLength(0);
     expect(nextButtons()).toHaveLength(0);
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
@@ -368,13 +374,15 @@ describe('PackageView scroll interactions', () => {
   it('works without any SCORM bridge', () => {
     expect(window.scormBridge).toBeUndefined();
     act(() => root.render(<PackageView contentPackage={gatedPackage} />));
-    expect(text()).toContain('Introduction');
+    expect(text()).toContain('Welcome');
   });
 
   it('inverts the page content prose colors in dark mode', () => {
     act(() => root.render(<PackageView contentPackage={gatedPackage} />));
 
-    const scene = container.querySelector<HTMLElement>('[data-scene-index="0"]');
+    const scene = container.querySelector<HTMLElement>(
+      '[data-scene-index="0"]',
+    );
     const prose = scene?.querySelector<HTMLElement>('.prose');
     expect(prose).not.toBeNull();
     // Light mode keeps the stone palette...
@@ -524,8 +532,8 @@ describe('PackageView scroll navigation controls', () => {
     act(() => nextButtons()[0]?.click());
 
     expect(sceneIndices()).toEqual([1]);
-    expect(text()).toContain('Plain 2');
-    expect(text()).not.toContain('Plain 1');
+    expect(text()).toContain('Body 2.');
+    expect(text()).not.toContain('Body 1.');
     // The new page opens at its top, so only the previous control is offered.
     expect(previousButtons()).toHaveLength(1);
     expect(nextButtons()).toHaveLength(0);
@@ -540,7 +548,7 @@ describe('PackageView scroll navigation controls', () => {
     expect(previousButtons()).toHaveLength(0);
   });
 
-  it('keeps the previous control in the page flow instead of a fixed overlay', () => {
+  it('keeps the previous control a fixed, clickable overlay above the page', () => {
     act(() =>
       root.render(<PackageView contentPackage={plainTwoPagePackage} />),
     );
@@ -550,22 +558,28 @@ describe('PackageView scroll navigation controls', () => {
     const control = container.querySelector<HTMLElement>(
       '[data-scroll-previous]',
     );
-    const scene = container.querySelector<HTMLElement>('[data-scene-index="1"]');
+    const scene = container.querySelector<HTMLElement>(
+      '[data-scene-index="1"]',
+    );
     if (!control || !scene) {
       throw new Error('Previous control or page scene not found');
     }
 
-    // It lives inside the scroll container, ahead of the page scene, so it takes
-    // layout space at the top of the page rather than floating over the content.
-    expect(scroller().contains(control)).toBe(true);
+    // The control floats over the viewport, ahead of the scene in document
+    // order, instead of occupying page flow, so the page never shifts when the
+    // control appears or disappears.
+    expect(control.classList.contains('fixed')).toBe(true);
+    expect(container.contains(control)).toBe(true);
     expect(
       control.compareDocumentPosition(scene) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
-    // Regression: the control must not be a fixed overlay obscuring the scroll.
-    expect(control.closest('.fixed')).toBeNull();
-    // The button is still rendered and operable from the control.
-    expect(previousButtons()).toHaveLength(1);
+    // The wrapper ignores pointer events so it never blocks the page beneath it,
+    // while the button itself stays operable.
+    expect(control.classList.contains('pointer-events-none')).toBe(true);
+    const button = previousButtons()[0];
+    expect(button).toBeDefined();
+    expect(button?.className).toContain('pointer-events-auto');
   });
 
   it('returns to the previous page when the previous control is activated', () => {
@@ -578,8 +592,8 @@ describe('PackageView scroll navigation controls', () => {
     act(() => previousButtons()[0]?.click());
 
     expect(sceneIndices()).toEqual([0]);
-    expect(text()).toContain('Plain 1');
-    expect(text()).not.toContain('Plain 2');
+    expect(text()).toContain('Body 1.');
+    expect(text()).not.toContain('Body 2.');
     expect(previousButtons()).toHaveLength(0);
   });
 
@@ -603,16 +617,20 @@ describe('PackageView scroll navigation controls', () => {
     expect(nextButtons()).toHaveLength(0);
   });
 
-  it('resets the scroll position to the top when the page changes', () => {
+  it('resets the document scroll to the top when the page changes', () => {
     act(() =>
       root.render(<PackageView contentPackage={plainTwoPagePackage} />),
     );
-    scroller().scrollTop = 480;
+    // The initial page also opens at the top.
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'auto' });
+
+    vi.mocked(window.scrollTo).mockClear();
     setEndIntersecting(0, true);
 
     act(() => nextButtons()[0]?.click());
 
-    expect(scroller().scrollTop).toBe(0);
+    expect(window.scrollTo).toHaveBeenCalledTimes(1);
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'auto' });
   });
 
   it('shows both controls when short content exposes both boundaries', () => {
@@ -628,14 +646,66 @@ describe('PackageView scroll navigation controls', () => {
     expect(nextButtons()).toHaveLength(1);
   });
 
-  it('observes page boundaries against the scroll container', () => {
+  it('centres each control without spanning the viewport or covering the scrollbar', () => {
+    act(() => root.render(<PackageView contentPackage={progressPackage} />));
+    setEndIntersecting(0, true);
+    act(() => nextButtons()[0]?.click());
+
+    // The middle page is short: its top and end sentinels are both in view, so
+    // both controls render and can be inspected together.
+    setStartIntersecting(1, true);
+    setEndIntersecting(1, true);
+
+    const wrappers = [
+      container.querySelector<HTMLElement>('[data-scroll-previous]'),
+      container.querySelector<HTMLElement>('[data-scroll-next]'),
+    ];
+    for (const wrapper of wrappers) {
+      if (!wrapper) {
+        throw new Error('Expected both scroll controls to be visible');
+      }
+
+      // Pinned and centred, but shrink-wrapped to the button: it must never
+      // span the viewport (`inset-x-0`/full width) or cover the scrollbar.
+      expect(wrapper.classList.contains('fixed')).toBe(true);
+      expect(wrapper.classList.contains('left-1/2')).toBe(true);
+      expect(wrapper.classList.contains('-translate-x-1/2')).toBe(true);
+      expect(wrapper.classList.contains('inset-x-0')).toBe(false);
+      expect(wrapper.classList.contains('left-0')).toBe(false);
+      expect(wrapper.classList.contains('right-0')).toBe(false);
+      expect(wrapper.classList.contains('w-full')).toBe(false);
+      expect(wrapper.classList.contains('flex')).toBe(false);
+
+      // The translucent background and backdrop blur are applied to the narrow
+      // wrapper itself, so they stay confined to the centred button and cannot
+      // paint over the scrollbar.
+      expect(wrapper.className).toContain('bg-background/5');
+      expect(wrapper.className).toContain('backdrop-blur-sm');
+
+      // The wrapper ignores pointer events while the button stays clickable.
+      expect(wrapper.classList.contains('pointer-events-none')).toBe(true);
+    }
+
+    // Both buttons remain clickable and wired to navigation.
+    expect(previousButtons()[0]?.className).toContain('pointer-events-auto');
+    expect(nextButtons()[0]?.className).toContain('pointer-events-auto');
+
+    act(() => nextButtons()[0]?.click());
+    expect(sceneIndices()).toEqual([2]);
+    act(() => previousButtons()[0]?.click());
+    expect(sceneIndices()).toEqual([1]);
+  });
+
+  it('observes page boundaries against the viewport', () => {
     act(() =>
       root.render(<PackageView contentPackage={plainTwoPagePackage} />),
     );
 
     const sentinel = container.querySelector('[data-scroll-end="0"]');
     expect(sentinel).not.toBeNull();
-    expect(observerFor(sentinel as Element).options?.root).toBe(scroller());
+    // The document owns scrolling, so boundaries are measured against the
+    // viewport (`root: null`) rather than an internal container.
+    expect(observerFor(sentinel as Element).options?.root).toBeNull();
   });
 
   it('observes the page end with a non-negative bottom margin', () => {
@@ -648,13 +718,121 @@ describe('PackageView scroll navigation controls', () => {
 
     const options = observerFor(sentinel as Element).options;
     // The end sentinel must remain reachable at the maximum scroll offset, so
-    // the observer root may not shrink its bottom edge below the scroller.
-    expect(options?.root).toBe(scroller());
+    // the viewport root may not shrink its bottom edge.
+    expect(options?.root).toBeNull();
 
     const [, , bottom = ''] = (options?.rootMargin ?? '').split(' ');
     const bottomMargin = Number.parseFloat(bottom);
     expect(Number.isNaN(bottomMargin)).toBe(false);
     expect(bottomMargin).toBeGreaterThanOrEqual(0);
+  });
+
+  it('disconnects page boundary observers when the page changes', () => {
+    act(() =>
+      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
+    );
+
+    const sentinel = container.querySelector('[data-scroll-end="0"]');
+    expect(sentinel).not.toBeNull();
+    const observer = observerFor(sentinel as Element);
+
+    setEndIntersecting(0, true);
+    act(() => nextButtons()[0]?.click());
+
+    // The previous page's observer is torn down rather than left watching a
+    // sentinel that is no longer mounted.
+    expect(observer.elements.has(sentinel as Element)).toBe(false);
+  });
+});
+
+describe('PackageView scroll viewport', () => {
+  it('renders pages directly in the document without an internal scroll container', () => {
+    act(() =>
+      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
+    );
+
+    // Scrolling belongs to the document, so the player renders no viewport-sized
+    // overflow container of its own (see the stylesheet rules covered in
+    // scroll-viewport.test).
+    expect(scrollWrappers()).toHaveLength(0);
+    expect(container.querySelector('.overscroll-contain')).toBeNull();
+    expect(container.querySelector('.h-dvh')).toBeNull();
+
+    // The scene sits in the render container's natural flow.
+    const scene = container.querySelector('[data-scene-index="0"]');
+    expect(scene?.parentElement).toBe(container);
+  });
+
+  it('lays the page scene out in natural flow without vertical centering', () => {
+    act(() => root.render(<PackageView contentPackage={gatedPackage} />));
+
+    const scene = container.querySelector<HTMLElement>(
+      '[data-scene-index="0"]',
+    );
+    if (!scene) {
+      throw new Error('Page scene not found');
+    }
+    const classes = scene.classList;
+
+    // Full-height, centred column with a readable measure.
+    expect(classes.contains('min-h-dvh')).toBe(true);
+    expect(classes.contains('w-full')).toBe(true);
+    expect(classes.contains('max-w-3xl')).toBe(true);
+    expect(classes.contains('mx-auto')).toBe(true);
+
+    // Natural flow: the old flex column vertically centred the content.
+    expect(classes.contains('flex')).toBe(false);
+    expect(classes.contains('flex-col')).toBe(false);
+    expect(classes.contains('justify-center')).toBe(false);
+
+    // Intentional top/bottom padding reserves room for the fixed controls.
+    expect(classes.contains('pt-20')).toBe(true);
+    expect(classes.contains('pb-24')).toBe(true);
+  });
+
+  it('renders the authored page body and names the scene after the page', () => {
+    act(() => root.render(<PackageView contentPackage={gatedPackage} />));
+
+    const scene = container.querySelector<HTMLElement>(
+      '[data-scene-index="0"]',
+    );
+    if (!scene) {
+      throw new Error('Page scene not found');
+    }
+
+    // The page renders its authored body as-is. The metadata title is not
+    // injected as a heading, so it can never duplicate an authored h1.
+    expect(scene.textContent).toContain('Welcome');
+    expect(scene.querySelector('h1')).toBeNull();
+
+    // The scene keeps its accessible name in sync with the page metadata.
+    expect(scene.getAttribute('aria-label')).toBe('Introduction');
+  });
+
+  it('resets the document scroll once for the initial page', () => {
+    act(() =>
+      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
+    );
+
+    // Opening the page resets the document scroll exactly once, and the reset is
+    // instantaneous rather than a smooth animation from an old offset.
+    expect(window.scrollTo).toHaveBeenCalledTimes(1);
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'auto' });
+  });
+
+  it('keeps the next control clickable above the viewport', () => {
+    act(() =>
+      root.render(<PackageView contentPackage={plainTwoPagePackage} />),
+    );
+    setEndIntersecting(0, true);
+
+    const button = nextButtons()[0];
+    expect(button).toBeDefined();
+    expect(button?.className).toContain('pointer-events-auto');
+    expect(button?.parentElement?.classList.contains('fixed')).toBe(true);
+    expect(
+      button?.parentElement?.classList.contains('pointer-events-none'),
+    ).toBe(true);
   });
 });
 
@@ -670,10 +848,10 @@ describe('PackageView scroll location restore', () => {
     act(() => root.render(<PackageView contentPackage={progressPackage} />));
 
     expect(sceneIndices()).toEqual([2]);
-    expect(text()).toContain('Plain 3');
-    expect(text()).not.toContain('Plain 1');
-    // The restored page opens at its top, so only the previous control shows.
-    expect(scroller().scrollTop).toBe(0);
+    expect(text()).toContain('Body 3.');
+    expect(text()).not.toContain('Body 1.');
+    // The restored page opens at its top: the document scroll is reset.
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'auto' });
     expect(previousButtons()).toHaveLength(1);
     expect(nextButtons()).toHaveLength(0);
   });

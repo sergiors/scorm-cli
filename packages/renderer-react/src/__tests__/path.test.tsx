@@ -27,6 +27,9 @@ let root: Root;
 
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  // PackageView resets the document scroll through `window.scrollTo` when a
+  // page opens; jsdom does not implement it, so stub it to keep the run quiet.
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);

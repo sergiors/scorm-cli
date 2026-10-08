@@ -1,6 +1,14 @@
 import { Check, Circle, Lock } from 'lucide-react';
 import type { PageNode, PathNode, PlayerPageState } from '../types';
 import { cn } from '../lib/utils';
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemTitle,
+} from './ui/item';
 
 /**
  * The state of a single Path entry, derived from the visited flags of the
@@ -95,28 +103,26 @@ export function PathView({
   const visited = node.pageIds.map((id) => pageStates[id]?.visited === true);
 
   return (
-    <nav aria-label='Path' data-slot='path' className='not-prose my-4'>
-      <ol className='flex flex-col gap-2'>
+    <nav aria-label='Path' data-slot='path' className='not-prose space-y-2.5'>
+      <>
         {node.pageIds.map((id, index) => {
           const page = pagesById.get(id);
           const status = pathPageStatus(index, visited);
+
           return (
-            <li key={id}>
-              <PathEntry
-                title={page?.metadata.title ?? id}
-                description={page?.metadata.description}
-                status={status}
-                disabled={
-                  status === 'locked' || onNavigatePathPage === undefined
-                }
-                onOpen={
-                  onNavigatePathPage ? () => onNavigatePathPage(id) : undefined
-                }
-              />
-            </li>
+            <PathEntry
+              key={id}
+              title={page?.metadata.title ?? id}
+              description={page?.metadata.description}
+              status={status}
+              disabled={status === 'locked' || onNavigatePathPage === undefined}
+              onOpen={
+                onNavigatePathPage ? () => onNavigatePathPage(id) : undefined
+              }
+            />
           );
         })}
-      </ol>
+      </>
     </nav>
   );
 }
@@ -137,35 +143,19 @@ function PathEntry({
   const Icon = STATUS_ICONS[status];
 
   return (
-    <button
-      type='button'
-      data-path-entry
-      data-path-status={status}
-      disabled={disabled}
-      onClick={onOpen}
-      className={cn(
-        'flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-left text-sm transition-colors outline-none',
-        'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30',
-        disabled
-          ? 'cursor-not-allowed opacity-60'
-          : 'cursor-pointer hover:border-primary/50 hover:bg-muted',
-      )}
-    >
-      <Icon
-        aria-hidden='true'
-        className='size-4 shrink-0 text-muted-foreground'
-      />
-      <span className='flex min-w-0 flex-col'>
-        <span className='font-medium text-card-foreground'>{title}</span>
-        {description ? (
-          <span data-path-description className='text-sm text-muted-foreground'>
-            {description}
-          </span>
-        ) : null}
-      </span>
-      <span className='ml-auto shrink-0 text-xs font-medium text-muted-foreground'>
-        {STATUS_LABELS[status]}
-      </span>
-    </button>
+    <Item data-path-entry data-path-status={status} variant='outline' asChild>
+      <button onClick={onOpen} disabled={disabled}>
+        <ItemMedia>
+          <Icon aria-hidden='true' className='size-4' />
+        </ItemMedia>
+        <ItemContent>
+          <ItemTitle>{title}</ItemTitle>
+          {description ? (
+            <ItemDescription>{description}</ItemDescription>
+          ) : null}
+        </ItemContent>
+        <ItemActions>{STATUS_LABELS[status]}</ItemActions>
+      </button>
+    </Item>
   );
 }

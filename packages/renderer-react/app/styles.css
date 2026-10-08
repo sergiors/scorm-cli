@@ -75,7 +75,20 @@
     border-color: var(--color-border);
   }
 
+  /*
+   * The scroll presentation renders pages in the document's natural flow, so
+   * the document itself owns scrolling. `html`, `body` and the React root grow
+   * with their content instead of being pinned to the viewport, and the body
+   * keeps no default margin so a page starts flush with the viewport edge.
+   */
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
   body {
+    margin: 0;
     background-color: var(--color-background);
     color: var(--color-foreground);
     -webkit-font-smoothing: antialiased;

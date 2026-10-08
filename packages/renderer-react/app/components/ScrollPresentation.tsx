@@ -1,9 +1,9 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
-  type RefObject,
 } from 'react';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import type { AnswerValue, PageNode, PlayerPageState } from '../types';
@@ -72,9 +72,21 @@ function clampPageIndex(index: number, pageCount: number): number {
 }
 
 /**
- * Shows a single page at a time. Scrolling moves through the displayed page's
- * own content: its end boundary must be reached and every questionnaire on the
- * page submitted before the continue control appears, while its top is in
+ * Resets the document to its top for a newly displayed page. Scrolling belongs
+ * to the document itself — the player renders the page in natural flow instead
+ * of owning an internal scroll container — so the reset targets `window`. It is
+ * instantaneous, never a smooth animation from the previous page's offset, so a
+ * page always opens at its top.
+ */
+function resetDocumentScroll(): void {
+  window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+/**
+ * Shows a single page at a time. The page renders in the document's natural
+ * flow, so scrolling is owned by the browser rather than an internal container:
+ * the displayed page's end boundary must be reached and every questionnaire on
+ * the page submitted before the continue control appears, while its top is in
  * view a previous control returns to the prior page. Only the displayed page is
  * mounted, so adjacent pages are never exposed and there is no pager or package
  * chrome. The final page still observes its end so it can complete even though
@@ -89,7 +101,6 @@ export function ScrollPresentation({
   onAnswer,
   onQuestionnaireSubmitted,
 }: ScrollPresentationProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
   const [currentIndex, setCurrentIndex] = useState(() =>
     clampPageIndex(initialIndex, pages.length),
   );
@@ -101,15 +112,17 @@ export function ScrollPresentation({
   const lastIndex = pages.length - 1;
   const currentPage = pages[currentIndex];
 
+  // Every page opens at its top. The reset is keyed to the displayed page id so
+  // it runs for the initial page — including one restored from a saved location
+  // — and for every next/previous transition, and it runs before paint so the
+  // previous page's offset never leaks into the new one. `goToPage` resets the
+  // boundary signals in the same transition.
+  useLayoutEffect(() => {
+    resetDocumentScroll();
+  }, [currentPage?.id]);
+
   const goToPage = useCallback(
     (index: number) => {
-      // Every page opens at its top. Resetting the scroller before swapping the
-      // content keeps the previous page's offset from leaking into the new one,
-      // and happens before the next page's controls are shown.
-      const scroller = scrollRef.current;
-      if (scroller) {
-        scroller.scrollTop = 0;
-      }
       setAtTop(true);
       setAtEnd(false);
       setCurrentIndex(Math.max(0, Math.min(lastIndex, index)));
@@ -159,7 +172,7 @@ export function ScrollPresentation({
   const pageComplete = atEnd && allQuestionnairesSubmitted;
 
   return (
-    <div ref={scrollRef} className='h-dvh overflow-y-auto'>
+    <>
       {currentIndex > 0 && atTop ? (
         <PreviousControl onClick={goToPrevious} />
       ) : null}
@@ -169,7 +182,6 @@ export function ScrollPresentation({
         page={currentPage}
         index={currentIndex}
         hasPrev={currentIndex > 0}
-        rootRef={scrollRef}
         pathPages={pages}
         pageStates={pageStates}
         onNavigatePathPage={navigateToPageId}
@@ -191,7 +203,7 @@ export function ScrollPresentation({
       {currentIndex < lastIndex && pageComplete ? (
         <NextControl onClick={goToNext} />
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -255,7 +267,6 @@ interface PageSceneProps {
   index: number;
   /** Whether a preceding page exists; the first page offers nothing to return to. */
   hasPrev: boolean;
-  rootRef: RefObject<HTMLDivElement | null>;
   /** Root pages, so a Path on this page can resolve its references. */
   pathPages: readonly PageNode[];
   /** Persisted state per root page id, for Path visited status. */
@@ -271,16 +282,16 @@ interface PageSceneProps {
 
 /**
  * The single displayed page. It reports its top/end boundaries through
- * observers rooted to the scroll container, so the surrounding controls stay in
- * sync with what the learner can see. It remounts per page, which resets every
- * observer for the new page. Its end sentinel is always present — including on
- * the final page, which has no continue control but still completes at its end.
+ * observers rooted to the viewport (`root: null`), matching the document
+ * scrolling the player now uses, so the surrounding controls stay in sync with
+ * what the learner can see. It remounts per page, which resets every observer
+ * for the new page. Its end sentinel is always present — including on the final
+ * page, which has no continue control but still completes at its end.
  */
 function PageScene({
   page,
   index,
   hasPrev,
-  rootRef,
   pathPages,
   pageStates,
   onNavigatePathPage,
@@ -314,7 +325,7 @@ function PageScene({
         onTopChange(visible);
       },
       {
-        root: rootRef.current ?? null,
+        root: null,
         rootMargin: PAGE_START_MARGIN,
         threshold: 0,
       },
@@ -322,7 +333,7 @@ function PageScene({
 
     observer.observe(element);
     return () => observer.disconnect();
-  }, [hasPrev, index, onTopChange, page.id, rootRef]);
+  }, [hasPrev, index, onTopChange, page.id]);
 
   const endRef = useRef<HTMLDivElement>(null);
   const lastEndRef = useRef<boolean | null>(null);
@@ -343,7 +354,7 @@ function PageScene({
         onEndChange(visible);
       },
       {
-        root: rootRef.current ?? null,
+        root: null,
         rootMargin: PAGE_END_MARGIN,
         threshold: 0,
       },
@@ -351,13 +362,13 @@ function PageScene({
 
     observer.observe(element);
     return () => observer.disconnect();
-  }, [index, onEndChange, page.id, rootRef]);
+  }, [index, onEndChange, page.id]);
 
   return (
     <div
       data-scene-index={index}
       aria-label={page.metadata.title}
-      className='mx-auto flex min-h-dvh container max-w-3xl flex-col justify-center px-6 py-18'
+      className='mx-auto min-h-dvh w-full max-w-3xl px-6 pt-20 pb-24'
     >
       {hasPrev ? (
         <div
@@ -394,9 +405,13 @@ function PageScene({
 }
 
 /**
- * In-flow control at the top of the page that returns to the previous page.
- * It occupies layout space ahead of the scene instead of floating over it, so
- * it never obscures the scrollable page content.
+ * Floating control pinned to the top of the viewport that returns to the
+ * previous page. It overlays the scroll viewport rather than occupying page
+ * flow, so the scene reserves top padding for it. Its wrapper is centred and
+ * shrink-wrapped to the button — never spanning the viewport — so its
+ * translucent background and backdrop blur stay confined to the button and
+ * cannot paint across or cover the scroll container's scrollbar. The wrapper
+ * ignores pointer events while the button itself stays clickable.
  */
 function PreviousControl({ onClick }: { onClick: () => void }) {
   return (
@@ -408,7 +423,7 @@ function PreviousControl({ onClick }: { onClick: () => void }) {
         type='button'
         variant='secondary'
         onClick={onClick}
-        className='cursor-pointer rounded-full'
+        className='pointer-events-auto cursor-pointer rounded-full'
       >
         <ArrowUp aria-hidden='true' />
         Previous page
@@ -417,10 +432,19 @@ function PreviousControl({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** Minimal floating control that advances to the next page. */
+/**
+ * Minimal floating control that advances to the next page. Like the previous
+ * control, its wrapper is centred and shrink-wrapped to the button so it never
+ * spans the viewport; the translucent background and backdrop blur stay
+ * confined to the button instead of covering the scrollbar, and the button
+ * stays clickable while the wrapper ignores pointer events.
+ */
 function NextControl({ onClick }: { onClick: () => void }) {
   return (
-    <div className='pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center py-2.5 bg-background/5 backdrop-blur-sm'>
+    <div
+      data-scroll-next
+      className='pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center py-2.5 bg-background/5 backdrop-blur-sm'
+    >
       <Button
         type='button'
         variant='secondary'
