@@ -332,7 +332,7 @@ function PageScene({
     <div
       data-scene-index={index}
       aria-label={page.metadata.title}
-      className='mx-auto flex min-h-dvh max-w-3xl flex-col justify-center px-6 py-16'
+      className='mx-auto flex min-h-dvh container max-w-3xl flex-col justify-center px-6 py-16'
     >
       {hasPrev ? (
         <div
@@ -343,10 +343,9 @@ function PageScene({
         />
       ) : null}
 
-      <section className='prose prose-stone '>
+      <section className='prose prose-stone max-w-none!'>
         <ContentRenderer
           nodes={page.content}
-          headingOffset={2}
           answers={pageState?.answers}
           submittedQuestionnaires={pageState?.submittedQuestionnaires}
           onAnswer={(questionId, value) => onAnswer(page.id, questionId, value)}

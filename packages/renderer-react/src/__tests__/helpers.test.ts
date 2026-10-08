@@ -78,6 +78,28 @@ describe('collectQuestionnaireIds', () => {
     expect(collectQuestionnaireIds(nodes)).toEqual([questionnaireNode.id]);
   });
 
+  it('skips tight inline runs but still traverses sibling blocks', () => {
+    const nodes: ContentNode[] = [
+      {
+        type: 'list',
+        ordered: false,
+        spread: false,
+        items: [
+          {
+            children: [
+              {
+                type: 'inlineContent',
+                children: [{ type: 'text', value: 'Before' }],
+              },
+              questionnaireNode,
+            ],
+          },
+        ],
+      },
+    ];
+    expect(collectQuestionnaireIds(nodes)).toEqual([questionnaireNode.id]);
+  });
+
   it('recurses through lists and quotes in document order', () => {
     const nested: QuestionnaireNode = {
       type: 'questionnaire',

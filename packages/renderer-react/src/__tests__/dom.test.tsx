@@ -10,7 +10,7 @@ import type {
   PlayerState,
   QuestionnaireNode,
 } from '../../app/types';
-import { gridPackage, introPage, setupPage } from './fixtures';
+import { gridPackage, headingDepths, introPage, setupPage } from './fixtures';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -330,6 +330,19 @@ const gridQuizItem: ItemNode = {
 const gridQuizPackage: ContentPackage = {
   metadata: { title: 'Grid quiz' },
   presentation: { type: 'grid', items: [gridQuizItem] },
+};
+
+const gridHeadingItem: ItemNode = {
+  type: 'item',
+  id: 'item:headings.mdx',
+  source: 'headings.mdx',
+  metadata: { title: 'Headings' },
+  content: headingDepths,
+};
+
+const gridHeadingPackage: ContentPackage = {
+  metadata: { title: 'Grid headings' },
+  presentation: { type: 'grid', items: [gridHeadingItem] },
 };
 
 describe('PackageView scroll interactions', () => {
@@ -909,6 +922,18 @@ describe('PackageView grid interactions', () => {
     const prose = dialog()?.querySelector('.prose');
     expect(prose).not.toBeNull();
     expect(prose?.textContent).toContain('Function body.');
+  });
+
+  it('renders authored Markdown depths 1-6 as matching h1-h6 in the dialog', () => {
+    act(() => root.render(<PackageView contentPackage={gridHeadingPackage} />));
+    act(() => findButton('Headings').click());
+
+    const content = dialog();
+    expect(content).not.toBeNull();
+    for (let level = 1; level <= 6; level += 1) {
+      expect(content?.querySelector(`h${level}`)).not.toBeNull();
+      expect(content?.textContent).toContain(`Level ${level}`);
+    }
   });
 
   it('closes the dialog with the close button', () => {

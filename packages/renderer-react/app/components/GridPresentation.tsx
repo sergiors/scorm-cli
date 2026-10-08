@@ -102,7 +102,6 @@ export function GridPresentation({
             <div className='prose'>
               <ContentRenderer
                 nodes={selected.content}
-                headingOffset={2}
                 answers={pageState?.answers}
                 submittedQuestionnaires={pageState?.submittedQuestionnaires}
                 onAnswer={(questionId, value) =>

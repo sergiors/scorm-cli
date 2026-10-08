@@ -5,10 +5,27 @@ import { PackageView } from '../../app/components/PackageView';
 import type { ContentPackage } from '../../app/types';
 import {
   gridPackage,
+  headingDepths,
   makeEmptyGridPackage,
   makeEmptyPackage,
   scrollPackage,
 } from './fixtures';
+
+const headingScrollPackage: ContentPackage = {
+  metadata: { title: 'Headings' },
+  presentation: {
+    type: 'scroll',
+    pages: [
+      {
+        type: 'page',
+        id: 'page:headings.mdx',
+        source: 'headings.mdx',
+        metadata: { title: 'Headings' },
+        content: headingDepths,
+      },
+    ],
+  },
+};
 
 function renderView(contentPackage: ContentPackage) {
   return renderToStaticMarkup(<PackageView contentPackage={contentPackage} />);
@@ -29,6 +46,14 @@ describe('PackageView scroll presentation', () => {
     expect(html).not.toContain('Package navigation');
     expect(html).not.toContain('Skip to content');
     expect(html).not.toContain('Item 1 of');
+  });
+
+  it('renders authored Markdown depths 1-6 as matching h1-h6', () => {
+    const html = renderView(headingScrollPackage);
+    for (let level = 1; level <= 6; level += 1) {
+      expect(html).toContain(`<h${level}`);
+      expect(html).toContain(`Level ${level}`);
+    }
   });
 
   it('renders the current page as a full-height scene without paging controls', () => {

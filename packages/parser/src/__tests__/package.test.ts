@@ -99,21 +99,23 @@ describe('parsePackage', () => {
         type: 'list',
         ordered: true,
         start: 3,
+        spread: false,
         items: [
           {
             children: [
               {
-                type: 'paragraph',
+                type: 'inlineContent',
                 children: [{ type: 'text', value: 'First' }],
               },
               {
                 type: 'list',
                 ordered: false,
+                spread: false,
                 items: [
                   {
                     children: [
                       {
-                        type: 'paragraph',
+                        type: 'inlineContent',
                         children: [
                           { type: 'text', value: 'nested ' },
                           {
@@ -131,7 +133,7 @@ describe('parsePackage', () => {
           {
             children: [
               {
-                type: 'paragraph',
+                type: 'inlineContent',
                 children: [{ type: 'text', value: 'Second' }],
               },
             ],
@@ -145,11 +147,12 @@ describe('parsePackage', () => {
           {
             type: 'list',
             ordered: false,
+            spread: false,
             items: [
               {
                 children: [
                   {
-                    type: 'paragraph',
+                    type: 'inlineContent',
                     children: [{ type: 'text', value: 'quoted list' }],
                   },
                 ],
@@ -159,6 +162,140 @@ describe('parsePackage', () => {
         ],
       },
       { type: 'code', value: 'const answer: number = 42;', language: 'ts' },
+    ]);
+  });
+
+  it('normalizes tight list items into inlineContent runs, not paragraphs', async () => {
+    const root = await makeLesson('- one\n- two\n- three');
+    expect(await lessonContent(root)).toEqual([
+      {
+        type: 'list',
+        ordered: false,
+        spread: false,
+        items: [
+          {
+            children: [
+              {
+                type: 'inlineContent',
+                children: [{ type: 'text', value: 'one' }],
+              },
+            ],
+          },
+          {
+            children: [
+              {
+                type: 'inlineContent',
+                children: [{ type: 'text', value: 'two' }],
+              },
+            ],
+          },
+          {
+            children: [
+              {
+                type: 'inlineContent',
+                children: [{ type: 'text', value: 'three' }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('keeps authored inline formatting and nested blocks in tight items', async () => {
+    const root = await makeLesson(
+      '- Use `code` and *emphasis*\n  - nested block',
+    );
+    expect(await lessonContent(root)).toEqual([
+      {
+        type: 'list',
+        ordered: false,
+        spread: false,
+        items: [
+          {
+            children: [
+              {
+                type: 'inlineContent',
+                children: [
+                  { type: 'text', value: 'Use ' },
+                  { type: 'inlineCode', value: 'code' },
+                  { type: 'text', value: ' and ' },
+                  {
+                    type: 'emphasis',
+                    children: [{ type: 'text', value: 'emphasis' }],
+                  },
+                ],
+              },
+              {
+                type: 'list',
+                ordered: false,
+                spread: false,
+                items: [
+                  {
+                    children: [
+                      {
+                        type: 'inlineContent',
+                        children: [{ type: 'text', value: 'nested block' }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('copies remark list tightness (spread: true) for loose lists', async () => {
+    const root = await makeLesson('1. one\n\n2. two');
+    expect(await lessonContent(root)).toEqual([
+      {
+        type: 'list',
+        ordered: true,
+        spread: true,
+        items: [
+          {
+            children: [
+              { type: 'paragraph', children: [{ type: 'text', value: 'one' }] },
+            ],
+          },
+          {
+            children: [
+              { type: 'paragraph', children: [{ type: 'text', value: 'two' }] },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('marks a loose list whose item spans multiple blocks', async () => {
+    const root = await makeLesson('- one\n\n  continued\n\n- two');
+    const content = await lessonContent(root);
+    expect(content).toMatchObject([
+      {
+        type: 'list',
+        ordered: false,
+        spread: true,
+        items: [
+          {
+            children: [
+              { type: 'paragraph', children: [{ type: 'text', value: 'one' }] },
+              {
+                type: 'paragraph',
+                children: [{ type: 'text', value: 'continued' }],
+              },
+            ],
+          },
+          {
+            children: [
+              { type: 'paragraph', children: [{ type: 'text', value: 'two' }] },
+            ],
+          },
+        ],
+      },
     ]);
   });
 
@@ -250,11 +387,12 @@ describe('parsePackage', () => {
       {
         type: 'list',
         ordered: false,
+        spread: false,
         items: [
           {
             children: [
               {
-                type: 'paragraph',
+                type: 'inlineContent',
                 children: [{ type: 'text', value: 'Describe each value' }],
               },
             ],
@@ -262,7 +400,7 @@ describe('parsePackage', () => {
           {
             children: [
               {
-                type: 'paragraph',
+                type: 'inlineContent',
                 children: [
                   { type: 'text', value: 'Let the editor check usage' },
                 ],

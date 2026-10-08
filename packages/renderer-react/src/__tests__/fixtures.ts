@@ -183,6 +183,20 @@ function paragraph(value: string): ContentNode {
   return { type: 'paragraph', children: [{ type: 'text', value }] };
 }
 
+/**
+ * One heading per authored Markdown depth 1-6. Shared by the renderer,
+ * scroll and grid suites to assert that each depth maps straight to its
+ * matching `h1`-`h6`, with no wrapper or nested context shifting the level.
+ */
+export const headingDepths: ContentNode[] = Array.from(
+  { length: 6 },
+  (_, index) => ({
+    type: 'heading',
+    depth: index + 1,
+    children: [{ type: 'text', value: `Level ${index + 1}` }],
+  }),
+);
+
 export const introPage: PageNode = {
   type: 'page',
   id: 'page:intro.mdx',

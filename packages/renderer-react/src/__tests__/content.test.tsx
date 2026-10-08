@@ -3,12 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { ContentRenderer } from '../../app/components/ContentRenderer';
 import { InlineContent } from '../../app/components/InlineContent';
 import type { ContentNode, InlineNode } from '../../app/types';
-import { multipleChoiceQuestion, singleChoiceQuestion } from './fixtures';
+import {
+  headingDepths,
+  multipleChoiceQuestion,
+  questionnaireNode,
+  singleChoiceQuestion,
+} from './fixtures';
 
-function render(nodes: ContentNode[], headingOffset?: number): string {
-  return renderToStaticMarkup(
-    <ContentRenderer nodes={nodes} headingOffset={headingOffset} />,
-  );
+function render(nodes: ContentNode[]): string {
+  return renderToStaticMarkup(<ContentRenderer nodes={nodes} />);
 }
 
 function renderInline(nodes: InlineNode[]): string {
@@ -33,19 +36,77 @@ describe('ContentRenderer headings', () => {
     expect(html).toContain('back');
   });
 
-  it('applies a heading offset so content nests under package headings', () => {
-    expect(
-      render(
-        [
+  it('maps every authored depth 1-6 straight to its matching h1-h6', () => {
+    const html = render(headingDepths);
+    for (let level = 1; level <= 6; level += 1) {
+      expect(html).toContain(`<h${level}`);
+      expect(html).toContain(`Level ${level}`);
+    }
+    // No wrapper may shift a depth onto a neighbouring level.
+    expect(html).not.toContain('<h7');
+  });
+
+  it('keeps authored depths inside a nested quote', () => {
+    const html = render([
+      {
+        type: 'quote',
+        children: [
           {
             type: 'heading',
             depth: 1,
-            children: [{ type: 'text', value: 'Deep' }],
+            children: [{ type: 'text', value: 'Quoted one' }],
+          },
+          {
+            type: 'heading',
+            depth: 6,
+            children: [{ type: 'text', value: 'Quoted six' }],
           },
         ],
-        2,
-      ),
-    ).toContain('<h3');
+      },
+    ]);
+    expect(html).toContain('<h1');
+    expect(html).toContain('Quoted one');
+    expect(html).toContain('<h6');
+    expect(html).toContain('Quoted six');
+  });
+
+  it('keeps authored depths inside nested list items', () => {
+    const html = render([
+      {
+        type: 'list',
+        ordered: false,
+        items: [
+          {
+            children: [
+              {
+                type: 'heading',
+                depth: 2,
+                children: [{ type: 'text', value: 'List two' }],
+              },
+              {
+                type: 'list',
+                ordered: true,
+                items: [
+                  {
+                    children: [
+                      {
+                        type: 'heading',
+                        depth: 5,
+                        children: [{ type: 'text', value: 'Nested five' }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(html).toContain('<h2');
+    expect(html).toContain('List two');
+    expect(html).toContain('<h5');
+    expect(html).toContain('Nested five');
   });
 
   it('clamps heading depth to the 1-6 range', () => {
@@ -186,6 +247,205 @@ describe('ContentRenderer lists', () => {
     ]);
     expect(ordered).toContain('<ol');
     expect(ordered).toContain('list-decimal');
+  });
+
+  it('renders a tight item inlineContent without a paragraph wrapper', () => {
+    const html = render([
+      {
+        type: 'list',
+        ordered: true,
+        spread: false,
+        items: [
+          {
+            children: [
+              {
+                type: 'inlineContent',
+                children: [{ type: 'text', value: 'Choose ' }],
+              },
+            ],
+          },
+          {
+            children: [
+              {
+                type: 'inlineContent',
+                children: [{ type: 'text', value: 'one option' }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(html).toContain('<ol');
+    expect(html).toContain('<li');
+    expect(html).toContain('Choose ');
+    expect(html).toContain('one option');
+    // A tight list renders each inlineContent run directly inside <li>.
+    expect(html).not.toContain('<p');
+  });
+
+  it('keeps the paragraph wrapper for a loose list', () => {
+    const html = render([
+      {
+        type: 'list',
+        ordered: true,
+        spread: true,
+        items: [
+          {
+            children: [
+              {
+                type: 'paragraph',
+                children: [{ type: 'text', value: 'First' }],
+              },
+            ],
+          },
+          {
+            children: [
+              {
+                type: 'paragraph',
+                children: [{ type: 'text', value: 'Second' }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(html).toContain('<li');
+    expect(html).toContain('<p');
+    expect(html).toContain('First');
+    expect(html).toContain('Second');
+  });
+
+  it('treats a list without spread metadata as loose', () => {
+    const html = render([
+      {
+        type: 'list',
+        ordered: false,
+        items: [
+          {
+            children: [
+              {
+                type: 'paragraph',
+                children: [{ type: 'text', value: 'Legacy' }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(html).toContain('<p');
+    expect(html).toContain('Legacy');
+  });
+
+  it('renders a tight item with an inline run and a nested block in order', () => {
+    const html = render([
+      {
+        type: 'list',
+        ordered: false,
+        spread: false,
+        items: [
+          {
+            children: [
+              {
+                type: 'inlineContent',
+                children: [{ type: 'text', value: 'Outer' }],
+              },
+              {
+                type: 'list',
+                ordered: true,
+                spread: false,
+                items: [
+                  {
+                    children: [
+                      {
+                        type: 'inlineContent',
+                        children: [{ type: 'text', value: 'Inner' }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(html).toContain('Outer');
+    expect(html).toContain('Inner');
+    // The tight item's inline run loses its wrapper, while the nested list still
+    // renders as a block and its tight inline run stays inline too.
+    expect(html).not.toContain('<p');
+    expect((html.match(/<ul/g) ?? []).length).toBe(1);
+    expect((html.match(/<ol/g) ?? []).length).toBe(1);
+  });
+
+  it('keeps inline links and images inside a tight item', () => {
+    const html = render([
+      {
+        type: 'list',
+        ordered: false,
+        spread: false,
+        items: [
+          {
+            children: [
+              {
+                type: 'inlineContent',
+                children: [
+                  { type: 'text', value: 'See ' },
+                  {
+                    type: 'link',
+                    href: './guide.mdx',
+                    children: [{ type: 'text', value: 'the guide' }],
+                  },
+                  { type: 'text', value: ' and ' },
+                  {
+                    type: 'image',
+                    src: './inline.svg',
+                    alt: 'Inline icon',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(html).toContain('<a');
+    expect(html).toContain('href="./guide.mdx"');
+    expect(html).toContain('the guide');
+    expect(html).toContain('<img');
+    expect(html).toContain('src="./inline.svg"');
+    expect(html).toContain('alt="Inline icon"');
+    // Inline content stays phrasing content: no block wrapper or figure.
+    expect(html).not.toContain('<p');
+    expect(html).not.toContain('<figure');
+  });
+
+  it('keeps nested block questionnaires inside a tight item', () => {
+    const html = render([
+      {
+        type: 'list',
+        ordered: false,
+        spread: false,
+        items: [
+          {
+            children: [
+              {
+                type: 'inlineContent',
+                children: [{ type: 'text', value: 'Answer this:' }],
+              },
+              questionnaireNode,
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(html).toContain('<li');
+    expect(html).toContain('Answer this:');
+    expect(html).toContain('data-slot="questionnaire"');
+    expect(html).toContain('Which option is correct?');
+    // The item's inline run stays unwrapped; only the nested questionnaire's
+    // own prompt/option blocks keep their paragraph wrappers.
+    expect(html).not.toContain('<p>Answer this:</p>');
   });
 
   it('honours the ordered list start value', () => {
@@ -496,6 +756,52 @@ describe('ContentRenderer questionnaires', () => {
     expect(html).toContain('codeOption()');
   });
 
+  it('maps authored depths 1-6 inside questionnaire prompts and options', () => {
+    const html = render([
+      {
+        type: 'questionnaire',
+        id: 'questionnaire:headings.mdx:1:1',
+        questions: [
+          {
+            type: 'question',
+            id: 'question:headings.mdx:1:1',
+            questionType: 'single-choice',
+            prompt: headingDepths,
+            options: [
+              {
+                value: 'a',
+                correct: true,
+                content: [
+                  {
+                    type: 'heading',
+                    depth: 4,
+                    children: [{ type: 'text', value: 'Option four' }],
+                  },
+                ],
+              },
+              {
+                value: 'b',
+                correct: false,
+                content: [
+                  {
+                    type: 'paragraph',
+                    children: [{ type: 'text', value: 'Option B' }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    for (let level = 1; level <= 6; level += 1) {
+      expect(html).toContain(`<h${level}`);
+      expect(html).toContain(`Level ${level}`);
+    }
+    expect(html).toContain('<h4');
+    expect(html).toContain('Option four');
+  });
+
   it('renders questionnaires nested in list items', () => {
     const html = render([
       {
@@ -521,7 +827,7 @@ describe('ContentRenderer questionnaires', () => {
 });
 
 describe('ContentRenderer context propagation', () => {
-  it('threads offset, answers and submitted state through nested blocks', () => {
+  it('threads answers and submitted state through nested blocks', () => {
     const html = renderToStaticMarkup(
       <ContentRenderer
         nodes={[
@@ -551,14 +857,13 @@ describe('ContentRenderer context propagation', () => {
             ],
           },
         ]}
-        headingOffset={2}
         answers={{ [singleChoiceQuestion.id]: 'second' }}
         submittedQuestionnaires={['questionnaire:nested.mdx:1:1']}
       />,
     );
 
-    // The heading offset reaches a heading nested inside a quote...
-    expect(html).toContain('<h3');
+    // A heading nested inside a quote keeps its authored depth...
+    expect(html).toContain('<h1');
     // ...and saved answers/submitted state reach a questionnaire nested inside
     // a list, rendered read-only with the restored selection.
     expect(html).toContain('value="second"');

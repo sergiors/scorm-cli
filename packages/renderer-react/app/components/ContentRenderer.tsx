@@ -14,21 +14,18 @@ const HEADING_TAGS = {
   6: 'h6',
 } as const;
 
-function clampHeading(
-  depth: number,
-  offset: number,
-): keyof typeof HEADING_TAGS {
-  const level = Math.min(6, Math.max(1, Math.trunc(depth) + offset));
+/**
+ * Maps an authored Markdown heading depth straight to its HTML level: depth 1
+ * is `<h1>`, depth 2 is `<h2>`, and so on. Malformed depths are clamped into
+ * the valid 1-6 range so a bad AST can never emit an invalid tag.
+ */
+function clampHeading(depth: number): keyof typeof HEADING_TAGS {
+  const level = Math.min(6, Math.max(1, Math.trunc(depth)));
   return level as keyof typeof HEADING_TAGS;
 }
 
 export interface ContentRendererProps {
   nodes: ContentNode[];
-  /**
-   * Shifts every heading down so item content nests under the surrounding
-   * authored headings. Defaults to 0, keeping the source depth untouched.
-   */
-  headingOffset?: number;
   /**
    * Invoked once when a questionnaire in this subtree is submitted. Threaded
    * recursively through nested lists, quotes and questionnaire content so the
@@ -54,13 +51,10 @@ export interface ContentRendererProps {
 
 /**
  * Everything a block view needs beyond its own node. It is exactly the public
- * props minus `nodes`, with the heading offset already defaulted, so the same
- * object can be spread straight back into a recursive {@link ContentRenderer}.
+ * props minus `nodes`, so the same object can be spread straight back into a
+ * recursive {@link ContentRenderer}.
  */
-type ContentNodeRenderContext = Omit<
-  ContentRendererProps,
-  'nodes' | 'headingOffset'
-> & { headingOffset: number };
+type ContentNodeRenderContext = Omit<ContentRendererProps, 'nodes'>;
 
 type ContentNodeType = ContentNode['type'];
 
@@ -88,8 +82,8 @@ type ContentNodeRenderers = {
   [T in ContentNodeType]: ComponentType<ContentNodeViewProps<T>>;
 };
 
-function HeadingView({ node, context }: ContentNodeViewProps<'heading'>) {
-  const Tag = HEADING_TAGS[clampHeading(node.depth, context.headingOffset)];
+function HeadingView({ node }: ContentNodeViewProps<'heading'>) {
+  const Tag = HEADING_TAGS[clampHeading(node.depth)];
   return (
     <Tag className='scroll-mt-24 text-xl font-semibold text-foreground'>
       <InlineContent nodes={node.children} />
@@ -105,17 +99,46 @@ function ParagraphView({ node }: ContentNodeViewProps<'paragraph'>) {
   );
 }
 
+/**
+ * A single `<li>`. The AST records the inline-vs-block distinction directly:
+ * `inlineContent` runs render through {@link InlineContent} without a block
+ * wrapper, while every other node recurses through the normal block dispatch,
+ * preserving item order, nested blocks, context and keys.
+ */
+function ListItemView({
+  item,
+  context,
+}: {
+  item: ContentNodeOf<'list'>['items'][number];
+  context: ContentNodeRenderContext;
+}) {
+  return (
+    <li>
+      {item.children.map((child, index) =>
+        child.type === 'inlineContent' ? (
+          <InlineContent
+            key={`inlineContent-${index}`}
+            nodes={child.children}
+          />
+        ) : (
+          <Fragment key={`${child.type}-${index}`}>
+            {renderContentNode(child, context)}
+          </Fragment>
+        ),
+      )}
+    </li>
+  );
+}
+
 function ListView({ node, context }: ContentNodeViewProps<'list'>) {
   const ListTag = node.ordered ? 'ol' : 'ul';
   return (
     <ListTag
       start={node.ordered ? node.start : undefined}
-      className={cn('', node.ordered ? 'list-decimal' : 'list-disc')}
+      className={node.ordered ? 'list-decimal' : 'list-disc'}
     >
       {node.items.map((item, index) => (
-        <li key={index}>
-          <ContentRenderer nodes={item.children} {...context} />
-        </li>
+        <ListItemView key={index} item={item} context={context} />
       ))}
     </ListTag>
   );
@@ -123,7 +146,7 @@ function ListView({ node, context }: ContentNodeViewProps<'list'>) {
 
 function CodeView({ node }: ContentNodeViewProps<'code'>) {
   return (
-    <pre className='text-sm font-mono not-prose overflow-x-auto rounded-2xl border border-border bg-secondary p-4'>
+    <pre className='text-sm font-mono not-prose overflow-x-auto rounded-2xl border border-border bg-secondary p-6'>
       <code className={node.language ? `language-${node.language}` : undefined}>
         {node.value}
       </code>
@@ -207,7 +230,6 @@ function QuestionnaireBlockView({
   return (
     <QuestionnaireView
       node={node}
-      headingOffset={context.headingOffset}
       answers={context.answers}
       submitted={context.submittedQuestionnaires?.includes(node.id) ?? false}
       onAnswer={context.onAnswer}
@@ -231,16 +253,12 @@ const contentNodeRenderers = {
   questionnaire: QuestionnaireBlockView,
 } satisfies ContentNodeRenderers;
 
-export function ContentRenderer({
-  nodes,
-  headingOffset = 0,
-  ...context
-}: ContentRendererProps) {
+export function ContentRenderer({ nodes, ...context }: ContentRendererProps) {
   return (
     <>
       {nodes.map((node, index) => (
         <Fragment key={`${node.type}-${index}`}>
-          {renderContentNode(node, { ...context, headingOffset })}
+          {renderContentNode(node, context)}
         </Fragment>
       ))}
     </>

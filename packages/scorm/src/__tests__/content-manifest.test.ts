@@ -199,4 +199,108 @@ describe('content manifest', () => {
       },
     });
   });
+
+  it('reads tight list inline runs for question prompt text', () => {
+    const content: ContentPackage = {
+      metadata: { title: 'Tight' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'p-tight',
+            source: 'tight.mdx',
+            metadata: { title: 'Tight' },
+            content: [
+              {
+                type: 'questionnaire',
+                id: 'quiz-tight',
+                questions: [
+                  question('q-tight', [
+                    {
+                      type: 'list',
+                      ordered: false,
+                      spread: false,
+                      items: [
+                        {
+                          children: [
+                            {
+                              type: 'inlineContent',
+                              children: [
+                                { type: 'text', value: 'See ' },
+                                {
+                                  type: 'image',
+                                  src: 'assets/prompt.svg',
+                                  alt: 'Prompt diagram',
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ]),
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    expect(
+      createContentManifest(content).pages['0']!.questions['0'],
+    ).toMatchObject({
+      id: 'q-tight',
+      prompt: 'See Prompt diagram',
+    });
+  });
+
+  it('collects a questionnaire that follows a tight inline run', () => {
+    const content: ContentPackage = {
+      metadata: { title: 'Tight' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'p-tight',
+            source: 'tight.mdx',
+            metadata: { title: 'Tight' },
+            content: [
+              {
+                type: 'list',
+                ordered: false,
+                spread: false,
+                items: [
+                  {
+                    children: [
+                      {
+                        type: 'inlineContent',
+                        children: [{ type: 'text', value: 'Answer:' }],
+                      },
+                      {
+                        type: 'questionnaire',
+                        id: 'quiz-nested',
+                        questions: [
+                          question('q-nested', [
+                            {
+                              type: 'paragraph',
+                              children: [{ type: 'text', value: 'Nested' }],
+                            },
+                          ]),
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    expect(
+      createContentManifest(content).pages['0']!.questions['0'],
+    ).toMatchObject({ id: 'q-nested', prompt: 'Nested' });
+  });
 });

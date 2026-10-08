@@ -1,6 +1,7 @@
 import type {
   ContentNode,
   ContentPackage,
+  InlineContentNode,
   InlineNode,
   QuestionNode,
 } from '@scorm-cli/core';
@@ -49,11 +50,14 @@ function inlineText(nodes: InlineNode[]): string {
 
 function plainText(nodes: ContentNode[]): string {
   const chunks: string[] = [];
-  const visit = (items: ContentNode[]) => {
+  const visit = (items: Array<ContentNode | InlineContentNode>) => {
     for (const node of items) {
       switch (node.type) {
         case 'heading':
         case 'paragraph':
+          chunks.push(inlineText(node.children));
+          break;
+        case 'inlineContent':
           chunks.push(inlineText(node.children));
           break;
         case 'code':
@@ -85,7 +89,10 @@ function plainText(nodes: ContentNode[]): string {
   return chunks.join(' ').replace(/\s+/g, ' ').trim();
 }
 
-function collectQuestions(nodes: ContentNode[], output: QuestionNode[]): void {
+function collectQuestions(
+  nodes: Array<ContentNode | InlineContentNode>,
+  output: QuestionNode[],
+): void {
   for (const node of nodes) {
     switch (node.type) {
       case 'list':
@@ -101,6 +108,10 @@ function collectQuestions(nodes: ContentNode[], output: QuestionNode[]): void {
           for (const option of question.options)
             collectQuestions(option.content, output);
         }
+        break;
+      case 'inlineContent':
+        // Inline runs cannot hold a questionnaire block; skip them while still
+        // traversing sibling blocks.
         break;
       default:
         break;

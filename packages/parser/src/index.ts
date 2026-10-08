@@ -10,6 +10,7 @@ export type {
   HeadingNode,
   ImageNode,
   InlineCodeNode,
+  InlineContentNode,
   InlineNode,
   LinkNode,
   ListItemNode,

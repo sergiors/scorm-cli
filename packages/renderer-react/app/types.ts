@@ -4,6 +4,7 @@ export type {
   ContentPackage,
   GridNode,
   ImageNode,
+  InlineContentNode,
   InlineNode,
   ItemNode,
   PageNode,

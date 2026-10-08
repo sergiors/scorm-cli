@@ -18,8 +18,6 @@ export type { QuestionNode };
 
 export interface QuestionnaireViewProps {
   node: QuestionnaireNode;
-  /** Forwarded to nested rich content so headings stay nested correctly. */
-  headingOffset?: number;
   /**
    * Saved answers for the owning page/item, keyed by `QuestionNode.id`.
    * Supplying this controls the rendered selection, so restored answers display
@@ -73,7 +71,6 @@ export interface QuestionnaireViewProps {
  */
 export function QuestionnaireView({
   node,
-  headingOffset = 0,
   answers,
   submitted = false,
   onAnswer,
@@ -86,13 +83,7 @@ export function QuestionnaireView({
   }
 
   if (submitted) {
-    return (
-      <SubmittedQuestionnaire
-        node={node}
-        answers={answers}
-        headingOffset={headingOffset}
-      />
-    );
+    return <SubmittedQuestionnaire node={node} answers={answers} />;
   }
 
   // The primitive owns the selection only when the owner supplies neither
@@ -128,7 +119,6 @@ export function QuestionnaireView({
         <QuestionnaireQuestion
           key={question.id}
           node={question}
-          headingOffset={headingOffset}
           controlled={controlled}
           value={answers?.[question.id]}
           onAnswer={onAnswer}
@@ -158,14 +148,12 @@ function isSelected(
 
 function QuestionnaireQuestion({
   node,
-  headingOffset,
   controlled,
   value,
   onAnswer,
   onQuestionnaireSubmitted,
 }: {
   node: QuestionNode;
-  headingOffset: number;
   controlled: boolean;
   value: AnswerValue | undefined;
   onAnswer?: (questionId: string, value: AnswerValue) => void;
@@ -205,7 +193,6 @@ function QuestionnaireQuestion({
       <QuestionnaireTitle id={promptId}>
         <ContentRenderer
           nodes={node.prompt}
-          headingOffset={headingOffset}
           onQuestionnaireSubmitted={onQuestionnaireSubmitted}
         />
       </QuestionnaireTitle>
@@ -226,7 +213,6 @@ function QuestionnaireQuestion({
           >
             <ContentRenderer
               nodes={option.content}
-              headingOffset={headingOffset}
               onQuestionnaireSubmitted={onQuestionnaireSubmitted}
             />
           </QuestionnaireChoice>
@@ -253,11 +239,9 @@ function QuestionnaireQuestion({
 function SubmittedQuestionnaire({
   node,
   answers,
-  headingOffset,
 }: {
   node: QuestionnaireNode;
   answers?: Record<string, AnswerValue>;
-  headingOffset: number;
 }) {
   return (
     <div className='not-prose space-y-8'>
@@ -266,7 +250,6 @@ function SubmittedQuestionnaire({
           key={question.id}
           question={question}
           value={answers?.[question.id]}
-          headingOffset={headingOffset}
         />
       ))}
     </div>
@@ -276,11 +259,9 @@ function SubmittedQuestionnaire({
 function SubmittedQuestion({
   question,
   value,
-  headingOffset,
 }: {
   question: QuestionNode;
   value: AnswerValue | undefined;
-  headingOffset: number;
 }) {
   const promptId = useId();
   // Single-choice and true-false become radios; multiple-choice checkboxes.
@@ -294,10 +275,7 @@ function SubmittedQuestion({
         aria-labelledby={promptId}
       >
         <QuestionnaireTitle id={promptId}>
-          <ContentRenderer
-            nodes={question.prompt}
-            headingOffset={headingOffset}
-          />
+          <ContentRenderer nodes={question.prompt} />
         </QuestionnaireTitle>
 
         <QuestionnaireChoices>
@@ -308,10 +286,7 @@ function SubmittedQuestion({
               disabled
               checked={isSelected(question, value, option.value)}
             >
-              <ContentRenderer
-                nodes={option.content}
-                headingOffset={headingOffset}
-              />
+              <ContentRenderer nodes={option.content} />
             </QuestionnaireChoice>
           ))}
         </QuestionnaireChoices>

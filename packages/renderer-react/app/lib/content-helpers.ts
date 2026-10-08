@@ -1,6 +1,7 @@
 import type {
   ContentNode,
   ContentPackage,
+  InlineContentNode,
   ItemNode,
   PageNode,
   QuestionnaireNode,
@@ -38,7 +39,7 @@ export function collectQuestionnaires(
   nodes: ContentNode[],
 ): QuestionnaireNode[] {
   const found: QuestionnaireNode[] = [];
-  const visit = (list: ContentNode[]) => {
+  const visit = (list: Array<ContentNode | InlineContentNode>) => {
     for (const node of list) {
       switch (node.type) {
         case 'list':
@@ -53,6 +54,10 @@ export function collectQuestionnaires(
             visit(question.prompt);
             for (const option of question.options) visit(option.content);
           }
+          break;
+        case 'inlineContent':
+          // Inline runs cannot hold a questionnaire block; skip them without
+          // dropping the surrounding block traversal.
           break;
         default:
           break;

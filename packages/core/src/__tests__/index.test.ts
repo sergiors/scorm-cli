@@ -97,6 +97,52 @@ describe('core package helpers', () => {
     ).toBe(0);
   });
 
+  it('collects assets from tight list inline runs and their sibling blocks', () => {
+    const tight: ContentPackage = {
+      metadata: { title: 'Tight' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'tight',
+            source: 'tight.mdx',
+            metadata: { title: 'Tight' },
+            content: [
+              {
+                type: 'list',
+                ordered: false,
+                spread: false,
+                items: [
+                  {
+                    children: [
+                      {
+                        type: 'inlineContent',
+                        children: [
+                          { type: 'text', value: 'See ' },
+                          {
+                            type: 'image',
+                            src: 'inline/tight.svg',
+                            alt: 'tight',
+                          },
+                        ],
+                      },
+                      { type: 'image', src: 'block/tight.svg', alt: 'block' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    expect(collectAssetReferences(tight)).toEqual([
+      'block/tight.svg',
+      'inline/tight.svg',
+    ]);
+  });
+
   it('collects local media references recursively throughout the content AST', () => {
     const nested: ContentPackage = {
       metadata: { title: 'Nested' },

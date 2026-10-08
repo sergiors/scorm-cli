@@ -109,11 +109,30 @@ export interface ListNode {
   type: 'list';
   ordered: boolean;
   start?: number;
+  /**
+   * Markdown list tightness as reported by the source parser. A tight list
+   * (`false`) normalizes its items' inline runs into {@link InlineContentNode}
+   * runs so they render without a `<p>` wrapper; a loose list (`true`) keeps
+   * paragraphs. Optional for backward compatibility: absent metadata is treated
+   * as loose rather than inferred.
+   */
+  spread?: boolean;
   items: ListItemNode[];
 }
 
+/**
+ * A run of inline content that a list item renders without a block wrapper.
+ * Tight list items carry this in place of a `paragraph` so the AST itself
+ * records the inline-vs-block distinction: `ImageNode` and friends are
+ * otherwise ambiguous between their inline and block forms.
+ */
+export interface InlineContentNode {
+  type: 'inlineContent';
+  children: InlineNode[];
+}
+
 export interface ListItemNode {
-  children: ContentNode[];
+  children: Array<ContentNode | InlineContentNode>;
 }
 
 export interface CodeNode {
@@ -266,11 +285,14 @@ export function collectAssetReferences(
       }
     }
   };
-  const visitContent = (nodes: ContentNode[]) => {
+  const visitContent = (nodes: Array<ContentNode | InlineContentNode>) => {
     for (const node of nodes) {
       switch (node.type) {
         case 'heading':
         case 'paragraph':
+          visitInline(node.children);
+          break;
+        case 'inlineContent':
           visitInline(node.children);
           break;
         case 'image':

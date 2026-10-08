@@ -9,6 +9,7 @@ import type {
   ContentPackage,
   GridNode,
   ImageNode,
+  InlineContentNode,
   InlineNode,
   ItemNode,
   ListItemNode,
@@ -33,6 +34,7 @@ type AstNode = {
   depth?: number;
   ordered?: boolean | null;
   start?: number | null;
+  spread?: boolean | null;
   lang?: string | null;
   children?: AstNode[];
   position?: { start?: { line?: number; column?: number } };
@@ -335,6 +337,25 @@ async function parseMarkdownImage(
   };
 }
 
+/**
+ * Normalizes the parsed children of a single list item. Tight list items
+ * (`spread === false`) render their inline runs without a block wrapper, so the
+ * paragraphs the source parser reports are rewritten into {@link InlineContentNode}
+ * runs. Every non-paragraph block (nested lists, quotes, code, media) is kept
+ * as-is, preserving order and nesting; loose items keep their paragraphs.
+ */
+function normalizeListItemChildren(
+  children: ContentNode[],
+  tight: boolean,
+): Array<ContentNode | InlineContentNode> {
+  if (!tight) return children;
+  return children.map((child) =>
+    child.type === 'paragraph'
+      ? { type: 'inlineContent', children: child.children }
+      : child,
+  );
+}
+
 async function parseContentNode(
   node: AstNode,
   sourceFile: string,
@@ -352,23 +373,29 @@ async function parseContentNode(
         type: 'paragraph',
         children: await parseInlineNodes(node.children ?? [], sourceFile, root),
       };
-    case 'list':
+    case 'list': {
+      // A tight list's items render inline, so their paragraphs become
+      // `inlineContent` runs in the AST; loose items keep their paragraphs.
+      const tight = node.spread === false;
       return {
         type: 'list',
         ordered: Boolean(node.ordered),
         ...(node.ordered && node.start != null && node.start !== 1
           ? { start: node.start }
           : {}),
+        // Carry the source parser's exact tightness through unchanged; no
+        // inference from structure or child count.
+        ...(typeof node.spread === 'boolean' ? { spread: node.spread } : {}),
         items: await Promise.all(
           (node.children ?? []).map(async (item): Promise<ListItemNode> => ({
-            children: await contentChildren(
-              item.children ?? [],
-              sourceFile,
-              root,
+            children: normalizeListItemChildren(
+              await contentChildren(item.children ?? [], sourceFile, root),
+              tight,
             ),
           })),
         ),
       };
+    }
     case 'image':
       return parseMarkdownImage(node, sourceFile, root);
     case 'code':
