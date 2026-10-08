@@ -21,9 +21,10 @@ export interface QuestionnaireViewProps {
   /** Forwarded to nested rich content so headings stay nested correctly. */
   headingOffset?: number;
   /**
-   * Saved answers for the owning page/item, keyed by `QuestionNode.id`. When
-   * present the questionnaire is controlled by this map, so restored selections
-   * render and every edit is reported through {@link onAnswer}.
+   * Saved answers for the owning page/item, keyed by `QuestionNode.id`.
+   * Supplying this controls the rendered selection, so restored answers display
+   * as checked. It does not report interactions on its own; supply
+   * {@link onAnswer} as well for a fully controlled questionnaire.
    */
   answers?: Record<string, AnswerValue>;
   /**
@@ -32,8 +33,11 @@ export interface QuestionnaireViewProps {
    */
   submitted?: boolean;
   /**
-   * Persists a single question answer for the owning page/item. Multiple-choice
-   * answers are string arrays; single-choice and true-false are strings.
+   * Reports a single question interaction for the owning page/item so the owner
+   * can persist it. Multiple-choice answers are string arrays; single-choice and
+   * true-false are strings. Supplying this reports changes but does not by itself
+   * drive the selection; supply {@link answers} as well for fully controlled
+   * updates.
    */
   onAnswer?: (questionId: string, value: AnswerValue) => void;
   /**
@@ -50,18 +54,22 @@ export interface QuestionnaireViewProps {
  * a wizard (Previous/Next) and finished with a single "Submit questionnaire"
  * action on the last question.
  *
- * Each question is keyed by its stable `QuestionNode.id`, so restoring an answer
- * is a lookup rather than positional. When the owning page supplies answers the
- * choices become controlled: the saved value drives the selection and every
- * change is reported under that question id. Once the wrapper id is marked
- * submitted the questionnaire renders its answers read-only, so a restored
- * submission cannot be edited or re-submitted.
+ * The authored `questions` are declared once as the Root's `items` collection
+ * and mapped into the parts, exactly as the component docs compose it. The
+ * collection lets the active item server-render and marks every question
+ * required, so `Next` and the final submit stay blocked until each item has an
+ * answer. Items are keyed by their stable `QuestionNode.id`, so restoring an
+ * answer is a lookup rather than positional. The questionnaire is controlled
+ * whenever the owner supplies `answers`, `onAnswer`, or both: `answers` drives
+ * the rendered selection, `onAnswer` reports interactions, and supplying both
+ * yields fully controlled updates. Once the wrapper id is marked submitted the
+ * questionnaire renders its answers read-only, so a restored submission cannot
+ * be edited or re-submitted.
  *
- * Every question is required, so the primitive blocks advancing with `Next` and
- * blocks the final submit until each item has an answer; the renderer neither
- * grades answers nor reveals which option was correct. The rich prompt and each
- * option are rendered as content, and the submission callback bubbles through
- * them so nested block content can still surface questionnaires.
+ * The renderer neither grades answers nor reveals which option was correct. The
+ * rich prompt and each option are rendered as content, and the submission
+ * callback bubbles through them so nested block content can still surface
+ * questionnaires.
  */
 export function QuestionnaireView({
   node,
@@ -87,13 +95,23 @@ export function QuestionnaireView({
     );
   }
 
-  // Answers make the questionnaire controlled; without them the primitive owns
-  // the selection (the standalone/default case).
+  // The primitive owns the selection only when the owner supplies neither
+  // `answers` nor `onAnswer` (the standalone/default case). Supplying `answers`
+  // controls the rendered selection, supplying `onAnswer` reports interactions,
+  // and callers that want fully controlled updates supply both.
   const controlled = onAnswer !== undefined || answers !== undefined;
+
+  // Declare the authored questions once: the Root uses the collection for
+  // server rendering, required-answer validation and the wizard order.
+  const items = node.questions.map((question) => ({
+    name: question.id,
+    required: true,
+    choices: question.options.map((option) => ({ value: option.value })),
+  }));
 
   return (
     <Questionnaire
-      className='rounded-lg border border-border bg-card p-4'
+      items={items}
       onSubmit={(event) => {
         // The root only reaches this handler once every required item has an
         // answer. Never let the browser navigate away, and forward the
@@ -153,7 +171,6 @@ function QuestionnaireQuestion({
   onAnswer?: (questionId: string, value: AnswerValue) => void;
   onQuestionnaireSubmitted?: (id: string) => void;
 }) {
-  const name = useId();
   const promptId = useId();
   // Single-choice and true-false become radios; multiple-choice checkboxes.
   const multiple = node.questionType === 'multiple-choice';
@@ -179,10 +196,11 @@ function QuestionnaireQuestion({
 
   return (
     <QuestionnaireItem
-      name={name}
+      name={node.id}
       multiple={multiple}
       required
       aria-labelledby={promptId}
+      className='not-prose'
     >
       <QuestionnaireTitle id={promptId}>
         <ContentRenderer
@@ -223,8 +241,14 @@ function QuestionnaireQuestion({
 /**
  * Read-only rendering of a submitted questionnaire. Every question is shown at
  * once (there is no wizard left to navigate) with its saved selection checked
- * and the inputs disabled, so a restored submission is visible but cannot be
+ * and the choices disabled, so a restored submission is visible but cannot be
  * changed or re-submitted.
+ *
+ * The primitive has no disabled Root, and a disabled `Questionnaire.Item` is
+ * hidden by design (`hidden`/`inert` follow the active item), so each question
+ * gets its own single-item Root. The item stays active while its choices are
+ * disabled, which keeps the fieldset/legend semantics and the Questionnaire
+ * choice markup intact without overriding the primitive's internals.
  */
 function SubmittedQuestionnaire({
   node,
@@ -236,7 +260,7 @@ function SubmittedQuestionnaire({
   headingOffset: number;
 }) {
   return (
-    <div className='flex flex-col gap-4 rounded-lg border border-border bg-card p-4'>
+    <div className='not-prose space-y-8'>
       {node.questions.map((question) => (
         <SubmittedQuestion
           key={question.id}
@@ -259,47 +283,39 @@ function SubmittedQuestion({
   headingOffset: number;
 }) {
   const promptId = useId();
+  // Single-choice and true-false become radios; multiple-choice checkboxes.
   const multiple = question.questionType === 'multiple-choice';
 
   return (
-    <fieldset
-      disabled
-      aria-labelledby={promptId}
-      className='flex min-w-0 flex-col gap-4 border-0 p-0'
-    >
-      <legend
-        id={promptId}
-        className='text-base leading-snug font-medium text-pretty'
+    <Questionnaire items={[{ name: question.id }]}>
+      <QuestionnaireItem
+        name={question.id}
+        multiple={multiple}
+        aria-labelledby={promptId}
       >
-        <ContentRenderer
-          nodes={question.prompt}
-          headingOffset={headingOffset}
-        />
-      </legend>
+        <QuestionnaireTitle id={promptId}>
+          <ContentRenderer
+            nodes={question.prompt}
+            headingOffset={headingOffset}
+          />
+        </QuestionnaireTitle>
 
-      <div className='grid min-w-0 gap-2'>
-        {question.options.map((option) => (
-          <label
-            key={option.value}
-            className='flex min-h-11 cursor-not-allowed items-start gap-2.5 rounded-lg border border-input bg-transparent px-3 py-2.5 text-start text-sm opacity-70 select-none'
-          >
-            <input
-              type={multiple ? 'checkbox' : 'radio'}
+        <QuestionnaireChoices>
+          {question.options.map((option) => (
+            <QuestionnaireChoice
+              key={option.value}
               value={option.value}
-              checked={isSelected(question, value, option.value)}
-              readOnly
               disabled
-              className='mt-1 size-4 shrink-0 accent-primary'
-            />
-            <span className='flex min-w-0 flex-1 flex-col gap-0.5 leading-snug'>
+              checked={isSelected(question, value, option.value)}
+            >
               <ContentRenderer
                 nodes={option.content}
                 headingOffset={headingOffset}
               />
-            </span>
-          </label>
-        ))}
-      </div>
-    </fieldset>
+            </QuestionnaireChoice>
+          ))}
+        </QuestionnaireChoices>
+      </QuestionnaireItem>
+    </Questionnaire>
   );
 }

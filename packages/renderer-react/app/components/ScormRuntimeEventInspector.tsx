@@ -6,6 +6,8 @@ import {
   type ScormRuntimeEvent,
 } from '../lib/scorm-runtime-events';
 import { Button } from './ui/button';
+import { Checkbox } from './ui/checkbox';
+import { Field, FieldDescription, FieldLabel } from './ui/field';
 
 export interface ScormRuntimeEventInspectorProps {
   /**
@@ -179,27 +181,30 @@ function CmiPersistenceControl() {
 
   return (
     <div className='border-b px-3 py-2'>
-      <div className='flex items-start gap-2'>
-        <input
+      <Field
+        orientation='horizontal'
+        data-disabled={disabled ? true : undefined}
+        className='items-start gap-2'
+      >
+        <Checkbox
           id={checkboxId}
-          type='checkbox'
           checked={state.enabled}
           disabled={disabled}
           aria-describedby={descriptionId}
-          onChange={(event) => handleChange(event.target.checked)}
-          className='mt-0.5 size-4 shrink-0 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover disabled:cursor-not-allowed disabled:opacity-50'
+          onCheckedChange={(checked) => handleChange(checked === true)}
+          className='mt-0.5'
         />
         <div className='min-w-0'>
-          <label htmlFor={checkboxId} className='text-xs font-medium'>
+          <FieldLabel htmlFor={checkboxId} className='text-xs font-medium'>
             Persist CMI data
-          </label>
-          <p id={descriptionId} className='text-[11px] text-muted-foreground'>
+          </FieldLabel>
+          <FieldDescription id={descriptionId} className='text-[11px]'>
             Saves the mock LMS <code>cmi.*</code> values in this browser&apos;s
             localStorage and restores them on the next preview. Turning this off
             clears the saved data.
-          </p>
+          </FieldDescription>
         </div>
-      </div>
+      </Field>
       {state.status === 'ready' ? null : (
         <p role='status' className='mt-1 text-[11px] text-destructive'>
           {state.status === 'unavailable'

@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from 'react';
 import type { AnswerValue, ItemNode, PlayerPageState } from '../types';
 import { cn } from '../lib/utils';
 import { ContentRenderer } from './ContentRenderer';
+import { Button } from './ui/button';
 import { Card, CardHeader, CardTitle } from './ui/card';
 import {
   Dialog,
@@ -98,18 +99,20 @@ export function GridPresentation({
             ) : null}
           </DialogHeader>
           {selected ? (
-            <ContentRenderer
-              nodes={selected.content}
-              headingOffset={2}
-              answers={pageState?.answers}
-              submittedQuestionnaires={pageState?.submittedQuestionnaires}
-              onAnswer={(questionId, value) =>
-                onAnswer(selected.id, questionId, value)
-              }
-              onQuestionnaireSubmitted={(id) =>
-                onQuestionnaireSubmitted(selected.id, id)
-              }
-            />
+            <div className='prose'>
+              <ContentRenderer
+                nodes={selected.content}
+                headingOffset={2}
+                answers={pageState?.answers}
+                submittedQuestionnaires={pageState?.submittedQuestionnaires}
+                onAnswer={(questionId, value) =>
+                  onAnswer(selected.id, questionId, value)
+                }
+                onQuestionnaireSubmitted={(id) =>
+                  onQuestionnaireSubmitted(selected.id, id)
+                }
+              />
+            </div>
           ) : null}
         </DialogContent>
       </Dialog>
@@ -125,13 +128,14 @@ function ItemCard({ item, onOpen }: { item: ItemNode; onOpen: () => void }) {
     >
       <CardHeader>
         <CardTitle className='text-base'>
-          <button
+          <Button
             type='button'
+            variant='ghost'
             onClick={onOpen}
-            className="text-start outline-none after:absolute after:inset-0 after:content-['']"
+            className='h-auto w-full justify-start gap-0 rounded-none border-0 bg-transparent p-0 text-start text-base leading-none font-semibold tracking-tight whitespace-normal text-card-foreground hover:bg-transparent hover:text-card-foreground dark:hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 active:not-aria-[haspopup]:translate-y-0 after:absolute after:inset-0 after:content-[""]'
           >
             {item.metadata.title}
-          </button>
+          </Button>
         </CardTitle>
       </CardHeader>
     </Card>

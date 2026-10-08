@@ -91,7 +91,7 @@ type ContentNodeRenderers = {
 function HeadingView({ node, context }: ContentNodeViewProps<'heading'>) {
   const Tag = HEADING_TAGS[clampHeading(node.depth, context.headingOffset)];
   return (
-    <Tag className='mt-6 mb-2 scroll-mt-24 text-xl font-semibold text-foreground first:mt-0'>
+    <Tag className='scroll-mt-24 text-xl font-semibold text-foreground'>
       <InlineContent nodes={node.children} />
     </Tag>
   );
@@ -99,7 +99,7 @@ function HeadingView({ node, context }: ContentNodeViewProps<'heading'>) {
 
 function ParagraphView({ node }: ContentNodeViewProps<'paragraph'>) {
   return (
-    <p className='my-3 leading-7 text-foreground/90'>
+    <p>
       <InlineContent nodes={node.children} />
     </p>
   );
@@ -110,13 +110,10 @@ function ListView({ node, context }: ContentNodeViewProps<'list'>) {
   return (
     <ListTag
       start={node.ordered ? node.start : undefined}
-      className={cn(
-        'my-3 space-y-1 pl-6 text-foreground/90',
-        node.ordered ? 'list-decimal' : 'list-disc',
-      )}
+      className={cn('', node.ordered ? 'list-decimal' : 'list-disc')}
     >
       {node.items.map((item, index) => (
-        <li key={index} className='leading-7'>
+        <li key={index}>
           <ContentRenderer nodes={item.children} {...context} />
         </li>
       ))}
@@ -126,13 +123,8 @@ function ListView({ node, context }: ContentNodeViewProps<'list'>) {
 
 function CodeView({ node }: ContentNodeViewProps<'code'>) {
   return (
-    <pre className='my-4 overflow-x-auto rounded-lg border border-border bg-secondary p-4 text-sm'>
-      <code
-        className={cn(
-          'font-mono',
-          node.language ? `language-${node.language}` : undefined,
-        )}
-      >
+    <pre className='text-sm font-mono not-prose overflow-x-auto rounded-2xl border border-border bg-secondary p-4'>
+      <code className={node.language ? `language-${node.language}` : undefined}>
         {node.value}
       </code>
     </pre>
@@ -141,7 +133,7 @@ function CodeView({ node }: ContentNodeViewProps<'code'>) {
 
 function QuoteView({ node, context }: ContentNodeViewProps<'quote'>) {
   return (
-    <blockquote className='my-4 border-l-4 border-primary/50 bg-secondary/50 px-4 py-3 italic text-foreground/90'>
+    <blockquote className='border-l-4 border-primary/50 bg-secondary/50 px-4 py-3 italic text-foreground/90'>
       <ContentRenderer nodes={node.children} {...context} />
     </blockquote>
   );
@@ -155,7 +147,7 @@ function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
       loading='lazy'
       className={cn(
         'h-auto max-w-full rounded-lg border border-border',
-        node.caption ? undefined : 'my-4',
+        node.caption ? undefined : '',
       )}
     />
   );
@@ -163,7 +155,7 @@ function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
     return image;
   }
   return (
-    <figure className='my-4 space-y-2'>
+    <figure className='space-y-2'>
       {image}
       <figcaption className='text-sm text-muted-foreground'>
         {node.caption}
@@ -174,13 +166,13 @@ function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
 
 function VideoView({ node }: ContentNodeViewProps<'video'>) {
   return (
-    <figure className='my-4 space-y-2'>
+    <figure className='space-y-2'>
       <video
         controls
         preload='metadata'
         poster={node.poster}
         aria-label={node.title ?? 'Video'}
-        className='w-full rounded-lg border border-border'
+        className='w-full rounded-2xl'
       >
         <source src={node.src} />
         {node.captions ? (
@@ -213,16 +205,14 @@ function QuestionnaireBlockView({
   context,
 }: ContentNodeViewProps<'questionnaire'>) {
   return (
-    <div className='my-4'>
-      <QuestionnaireView
-        node={node}
-        headingOffset={context.headingOffset}
-        answers={context.answers}
-        submitted={context.submittedQuestionnaires?.includes(node.id) ?? false}
-        onAnswer={context.onAnswer}
-        onSubmitted={context.onQuestionnaireSubmitted}
-      />
-    </div>
+    <QuestionnaireView
+      node={node}
+      headingOffset={context.headingOffset}
+      answers={context.answers}
+      submitted={context.submittedQuestionnaires?.includes(node.id) ?? false}
+      onAnswer={context.onAnswer}
+      onSubmitted={context.onQuestionnaireSubmitted}
+    />
   );
 }
 

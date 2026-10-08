@@ -65,6 +65,24 @@ function input(value: string): HTMLInputElement {
   return element;
 }
 
+/**
+ * A read-only submitted choice. Submitted answers render through the shadcn
+ * questionnaire choice part, whose native input carries the value and state.
+ */
+function submittedControl(value: string): HTMLInputElement {
+  const element = container.querySelector<HTMLInputElement>(
+    `[data-slot="questionnaire-choice-input"][value="${value}"]`,
+  );
+  if (!element) {
+    throw new Error(`Submitted control not found for value: ${value}`);
+  }
+  return element;
+}
+
+function submittedChecked(value: string): boolean {
+  return submittedControl(value).checked;
+}
+
 /** Visible button whose label matches exactly; hidden wizard controls are skipped. */
 function button(label: string): HTMLButtonElement {
   const element = Array.from(container.querySelectorAll('button')).find(
@@ -201,6 +219,19 @@ describe('QuestionnaireView', () => {
     expect(container.innerHTML).not.toContain('correct=');
     expect(container.innerHTML).not.toContain('data-correct');
   });
+
+  it('declares the authored questions as the Root item collection', () => {
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />));
+
+    // The Root receives `items`, so each question is keyed by its stable id
+    // (surfaced as the native input name) and the active question renders
+    // without waiting for a layout effect, keeping the markup server-renderable.
+    expect(input('first').getAttribute('name')).toBe(singleChoiceQuestion.id);
+    expect(activeItem().hasAttribute('hidden')).toBe(false);
+
+    act(() => button('Next question').click());
+    expect(input('alpha').getAttribute('name')).toBe(multipleChoiceQuestion.id);
+  });
 });
 
 /** Renders a questionnaire controlled by local answer state, like a page does. */
@@ -265,6 +296,40 @@ describe('QuestionnaireView persistence', () => {
     expect(input('beta').checked).toBe(true);
   });
 
+  it('keeps multiple-choice answers in authored option order', () => {
+    const onAnswer = vi.fn();
+    function StatefulQuestionnaire() {
+      const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
+      return (
+        <QuestionnaireView
+          node={questionnaireNode}
+          answers={answers}
+          onAnswer={(questionId, value) => {
+            onAnswer(questionId, value);
+            setAnswers((previous) => ({ ...previous, [questionId]: value }));
+          }}
+        />
+      );
+    }
+
+    act(() => root.render(<StatefulQuestionnaire />));
+    act(() => input('first').click());
+    act(() => button('Next question').click());
+
+    // Toggling beta before alpha must still persist the authored order.
+    act(() => input('beta').click());
+    act(() => input('alpha').click());
+    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, [
+      'alpha',
+      'beta',
+    ]);
+
+    act(() => input('beta').click());
+    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, [
+      'alpha',
+    ]);
+  });
+
   it('restores saved selections from the page answers', () => {
     act(() =>
       root.render(
@@ -318,12 +383,71 @@ describe('QuestionnaireView persistence', () => {
 
     // Both questions are shown at once, with their saved selections checked and
     // disabled; there is no wizard or submit action left.
-    expect(input('first').checked).toBe(true);
-    expect(input('first').disabled).toBe(true);
-    expect(input('alpha').checked).toBe(true);
-    expect(input('beta').checked).toBe(true);
-    expect(input('beta').disabled).toBe(true);
+    expect(submittedChecked('first')).toBe(true);
+    expect(submittedControl('first').disabled).toBe(true);
+    expect(submittedChecked('second')).toBe(false);
+    expect(submittedChecked('alpha')).toBe(true);
+    expect(submittedChecked('beta')).toBe(true);
+    expect(submittedControl('beta').disabled).toBe(true);
     expect(container.textContent).not.toContain('Submit questionnaire');
     expect(container.textContent).not.toContain('Next question');
+  });
+
+  it('renders submitted answers through the shadcn questionnaire parts', () => {
+    act(() =>
+      root.render(
+        <QuestionnaireView
+          node={questionnaireNode}
+          answers={{
+            [singleChoiceQuestion.id]: 'second',
+            [multipleChoiceQuestion.id]: ['alpha'],
+          }}
+          submitted
+        />,
+      ),
+    );
+
+    // Single-choice is a disabled questionnaire radio; multiple-choice uses
+    // disabled questionnaire checkboxes, each an accessible choice part.
+    const single = submittedControl('second');
+    expect(single.type).toBe('radio');
+    expect(single.checked).toBe(true);
+    expect(single.disabled).toBe(true);
+    expect(single.closest('[data-slot="questionnaire-choice"]')).not.toBeNull();
+
+    const multiple = submittedControl('alpha');
+    expect(multiple.type).toBe('checkbox');
+    expect(multiple.checked).toBe(true);
+    expect(multiple.disabled).toBe(true);
+    expect(submittedControl('beta').checked).toBe(false);
+
+    // Every question is its own single-item root, all shown at once.
+    expect(
+      container.querySelectorAll('[data-slot="questionnaire"]'),
+    ).toHaveLength(2);
+    expect(
+      container.querySelectorAll('[data-slot="questionnaire-title"]'),
+    ).toHaveLength(2);
+    expect(
+      container.querySelectorAll('[data-slot="questionnaire-choice"]'),
+    ).toHaveLength(4);
+  });
+
+  it('never reveals correctness in a submitted questionnaire', () => {
+    act(() =>
+      root.render(
+        <QuestionnaireView
+          node={questionnaireNode}
+          answers={{
+            [singleChoiceQuestion.id]: 'second',
+            [multipleChoiceQuestion.id]: ['beta'],
+          }}
+          submitted
+        />,
+      ),
+    );
+
+    expect(container.innerHTML).not.toContain('correct=');
+    expect(container.innerHTML).not.toContain('data-correct');
   });
 });

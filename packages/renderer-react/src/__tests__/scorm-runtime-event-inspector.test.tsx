@@ -62,14 +62,20 @@ function installBridge(initialEnabled: boolean): {
   return { getCmiPersistenceEnabled, setCmiPersistenceEnabled };
 }
 
-function persistenceCheckbox(): HTMLInputElement {
-  const input = container.querySelector<HTMLInputElement>(
-    'input[type="checkbox"]',
+/** The shadcn checkbox is a `role="checkbox"` button carrying `data-slot`. */
+function persistenceCheckbox(): HTMLButtonElement {
+  const checkbox = container.querySelector<HTMLButtonElement>(
+    '[data-slot="checkbox"]',
   );
-  if (!input) {
+  if (!checkbox) {
     throw new Error('CMI persistence checkbox not found');
   }
-  return input;
+  return checkbox;
+}
+
+/** Reads the checked state from the Radix checkbox's ARIA attribute. */
+function persistenceCheckboxChecked(): boolean {
+  return persistenceCheckbox().getAttribute('aria-checked') === 'true';
 }
 
 function persistenceStatus(): string {
@@ -331,19 +337,40 @@ describe('ScormRuntimeEventInspector CMI persistence control', () => {
 
     expect(bridge.getCmiPersistenceEnabled).toHaveBeenCalledTimes(1);
     expect(bridge.setCmiPersistenceEnabled).not.toHaveBeenCalled();
-    expect(persistenceCheckbox().checked).toBe(true);
+    expect(persistenceCheckboxChecked()).toBe(true);
     expect(persistenceStatus()).toBe('');
 
     act(() => persistenceCheckbox().click());
 
     expect(bridge.setCmiPersistenceEnabled).toHaveBeenLastCalledWith(false);
-    expect(persistenceCheckbox().checked).toBe(false);
+    expect(persistenceCheckboxChecked()).toBe(false);
     expect(persistenceStatus()).toBe('');
 
     act(() => persistenceCheckbox().click());
 
     expect(bridge.setCmiPersistenceEnabled).toHaveBeenLastCalledWith(true);
-    expect(persistenceCheckbox().checked).toBe(true);
+    expect(persistenceCheckboxChecked()).toBe(true);
+  });
+
+  it('renders the toggle as a shadcn checkbox wired to a shadcn field label', () => {
+    act(() => root.render(<ScormRuntimeEventInspector enabled />));
+    act(() => toggle().click());
+
+    const checkbox = persistenceCheckbox();
+    // Radix checkbox is a button exposing the checkbox role, not a native input.
+    expect(checkbox.getAttribute('role')).toBe('checkbox');
+    expect(container.querySelector('input[type="checkbox"]')).toBeNull();
+
+    const label = container.querySelector<HTMLLabelElement>(
+      '[data-slot="field-label"]',
+    );
+    expect(label?.textContent).toBe('Persist CMI data');
+    expect(label?.getAttribute('for')).toBe(checkbox.id);
+
+    const description = container.querySelector(
+      '[data-slot="field-description"]',
+    );
+    expect(description?.id).toBe(checkbox.getAttribute('aria-describedby'));
   });
 
   it('disables the control and shows a status when the dev bridge is absent', () => {
@@ -352,7 +379,7 @@ describe('ScormRuntimeEventInspector CMI persistence control', () => {
 
     const checkbox = persistenceCheckbox();
     expect(checkbox.disabled).toBe(true);
-    expect(checkbox.checked).toBe(false);
+    expect(persistenceCheckboxChecked()).toBe(false);
     expect(persistenceStatus().length).toBeGreaterThan(0);
     expect(persistenceStatus()).toContain('unavailable');
   });
@@ -370,7 +397,7 @@ describe('ScormRuntimeEventInspector CMI persistence control', () => {
 
     expect(container.textContent).toContain('storage blocked');
     expect(persistenceCheckbox().disabled).toBe(false);
-    expect(persistenceCheckbox().checked).toBe(false);
+    expect(persistenceCheckboxChecked()).toBe(false);
   });
 
   it('shows a status and keeps the control usable when a write fails', () => {
@@ -389,14 +416,14 @@ describe('ScormRuntimeEventInspector CMI persistence control', () => {
 
     expect(container.textContent).toContain('quota exceeded');
     expect(persistenceCheckbox().disabled).toBe(false);
-    expect(persistenceCheckbox().checked).toBe(false);
+    expect(persistenceCheckboxChecked()).toBe(false);
   });
 
   it('does not expose the control when the dev client is absent', () => {
     act(() => root.render(<ScormRuntimeEventInspector enabled={false} />));
     act(() => toggle().click());
 
-    expect(container.querySelector('input[type="checkbox"]')).toBeNull();
+    expect(container.querySelector('[data-slot="checkbox"]')).toBeNull();
     expect(container.textContent).not.toContain('Persist CMI data');
   });
 });

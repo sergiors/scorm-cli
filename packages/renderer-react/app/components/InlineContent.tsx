@@ -60,15 +60,12 @@ function StrongView({ node }: InlineNodeViewProps<'strong'>) {
 }
 
 function InlineCodeView({ node }: InlineNodeViewProps<'inlineCode'>) {
-  return (
-    <code className='rounded bg-secondary px-1.5 py-0.5 font-mono text-[0.85em] text-foreground'>
-      {node.value}
-    </code>
-  );
+  return <code className='font-mono not-prose'>{node.value}</code>;
 }
 
 function LinkView({ node }: InlineNodeViewProps<'link'>) {
   const isExternal = /^https?:\/\//i.test(node.href);
+
   return (
     <a
       href={node.href}

@@ -329,7 +329,7 @@ function PageScene({
   }, [index, onEndChange, page.id, rootRef]);
 
   return (
-    <section
+    <div
       data-scene-index={index}
       aria-label={page.metadata.title}
       className='mx-auto flex min-h-dvh max-w-3xl flex-col justify-center px-6 py-16'
@@ -342,37 +342,39 @@ function PageScene({
           className='h-px w-full'
         />
       ) : null}
-      <h2 className='mb-6 text-2xl font-semibold tracking-tight'>
-        {page.metadata.title}
-      </h2>
-      <ContentRenderer
-        nodes={page.content}
-        headingOffset={2}
-        answers={pageState?.answers}
-        submittedQuestionnaires={pageState?.submittedQuestionnaires}
-        onAnswer={(questionId, value) => onAnswer(page.id, questionId, value)}
-        onQuestionnaireSubmitted={(id) => onQuestionnaireSubmitted(page.id, id)}
-      />
+
+      <section className='prose prose-stone '>
+        <ContentRenderer
+          nodes={page.content}
+          headingOffset={2}
+          answers={pageState?.answers}
+          submittedQuestionnaires={pageState?.submittedQuestionnaires}
+          onAnswer={(questionId, value) => onAnswer(page.id, questionId, value)}
+          onQuestionnaireSubmitted={(id) =>
+            onQuestionnaireSubmitted(page.id, id)
+          }
+        />
+      </section>
+
       <div
         ref={endRef}
         data-scroll-end={index}
         aria-hidden='true'
         className='h-px w-full'
       />
-    </section>
+    </div>
   );
 }
 
 /** Minimal floating control that returns to the previous page. */
 function PreviousControl({ onClick }: { onClick: () => void }) {
   return (
-    <div className='pointer-events-none fixed inset-x-0 top-6 z-10 flex justify-center px-4'>
+    <div className='pointer-events-none fixed inset-x-0 top-0 z-10 flex justify-center py-4 bg-background/5 backdrop-blur-sm'>
       <Button
         type='button'
         variant='secondary'
-        size='sm'
         onClick={onClick}
-        className='pointer-events-auto rounded-full shadow-md'
+        className='cursor-pointer pointer-events-auto rounded-full'
       >
         <ArrowUp aria-hidden='true' />
         Previous page
@@ -384,13 +386,12 @@ function PreviousControl({ onClick }: { onClick: () => void }) {
 /** Minimal floating control that advances to the next page. */
 function NextControl({ onClick }: { onClick: () => void }) {
   return (
-    <div className='pointer-events-none fixed inset-x-0 bottom-6 z-10 flex justify-center px-4'>
+    <div className='pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center py-4 bg-background/5 backdrop-blur-sm'>
       <Button
         type='button'
         variant='secondary'
-        size='sm'
         onClick={onClick}
-        className='pointer-events-auto rounded-full shadow-md'
+        className='cursor-pointer pointer-events-auto rounded-full px-4'
       >
         Continue to next page
         <ArrowDown aria-hidden='true' />

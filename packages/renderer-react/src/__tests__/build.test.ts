@@ -131,6 +131,10 @@ describe('renderReactPackage', () => {
       'utf-8',
     );
     expect(css.length).toBeGreaterThan(0);
+    // The Typography plugin is registered and `prose` is applied by the
+    // presentations, so the compiled stylesheet must carry its rules.
+    expect(css).toContain('.prose');
+    expect(css).toContain('--tw-prose-body');
   });
 
   it('copies provided assets to their target paths', async () => {

@@ -106,6 +106,21 @@ function input(value: string): HTMLInputElement {
   return element;
 }
 
+/**
+ * A read-only submitted choice. Submitted answers render through the shadcn
+ * questionnaire choice part (dialogs portal into `document`), so search the
+ * whole document rather than the render container.
+ */
+function submittedControl(value: string): HTMLInputElement {
+  const element = document.querySelector<HTMLInputElement>(
+    `[data-slot="questionnaire-choice-input"][value="${value}"]`,
+  );
+  if (!element) {
+    throw new Error(`Submitted control not found for value: ${value}`);
+  }
+  return element;
+}
+
 /** Answers the standard intro questionnaire (single- then multiple-choice). */
 function answerQuestionnaire(): void {
   act(() => input('first').click());
@@ -657,10 +672,10 @@ describe('PackageView scroll location restore', () => {
 
     // The restored submission renders read-only with both saved answers checked,
     // and counts as submitted, so reaching the page end completes it.
-    expect(input('first').checked).toBe(true);
-    expect(input('first').disabled).toBe(true);
-    expect(input('alpha').checked).toBe(true);
-    expect(input('alpha').disabled).toBe(true);
+    expect(submittedControl('first').checked).toBe(true);
+    expect(submittedControl('first').disabled).toBe(true);
+    expect(submittedControl('alpha').checked).toBe(true);
+    expect(submittedControl('alpha').disabled).toBe(true);
     expect(text()).not.toContain('Submit questionnaire');
     // Restoring an unchanged page must not write the bridge again.
     expect(saveState).not.toHaveBeenCalled();
@@ -688,7 +703,7 @@ describe('PackageView scroll location restore', () => {
     // Completion is resumed from the state, not inferred from the location, and
     // a completed scroll page is normalized to submitted, so its questionnaire
     // is read-only and the learner can move on without re-answering.
-    expect(input('first').disabled).toBe(true);
+    expect(submittedControl('first').disabled).toBe(true);
     expect(text()).not.toContain('Submit questionnaire');
 
     setEndIntersecting(0, true);
@@ -887,6 +902,15 @@ describe('PackageView grid interactions', () => {
     expect(documentText()).toContain('Function body.');
   });
 
+  it('wraps authored item content in prose typography', () => {
+    act(() => root.render(<PackageView contentPackage={gridPackage} />));
+    act(() => findButton('Functions').click());
+
+    const prose = dialog()?.querySelector('.prose');
+    expect(prose).not.toBeNull();
+    expect(prose?.textContent).toContain('Function body.');
+  });
+
   it('closes the dialog with the close button', () => {
     act(() => root.render(<PackageView contentPackage={gridPackage} />));
     act(() => findButton('Functions').click());
@@ -949,10 +973,9 @@ describe('PackageView grid interactions', () => {
 
     expect(dialog()).not.toBeNull();
     expect(documentText()).toContain('Shared prompt');
-    const no = document.querySelector<HTMLInputElement>('input[value="no"]');
-    expect(no).not.toBeNull();
-    expect(no?.checked).toBe(true);
-    expect(no?.disabled).toBe(true);
+    const no = submittedControl('no');
+    expect(no.checked).toBe(true);
+    expect(no.disabled).toBe(true);
   });
 
   it('completes once every item has been opened and notifies the bridge once', () => {
