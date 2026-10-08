@@ -1,0 +1,83 @@
+---
+title: Union types and narrowing
+---
+
+# One value, a few possibilities
+
+Real data is not always a single shape. A value might be a number or a string,
+or it might be present or missing. A union type describes that set of
+possibilities.
+
+```ts
+type LessonId = string | number;
+```
+
+`LessonId` accepts either a string such as `'welcome'` or a number such as `1`.
+The value is one member at a time, and TypeScript tracks which one as your code
+runs.
+
+## Narrow with `typeof`
+
+Before you use a union, check which member you have. TypeScript calls this
+narrowing, and it happens automatically inside common checks such as `typeof`.
+
+```ts
+function label(id: string | number): string {
+  if (typeof id === 'number') {
+    return `Lesson #${id}`;
+  }
+  return id.toUpperCase();
+}
+```
+
+Inside the `if` block the value is a `number`; after it, TypeScript knows the
+value must be a `string`. Each branch is therefore safe without any casts.
+
+## Narrow objects by a shared field
+
+Unions also describe alternative object shapes. Give each member a shared
+literal field, often called a discriminant, so a single check selects the right
+branch.
+
+```ts
+type Result =
+  { status: 'ok'; value: number } | { status: 'error'; message: string };
+
+function describe(result: Result): string {
+  if (result.status === 'ok') {
+    return `Value: ${result.value}`;
+  }
+  return `Error: ${result.message}`;
+}
+```
+
+Checking `result.status` is enough: in the first branch only `value` exists,
+and in the second only `message` exists. TypeScript rejects any attempt to read
+the wrong field, which catches mistakes before the code runs.
+
+## Keep unions precise
+
+1. List only the possibilities that your data really has.
+2. Narrow before you use a member-specific field or method.
+3. Handle every branch, so a new member surfaces as an error rather than a
+   silent bug.
+
+## Check your understanding
+
+<Questionnaire>
+  <Question type='single-choice'>
+    <Prompt>
+      Inside `if (typeof value === 'string')`, what does TypeScript know about
+      `value`?
+    </Prompt>
+    <Option value='narrowed' correct={true}>
+      It is a `string`, so string methods are safe to call
+    </Option>
+    <Option value='union' correct={false}>
+      It is still the full original union
+    </Option>
+    <Option value='any' correct={false}>
+      It becomes `any` and loses its type information
+    </Option>
+  </Question>
+</Questionnaire>

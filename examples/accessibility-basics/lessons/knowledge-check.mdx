@@ -1,0 +1,48 @@
+---
+title: Accessibility knowledge check
+---
+
+# Check your understanding
+
+<Questionnaire>
+  <Question type='single-choice'>
+    <Prompt>
+      A decorative flourish adds no information and is not interactive. What is
+      a good alternative-text choice?
+    </Prompt>
+    <Option value='describe-every-detail' correct={false}>
+      Describe every color and shape
+    </Option>
+    <Option value='empty' correct={true}>
+      Use an empty alternative so assistive technology can skip it
+    </Option>
+    <Option value='filename' correct={false}>
+      Use the image's file name
+    </Option>
+  </Question>
+  <Question type='single-choice'>
+    <Prompt>What is a useful way to check keyboard access?</Prompt>
+    <Option value='tab-through' correct={true}>
+      Navigate through controls with Tab and Shift+Tab, and check visible focus
+    </Option>
+    <Option value='color-only' correct={false}>
+      Check only whether controls use a consistent color
+    </Option>
+    <Option value='mouse-only' correct={false}>
+      Use a mouse to confirm each control can be clicked
+    </Option>
+  </Question>
+  <Question type='single-choice'>
+    <Prompt>What should you do with automatically generated captions?</Prompt>
+    <Option value='publish-unreviewed' correct={false}>
+      Publish them without review because speech recognition is always exact
+    </Option>
+    <Option value='review' correct={true}>
+      Review and correct them for accuracy, timing, speakers, and meaningful
+      sounds
+    </Option>
+    <Option value='transcript-only' correct={false}>
+      Replace synchronized captions with a transcript in every situation
+    </Option>
+  </Question>
+</Questionnaire>
