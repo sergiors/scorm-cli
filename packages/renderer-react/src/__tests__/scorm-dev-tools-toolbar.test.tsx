@@ -3,7 +3,6 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ScormDevToolsToolbar } from '../../app/components/ScormDevToolsToolbar';
-import { PlayerI18nProvider } from '../../app/lib/player-i18n';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -119,17 +118,21 @@ describe('ScormDevToolsToolbar', () => {
     expect(content?.getAttribute('role')).toBe('dialog');
     expect(content?.getAttribute('aria-label')).toBe('Dev tools');
 
-    // Composes the shadcn header/title parts around the persistence control.
-    const header = content?.querySelector('[data-slot="popover-header"]');
-    expect(header).not.toBeNull();
-    expect(
-      content?.querySelector('[data-slot="popover-title"]')?.textContent,
-    ).toBe('LMS persistence');
-
     // The trigger is wired to the portaled content for assistive tech.
     const toggle = toolbarToggle();
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(toggle.getAttribute('aria-controls')).toBe(content?.id);
+  });
+
+  it('renders the popover without a header part', () => {
+    act(() => root.render(<ScormDevToolsToolbar enabled />));
+    togglePopover();
+
+    const content = popover();
+    expect(content).not.toBeNull();
+    // The panel hosts the control directly, with no header/title chrome.
+    expect(content?.querySelector('[data-slot="popover-header"]')).toBeNull();
+    expect(content?.querySelector('[data-slot="popover-title"]')).toBeNull();
   });
 
   it('closes the popover through the trigger and on Escape', () => {
@@ -167,35 +170,6 @@ describe('ScormDevToolsToolbar', () => {
     // Expanded popover: title, labels, description and helper copy.
     expect(popover()).not.toBeNull();
     expect(document.body.textContent ?? '').not.toMatch(/mock/i);
-  });
-
-  it('keeps its copy English-only under a Portuguese package language', () => {
-    // The dev toolbar is dropped from the production bundle, so it must not
-    // depend on the player's localized chrome.
-    act(() =>
-      root.render(
-        <PlayerI18nProvider lang='pt-BR'>
-          <ScormDevToolsToolbar enabled />
-        </PlayerI18nProvider>,
-      ),
-    );
-
-    // `toolbarToggle` only matches the English label, so this also proves the
-    // trigger never switched to Portuguese.
-    expect(toolbarToggle().textContent).toContain('Dev tools');
-
-    togglePopover();
-
-    const label = document.querySelector('[data-slot="field-label"]');
-    expect(label?.textContent).toBe('Persist CMI data');
-    // The restored heading stays English as well.
-    const heading = document.querySelector('[data-slot="popover-title"]');
-    expect(heading?.textContent).toBe('LMS persistence');
-    expect(document.body.textContent).not.toContain(
-      'Ferramentas de desenvolvimento',
-    );
-    expect(document.body.textContent).not.toContain('Persistir dados CMI');
-    expect(document.body.textContent).not.toContain('Persistência do LMS');
   });
 
   it('shows only the persistence toggle, never a clear action or event list', () => {

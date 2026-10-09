@@ -232,16 +232,18 @@ describe('PathView display metadata', () => {
 
     expect(entries[0]?.textContent).toContain('One');
     expect(
-      entries[0]?.querySelector('[data-path-description]')?.textContent,
+      entries[0]?.querySelector('[data-slot="item-description"]')?.textContent,
     ).toBe('The first page');
 
     // A page without a description renders only its required title.
     expect(entries[1]?.textContent).toContain('Two');
-    expect(entries[1]?.querySelector('[data-path-description]')).toBeNull();
+    expect(
+      entries[1]?.querySelector('[data-slot="item-description"]'),
+    ).toBeNull();
 
     expect(entries[3]?.textContent).toContain('Four');
     expect(
-      entries[3]?.querySelector('[data-path-description]')?.textContent,
+      entries[3]?.querySelector('[data-slot="item-description"]')?.textContent,
     ).toBe('The last page');
   });
 

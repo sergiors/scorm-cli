@@ -113,11 +113,16 @@ describe('PackageView grid presentation', () => {
 });
 
 describe('PackageView shared', () => {
-  it('does not render any progress or completion UI', () => {
+  it('does not render any progress or completion UI of its own', () => {
     const scrollHtml = renderView(scrollPackage);
     const gridHtml = renderView(gridPackage);
     for (const html of [scrollHtml, gridHtml]) {
-      expect(html).not.toContain('role="progressbar"');
+      // Every progressbar must be an authored questionnaire's own wizard
+      // counter; the package adds no progress chrome of its own.
+      const progressbars = html.match(/role="progressbar"/g) ?? [];
+      const questionnaireProgress =
+        html.match(/data-slot="questionnaire-progress"/g) ?? [];
+      expect(progressbars).toHaveLength(questionnaireProgress.length);
       expect(html).not.toContain('items visited');
       expect(html).not.toContain('Package complete');
       expect(html).not.toContain('Completed');

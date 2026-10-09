@@ -14,13 +14,15 @@ import {
 /**
  * Wraps the questionnaire in the player's i18n provider, matching how a page
  * renders it. These tests exercise questionnaire behaviour, so they only need
- * the provider to supply the localized chrome.
+ * the provider to supply the localized chrome. `lang` selects the catalog, so
+ * tests can assert localized player copy.
  */
-function QuestionnaireView(
-  props: ComponentProps<typeof QuestionnaireViewBase>,
-) {
+function QuestionnaireView({
+  lang,
+  ...props
+}: ComponentProps<typeof QuestionnaireViewBase> & { lang?: string }) {
   return (
-    <PlayerI18nProvider>
+    <PlayerI18nProvider lang={lang}>
       <QuestionnaireViewBase {...props} />
     </PlayerI18nProvider>
   );
@@ -247,6 +249,43 @@ describe('QuestionnaireView', () => {
 
     act(() => button('Next question').click());
     expect(input('alpha').getAttribute('name')).toBe(multipleChoiceQuestion.id);
+  });
+});
+
+describe('QuestionnaireView required-answer message', () => {
+  it('shows the English required-answer message when a required item is invalid', () => {
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />));
+
+    act(() => input('first').click());
+    act(() => button('Next question').click());
+    // The last question is still unanswered, so submitting marks it invalid.
+    act(() => button('Submit questionnaire').click());
+
+    const error = activeItem().querySelector(
+      '[data-slot="questionnaire-error"]',
+    );
+    expect(error?.hasAttribute('hidden')).toBe(false);
+    expect(error?.textContent).toBe('Choose an answer to continue.');
+  });
+
+  it('localizes the required-answer message under pt-BR', () => {
+    act(() =>
+      root.render(<QuestionnaireView node={questionnaireNode} lang='pt-BR' />),
+    );
+
+    act(() => input('first').click());
+    act(() => button('Próxima pergunta').click());
+    act(() => button('Enviar questionário').click());
+
+    const error = activeItem().querySelector(
+      '[data-slot="questionnaire-error"]',
+    );
+    expect(error?.hasAttribute('hidden')).toBe(false);
+    expect(error?.textContent).toBe('Escolha uma resposta para continuar.');
+    // The primitive's English fallback never leaks into the pt-BR player.
+    expect(container.textContent).not.toContain(
+      'Choose an answer to continue.',
+    );
   });
 });
 

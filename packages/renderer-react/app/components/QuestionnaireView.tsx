@@ -313,7 +313,9 @@ function QuestionnaireQuestion({
         ))}
       </QuestionnaireChoices>
 
-      <QuestionnaireError />
+      <QuestionnaireError>
+        <FormattedMessage id='questionnaire.answerRequired' />
+      </QuestionnaireError>
     </QuestionnaireItem>
   );
 }

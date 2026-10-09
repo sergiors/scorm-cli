@@ -15,18 +15,4 @@ describe('PreviewErrorOverlay', () => {
     expect(html).toContain('Broken content at lessons/intro.mdx:3');
     expect(html).toContain('Fix the content and save');
   });
-
-  it('localizes its fixed copy under a Portuguese package language', () => {
-    const html = renderToStaticMarkup(
-      <PlayerI18nProvider lang='pt-BR'>
-        <PreviewErrorOverlay message='Broken content at lessons/intro.mdx:3' />
-      </PlayerI18nProvider>,
-    );
-    expect(html).toContain('Erro de conteúdo');
-    expect(html).toContain('Corrija o conteúdo e salve');
-    expect(html).not.toContain('Content error');
-    // The dev server's diagnostic message is not dictionary copy and passes
-    // through verbatim.
-    expect(html).toContain('Broken content at lessons/intro.mdx:3');
-  });
 });

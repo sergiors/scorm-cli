@@ -374,7 +374,13 @@ describe('PackageView scroll interactions', () => {
     expect(text()).not.toContain('Setup instructions.');
     expect(previousButtons()).toHaveLength(0);
     expect(nextButtons()).toHaveLength(0);
-    expect(container.querySelector('[role="progressbar"]')).toBeNull();
+    // The player renders no page/package progress chrome of its own; the only
+    // progressbar belongs to the authored questionnaire on the displayed page.
+    expect(
+      container.querySelector(
+        '[role="progressbar"]:not([data-slot="questionnaire-progress"])',
+      ),
+    ).toBeNull();
   });
 
   it('does not mark every page complete at mount', () => {
@@ -634,7 +640,7 @@ describe('PackageView scroll navigation controls', () => {
     expect(nextButtons()).toHaveLength(1);
   });
 
-  it('centres each control without spanning the viewport or covering the scrollbar', () => {
+  it('pins each control as a full-width bar that centres its button', () => {
     act(() => root.render(<Player contentPackage={progressPackage} />));
     setEndIntersecting(0, true);
     act(() => nextButtons()[0]?.click());
@@ -653,20 +659,19 @@ describe('PackageView scroll navigation controls', () => {
         throw new Error('Expected both scroll controls to be visible');
       }
 
-      // Pinned and centred, but shrink-wrapped to the button: it must never
-      // span the viewport (`inset-x-0`/full width) or cover the scrollbar.
+      // Pinned to the viewport edge and stretched across it, the bar centres
+      // its shrink-wrapped button with flexbox instead of absolute offsets.
       expect(wrapper.classList.contains('fixed')).toBe(true);
-      expect(wrapper.classList.contains('left-1/2')).toBe(true);
-      expect(wrapper.classList.contains('-translate-x-1/2')).toBe(true);
-      expect(wrapper.classList.contains('inset-x-0')).toBe(false);
+      expect(wrapper.classList.contains('inset-x-0')).toBe(true);
+      expect(wrapper.classList.contains('flex')).toBe(true);
+      expect(wrapper.classList.contains('justify-center')).toBe(true);
+      expect(wrapper.classList.contains('left-1/2')).toBe(false);
+      expect(wrapper.classList.contains('-translate-x-1/2')).toBe(false);
       expect(wrapper.classList.contains('left-0')).toBe(false);
       expect(wrapper.classList.contains('right-0')).toBe(false);
-      expect(wrapper.classList.contains('w-full')).toBe(false);
-      expect(wrapper.classList.contains('flex')).toBe(false);
 
-      // The translucent background and backdrop blur are applied to the narrow
-      // wrapper itself, so they stay confined to the centred button and cannot
-      // paint over the scrollbar.
+      // The translucent background and backdrop blur sit on the bar so the
+      // floating controls read clearly over the scrolling page.
       expect(wrapper.className).toContain('bg-background/5');
       expect(wrapper.className).toContain('backdrop-blur-sm');
 
@@ -743,7 +748,7 @@ describe('PackageView scroll viewport', () => {
     expect(scene?.parentElement).toBe(container);
   });
 
-  it('lays the page scene out in natural flow without vertical centering', () => {
+  it('fills the viewport as a centred column with a readable measure', () => {
     act(() => root.render(<Player contentPackage={gatedPackage} />));
 
     const scene = container.querySelector<HTMLElement>(
@@ -759,15 +764,14 @@ describe('PackageView scroll viewport', () => {
     expect(classes.contains('w-full')).toBe(true);
     expect(classes.contains('max-w-3xl')).toBe(true);
     expect(classes.contains('mx-auto')).toBe(true);
+    expect(classes.contains('flex')).toBe(true);
+    expect(classes.contains('flex-col')).toBe(true);
+    expect(classes.contains('justify-center')).toBe(true);
 
-    // Natural flow: the old flex column vertically centred the content.
-    expect(classes.contains('flex')).toBe(false);
-    expect(classes.contains('flex-col')).toBe(false);
-    expect(classes.contains('justify-center')).toBe(false);
-
-    // Intentional top/bottom padding reserves room for the fixed controls.
-    expect(classes.contains('pt-20')).toBe(true);
-    expect(classes.contains('pb-24')).toBe(true);
+    // Symmetric vertical padding frames the centred content.
+    expect(classes.contains('py-18')).toBe(true);
+    expect(classes.contains('pt-20')).toBe(false);
+    expect(classes.contains('pb-24')).toBe(false);
   });
 
   it('renders the authored page body and names the scene after the page', () => {

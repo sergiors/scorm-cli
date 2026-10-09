@@ -12,10 +12,11 @@ export interface PreviewErrorOverlayProps {
  * content. The dev server clears it and reloads on the next successful update.
  *
  * It only ever appears in `scorm dev` — the error is delivered over Vite's HMR
- * channel — but this module is statically imported by `PackageApp` and therefore
- * ships in the generated bundle. Its fixed copy is localized through the shared
- * dictionary so it follows the package language instead of hardcoding English
- * in the bundle. The diagnostic `message` is not translated.
+ * channel — so it never renders for learners. The module is still statically
+ * imported by `PackageApp`, though, so its code ships in the generated bundle.
+ * Its fixed copy is deliberately hardcoded English rather than routed through
+ * the shared dictionary: this is a dev-preview-only surface, not learner-facing
+ * UI. The diagnostic `message` is likewise untranslated.
  */
 export function PreviewErrorOverlay({ message }: PreviewErrorOverlayProps) {
   return (

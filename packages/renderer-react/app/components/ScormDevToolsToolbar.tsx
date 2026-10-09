@@ -3,13 +3,7 @@ import { Settings2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Field, FieldDescription, FieldLabel } from './ui/field';
-import {
-  Popover,
-  PopoverContent,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverTrigger,
-} from './ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 
 export interface ScormDevToolsToolbarProps {
   /**
