@@ -101,6 +101,27 @@ function submittedChecked(value: string): boolean {
   return submittedControl(value).checked;
 }
 
+/** Class list of the submitted choice container for an option value. */
+function submittedChoiceClass(value: string): string {
+  const choice = submittedControl(value).closest(
+    '[data-slot="questionnaire-choice"]',
+  );
+  if (!choice) {
+    throw new Error(`Submitted choice not found for value: ${value}`);
+  }
+  return choice.className;
+}
+
+/** Whether a submitted option is result-highlighted green (correct). */
+function submittedChoiceIsGreen(value: string): boolean {
+  return submittedChoiceClass(value).includes('border-emerald-600');
+}
+
+/** Whether a submitted option is result-highlighted red (selected wrong). */
+function submittedChoiceIsRed(value: string): boolean {
+  return submittedChoiceClass(value).includes('border-destructive/60');
+}
+
 /** Visible button whose label matches exactly; hidden wizard controls are skipped. */
 function button(label: string): HTMLButtonElement {
   const element = Array.from(container.querySelectorAll('button')).find(
@@ -225,7 +246,7 @@ describe('QuestionnaireView', () => {
     expect(input('true').checked).toBe(false);
   });
 
-  it('names the fieldset from the rich prompt and never reveals correctness', () => {
+  it('names the fieldset from the rich prompt without result highlighting', () => {
     act(() => root.render(<QuestionnaireView node={questionnaireNode} />));
 
     const fieldset = activeItem();
@@ -234,7 +255,10 @@ describe('QuestionnaireView', () => {
     expect(
       document.getElementById(labelledBy as string)?.textContent,
     ).toContain('Which option is correct?');
-    expect(container.innerHTML).not.toContain('correct=');
+    // Correctness is not revealed before submission: no option carries the
+    // result-highlight classes the submitted view applies.
+    expect(container.innerHTML).not.toContain('border-emerald-600');
+    expect(container.innerHTML).not.toContain('border-destructive/60');
     expect(container.innerHTML).not.toContain('data-correct');
   });
 
@@ -488,7 +512,7 @@ describe('QuestionnaireView persistence', () => {
     ).toHaveLength(4);
   });
 
-  it('never reveals correctness in a submitted questionnaire', () => {
+  it('highlights every correct option green in a submitted questionnaire', () => {
     act(() =>
       root.render(
         <QuestionnaireView
@@ -502,7 +526,88 @@ describe('QuestionnaireView persistence', () => {
       ),
     );
 
-    expect(container.innerHTML).not.toContain('correct=');
-    expect(container.innerHTML).not.toContain('data-correct');
+    // Correct options are green whether or not the learner selected them.
+    expect(submittedChoiceIsGreen('first')).toBe(true);
+    expect(submittedChoiceIsGreen('alpha')).toBe(true);
+  });
+
+  it('keeps a selected correct option green and never red', () => {
+    act(() =>
+      root.render(
+        <QuestionnaireView
+          node={questionnaireNode}
+          answers={{
+            [singleChoiceQuestion.id]: 'first',
+            [multipleChoiceQuestion.id]: ['alpha'],
+          }}
+          submitted
+        />,
+      ),
+    );
+
+    // A correct option the learner selected is confirmed green and must not
+    // also carry the red "selected wrong" highlight.
+    expect(submittedChecked('first')).toBe(true);
+    expect(submittedChoiceIsGreen('first')).toBe(true);
+    expect(submittedChoiceIsRed('first')).toBe(false);
+
+    expect(submittedChecked('alpha')).toBe(true);
+    expect(submittedChoiceIsGreen('alpha')).toBe(true);
+    expect(submittedChoiceIsRed('alpha')).toBe(false);
+  });
+
+  it('highlights a selected wrong single-choice option red', () => {
+    act(() =>
+      root.render(
+        <QuestionnaireView
+          node={questionnaireNode}
+          answers={{ [singleChoiceQuestion.id]: 'second' }}
+          submitted
+        />,
+      ),
+    );
+
+    expect(submittedChoiceIsGreen('first')).toBe(true);
+    expect(submittedChoiceIsRed('second')).toBe(true);
+    expect(submittedChecked('second')).toBe(true);
+  });
+
+  it('highlights selected wrong multiple-choice options red', () => {
+    act(() =>
+      root.render(
+        <QuestionnaireView
+          node={questionnaireNode}
+          answers={{ [multipleChoiceQuestion.id]: ['beta'] }}
+          submitted
+        />,
+      ),
+    );
+
+    expect(submittedChoiceIsGreen('alpha')).toBe(true);
+    expect(submittedChoiceIsRed('beta')).toBe(true);
+    expect(submittedChecked('beta')).toBe(true);
+  });
+
+  it('leaves unselected wrong options neutral', () => {
+    act(() =>
+      root.render(
+        <QuestionnaireView
+          node={questionnaireNode}
+          answers={{
+            [singleChoiceQuestion.id]: 'first',
+            [multipleChoiceQuestion.id]: ['alpha'],
+          }}
+          submitted
+        />,
+      ),
+    );
+
+    // The wrong options were not selected, so they carry no result highlight.
+    expect(submittedChoiceIsGreen('second')).toBe(false);
+    expect(submittedChoiceIsRed('second')).toBe(false);
+    expect(submittedChoiceIsGreen('beta')).toBe(false);
+    expect(submittedChoiceIsRed('beta')).toBe(false);
+    expect(submittedChecked('second')).toBe(false);
+    expect(submittedChecked('beta')).toBe(false);
   });
 });

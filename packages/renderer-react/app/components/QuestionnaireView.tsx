@@ -6,6 +6,7 @@ import type {
   PlayerPageState,
   QuestionnaireNode,
   QuestionNode,
+  QuestionOption,
 } from '../types';
 import { ContentRenderer } from './ContentRenderer';
 import {
@@ -49,8 +50,9 @@ export interface QuestionnaireViewProps {
   onAnswer?: (questionId: string, value: AnswerValue) => void;
   /**
    * Invoked exactly once, with the questionnaire id, after every question has
-   * been answered and the learner submits. Submission is never graded and
-   * correctness is never revealed.
+   * been answered and the learner submits. Submission is never graded, but the
+   * read-only result view does reveal correctness: correct options are marked
+   * green and a wrong option the learner selected is marked red.
    */
   onSubmitted?: (id: string) => void;
   /**
@@ -99,14 +101,17 @@ type NestedPathContext = Pick<
  * the rendered selection, `onAnswer` reports interactions, and supplying both
  * yields fully controlled updates. Once the wrapper id is marked submitted the
  * questionnaire renders its answers read-only, so a restored submission cannot
- * be edited or re-submitted.
+ * be edited or re-submitted. The read-only view also reveals the result:
+ * correct options are highlighted green and any wrong option the learner
+ * selected is highlighted red, while wrong options left unselected stay
+ * neutral.
  *
- * The renderer neither grades answers nor reveals which option was correct. The
- * rich prompt and each option are rendered as content, and the submission
- * callback bubbles through them so nested block content can still surface
- * questionnaires. The Path rendering context is forwarded the same way, so a
- * Path authored in a prompt or option resolves its references and navigates
- * exactly like one at the page level.
+ * Correctness is never revealed before submission. The rich prompt and each
+ * option are rendered as content, and the submission callback bubbles through
+ * them so nested block content can still surface questionnaires. The Path
+ * rendering context is forwarded the same way, so a Path authored in a prompt
+ * or option resolves its references and navigates exactly like one at the page
+ * level.
  */
 export function QuestionnaireView({
   node,
@@ -236,6 +241,27 @@ function isSelected(
   return value === optionValue;
 }
 
+/**
+ * Result styling for a single submitted option: every correct option is tinted
+ * green, a wrong option is tinted red only when the learner selected it, and a
+ * wrong option left unselected stays neutral. The `data-checked` variants
+ * override the primitive's primary "selected" tint, so the result color also
+ * wins for a checked option. Only the submitted view applies this, so
+ * correctness is never revealed before results.
+ */
+function resultClassName(
+  option: QuestionOption,
+  selected: boolean,
+): string | undefined {
+  if (option.correct) {
+    return 'border-emerald-600/60 bg-emerald-500/10 data-checked:border-emerald-600 data-checked:bg-emerald-500/15 dark:border-emerald-500/60 dark:bg-emerald-500/15 dark:data-checked:border-emerald-500 dark:data-checked:bg-emerald-500/20';
+  }
+  if (selected) {
+    return 'border-destructive/60 bg-destructive/10 data-checked:border-destructive data-checked:bg-destructive/15 dark:border-destructive/60 dark:bg-destructive/15 dark:data-checked:border-destructive dark:data-checked:bg-destructive/20';
+  }
+  return undefined;
+}
+
 function QuestionnaireQuestion({
   node,
   controlled,
@@ -326,6 +352,10 @@ function QuestionnaireQuestion({
  * and the choices disabled, so a restored submission is visible but cannot be
  * changed or re-submitted.
  *
+ * It also reveals the result: every correct option is tinted green, a wrong
+ * option the learner selected is tinted red, and a wrong option left unselected
+ * stays neutral.
+ *
  * The primitive has no disabled Root, and a disabled `Questionnaire.Item` is
  * hidden by design (`hidden`/`inert` follow the active item), so each question
  * gets its own single-item Root. The item stays active while its choices are
@@ -382,16 +412,20 @@ function SubmittedQuestion({
         </QuestionnaireTitle>
 
         <QuestionnaireChoices>
-          {question.options.map((option) => (
-            <QuestionnaireChoice
-              key={option.value}
-              value={option.value}
-              disabled
-              checked={isSelected(question, value, option.value)}
-            >
-              <ContentRenderer nodes={option.content} {...pathContext} />
-            </QuestionnaireChoice>
-          ))}
+          {question.options.map((option) => {
+            const selected = isSelected(question, value, option.value);
+            return (
+              <QuestionnaireChoice
+                key={option.value}
+                value={option.value}
+                disabled
+                checked={selected}
+                className={resultClassName(option, selected)}
+              >
+                <ContentRenderer nodes={option.content} {...pathContext} />
+              </QuestionnaireChoice>
+            );
+          })}
         </QuestionnaireChoices>
       </QuestionnaireItem>
     </Questionnaire>
