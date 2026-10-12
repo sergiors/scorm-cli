@@ -18,6 +18,7 @@ const packageContent: ContentPackage = {
         {
           type: 'questionnaire',
           id: `quiz-${pageIndex}`,
+          contributesToScore: true,
           questions: [
             {
               type: 'question',
@@ -150,6 +151,7 @@ describe('compact suspend-data codec', () => {
               {
                 type: 'questionnaire',
                 id: 'q',
+                contributesToScore: true,
                 questions: [
                   {
                     type: 'question',

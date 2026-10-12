@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   collectAssetReferences,
+  getAggregateQuestionnaireScore,
   getDoneNodeIds,
   getPackageProgress,
   isPackageComplete,
-  type ContentPackage
+  type ContentPackage,
+  type QuestionNode,
+  type QuestionnaireNode
 } from '../index'
 
 const contentPackage: ContentPackage = {
@@ -32,6 +35,29 @@ const contentPackage: ContentPackage = {
       }
     ]
   }
+}
+
+function question(
+  id: string,
+  questionType: QuestionNode['questionType'],
+  values: string[],
+  correctValues: string[]
+): QuestionNode {
+  return {
+    type: 'question',
+    id,
+    questionType,
+    prompt: [],
+    options: values.map((value) => ({ value, correct: correctValues.includes(value), content: [] }))
+  }
+}
+
+function questionnaire(
+  id: string,
+  questions: QuestionNode[],
+  contributesToScore = true
+): QuestionnaireNode {
+  return { type: 'questionnaire', id, contributesToScore, questions }
 }
 
 describe('core package helpers', () => {
@@ -297,6 +323,7 @@ describe('core package helpers', () => {
               {
                 type: 'questionnaire',
                 id: 'questionnaire:nested.mdx:1:1',
+                contributesToScore: true,
                 questions: [
                   {
                     type: 'question',
@@ -361,5 +388,194 @@ describe('core package helpers', () => {
       'media/lesson-poster.svg',
       'media/lesson.mp4'
     ])
+  })
+})
+
+describe('aggregate questionnaire score', () => {
+  it('does not award an empty answer for a multiple-choice question with no correct options', () => {
+    const content: ContentPackage = {
+      metadata: { title: 'Malformed score question' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'page',
+            source: 'page.mdx',
+            metadata: { title: 'Page' },
+            content: [
+              questionnaire('quiz', [question('empty-correct-set', 'multiple-choice', ['a'], [])])
+            ]
+          }
+        ]
+      }
+    }
+
+    expect(
+      getAggregateQuestionnaireScore(content, {
+        pages: { page: { answers: { 'empty-correct-set': [] } } }
+      })
+    ).toEqual({ earned: 0, possible: 1 })
+  })
+
+  it('scores all eligible question types across pages and nested content', () => {
+    const content: ContentPackage = {
+      metadata: { title: 'Score' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'page-one',
+            source: 'one.mdx',
+            metadata: { title: 'One' },
+            content: [
+              questionnaire('q-one', [
+                question('single', 'single-choice', ['yes', 'no'], ['yes']),
+                question('true-false', 'true-false', ['true', 'false'], ['true']),
+                question('multiple', 'multiple-choice', ['a', 'b', 'c'], ['a', 'c'])
+              ]),
+              {
+                type: 'list',
+                ordered: false,
+                items: [
+                  {
+                    children: [
+                      {
+                        type: 'quote',
+                        children: [
+                          questionnaire('q-nested', [
+                            question(
+                              'multiple-wrong',
+                              'multiple-choice',
+                              ['x', 'y', 'z'],
+                              ['x', 'y']
+                            ),
+                            question(
+                              'multiple-extra',
+                              'multiple-choice',
+                              ['x', 'y', 'z'],
+                              ['x', 'y']
+                            ),
+                            question('unanswered', 'single-choice', ['up', 'down'], ['up'])
+                          ])
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            type: 'page',
+            id: 'page-two',
+            source: 'two.mdx',
+            metadata: { title: 'Two' },
+            content: [
+              questionnaire('q-page-two', [
+                question('page-two-question', 'multiple-choice', ['a', 'b'], ['b'])
+              ]),
+              questionnaire(
+                'opted-out',
+                [question('excluded', 'single-choice', ['right', 'wrong'], ['right'])],
+                false
+              )
+            ]
+          }
+        ]
+      }
+    }
+    const score = getAggregateQuestionnaireScore(content, {
+      pages: {
+        'page-one': {
+          answers: {
+            single: 'yes',
+            'true-false': 'false',
+            multiple: ['c', 'a'],
+            'multiple-wrong': ['x'],
+            'multiple-extra': ['x', 'y', 'z'],
+            excluded: 'right'
+          }
+          // No submission is required to calculate a score from the saved answers.
+        },
+        'page-two': {
+          answers: { 'page-two-question': ['b'], excluded: 'right' },
+          submittedQuestionnaires: ['opted-out']
+        }
+      }
+    })
+
+    expect(score).toEqual({ earned: 3, possible: 7 })
+  })
+
+  it('aggregates grid items and returns undefined when there are no eligible questions', () => {
+    const content: ContentPackage = {
+      metadata: { title: 'Grid score' },
+      presentation: {
+        type: 'grid',
+        items: [
+          {
+            type: 'item',
+            id: 'item-one',
+            source: 'one.mdx',
+            metadata: { title: 'One' },
+            content: [
+              questionnaire('included', [
+                question('item-question', 'true-false', ['true', 'false'], ['false'])
+              ])
+            ]
+          },
+          {
+            type: 'item',
+            id: 'item-two',
+            source: 'two.mdx',
+            metadata: { title: 'Two' },
+            content: [
+              questionnaire('included-two', [
+                question('item-two-question', 'single-choice', ['a', 'b'], ['a'])
+              ]),
+              questionnaire(
+                'excluded',
+                [question('excluded-question', 'single-choice', ['a', 'b'], ['a'])],
+                false
+              )
+            ]
+          }
+        ]
+      }
+    }
+
+    expect(
+      getAggregateQuestionnaireScore(content, {
+        pages: {
+          'item-one': { answers: { 'item-question': 'false' } },
+          'item-two': { answers: { 'item-two-question': 'a' } }
+        }
+      })
+    ).toEqual({ earned: 2, possible: 2 })
+
+    const noEligibleQuestions: ContentPackage = {
+      metadata: { title: 'Opted out' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'page',
+            source: 'page.mdx',
+            metadata: { title: 'Page' },
+            content: [
+              questionnaire(
+                'excluded-only',
+                [question('excluded-only-question', 'single-choice', ['a', 'b'], ['a'])],
+                false
+              )
+            ]
+          }
+        ]
+      }
+    }
+    expect(getAggregateQuestionnaireScore(noEligibleQuestions, { pages: {} })).toBeUndefined()
   })
 })

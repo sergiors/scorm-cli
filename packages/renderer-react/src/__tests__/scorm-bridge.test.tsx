@@ -2,7 +2,12 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { restoreState, saveState, useScormBridge } from '../../app/lib/use-scorm-bridge'
+import {
+  restoreState,
+  reportScore,
+  saveState,
+  useScormBridge
+} from '../../app/lib/use-scorm-bridge'
 import type { PlayerState } from '../../app/types'
 
 declare global {
@@ -93,6 +98,52 @@ describe('saveState', () => {
 
     expect(() => saveState({ pages: {} }, 0)).not.toThrow()
     expect(saveState({ pages: {} }, 0)).toBe(false)
+  })
+})
+
+describe('reportScore', () => {
+  it('reports a no-op without a bridge or method', () => {
+    expect(reportScore({ earned: 1, possible: 2 })).toBe(false)
+    window.scormBridge = {}
+    expect(reportScore({ earned: 1, possible: 2 })).toBe(false)
+  })
+
+  it('forwards the point counts and treats a void or accepted write as persisted', () => {
+    const setScore = vi.fn(() => undefined)
+    window.scormBridge = { setScore }
+
+    expect(reportScore({ earned: 1, possible: 2 })).toBe(true)
+    expect(setScore).toHaveBeenLastCalledWith({ earned: 1, possible: 2 })
+
+    window.scormBridge = { setScore: () => true }
+    expect(reportScore({ earned: 0, possible: 0 })).toBe(true)
+  })
+
+  it('forwards no score as undefined rather than inventing a zero', () => {
+    const setScore = vi.fn()
+    window.scormBridge = { setScore }
+
+    reportScore(undefined)
+
+    expect(setScore).toHaveBeenCalledTimes(1)
+    expect(setScore).toHaveBeenLastCalledWith(undefined)
+    expect(setScore).not.toHaveBeenCalledWith({ earned: 0, possible: 0 })
+  })
+
+  it('reports a rejected write', () => {
+    window.scormBridge = { setScore: () => false }
+    expect(reportScore({ earned: 1, possible: 2 })).toBe(false)
+  })
+
+  it('swallows a throwing writer and reports a rejected write', () => {
+    window.scormBridge = {
+      setScore: () => {
+        throw new Error('lms down')
+      }
+    }
+
+    expect(() => reportScore({ earned: 1, possible: 2 })).not.toThrow()
+    expect(reportScore({ earned: 1, possible: 2 })).toBe(false)
   })
 })
 

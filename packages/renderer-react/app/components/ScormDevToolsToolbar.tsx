@@ -136,6 +136,9 @@ function ScormVersionControl() {
             </SelectGroup>
           </SelectContent>
         </Select>
+        <FieldDescription id={descriptionId} className="text-xs">
+          Active API: {state.apiName}
+        </FieldDescription>
       </Field>
 
       {state.message ? (

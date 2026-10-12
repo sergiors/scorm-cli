@@ -99,13 +99,15 @@ describe('SCORM dev mock CMI persistence', () => {
 
     expect(snapshot).toEqual({
       'cmi.core.lesson_status': '',
-      'cmi.core.lesson_location': ''
+      'cmi.core.lesson_location': '',
+      'cmi.core.total_time': '0000:00:00.00'
     })
     snapshot['cmi.core.lesson_location'] = 'changed-outside'
     snapshot.extra = 'not-in-cmi'
     expect(window.scormDevTools.getCmiSnapshot()).toEqual({
       'cmi.core.lesson_status': '',
-      'cmi.core.lesson_location': ''
+      'cmi.core.lesson_location': '',
+      'cmi.core.total_time': '0000:00:00.00'
     })
   })
 
@@ -119,24 +121,35 @@ describe('SCORM dev mock CMI persistence', () => {
     expect(snapshots).toHaveLength(1)
     expect(snapshots[0]).toEqual(window.scormDevTools.getCmiSnapshot())
     expect(window.API.LMSInitialize('')).toBe('true')
+    expect(snapshots[1]).toEqual({
+      'cmi.core.lesson_status': '',
+      'cmi.core.lesson_location': '',
+      'cmi.core.total_time': '0000:00:00.00',
+      'cmi.core.session_time': '0000:00:00.00'
+    })
     expect(window.API.LMSSetValue('cmi.core.lesson_location', 'page-1')).toBe('true')
     expect(window.API.LMSSetValue('cmi.suspend_data', 'state')).toBe('true')
     expect(window.API.LMSCommit('')).toBe('true')
     expect(window.API.LMSGetValue('cmi.core.lesson_location')).toBe('page-1')
     expect(window.API.LMSSetValue('cmi.core.lesson_status', 'invalid-status')).toBe('false')
 
-    expect(snapshots).toHaveLength(3)
-    expect(snapshots[1]).toEqual({
-      'cmi.core.lesson_status': '',
-      'cmi.core.lesson_location': 'page-1'
-    })
+    expect(snapshots).toHaveLength(4)
     expect(snapshots[2]).toEqual({
       'cmi.core.lesson_status': '',
       'cmi.core.lesson_location': 'page-1',
+      'cmi.core.total_time': '0000:00:00.00',
+      'cmi.core.session_time': '0000:00:00.00'
+    })
+    expect(snapshots[3]).toEqual({
+      'cmi.core.lesson_status': '',
+      'cmi.core.lesson_location': 'page-1',
+      'cmi.core.total_time': '0000:00:00.00',
+      'cmi.core.session_time': '0000:00:00.00',
       'cmi.suspend_data': 'state'
     })
     expect(snapshots[0]).not.toBe(snapshots[1])
     expect(snapshots[1]).not.toBe(snapshots[2])
+    expect(snapshots[2]).not.toBe(snapshots[3])
   })
 
   it('hydrates subscribers with restored CMI and unsubscribes cleanly', () => {
@@ -158,6 +171,7 @@ describe('SCORM dev mock CMI persistence', () => {
       {
         'cmi.core.lesson_status': '',
         'cmi.core.lesson_location': 'restored-page',
+        'cmi.core.total_time': '0000:00:00.00',
         'cmi.suspend_data': 'restored-state'
       }
     ])
@@ -179,7 +193,8 @@ describe('SCORM dev mock CMI persistence', () => {
     window.scormDevTools.setScormVersion('2004')
     expect(snapshots.at(-1)).toEqual({
       'cmi.completion_status': '',
-      'cmi.location': ''
+      'cmi.location': '',
+      'cmi.total_time': 'PT0S'
     })
     expect(window.scormDevTools.getCmiSnapshot()).not.toHaveProperty('cmi.suspend_data')
 
@@ -188,7 +203,8 @@ describe('SCORM dev mock CMI persistence', () => {
     window.scormDevTools.setScormVersion('1.2')
     expect(snapshots.at(-1)).toEqual({
       'cmi.core.lesson_status': '',
-      'cmi.core.lesson_location': ''
+      'cmi.core.lesson_location': '',
+      'cmi.core.total_time': '0000:00:00.00'
     })
     expect(window.scormDevTools.getCmiSnapshot()).not.toHaveProperty('cmi.location')
     expect(window.scormDevTools.getCmiSnapshot()).not.toHaveProperty('cmi.suspend_data')
@@ -250,5 +266,80 @@ describe('SCORM dev mock CMI persistence', () => {
     expect(window.scormDevTools.getCmiPersistenceEnabled()).toBe(false)
     expect(window.API.LMSInitialize('')).toBe('true')
     expect(window.API.LMSSetValue('cmi.core.lesson_location', 'lesson-2')).toBe('true')
+  })
+
+  it.each([
+    {
+      version: '1.2',
+      apiName: 'API',
+      initialize: 'LMSInitialize',
+      get: 'LMSGetValue',
+      set: 'LMSSetValue',
+      commit: 'LMSCommit',
+      terminate: 'LMSFinish',
+      totalKey: 'cmi.core.total_time',
+      sessionKey: 'cmi.core.session_time',
+      initial: '0000:00:00.00',
+      first: '0001:02:03.45',
+      second: '0001:02:04.45',
+      nextSession: 'PT1S'
+    },
+    {
+      version: '2004',
+      apiName: 'API_1484_11',
+      initialize: 'Initialize',
+      get: 'GetValue',
+      set: 'SetValue',
+      commit: 'Commit',
+      terminate: 'Terminate',
+      totalKey: 'cmi.total_time',
+      sessionKey: 'cmi.session_time',
+      initial: 'PT0S',
+      first: 'PT1H2M3.45S',
+      second: 'PT1H2M4.45S',
+      nextSession: '0000:00:01.00'
+    }
+  ])('accumulates read-only $version total_time only on successful terminate', (scenario) => {
+    const storage = new MemoryStorage()
+    const window = createMock(storage)
+    if (scenario.version === '2004') window.scormDevTools.setScormVersion('2004')
+    const api = window[scenario.apiName]
+    const snapshots: Array<Record<string, string>> = []
+    window.scormDevTools.subscribeToCmi((snapshot: Record<string, string>) =>
+      snapshots.push(snapshot)
+    )
+
+    expect(api[scenario.initialize]('')).toBe('true')
+    expect(api[scenario.get](scenario.totalKey)).toBe(scenario.initial)
+    expect(api[scenario.set](scenario.totalKey, scenario.first)).toBe('false')
+    expect(api[scenario.set](scenario.sessionKey, scenario.first)).toBe('true')
+    expect(api[scenario.commit]('')).toBe('true')
+    expect(api[scenario.get](scenario.totalKey)).toBe(scenario.initial)
+    expect(api[scenario.terminate]('')).toBe('true')
+    expect(api[scenario.get](scenario.totalKey)).toBe('')
+    expect(window.scormDevTools.getCmiSnapshot()[scenario.totalKey]).toBe(scenario.first)
+    expect(snapshots.at(-1)?.[scenario.totalKey]).toBe(scenario.first)
+    expect(JSON.parse(storage.getItem(stateKey)!)[scenario.totalKey]).toBe(scenario.first)
+    expect(api[scenario.terminate]('')).toBe('false')
+
+    const reloaded = createMock(storage)
+    const nextApi = reloaded[scenario.apiName]
+    const nextSnapshots: Array<Record<string, string>> = []
+    reloaded.scormDevTools.subscribeToCmi((snapshot: Record<string, string>) =>
+      nextSnapshots.push(snapshot)
+    )
+    expect(nextApi[scenario.initialize]('')).toBe('true')
+    expect(nextApi[scenario.get](scenario.sessionKey)).toBe(scenario.initial)
+    expect(nextApi[scenario.get](scenario.totalKey)).toBe(scenario.first)
+    expect(nextSnapshots.at(-1)).toEqual({
+      ...nextSnapshots[0],
+      [scenario.sessionKey]: scenario.initial
+    })
+    expect(JSON.parse(storage.getItem(stateKey)!)[scenario.sessionKey]).toBe(scenario.initial)
+    expect(nextApi[scenario.set](scenario.sessionKey, scenario.nextSession)).toBe('true')
+    expect(nextApi[scenario.commit]('')).toBe('true')
+    expect(reloaded.scormDevTools.getCmiSnapshot()[scenario.totalKey]).toBe(scenario.first)
+    expect(nextApi[scenario.terminate]('')).toBe('true')
+    expect(reloaded.scormDevTools.getCmiSnapshot()[scenario.totalKey]).toBe(scenario.second)
   })
 })

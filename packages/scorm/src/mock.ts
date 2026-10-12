@@ -24,6 +24,8 @@ function previewApiDefinition(version: ScormVersion) {
     terminate: mapping.terminate,
     completionElement: mapping.completion.element,
     locationElement: mapping.location,
+    sessionTimeElement: mapping.sessionTime,
+    totalTimeElement: mapping.totalTime,
     statuses: previewCompletionStatuses[version]
   }
 }
@@ -110,12 +112,42 @@ export const scormDevMock = `;(function () {
     var definition = apiDefinitions[version];
     values[definition.completionElement] = "";
     values[definition.locationElement] = "";
+    values[definition.totalTimeElement] = version === "2004" ? "PT0S" : "0000:00:00.00";
     notifyCmiListeners();
   }
 
   function isCmiStringEntry(key, value) {
     return typeof key === "string" && key.indexOf("cmi.") === 0 && key.length > 4 &&
       typeof value === "string";
+  }
+
+  function durationCentiseconds(value) {
+    if (typeof value !== "string") return 0;
+    var match = value.match(/^(\\d+):(\\d{2}):(\\d{2})(?:\\.(\\d{1,2}))?$/);
+    if (match) {
+      var fraction = match[4] || "0";
+      return ((Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])) * 100) + Number((fraction + "0").slice(0, 2));
+    }
+    match = value.match(/^PT(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+(?:\\.\\d+)?)S)?$/);
+    if (match) {
+      var totalSeconds = Number(match[1] || 0) * 3600 + Number(match[2] || 0) * 60 + Number(match[3] || 0);
+      return isFinite(totalSeconds) && totalSeconds > 0 ? Math.round(totalSeconds * 100) : 0;
+    }
+    return 0;
+  }
+
+  function formatDuration(centiseconds, version) {
+    var total = Math.max(0, Math.round(centiseconds));
+    var hours = Math.floor(total / 360000);
+    var minutes = Math.floor((total % 360000) / 6000);
+    var seconds = Math.floor((total % 6000) / 100);
+    var fraction = total % 100;
+    if (version === "1.2") {
+      return String(hours).padStart(4, "0") + ":" + String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0") + "." + String(fraction).padStart(2, "0");
+    }
+    var secondsText = fraction ? String(seconds) + "." + String(fraction).padStart(2, "0") : String(seconds);
+    var duration = (hours ? String(hours) + "H" : "") + (minutes ? String(minutes) + "M" : "") + ((seconds || fraction) ? secondsText + "S" : "");
+    return "PT" + (duration || "0S");
   }
 
   function persistState(operation) {
@@ -153,16 +185,23 @@ export const scormDevMock = `;(function () {
     var definition = apiDefinitions[version];
     var api = {};
     api[definition.initialize] = function (parameter) {
+      if (version !== activeVersion) return "false";
       if (parameter !== "" || initialized || finished) return "false";
+      values[definition.sessionTimeElement] = formatDuration(0, version);
       initialized = true;
+      persistState("initialize");
+      notifyCmiListeners();
       return "true";
     };
     api[definition.getValue] = function (key) {
+      if (version !== activeVersion) return "";
       if (!initialized || finished || !Object.prototype.hasOwnProperty.call(values, key)) return "";
       return values[key];
     };
     api[definition.setValue] = function (key, value) {
+      if (version !== activeVersion) return "false";
       if (!initialized || finished || !isCmiStringEntry(key, value)) return "false";
+      if (key === "cmi.core.total_time" || key === "cmi.total_time") return "false";
       if (key === definition.completionElement && definition.statuses.indexOf(value) < 0) return "false";
       values[key] = value;
       persistState("set-value");
@@ -170,13 +209,20 @@ export const scormDevMock = `;(function () {
       return "true";
     };
     api[definition.commit] = function (parameter) {
+      if (version !== activeVersion) return "false";
       if (!initialized || finished || parameter !== "") return "false";
       persistState("commit");
       return "true";
     };
     api[definition.terminate] = function (parameter) {
+      if (version !== activeVersion) return "false";
       if (!initialized || finished || parameter !== "") return "false";
+      var prior = durationCentiseconds(values[definition.totalTimeElement]);
+      var session = durationCentiseconds(values[definition.sessionTimeElement]);
+      values[definition.totalTimeElement] = formatDuration(prior + session, version);
       finished = true;
+      persistState("terminate");
+      notifyCmiListeners();
       return "true";
     };
     window[definition.name] = api;
@@ -239,6 +285,7 @@ export const scormDevMock = `;(function () {
           if (restored && typeof restored === "object" && !Array.isArray(restored)) {
             Object.keys(restored).forEach(function (key) {
               if (!isCmiStringEntry(key, restored[key])) return;
+              if ((key === "cmi.core.total_time" || key === "cmi.total_time") && key !== apiDefinitions[activeVersion].totalTimeElement) return;
               values[key] = restored[key];
               count++;
             });

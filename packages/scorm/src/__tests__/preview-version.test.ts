@@ -46,13 +46,23 @@ const manifest: ContentManifest = {
 
 const previewRuntime = createScormPreviewRuntime(manifest)
 
-/** Runs the mock then the version-aware preview runtime, in injection order. */
-function createPreviewWindow(storage: MemoryStorage): Record<string, any> {
-  const window = createMockWindow(storage)
+/** Runs the version-aware preview runtime after the dev mock, in injection order. */
+function installPreviewRuntime(window: Record<string, any>): void {
   window.parent = window
-  window.console = { debug: () => undefined }
-  window.addEventListener = () => undefined
   vm.runInNewContext(previewRuntime, { window })
+}
+
+/** Runs the mock then the version-aware preview runtime, in injection order. */
+function createPreviewWindow(
+  storage: MemoryStorage,
+  performanceNow: () => number = () => 0,
+  events: Array<Record<string, any>> = []
+): Record<string, any> {
+  const window = createMockWindow(storage)
+  window.performance = { now: performanceNow }
+  window.console = { debug: (_label: string, event: Record<string, any>) => events.push(event) }
+  window.addEventListener = () => undefined
+  installPreviewRuntime(window)
   return window
 }
 
@@ -173,6 +183,125 @@ describe('SCORM preview version selection', () => {
 })
 
 describe('SCORM version-aware preview runtime', () => {
+  it.each([
+    {
+      version: '1.2' as const,
+      scoreKeys: ['cmi.core.score.min', 'cmi.core.score.max', 'cmi.core.score.raw'],
+      sessionKey: 'cmi.core.session_time',
+      totalKey: 'cmi.core.total_time',
+      oppositeSessionKey: 'cmi.session_time',
+      oppositeTotalKey: 'cmi.total_time',
+      expectedScore: ['0', '100', '33.33'],
+      expectedDuration: '0000:00:12.35'
+    },
+    {
+      version: '2004' as const,
+      scoreKeys: ['cmi.score.min', 'cmi.score.max', 'cmi.score.raw', 'cmi.score.scaled'],
+      sessionKey: 'cmi.session_time',
+      totalKey: 'cmi.total_time',
+      oppositeSessionKey: 'cmi.core.session_time',
+      oppositeTotalKey: 'cmi.core.total_time',
+      expectedScore: ['0', '100', '33.33', '0.3333'],
+      expectedDuration: 'PT12.35S'
+    }
+  ])(
+    'runs semantic score and session timing through the actual $version preview mock and runtime',
+    ({
+      version,
+      scoreKeys,
+      sessionKey,
+      totalKey,
+      oppositeSessionKey,
+      oppositeTotalKey,
+      expectedScore,
+      expectedDuration
+    }) => {
+      const storage = new MemoryStorage()
+      storage.setItem(versionKey, version)
+      let clock = 50
+      const events: Array<Record<string, any>> = []
+      const window = createPreviewWindow(storage, () => clock, events)
+
+      expect(window.scormBridge.setScore({ earned: 1, possible: 3 })).toBe(true)
+      clock = 12_395
+      window.scormBridge.finish()
+      window.scormBridge.finish()
+
+      const snapshot = window.scormDevTools.getCmiSnapshot()
+      expect(scoreKeys.map((key) => snapshot[key])).toEqual(expectedScore)
+      expect(Object.keys(snapshot).filter((key) => key.includes('score'))).toEqual(scoreKeys)
+      expect(snapshot[sessionKey]).toBe(expectedDuration)
+      expect(snapshot[totalKey]).toBe(expectedDuration)
+      expect(snapshot).not.toHaveProperty(oppositeSessionKey)
+      expect(snapshot).not.toHaveProperty(oppositeTotalKey)
+      expect(snapshot).not.toHaveProperty('cmi.success_status')
+      expect(snapshot['cmi.completion_status'] ?? snapshot['cmi.core.lesson_status']).toBe(
+        'incomplete'
+      )
+      expect(
+        events.filter(
+          ({ name, details }) =>
+            name === 'lms.set-value' &&
+            (details?.key === 'cmi.core.total_time' || details?.key === 'cmi.total_time')
+        )
+      ).toEqual([])
+    }
+  )
+
+  it('clears 1.2 CMI fields when switching to 2004 and runs the new preview runtime', () => {
+    const storage = new MemoryStorage()
+    let clock = 0
+    const events: Array<Record<string, any>> = []
+    const window = createPreviewWindow(storage, () => clock, events)
+
+    expect(window.scormBridge.setScore({ earned: 3, possible: 4 })).toBe(true)
+    clock = 5_000
+    window.scormBridge.finish()
+    expect(window.scormDevTools.getCmiSnapshot()['cmi.core.total_time']).toBe('0000:00:05.00')
+
+    window.scormDevTools.setScormVersion('2004')
+    expect(window.scormDevTools.getCmiSnapshot()).toEqual({
+      'cmi.completion_status': '',
+      'cmi.location': '',
+      'cmi.total_time': 'PT0S'
+    })
+    expect(storage.getItem(stateKey)).toBeNull()
+
+    clock = 10_000
+    installPreviewRuntime(window)
+    expect(window.scormBridge.setScore({ earned: 1, possible: 2 })).toBe(true)
+    clock = 12_500
+    window.scormBridge.finish()
+
+    const snapshot = window.scormDevTools.getCmiSnapshot()
+    expect(snapshot).toMatchObject({
+      'cmi.score.min': '0',
+      'cmi.score.max': '100',
+      'cmi.score.raw': '50',
+      'cmi.score.scaled': '0.5',
+      'cmi.session_time': 'PT2.50S',
+      'cmi.total_time': 'PT2.50S'
+    })
+    expect(Object.keys(snapshot).filter((key) => key.includes('score'))).toEqual([
+      'cmi.score.min',
+      'cmi.score.max',
+      'cmi.score.raw',
+      'cmi.score.scaled'
+    ])
+    expect(snapshot).not.toHaveProperty('cmi.core.score.min')
+    expect(snapshot).not.toHaveProperty('cmi.core.score.max')
+    expect(snapshot).not.toHaveProperty('cmi.core.score.raw')
+    expect(snapshot).not.toHaveProperty('cmi.core.session_time')
+    expect(snapshot).not.toHaveProperty('cmi.core.total_time')
+    expect(
+      events.filter(
+        ({ name, details }) =>
+          name === 'lms.set-value' &&
+          (details?.key === 'cmi.core.total_time' || details?.key === 'cmi.total_time')
+      )
+    ).toEqual([])
+  })
+
   it('binds to the SCORM 2004 API mapping when the mock selected 2004', () => {
     const calls: Array<[string, ...string[]]> = []
     const values: Record<string, string> = {
@@ -244,5 +373,44 @@ describe('SCORM version-aware preview runtime', () => {
     expect(calls).toContainEqual(['LMSInitialize', ''])
     expect(calls).toContainEqual(['LMSSetValue', 'cmi.core.lesson_location', 'page-one'])
     expect(calls.some(([method]) => method === 'Initialize')).toBe(false)
+  })
+
+  it('rejects calls from a retained API after switching versions', () => {
+    const storage = new MemoryStorage()
+    const window = createMockWindow(storage)
+    const scorm12Api = window.API
+
+    window.scormDevTools.setScormVersion('2004')
+    const scorm2004Api = window.API_1484_11
+
+    // A stale initialize must not initialize the new version's shared state.
+    expect(scorm12Api.LMSInitialize('')).toBe('false')
+    expect(scorm2004Api.Initialize('')).toBe('true')
+
+    // Stale reads/writes/commit/finish are rejected without changing CMI or
+    // lifecycle state, leaving the active API usable and able to terminate.
+    expect(scorm12Api.LMSGetValue('cmi.core.total_time')).toBe('')
+    expect(scorm12Api.LMSSetValue('cmi.core.lesson_location', 'stale')).toBe('false')
+    expect(scorm12Api.LMSCommit('')).toBe('false')
+    expect(scorm12Api.LMSFinish('')).toBe('false')
+
+    expect(scorm2004Api.SetValue('cmi.location', 'current')).toBe('true')
+    expect(scorm2004Api.GetValue('cmi.location')).toBe('current')
+    expect(scorm2004Api.Commit('')).toBe('true')
+    expect(scorm2004Api.Terminate('')).toBe('true')
+
+    const savedCmi = JSON.parse(storage.getItem(stateKey)!)
+    expect(savedCmi).toMatchObject({
+      'cmi.completion_status': '',
+      'cmi.location': 'current',
+      'cmi.session_time': 'PT0S',
+      'cmi.total_time': 'PT0S'
+    })
+    expect(Object.keys(savedCmi).filter((key) => key.startsWith('cmi.core.'))).toEqual([])
+    expect(
+      Object.keys(window.scormDevTools.getCmiSnapshot()).filter((key) =>
+        key.startsWith('cmi.core.')
+      )
+    ).toEqual([])
   })
 })

@@ -103,7 +103,10 @@ export interface VideoProps {
 }
 
 /** Props for `<Questionnaire>`, which contains one or more `<Question>`. */
-export type QuestionnaireProps = ContainerProps
+export interface QuestionnaireProps extends ContainerProps {
+  /** Whether this questionnaire contributes to the package's aggregate score. */
+  contributesToScore?: boolean
+}
 
 /** Props for `<Question type="..." />`, which contains a Prompt and Options. */
 export interface QuestionProps extends ContainerProps {

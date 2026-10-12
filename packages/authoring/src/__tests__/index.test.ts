@@ -6,6 +6,7 @@ import type {
   OptionProps,
   PageProps,
   QuestionProps,
+  QuestionnaireProps,
   QuestionType,
   ScrollProps
 } from '../index'
@@ -64,6 +65,8 @@ describe('@scorm-cli/authoring', () => {
     const singleChoice = { type: 'single-choice' } satisfies QuestionProps
     const multipleChoice = { type: 'multiple-choice' } satisfies QuestionProps
     const trueFalse = { type: 'true-false' } satisfies QuestionProps
+    const includedQuestionnaire = { contributesToScore: true } satisfies QuestionnaireProps
+    const excludedQuestionnaire = { contributesToScore: false } satisfies QuestionnaireProps
     const option = { value: 'a' } satisfies OptionProps
     const correctOption = { value: 'a', correct: true } satisfies OptionProps
     const incorrectOption = {
@@ -83,6 +86,8 @@ describe('@scorm-cli/authoring', () => {
     const stringCorrect: OptionProps = { value: 'a', correct: 'yes' }
     // @ts-expect-error <Option value> is required.
     const missingValue: OptionProps = { correct: true }
+    // @ts-expect-error <Questionnaire contributesToScore> must be a boolean.
+    const invalidScoreContribution: QuestionnaireProps = { contributesToScore: 'no' }
 
     expect([
       sourcePage,
@@ -91,6 +96,8 @@ describe('@scorm-cli/authoring', () => {
       singleChoice,
       multipleChoice,
       trueFalse,
+      includedQuestionnaire,
+      excludedQuestionnaire,
       option,
       correctOption,
       incorrectOption,
@@ -99,7 +106,8 @@ describe('@scorm-cli/authoring', () => {
       stringColumns,
       invalidQuestion,
       stringCorrect,
-      missingValue
-    ]).toHaveLength(15)
+      missingValue,
+      invalidScoreContribution
+    ]).toHaveLength(18)
   })
 })

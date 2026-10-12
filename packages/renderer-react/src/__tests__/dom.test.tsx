@@ -248,6 +248,7 @@ function sharedQuestionnaire(source: string): QuestionnaireNode {
   return {
     type: 'questionnaire',
     id: `questionnaire:${source}`,
+    contributesToScore: true,
     questions: [
       {
         type: 'question',

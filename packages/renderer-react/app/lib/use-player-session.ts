@@ -1,8 +1,13 @@
 import { useCallback, useRef, useState } from 'react'
 import type { AnswerValue, ContentPackage, PlayerState } from '../types'
-import { getDoneNodeIds, getPackageProgress, isPackageComplete } from './content-helpers'
+import {
+  getAggregateQuestionnaireScore,
+  getDoneNodeIds,
+  getPackageProgress,
+  isPackageComplete
+} from './content-helpers'
 import { sanitizePlayerState, sameAnswer, updatePageState, withLocation } from './player-state'
-import { restoreState, saveState, useScormBridge } from './use-scorm-bridge'
+import { restoreState, saveState, useScormBridge, useScormScore } from './use-scorm-bridge'
 
 /**
  * The learner's owned progress plus the transitions that mutate it, as returned
@@ -24,9 +29,10 @@ export interface PlayerSession {
 
 /**
  * Owns the whole learner session for a package: restoring, validating, mutating
- * and persisting the resume state, and reporting completion to the SCORM
- * bridge. Presentation selection and rendering live in the caller, so this hook
- * is the single state/transition/persistence boundary.
+ * and persisting the resume state, and reporting completion and the derived
+ * aggregate score to the SCORM bridge. Presentation selection and rendering live
+ * in the caller, so this hook is the single state/transition/persistence
+ * boundary.
  *
  * All learner progress lives in a single in-memory {@link PlayerState} keyed by
  * stable authored ids and answer values, kept separate from the SCORM runtime's
@@ -139,6 +145,13 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
   // requires every item to be *visited*. Reusing the canonical helper keeps
   // both presentations (and the CLI) in agreement.
   useScormBridge(isPackageComplete(contentPackage, getDoneNodeIds(contentPackage, state)))
+
+  // The score is derived from the authored AST and the owned state on every
+  // render — never stored separately — so it always reflects the current
+  // answers, independent of submission or completion. The reporting effect keys
+  // off the point counts, so it fires on mount and on genuine score changes, not
+  // on unrelated renders. No scored questions yields `undefined`, never a zero.
+  useScormScore(getAggregateQuestionnaireScore(contentPackage, state))
 
   return { state, markSeen, markCompleted, setAnswer, markQuestionnaireSubmitted }
 }

@@ -173,6 +173,7 @@ export interface QuestionNode {
 export interface QuestionnaireNode {
   type: 'questionnaire'
   id: string
+  contributesToScore: boolean
   questions: QuestionNode[]
 }
 
@@ -272,6 +273,102 @@ export function getPackageProgress(
   const count = getDoneNodeIds(contentPackage, playerState).length
 
   return Math.max(0, Math.min(100, Math.round((count / nodes.length) * 100)))
+}
+
+export interface AggregateScore {
+  earned: number
+  possible: number
+}
+
+interface QuestionnaireScore {
+  earned: number
+  possible: number
+}
+
+/** Calculates the semantic score for one questionnaire from its current answers. */
+function scoreQuestionnaire(
+  questionnaire: QuestionnaireNode,
+  answers: PlayerPageState['answers']
+): QuestionnaireScore {
+  if (!questionnaire.contributesToScore) return { earned: 0, possible: 0 }
+
+  let earned = 0
+  for (const question of questionnaire.questions) {
+    const answer = answers?.[question.id]
+    const correctValues = question.options
+      .filter((option) => option.correct)
+      .map((option) => option.value)
+
+    if (question.questionType === 'multiple-choice') {
+      // An empty selection must not earn credit for malformed zero-answer questions.
+      if (correctValues.length > 0 && Array.isArray(answer)) {
+        const selected = new Set(answer)
+        const correct = new Set(correctValues)
+        if (selected.size === correct.size && [...selected].every((value) => correct.has(value))) {
+          earned += 1
+        }
+      }
+    } else if (typeof answer === 'string' && correctValues.includes(answer)) {
+      earned += 1
+    }
+  }
+
+  return { earned, possible: questionnaire.questions.length }
+}
+
+/**
+ * Calculates the aggregate one-point-per-question score across all eligible
+ * questionnaires in every page or item. Answers are scored as currently saved;
+ * submission status does not affect the score or its possible-question count.
+ */
+export function getAggregateQuestionnaireScore(
+  contentPackage: ContentPackage,
+  playerState: PlayerState
+): AggregateScore | undefined {
+  let earned = 0
+  let possible = 0
+
+  const visit = (
+    nodes: Array<ContentNode | InlineContentNode>,
+    answers: PlayerPageState['answers']
+  ) => {
+    for (const node of nodes) {
+      switch (node.type) {
+        case 'list':
+          for (const item of node.items) visit(item.children, answers)
+          break
+        case 'quote':
+          visit(node.children, answers)
+          break
+        case 'questionnaire':
+          const questionnaireScore = scoreQuestionnaire(node, answers)
+          earned += questionnaireScore.earned
+          possible += questionnaireScore.possible
+          // The parser currently prohibits questionnaires in prompts/options,
+          // but traverse them so hand-authored canonical ASTs remain complete.
+          for (const question of node.questions) {
+            visit(question.prompt, answers)
+            for (const option of question.options) visit(option.content, answers)
+          }
+          break
+        case 'heading':
+        case 'paragraph':
+        case 'inlineContent':
+        case 'image':
+        case 'video':
+        case 'path':
+        case 'code':
+        case 'thematicBreak':
+          break
+      }
+    }
+  }
+
+  for (const presentationNode of presentationNodes(contentPackage)) {
+    visit(presentationNode.content, playerState.pages[presentationNode.id]?.answers)
+  }
+
+  return possible === 0 ? undefined : { earned, possible }
 }
 
 /** Local references in the content AST are normalized relative to the package root. */

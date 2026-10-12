@@ -8,12 +8,19 @@ import type {
 } from '../types'
 
 /**
- * Re-exported from `@scorm-cli/core` so completion semantics stay canonical
- * across the CLI and the renderer. In particular, an empty package is never
- * considered complete, and the done-node rule — a scroll page counts once
- * `completed`, a grid item once `visited` — lives in one place.
+ * Re-exported from `@scorm-cli/core` so completion and score semantics stay
+ * canonical across the CLI and the renderer. In particular, an empty package is
+ * never considered complete, the done-node rule — a scroll page counts once
+ * `completed`, a grid item once `visited` — lives in one place, and the
+ * aggregate questionnaire score is derived from the authored AST and the owned
+ * resume state rather than tracked separately.
  */
-export { getDoneNodeIds, getPackageProgress, isPackageComplete } from '@scorm-cli/core'
+export {
+  getAggregateQuestionnaireScore,
+  getDoneNodeIds,
+  getPackageProgress,
+  isPackageComplete
+} from '@scorm-cli/core'
 
 /**
  * Flattens the authored presentation into the ordered list of leaf nodes it

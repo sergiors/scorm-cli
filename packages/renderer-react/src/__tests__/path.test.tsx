@@ -329,6 +329,7 @@ describe('QuestionnaireView nested Path', () => {
   const nestedQuestionnaire: QuestionnaireNode = {
     type: 'questionnaire',
     id: 'questionnaire:nested.mdx:1:1',
+    contributesToScore: true,
     questions: [
       {
         type: 'question',

@@ -531,6 +531,7 @@ describe('parsePackage', () => {
       {
         type: 'questionnaire',
         id: 'questionnaire:lesson.mdx:4:1',
+        contributesToScore: true,
         questions: [
           {
             type: 'question',
@@ -721,6 +722,39 @@ describe('parsePackage', () => {
       ]
     ] as const) {
       const root = await makeLesson(content)
+      await expect(parsePackage(root)).rejects.toThrow(error)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
+    }
+  })
+
+  it('defaults score contribution to true and accepts only static boolean overrides', async () => {
+    for (const [attribute, expected] of [
+      ['', true],
+      [' contributesToScore', true],
+      [' contributesToScore={true}', true],
+      [' contributesToScore={false}', false]
+    ] as const) {
+      const root = await makeLesson(
+        `<Questionnaire${attribute}><Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>`
+      )
+      const content = await lessonContent(root)
+      expect(content[0]?.type === 'questionnaire' && content[0].contributesToScore).toBe(expected)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
+    }
+
+    for (const [attribute, error] of [
+      [' contributesToScore="false"', /Questionnaire "contributesToScore" must be a boolean/],
+      [
+        ' contributesToScore={dynamic}',
+        /dynamic value for attribute "contributesToScore" is not supported/
+      ],
+      [' extra={true}', /unknown attribute "extra"/]
+    ] as const) {
+      const root = await makeLesson(
+        `<Questionnaire${attribute}><Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>`
+      )
       await expect(parsePackage(root)).rejects.toThrow(error)
       await rm(root, { recursive: true, force: true })
       temp = ''

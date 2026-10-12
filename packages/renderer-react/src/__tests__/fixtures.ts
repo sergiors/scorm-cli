@@ -66,6 +66,7 @@ export const multipleChoiceQuestion: QuestionNode = {
 export const questionnaireNode: QuestionnaireNode = {
   type: 'questionnaire',
   id: 'questionnaire:intro.mdx:1:1',
+  contributesToScore: true,
   questions: [singleChoiceQuestion, multipleChoiceQuestion]
 }
 

@@ -1,4 +1,4 @@
-import type { PlayerState } from '@scorm-cli/core'
+import type { AggregateScore, PlayerState } from '@scorm-cli/core'
 import type { PreviewHotContext } from './lib/preview-client'
 
 export {}
@@ -29,6 +29,17 @@ declare global {
      * call or a `void` return is treated as a best-effort no-op.
      */
     saveState?: (state: PlayerState, progress: number) => boolean | void
+    /**
+     * Reports the learner's aggregate questionnaire score, which the renderer
+     * derives from the authored AST and the current resume state. `earned` and
+     * `possible` are plain point counts (one point per eligible question; no
+     * percentage, no passing/failing), and `undefined` means the package has no
+     * scored questions and must never be encoded as a zero. The runtime owns the
+     * version-specific element names, so the renderer never names them. Returns
+     * whether the LMS accepted the write; a missing bridge, a missing method, a
+     * thrown call or a `void` return is treated as a best-effort no-op.
+     */
+    setScore?: (score: AggregateScore | undefined) => boolean | void
     markCompleted?: () => void
     finish?: () => void
   }

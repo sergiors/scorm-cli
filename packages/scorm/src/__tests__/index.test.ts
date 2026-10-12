@@ -35,6 +35,7 @@ const content: ContentPackage = {
           {
             type: 'questionnaire',
             id: 'wrapper-id',
+            contributesToScore: true,
             questions: [
               {
                 type: 'question',

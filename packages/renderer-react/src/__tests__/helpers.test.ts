@@ -21,6 +21,7 @@ function questionnaire(id: string): QuestionnaireNode {
   return {
     type: 'questionnaire',
     id,
+    contributesToScore: true,
     questions: [
       {
         type: 'question',
@@ -166,6 +167,7 @@ describe('collectQuestionnaireIds', () => {
     const nested: QuestionnaireNode = {
       type: 'questionnaire',
       id: 'questionnaire:nested.mdx:1:1',
+      contributesToScore: true,
       questions: [questionnaireNode.questions[0]]
     }
     const nodes: ContentNode[] = [
@@ -218,6 +220,7 @@ describe('collectQuestionnaireIds', () => {
     const outer: QuestionnaireNode = {
       type: 'questionnaire',
       id: 'outer',
+      contributesToScore: true,
       questions: [
         {
           type: 'question',

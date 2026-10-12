@@ -619,6 +619,7 @@ describe('ContentRenderer questionnaires', () => {
       {
         type: 'questionnaire',
         id: 'questionnaire:lesson.mdx:1:1',
+        contributesToScore: true,
         questions: [singleChoiceQuestion]
       }
     ])
@@ -645,6 +646,7 @@ describe('ContentRenderer questionnaires', () => {
       {
         type: 'questionnaire',
         id: 'questionnaire:lesson.mdx:1:1',
+        contributesToScore: true,
         questions: [singleChoiceQuestion, multipleChoiceQuestion]
       }
     ])
@@ -659,6 +661,7 @@ describe('ContentRenderer questionnaires', () => {
       {
         type: 'questionnaire',
         id: 'questionnaire:check.mdx:1:1',
+        contributesToScore: true,
         questions: [
           {
             type: 'question',
@@ -707,6 +710,7 @@ describe('ContentRenderer questionnaires', () => {
       {
         type: 'questionnaire',
         id: 'questionnaire:check.mdx:1:1',
+        contributesToScore: true,
         questions: [
           {
             type: 'question',
@@ -770,6 +774,7 @@ describe('ContentRenderer questionnaires', () => {
       {
         type: 'questionnaire',
         id: 'questionnaire:headings.mdx:1:1',
+        contributesToScore: true,
         questions: [
           {
             type: 'question',
@@ -822,6 +827,7 @@ describe('ContentRenderer questionnaires', () => {
               {
                 type: 'questionnaire',
                 id: 'questionnaire:nested.mdx:1:1',
+                contributesToScore: true,
                 questions: [singleChoiceQuestion]
               }
             ]
@@ -858,6 +864,7 @@ describe('ContentRenderer context propagation', () => {
                         {
                           type: 'questionnaire',
                           id: 'questionnaire:nested.mdx:1:1',
+                          contributesToScore: true,
                           questions: [singleChoiceQuestion]
                         }
                       ]

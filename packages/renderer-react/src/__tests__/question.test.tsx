@@ -202,6 +202,7 @@ describe('QuestionnaireView', () => {
           node={{
             type: 'questionnaire',
             id: 'questionnaire:check.mdx:1:1',
+            contributesToScore: true,
             questions: [trueFalse]
           }}
         />

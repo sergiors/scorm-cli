@@ -39,6 +39,7 @@ describe('content manifest', () => {
                           {
                             type: 'questionnaire',
                             id: 'quiz-a',
+                            contributesToScore: true,
                             questions: [
                               question(
                                 'q1',
@@ -94,6 +95,7 @@ describe('content manifest', () => {
               {
                 type: 'questionnaire',
                 id: 'quiz-b',
+                contributesToScore: true,
                 questions: [
                   question('q3', [
                     {
@@ -181,6 +183,7 @@ describe('content manifest', () => {
               {
                 type: 'questionnaire',
                 id: 'quiz',
+                contributesToScore: true,
                 questions: [question('stable-question-id', [])]
               }
             ]
@@ -212,6 +215,7 @@ describe('content manifest', () => {
               {
                 type: 'questionnaire',
                 id: 'quiz-tight',
+                contributesToScore: true,
                 questions: [
                   question('q-tight', [
                     {
@@ -276,6 +280,7 @@ describe('content manifest', () => {
                       {
                         type: 'questionnaire',
                         id: 'quiz-nested',
+                        contributesToScore: true,
                         questions: [
                           question('q-nested', [
                             {

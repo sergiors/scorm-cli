@@ -39,7 +39,7 @@ function question(
 }
 
 function questionnaire(id: string, questions: QuestionNode[]) {
-  return { type: 'questionnaire' as const, id, questions }
+  return { type: 'questionnaire' as const, id, contributesToScore: true, questions }
 }
 
 // Mirrors what the parser produces for authored Question components: option

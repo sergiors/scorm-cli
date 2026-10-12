@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { PlayerState } from '@scorm-cli/core'
+import type { AggregateScore, PlayerState } from '@scorm-cli/core'
 
 /**
  * Reads the persisted resume state through the optional bridge. Returns
@@ -35,6 +35,30 @@ export function saveState(state: PlayerState, progress: number): boolean {
   }
   try {
     return save(state, progress) !== false
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Reports the learner's aggregate questionnaire score through the optional
+ * bridge. The renderer derives the score from the authored AST and the owned
+ * resume state, so this only forwards it: the two point counts, or `undefined`
+ * when the package has no scored questions — never a fabricated zero. Best-effort
+ * like the other bridge calls: a missing bridge or method is a no-op (`false`),
+ * a `void` return is treated as accepted, and only an explicit `false` (or a
+ * thrown call) reports a rejected write.
+ */
+export function reportScore(score: AggregateScore | undefined): boolean {
+  if (typeof window === 'undefined') {
+    return false
+  }
+  const setScore = window.scormBridge?.setScore
+  if (typeof setScore !== 'function') {
+    return false
+  }
+  try {
+    return setScore(score) !== false
   } catch {
     return false
   }
@@ -86,4 +110,21 @@ export function useScormBridge(complete: boolean): void {
     window.addEventListener('pagehide', finish)
     return () => window.removeEventListener('pagehide', finish)
   }, [])
+}
+
+/**
+ * Reports the derived aggregate score through the optional bridge, on mount and
+ * whenever it changes. The effect keys off the two point counts rather than the
+ * score object, so an unrelated re-render — a fresh object with the same
+ * `earned`/`possible`, e.g. after a score-neutral answer change — never
+ * re-reports. `undefined` (no scored questions) is forwarded as-is so the
+ * runtime can clear rather than fabricate a zero.
+ */
+export function useScormScore(score: AggregateScore | undefined): void {
+  const earned = score?.earned
+  const possible = score?.possible
+
+  useEffect(() => {
+    reportScore(earned === undefined || possible === undefined ? undefined : { earned, possible })
+  }, [earned, possible])
 }

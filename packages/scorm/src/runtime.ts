@@ -10,6 +10,14 @@ interface RuntimeApiMapping {
   commit: 'LMSCommit' | 'Commit'
   terminate: 'LMSFinish' | 'Terminate'
   location: 'cmi.core.lesson_location' | 'cmi.location'
+  sessionTime: 'cmi.core.session_time' | 'cmi.session_time'
+  totalTime: 'cmi.core.total_time' | 'cmi.total_time'
+  score: {
+    min: 'cmi.core.score.min' | 'cmi.score.min'
+    max: 'cmi.core.score.max' | 'cmi.score.max'
+    raw: 'cmi.core.score.raw' | 'cmi.score.raw'
+    scaled?: 'cmi.score.scaled'
+  }
   suspendDataLimit: 4096 | 64000
   completion: {
     element: 'cmi.core.lesson_status' | 'cmi.completion_status'
@@ -33,6 +41,13 @@ export const runtimeApiMappings: Record<ScormVersion, RuntimeApiMapping> = {
     commit: 'LMSCommit',
     terminate: 'LMSFinish',
     location: 'cmi.core.lesson_location',
+    sessionTime: 'cmi.core.session_time',
+    totalTime: 'cmi.core.total_time',
+    score: {
+      min: 'cmi.core.score.min',
+      max: 'cmi.core.score.max',
+      raw: 'cmi.core.score.raw'
+    },
     suspendDataLimit: 4096,
     completion: {
       element: 'cmi.core.lesson_status',
@@ -49,6 +64,14 @@ export const runtimeApiMappings: Record<ScormVersion, RuntimeApiMapping> = {
     commit: 'Commit',
     terminate: 'Terminate',
     location: 'cmi.location',
+    sessionTime: 'cmi.session_time',
+    totalTime: 'cmi.total_time',
+    score: {
+      min: 'cmi.score.min',
+      max: 'cmi.score.max',
+      raw: 'cmi.score.raw',
+      scaled: 'cmi.score.scaled'
+    },
     suspendDataLimit: 64000,
     completion: {
       element: 'cmi.completion_status',
@@ -67,6 +90,29 @@ const emptyManifest: ContentManifest = {
   pages: {}
 }
 
+// These exported formatters mirror the inlined runtime helpers and are covered by runtime-source tests.
+/** Format elapsed milliseconds as SCORM 1.2 HHHH:MM:SS.ss. */
+export function formatScorm12Duration(milliseconds: number): string {
+  const centiseconds = Math.max(0, Math.round(milliseconds / 10))
+  const hours = Math.floor(centiseconds / 360000)
+  const minutes = Math.floor((centiseconds % 360000) / 6000)
+  const seconds = Math.floor((centiseconds % 6000) / 100)
+  const fraction = centiseconds % 100
+  return `${String(hours).padStart(4, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(fraction).padStart(2, '0')}`
+}
+
+/** Format elapsed milliseconds as an ISO 8601 SCORM 2004 duration. */
+export function formatScorm2004Duration(milliseconds: number): string {
+  const centiseconds = Math.max(0, Math.round(milliseconds / 10))
+  const hours = Math.floor(centiseconds / 360000)
+  const minutes = Math.floor((centiseconds % 360000) / 6000)
+  const seconds = Math.floor((centiseconds % 6000) / 100)
+  const fraction = centiseconds % 100
+  const secondsText = fraction ? `${seconds}.${String(fraction).padStart(2, '0')}` : String(seconds)
+  const time = `${hours ? `${hours}H` : ''}${minutes ? `${minutes}M` : ''}${seconds || fraction ? `${secondsText}S` : ''}`
+  return `PT${time || '0S'}`
+}
+
 /**
  * Builds the SCO bridge source shared by the fixed-version production runtime
  * and the version-aware preview runtime. `apiMappingDeclaration` is the only
@@ -82,6 +128,9 @@ function buildRuntimeSource(manifest: ContentManifest, apiMappingDeclaration: st
   var finished = false;
   var initialized = false;
   var alreadyComplete = false;
+  var sessionStartedAt = null;
+  var sessionFallbackStartedAt = null;
+  var usePerformanceClock = false;
   var currentLocation = "";
   var resumeState = { pages: {} };
 
@@ -177,8 +226,55 @@ ${browserCodecSource()}
     }
   }
 
+  function startSessionTimer() {
+    sessionFallbackStartedAt = Date.now();
+    try {
+      if (window.performance && typeof window.performance.now === "function") {
+        var now = window.performance.now();
+        if (typeof now === "number" && isFinite(now)) {
+          sessionStartedAt = now;
+          usePerformanceClock = true;
+          return;
+        }
+      }
+    } catch (_) {}
+    sessionStartedAt = sessionFallbackStartedAt;
+    usePerformanceClock = false;
+  }
+
+  function roundDecimal(value, places) {
+    var factor = Math.pow(10, places);
+    return Math.round((value + Number.EPSILON) * factor) / factor;
+  }
+
+  function elapsedMilliseconds() {
+    if (usePerformanceClock) {
+      try {
+        var now = window.performance.now();
+        if (typeof now === "number" && isFinite(now)) return Math.max(0, now - sessionStartedAt);
+      } catch (_) {}
+      usePerformanceClock = false;
+    }
+    return Math.max(0, Date.now() - sessionFallbackStartedAt);
+  }
+
+  function formatSessionDuration(milliseconds) {
+    var centiseconds = Math.max(0, Math.round(milliseconds / 10));
+    var hours = Math.floor(centiseconds / 360000);
+    var minutes = Math.floor((centiseconds % 360000) / 6000);
+    var seconds = Math.floor((centiseconds % 6000) / 100);
+    var fraction = centiseconds % 100;
+    if (API_MAPPING.discoveryProperty === "API") {
+      return String(hours).padStart(4, "0") + ":" + String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0") + "." + String(fraction).padStart(2, "0");
+    }
+    var secondsText = fraction ? String(seconds) + "." + String(fraction).padStart(2, "0") : String(seconds);
+    var duration = (hours ? String(hours) + "H" : "") + (minutes ? String(minutes) + "M" : "") + ((seconds || fraction) ? secondsText + "S" : "");
+    return "PT" + (duration || "0S");
+  }
+
   initialized = call(API_MAPPING.initialize, "lms.initialize", undefined, "") === "true";
   if (initialized) {
+    startSessionTimer();
     var status = call(API_MAPPING.getValue, "lms.get-value", API_MAPPING.completion.element, API_MAPPING.completion.element);
     alreadyComplete = status === "completed" || (API_MAPPING.discoveryProperty === "API" && status === "passed");
     currentLocation = call(API_MAPPING.getValue, "lms.get-value", API_MAPPING.location, API_MAPPING.location);
@@ -195,6 +291,7 @@ ${browserCodecSource()}
       if (window.__SCORM_DEVTOOLS__ === true) emit("lms.finish", { method: API_MAPPING.terminate, reason: api ? "not-initialized" : "api-not-found" });
       return;
     }
+    call(API_MAPPING.setValue, "lms.set-value", API_MAPPING.sessionTime, API_MAPPING.sessionTime, formatSessionDuration(elapsedMilliseconds()));
     if (!alreadyComplete) call(API_MAPPING.setValue, "lms.set-value", API_MAPPING.exit, API_MAPPING.exit, "suspend");
     call(API_MAPPING.commit, "lms.commit", undefined, "");
     call(API_MAPPING.terminate, "lms.finish", undefined, "");
@@ -240,6 +337,19 @@ ${browserCodecSource()}
         call(API_MAPPING.commit, "lms.commit", undefined, "");
         alreadyComplete = true;
       }
+    },
+    setScore: function (score) {
+      if (!api || !initialized || !score || typeof score.earned !== "number" || !isFinite(score.earned) || typeof score.possible !== "number" || !isFinite(score.possible) || score.possible <= 0) return false;
+      var raw = Math.max(0, Math.min(100, roundDecimal((score.earned / score.possible) * 100, 2)));
+      var saved = true;
+      if (call(API_MAPPING.setValue, "lms.set-value", API_MAPPING.score.min, API_MAPPING.score.min, "0") !== "true") saved = false;
+      if (call(API_MAPPING.setValue, "lms.set-value", API_MAPPING.score.max, API_MAPPING.score.max, "100") !== "true") saved = false;
+      if (call(API_MAPPING.setValue, "lms.set-value", API_MAPPING.score.raw, API_MAPPING.score.raw, String(raw)) !== "true") saved = false;
+      if (API_MAPPING.score.scaled) {
+        if (call(API_MAPPING.setValue, "lms.set-value", API_MAPPING.score.scaled, API_MAPPING.score.scaled, String(roundDecimal(raw / 100, 4))) !== "true") saved = false;
+      }
+      if (!saved) return false;
+      return call(API_MAPPING.commit, "lms.commit", undefined, "") === "true";
     },
     finish: finish
   };

@@ -1,4 +1,5 @@
 export type {
+  AggregateScore,
   AnswerValue,
   ContentNode,
   ContentPackage,
