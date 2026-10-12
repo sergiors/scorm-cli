@@ -81,10 +81,21 @@ describe('renderReactPackage', () => {
     expect(appJs).not.toContain('virtual:package-data');
   });
 
-  it('does not ship the dev-only preview error channel', () => {
-    expect(appJs).not.toContain('scorm:preview-error');
-    expect(appJs).not.toContain('scorm:preview-clear');
-    expect(appJs).not.toContain('import.meta.hot');
+  it('does not ship the dev-only preview error channel or overlay', () => {
+    // The preview error/clear events and the author-facing overlay are wired
+    // only behind the `import.meta.hot` guard in `main.tsx`, so none of their
+    // strings may survive into any packaged JavaScript chunk.
+    for (const marker of [
+      'scorm:preview-error',
+      'scorm:preview-clear',
+      // The overlay module names and its unique, hardcoded dev-preview copy.
+      'PreviewErrorOverlay',
+      'DevPreviewOverlay',
+      'Fix the content and save. The preview reloads automatically once the content is valid',
+      'import.meta.hot',
+    ]) {
+      expect(bundleJs).not.toContain(marker);
+    }
   });
 
   it('does not ship the SCORM dev-tools toolbar or its controls', () => {

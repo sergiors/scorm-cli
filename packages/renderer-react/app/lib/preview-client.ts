@@ -1,16 +1,10 @@
-/**
- * Custom Vite HMR events exchanged with the `scorm dev` preview server.
- *
- * The names are part of the dev-server contract and are shared with
- * `src/dev.ts`; keep both sides in sync through these constants.
- */
-export const PREVIEW_ERROR_EVENT = 'scorm:preview-error';
-export const PREVIEW_CLEAR_EVENT = 'scorm:preview-clear';
+import { PREVIEW_CLEAR_EVENT, PREVIEW_ERROR_EVENT } from '../shared/preview-events';
 
 /**
- * The subset of Vite's HMR context the app relies on. Declared structurally so
- * the app does not need to pull in `vite/client` types, and so it stays a
- * no-op when `import.meta.hot` is absent (production builds and tests).
+ * The subset of Vite's HMR context the preview client relies on. Declared
+ * structurally so the app does not need to pull in `vite/client` types, and so
+ * it stays a no-op when `import.meta.hot` is absent (production builds and
+ * tests).
  */
 export interface PreviewHotContext {
   on(event: string, listener: (data: unknown) => void): void;

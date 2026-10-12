@@ -1,11 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   parsePreviewErrorMessage,
-  PREVIEW_CLEAR_EVENT,
-  PREVIEW_ERROR_EVENT,
   subscribeToPreviewEvents,
   type PreviewHotContext,
-} from '../../app/lib/preview-events';
+} from '../../app/lib/preview-client';
+import { PREVIEW_CLEAR_EVENT, PREVIEW_ERROR_EVENT } from '../../app/shared/preview-events';
 
 function makeHot(): {
   hot: PreviewHotContext;

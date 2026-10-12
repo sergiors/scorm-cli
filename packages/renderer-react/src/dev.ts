@@ -10,7 +10,7 @@ import type {
   RendererDevServer,
 } from '@scorm-cli/core';
 import { createServer, searchForWorkspaceRoot, type Plugin, type ViteDevServer } from 'vite';
-import { PREVIEW_CLEAR_EVENT, PREVIEW_ERROR_EVENT } from '../app/lib/preview-events';
+import { PREVIEW_CLEAR_EVENT, PREVIEW_ERROR_EVENT } from '../app/shared/preview-events';
 import { createPackageDataPlugin, resolveAppRoot, RESOLVED_PACKAGE_DATA_ID } from './vite-app';
 
 const DEFAULT_PORT = 5173;

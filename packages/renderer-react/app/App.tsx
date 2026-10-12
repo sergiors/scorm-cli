@@ -1,20 +1,24 @@
 import type { ContentPackage } from './types';
 import { PackageView } from './components/PackageView';
-import { PreviewErrorOverlay } from './components/PreviewErrorOverlay';
 import { PlayerI18nProvider } from './lib/player-i18n';
-import { usePreviewError } from './lib/use-preview-error';
 
 export interface PackageAppProps {
   contentPackage: ContentPackage;
 }
 
+/**
+ * The learner-facing player shell: provides the localized catalog and renders
+ * the authored package.
+ *
+ * Dev-only preview surfaces — the `scorm dev` error overlay and the SCORM
+ * dev-tools toolbar — are mounted separately in `main.tsx` behind
+ * `import.meta.hot`, so this component stays free of any dev dependency and
+ * neither surface can ship to learners.
+ */
 export function PackageApp({ contentPackage }: PackageAppProps) {
-  const previewError = usePreviewError();
-
   return (
     <PlayerI18nProvider lang={contentPackage.metadata.lang}>
       <PackageView contentPackage={contentPackage} />
-      {previewError ? <PreviewErrorOverlay message={previewError} /> : null}
     </PlayerI18nProvider>
   );
 }

@@ -1,5 +1,5 @@
 import type { PlayerState } from '@scorm-cli/core';
-import type { PreviewHotContext } from './lib/preview-events';
+import type { PreviewHotContext } from './lib/preview-client';
 
 export {};
 

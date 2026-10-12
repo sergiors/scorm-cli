@@ -1,5 +1,5 @@
-export { parsePackage } from './package';
-export { authoringComponentNames } from './package';
+export { parsePackage } from './orchestrator';
+export { authoringComponentNames } from './mdx';
 export type {
   AnswerValue,
   BreakNode,

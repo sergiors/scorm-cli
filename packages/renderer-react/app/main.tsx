@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import contentPackage from 'virtual:package-data';
 import { PackageApp } from './App';
+import { DevPreviewOverlay } from './components/DevPreviewOverlay';
 import { ScormDevToolsToolbar } from './components/ScormDevToolsToolbar';
 import './styles.css';
 
@@ -12,6 +13,7 @@ if (container) {
     <StrictMode>
       <PackageApp contentPackage={contentPackage} />
       <DevInspector />
+      <DevPreview />
     </StrictMode>,
   );
 }
@@ -32,4 +34,17 @@ function DevInspector() {
     return null;
   }
   return <ScormDevToolsToolbar />;
+}
+
+/**
+ * Mounts the preview-error overlay under the same HMR guard as the dev toolbar.
+ * Moving it out of `PackageApp` keeps the learner shell free of any preview
+ * dependency, and the guard lets the preview client be tree-shaken from the
+ * production bundle while the dev preview behaves exactly as before.
+ */
+function DevPreview() {
+  if (!import.meta.hot) {
+    return null;
+  }
+  return <DevPreviewOverlay />;
 }

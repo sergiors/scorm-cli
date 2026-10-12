@@ -12,8 +12,9 @@ export interface PreviewErrorOverlayProps {
  * content. The dev server clears it and reloads on the next successful update.
  *
  * It only ever appears in `scorm dev` — the error is delivered over Vite's HMR
- * channel — so it never renders for learners. The module is still statically
- * imported by `PackageApp`, though, so its code ships in the generated bundle.
+ * channel — and it is mounted behind the `import.meta.hot` guard in `main.tsx`,
+ * so its code is tree-shaken from the production bundle and never renders for
+ * learners.
  * Its fixed copy is deliberately hardcoded English rather than routed through
  * the shared dictionary: this is a dev-preview-only surface, not learner-facing
  * UI. The diagnostic `message` is likewise untranslated.

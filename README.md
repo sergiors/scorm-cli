@@ -10,6 +10,15 @@ Build SCORM 1.2 packages from authored MDX content packages.
 - `@scorm-cli/scorm` — packages rendered output as SCORM 1.2.
 - `@scorm-cli/cli` — command-line build and development preview interface.
 
+## Architecture
+
+Authored MDX flows through the parser into the renderer-independent canonical model. The React
+renderer builds the player; the SCORM package bundles that output; the CLI coordinates build and
+preview workflows. Dependencies point toward the shared core model: core does not depend on React, the
+parser does not depend on the renderer, and the renderer consumes parsed content rather than
+parsing MDX. The player keeps semantic progress separate from the SCORM suspend-data codec, while
+package generation owns the SCORM manifest and archive format.
+
 ## Author a content package
 
 A content package directory contains an `index.mdx` root document and referenced MDX documents. Components are imported from the typed `scorm-cli/authoring` subpath so editors can complete names and check props. The import is inert: the CLI resolves the named bindings (and aliases) to its canonical vocabulary while parsing, but content files are parsed as data and never executed. Imports from other modules are ignored, and MDX JavaScript is not supported.
