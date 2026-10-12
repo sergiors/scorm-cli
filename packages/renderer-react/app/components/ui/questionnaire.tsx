@@ -42,10 +42,7 @@ function QuestionnaireItem({
   return (
     <QuestionnairePrimitive.Item
       data-slot='questionnaire-item'
-      className={cn(
-        'flex min-w-0 flex-col gap-5 border-0 p-0 outline-none',
-        className,
-      )}
+      className={cn('flex min-w-0 flex-col gap-5 border-0 p-0 outline-none', className)}
       {...props}
     />
   );
@@ -87,10 +84,7 @@ function QuestionnaireChoices({
   return (
     <QuestionnairePrimitive.Choices
       data-slot='questionnaire-choices'
-      className={cn(
-        'group/questionnaire-choices grid min-w-0 gap-3',
-        className,
-      )}
+      className={cn('group/questionnaire-choices grid min-w-0 gap-3', className)}
       {...props}
     />
   );
@@ -143,10 +137,7 @@ function QuestionnaireChoice({
   );
 }
 
-function QuestionnaireChoiceDescription({
-  className,
-  ...props
-}: React.ComponentProps<'span'>) {
+function QuestionnaireChoiceDescription({ className, ...props }: React.ComponentProps<'span'>) {
   return (
     <span
       data-slot='questionnaire-choice-description'
@@ -193,10 +184,7 @@ function QuestionnaireError({
   );
 }
 
-function QuestionnaireActions({
-  className,
-  ...props
-}: React.ComponentProps<'div'>) {
+function QuestionnaireActions({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot='questionnaire-actions'

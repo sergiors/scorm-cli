@@ -137,16 +137,11 @@ describe('sanitizePlayerState', () => {
     const state = sanitizePlayerState(questionnairePackage.presentation, {
       pages: {
         'page:intro.mdx': {
-          submittedQuestionnaires: [
-            questionnaireNode.id,
-            'questionnaire:missing',
-          ],
+          submittedQuestionnaires: [questionnaireNode.id, 'questionnaire:missing'],
         },
       },
     });
-    expect(state.pages['page:intro.mdx']?.submittedQuestionnaires).toEqual([
-      questionnaireNode.id,
-    ]);
+    expect(state.pages['page:intro.mdx']?.submittedQuestionnaires).toEqual([questionnaireNode.id]);
   });
 
   it('scopes a reused question id to each page independently', () => {

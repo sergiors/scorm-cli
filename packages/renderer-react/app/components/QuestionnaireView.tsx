@@ -137,13 +137,7 @@ export function QuestionnaireView({
   }
 
   if (submitted) {
-    return (
-      <SubmittedQuestionnaire
-        node={node}
-        answers={answers}
-        pathContext={pathContext}
-      />
-    );
+    return <SubmittedQuestionnaire node={node} answers={answers} pathContext={pathContext} />;
   }
 
   // The primitive owns the selection only when the owner supplies neither
@@ -249,10 +243,7 @@ function isSelected(
  * wins for a checked option. Only the submitted view applies this, so
  * correctness is never revealed before results.
  */
-function resultClassName(
-  option: QuestionOption,
-  selected: boolean,
-): string | undefined {
+function resultClassName(option: QuestionOption, selected: boolean): string | undefined {
   if (option.correct) {
     return 'border-emerald-600/60 bg-emerald-500/10 data-checked:border-emerald-600 data-checked:bg-emerald-500/15 dark:border-emerald-500/60 dark:bg-emerald-500/15 dark:data-checked:border-emerald-500 dark:data-checked:bg-emerald-500/20';
   }
@@ -291,9 +282,7 @@ function QuestionnaireQuestion({
       const current = Array.isArray(value) ? value : [];
       const next = node.options
         .map((option) => option.value)
-        .filter((candidate) =>
-          candidate === optionValue ? checked : current.includes(candidate),
-        );
+        .filter((candidate) => (candidate === optionValue ? checked : current.includes(candidate)));
       onAnswer(node.id, next);
       return;
     }
@@ -321,13 +310,9 @@ function QuestionnaireQuestion({
           <QuestionnaireChoice
             key={option.value}
             value={option.value}
-            checked={
-              controlled ? isSelected(node, value, option.value) : undefined
-            }
+            checked={controlled ? isSelected(node, value, option.value) : undefined}
             onChange={
-              controlled
-                ? (event) => handleChange(option.value, event.target.checked)
-                : undefined
+              controlled ? (event) => handleChange(option.value, event.target.checked) : undefined
             }
           >
             <ContentRenderer
@@ -402,11 +387,7 @@ function SubmittedQuestion({
 
   return (
     <Questionnaire items={[{ name: question.id }]}>
-      <QuestionnaireItem
-        name={question.id}
-        multiple={multiple}
-        aria-labelledby={promptId}
-      >
+      <QuestionnaireItem name={question.id} multiple={multiple} aria-labelledby={promptId}>
         <QuestionnaireTitle id={promptId}>
           <ContentRenderer nodes={question.prompt} {...pathContext} />
         </QuestionnaireTitle>

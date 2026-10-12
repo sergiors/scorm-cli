@@ -4,12 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { useIntl } from 'react-intl';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PackageView } from '../../app/components/PackageView';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
-} from '../../app/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogTitle } from '../../app/components/ui/dialog';
 import type { ContentPackage } from '../../app/types';
 import { PlayerI18nProvider } from '../../app/lib/player-i18n';
 import { gridPackage } from './fixtures';

@@ -48,9 +48,7 @@ function popover(): HTMLElement | null {
 
 /** The shadcn checkbox is a `role="checkbox"` button carrying `data-slot`. */
 function persistenceCheckbox(): HTMLButtonElement {
-  const checkbox = document.querySelector<HTMLButtonElement>(
-    '[data-slot="checkbox"]',
-  );
+  const checkbox = document.querySelector<HTMLButtonElement>('[data-slot="checkbox"]');
   if (!checkbox) {
     throw new Error('CMI persistence checkbox not found');
   }
@@ -71,9 +69,7 @@ function buttons(): HTMLButtonElement[] {
 }
 
 function toolbarToggle(): HTMLButtonElement {
-  const button = buttons().find((candidate) =>
-    candidate.textContent?.includes('Dev tools'),
-  );
+  const button = buttons().find((candidate) => candidate.textContent?.includes('Dev tools'));
   if (!button) {
     throw new Error('Dev tools toggle not found');
   }
@@ -81,9 +77,7 @@ function toolbarToggle(): HTMLButtonElement {
 }
 
 function hasToolbarToggle(): boolean {
-  return buttons().some((candidate) =>
-    candidate.textContent?.includes('Dev tools'),
-  );
+  return buttons().some((candidate) => candidate.textContent?.includes('Dev tools'));
 }
 
 /** Clicks the trigger inside `act` so the portaled popover mounts/unmounts. */
@@ -151,9 +145,7 @@ describe('ScormDevToolsToolbar', () => {
     togglePopover();
     expect(popover()).not.toBeNull();
     act(() => {
-      document.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
-      );
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
     expect(popover()).toBeNull();
     expect(toolbarToggle().getAttribute('aria-expanded')).toBe('false');
@@ -188,9 +180,7 @@ describe('ScormDevToolsToolbar', () => {
     expect(document.body.textContent).not.toContain('Clear saved CMI');
     expect(document.querySelector('[role="log"]')).toBeNull();
     expect(document.body.textContent).not.toContain('SCORM events');
-    expect(document.body.textContent).not.toContain(
-      'No SCORM runtime events yet',
-    );
+    expect(document.body.textContent).not.toContain('No SCORM runtime events yet');
   });
 
   it('renders nothing when the dev client is absent', () => {
@@ -232,15 +222,11 @@ describe('ScormDevToolsToolbar', () => {
     expect(checkbox.getAttribute('role')).toBe('checkbox');
     expect(document.querySelector('input[type="checkbox"]')).toBeNull();
 
-    const label = document.querySelector<HTMLLabelElement>(
-      '[data-slot="field-label"]',
-    );
+    const label = document.querySelector<HTMLLabelElement>('[data-slot="field-label"]');
     expect(label?.textContent).toBe('Persist CMI data');
     expect(label?.getAttribute('for')).toBe(checkbox.id);
 
-    const description = document.querySelector(
-      '[data-slot="field-description"]',
-    );
+    const description = document.querySelector('[data-slot="field-description"]');
     expect(description?.id).toBe(checkbox.getAttribute('aria-describedby'));
   });
 

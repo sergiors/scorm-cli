@@ -58,22 +58,13 @@ describe('document language', () => {
 
   it('uses the authored tag verbatim, supported or not', () => {
     expect(
-      transformIndexHtml(
-        createPackageDataPlugin({ current: packageWithLang('pt-br') }),
-        HTML,
-      ),
+      transformIndexHtml(createPackageDataPlugin({ current: packageWithLang('pt-br') }), HTML),
     ).toContain('<html lang="pt-br">');
     expect(
-      transformIndexHtml(
-        createPackageDataPlugin({ current: packageWithLang('en-US') }),
-        HTML,
-      ),
+      transformIndexHtml(createPackageDataPlugin({ current: packageWithLang('en-US') }), HTML),
     ).toContain('<html lang="en-US">');
     expect(
-      transformIndexHtml(
-        createPackageDataPlugin({ current: packageWithLang('fr') }),
-        HTML,
-      ),
+      transformIndexHtml(createPackageDataPlugin({ current: packageWithLang('fr') }), HTML),
     ).toContain('<html lang="fr">');
   });
 
@@ -126,9 +117,7 @@ describe('unsupported language warning', () => {
     const html = transformIndexHtml(plugin, HTML);
     expect(html).toContain('<html lang="fr">');
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0]?.[0]).toMatch(
-      /Unsupported content language "fr"/,
-    );
+    expect(warn.mock.calls[0]?.[0]).toMatch(/Unsupported content language "fr"/);
   });
 
   it('warns at most once per unsupported language across transforms', () => {

@@ -42,10 +42,7 @@ const observers: FakeObserverState[] = [];
 class FakeIntersectionObserver {
   private readonly state: FakeObserverState;
 
-  constructor(
-    callback: IntersectionObserverCallback,
-    options?: IntersectionObserverInit,
-  ) {
+  constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
     this.state = { callback, elements: new Set<Element>(), options };
     observers.push(this.state);
   }
@@ -114,9 +111,7 @@ function findButton(prefix: string): HTMLButtonElement {
 }
 
 function input(value: string): HTMLInputElement {
-  const element = container.querySelector<HTMLInputElement>(
-    `input[value="${value}"]`,
-  );
+  const element = container.querySelector<HTMLInputElement>(`input[value="${value}"]`);
   if (!element) {
     throw new Error(`Input not found for value: ${value}`);
   }
@@ -223,9 +218,7 @@ function nextButtons(): HTMLButtonElement[] {
  * belongs to the document itself.
  */
 function scrollWrappers(): HTMLElement[] {
-  return Array.from(
-    container.querySelectorAll<HTMLElement>('.overflow-y-auto'),
-  );
+  return Array.from(container.querySelectorAll<HTMLElement>('.overflow-y-auto'));
 }
 
 /** Indices of the mounted scenes; at most one is ever present. */
@@ -377,9 +370,7 @@ describe('PackageView scroll interactions', () => {
     // The player renders no page/package progress chrome of its own; the only
     // progressbar belongs to the authored questionnaire on the displayed page.
     expect(
-      container.querySelector(
-        '[role="progressbar"]:not([data-slot="questionnaire-progress"])',
-      ),
+      container.querySelector('[role="progressbar"]:not([data-slot="questionnaire-progress"])'),
     ).toBeNull();
   });
 
@@ -400,9 +391,7 @@ describe('PackageView scroll interactions', () => {
   it('inverts the page content prose colors in dark mode', () => {
     act(() => root.render(<Player contentPackage={gatedPackage} />));
 
-    const scene = container.querySelector<HTMLElement>(
-      '[data-scene-index="0"]',
-    );
+    const scene = container.querySelector<HTMLElement>('[data-scene-index="0"]');
     const prose = scene?.querySelector<HTMLElement>('.prose');
     expect(prose).not.toBeNull();
     // Light mode keeps the stone palette...
@@ -557,12 +546,8 @@ describe('PackageView scroll navigation controls', () => {
     setEndIntersecting(0, true);
     act(() => nextButtons()[0]?.click());
 
-    const control = container.querySelector<HTMLElement>(
-      '[data-scroll-previous]',
-    );
-    const scene = container.querySelector<HTMLElement>(
-      '[data-scene-index="1"]',
-    );
+    const control = container.querySelector<HTMLElement>('[data-scroll-previous]');
+    const scene = container.querySelector<HTMLElement>('[data-scene-index="1"]');
     if (!control || !scene) {
       throw new Error('Previous control or page scene not found');
     }
@@ -572,9 +557,7 @@ describe('PackageView scroll navigation controls', () => {
     // control appears or disappears.
     expect(control.classList.contains('fixed')).toBe(true);
     expect(container.contains(control)).toBe(true);
-    expect(
-      control.compareDocumentPosition(scene) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(control.compareDocumentPosition(scene) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     // The wrapper ignores pointer events so it never blocks the page beneath it,
     // while the button itself stays operable.
@@ -751,9 +734,7 @@ describe('PackageView scroll viewport', () => {
   it('fills the viewport as a centred column with a readable measure', () => {
     act(() => root.render(<Player contentPackage={gatedPackage} />));
 
-    const scene = container.querySelector<HTMLElement>(
-      '[data-scene-index="0"]',
-    );
+    const scene = container.querySelector<HTMLElement>('[data-scene-index="0"]');
     if (!scene) {
       throw new Error('Page scene not found');
     }
@@ -777,9 +758,7 @@ describe('PackageView scroll viewport', () => {
   it('renders the authored page body and names the scene after the page', () => {
     act(() => root.render(<Player contentPackage={gatedPackage} />));
 
-    const scene = container.querySelector<HTMLElement>(
-      '[data-scene-index="0"]',
-    );
+    const scene = container.querySelector<HTMLElement>('[data-scene-index="0"]');
     if (!scene) {
       throw new Error('Page scene not found');
     }
@@ -810,9 +789,7 @@ describe('PackageView scroll viewport', () => {
     expect(button).toBeDefined();
     expect(button?.className).toContain('pointer-events-auto');
     expect(button?.parentElement?.classList.contains('fixed')).toBe(true);
-    expect(
-      button?.parentElement?.classList.contains('pointer-events-none'),
-    ).toBe(true);
+    expect(button?.parentElement?.classList.contains('pointer-events-none')).toBe(true);
   });
 });
 
@@ -1083,9 +1060,7 @@ describe('PackageView scroll state persistence', () => {
     try {
       act(() => root.render(<Player contentPackage={plainTwoPagePackage} />));
       setEndIntersecting(0, true);
-      expect(
-        Object.values(api).every((method) => method.mock.calls.length === 0),
-      ).toBe(true);
+      expect(Object.values(api).every((method) => method.mock.calls.length === 0)).toBe(true);
     } finally {
       delete (window as unknown as { API?: unknown }).API;
     }
@@ -1130,9 +1105,7 @@ describe('PackageView grid interactions', () => {
     act(() => findButton('Functions').click());
     expect(dialog()).not.toBeNull();
 
-    const close = document.querySelector<HTMLButtonElement>(
-      '[data-slot="dialog-close"]',
-    );
+    const close = document.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]');
     expect(close).not.toBeNull();
     act(() => close?.click());
 
@@ -1146,9 +1119,7 @@ describe('PackageView grid interactions', () => {
     expect(dialog()).not.toBeNull();
 
     act(() => {
-      document.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
-      );
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
 
     expect(dialog()).toBeNull();
@@ -1201,8 +1172,7 @@ describe('PackageView grid interactions', () => {
     expect(markCompleted).not.toHaveBeenCalled();
 
     act(() => findButton('Functions').click());
-    const close = () =>
-      document.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]');
+    const close = () => document.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]');
     act(() => close()?.click());
     act(() => findButton('Types').click());
     act(() => close()?.click());

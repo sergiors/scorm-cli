@@ -19,10 +19,7 @@ export interface PlayerI18nProviderProps {
  * (set by the Vite HTML transform), so the generated chrome and the document
  * language stay independent concerns.
  */
-export function PlayerI18nProvider({
-  lang,
-  children,
-}: PlayerI18nProviderProps) {
+export function PlayerI18nProvider({ lang, children }: PlayerI18nProviderProps) {
   const locale = resolvePlayerLocale(lang);
   return (
     <IntlProvider locale={locale} messages={messages[locale]}>

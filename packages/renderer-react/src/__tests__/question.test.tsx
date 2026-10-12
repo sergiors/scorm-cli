@@ -5,11 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QuestionnaireView as QuestionnaireViewBase } from '../../app/components/QuestionnaireView';
 import { PlayerI18nProvider } from '../../app/lib/player-i18n';
 import type { AnswerValue, ContentNode } from '../../app/types';
-import {
-  multipleChoiceQuestion,
-  questionnaireNode,
-  singleChoiceQuestion,
-} from './fixtures';
+import { multipleChoiceQuestion, questionnaireNode, singleChoiceQuestion } from './fixtures';
 
 /**
  * Wraps the questionnaire in the player's i18n provider, matching how a page
@@ -28,32 +24,23 @@ function QuestionnaireView({
   );
 }
 
-type QuestionNode = Extract<
-  ContentNode,
-  { type: 'questionnaire' }
->['questions'][number];
+type QuestionNode = Extract<ContentNode, { type: 'questionnaire' }>['questions'][number];
 
 const trueFalse: QuestionNode = {
   type: 'question',
   id: 'question:check.mdx:1:1',
   questionType: 'true-false',
-  prompt: [
-    { type: 'paragraph', children: [{ type: 'text', value: 'Is it true?' }] },
-  ],
+  prompt: [{ type: 'paragraph', children: [{ type: 'text', value: 'Is it true?' }] }],
   options: [
     {
       value: 'true',
       correct: true,
-      content: [
-        { type: 'paragraph', children: [{ type: 'text', value: 'True' }] },
-      ],
+      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'True' }] }],
     },
     {
       value: 'false',
       correct: false,
-      content: [
-        { type: 'paragraph', children: [{ type: 'text', value: 'False' }] },
-      ],
+      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'False' }] }],
     },
   ],
 };
@@ -74,9 +61,7 @@ afterEach(() => {
 });
 
 function input(value: string): HTMLInputElement {
-  const element = container.querySelector<HTMLInputElement>(
-    `input[value="${value}"]`,
-  );
+  const element = container.querySelector<HTMLInputElement>(`input[value="${value}"]`);
   if (!element) {
     throw new Error(`Input not found for value: ${value}`);
   }
@@ -103,9 +88,7 @@ function submittedChecked(value: string): boolean {
 
 /** Class list of the submitted choice container for an option value. */
 function submittedChoiceClass(value: string): string {
-  const choice = submittedControl(value).closest(
-    '[data-slot="questionnaire-choice"]',
-  );
+  const choice = submittedControl(value).closest('[data-slot="questionnaire-choice"]');
   if (!choice) {
     throw new Error(`Submitted choice not found for value: ${value}`);
   }
@@ -125,9 +108,7 @@ function submittedChoiceIsRed(value: string): boolean {
 /** Visible button whose label matches exactly; hidden wizard controls are skipped. */
 function button(label: string): HTMLButtonElement {
   const element = Array.from(container.querySelectorAll('button')).find(
-    (candidate) =>
-      !candidate.hasAttribute('hidden') &&
-      candidate.textContent?.trim() === label,
+    (candidate) => !candidate.hasAttribute('hidden') && candidate.textContent?.trim() === label,
   );
   if (!element) {
     throw new Error(`Visible button not found: ${label}`);
@@ -150,9 +131,7 @@ describe('QuestionnaireView', () => {
   it('renders one questionnaire item per question and navigates as a wizard', () => {
     act(() => root.render(<QuestionnaireView node={questionnaireNode} />));
 
-    expect(
-      container.querySelectorAll('[data-slot="questionnaire-item"]'),
-    ).toHaveLength(2);
+    expect(container.querySelectorAll('[data-slot="questionnaire-item"]')).toHaveLength(2);
     expect(activeItem().textContent).toContain('Which option is correct?');
 
     act(() => input('first').click());
@@ -183,12 +162,7 @@ describe('QuestionnaireView', () => {
   it('refuses to submit until every question is answered', () => {
     const onSubmitted = vi.fn();
     act(() =>
-      root.render(
-        <QuestionnaireView
-          node={questionnaireNode}
-          onSubmitted={onSubmitted}
-        />,
-      ),
+      root.render(<QuestionnaireView node={questionnaireNode} onSubmitted={onSubmitted} />),
     );
 
     act(() => input('first').click());
@@ -209,12 +183,7 @@ describe('QuestionnaireView', () => {
   it('invokes the submitted callback exactly once across repeated submits', () => {
     const onSubmitted = vi.fn();
     act(() =>
-      root.render(
-        <QuestionnaireView
-          node={questionnaireNode}
-          onSubmitted={onSubmitted}
-        />,
-      ),
+      root.render(<QuestionnaireView node={questionnaireNode} onSubmitted={onSubmitted} />),
     );
 
     act(() => input('first').click());
@@ -252,9 +221,9 @@ describe('QuestionnaireView', () => {
     const fieldset = activeItem();
     const labelledBy = fieldset.getAttribute('aria-labelledby');
     expect(labelledBy).toBeTruthy();
-    expect(
-      document.getElementById(labelledBy as string)?.textContent,
-    ).toContain('Which option is correct?');
+    expect(document.getElementById(labelledBy as string)?.textContent).toContain(
+      'Which option is correct?',
+    );
     // Correctness is not revealed before submission: no option carries the
     // result-highlight classes the submitted view applies.
     expect(container.innerHTML).not.toContain('border-emerald-600');
@@ -285,31 +254,23 @@ describe('QuestionnaireView required-answer message', () => {
     // The last question is still unanswered, so submitting marks it invalid.
     act(() => button('Submit questionnaire').click());
 
-    const error = activeItem().querySelector(
-      '[data-slot="questionnaire-error"]',
-    );
+    const error = activeItem().querySelector('[data-slot="questionnaire-error"]');
     expect(error?.hasAttribute('hidden')).toBe(false);
     expect(error?.textContent).toBe('Choose an answer to continue.');
   });
 
   it('localizes the required-answer message under pt-BR', () => {
-    act(() =>
-      root.render(<QuestionnaireView node={questionnaireNode} lang='pt-BR' />),
-    );
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} lang='pt-BR' />));
 
     act(() => input('first').click());
     act(() => button('Próxima pergunta').click());
     act(() => button('Enviar questionário').click());
 
-    const error = activeItem().querySelector(
-      '[data-slot="questionnaire-error"]',
-    );
+    const error = activeItem().querySelector('[data-slot="questionnaire-error"]');
     expect(error?.hasAttribute('hidden')).toBe(false);
     expect(error?.textContent).toBe('Escolha uma resposta para continuar.');
     // The primitive's English fallback never leaks into the pt-BR player.
-    expect(container.textContent).not.toContain(
-      'Choose an answer to continue.',
-    );
+    expect(container.textContent).not.toContain('Choose an answer to continue.');
   });
 });
 
@@ -321,8 +282,7 @@ function ControlledQuestionnaire({
   initialAnswers?: Record<string, AnswerValue>;
   onSubmitted?: (id: string) => void;
 }) {
-  const [answers, setAnswers] =
-    useState<Record<string, AnswerValue>>(initialAnswers);
+  const [answers, setAnswers] = useState<Record<string, AnswerValue>>(initialAnswers);
   return (
     <QuestionnaireView
       node={questionnaireNode}
@@ -339,13 +299,7 @@ describe('QuestionnaireView persistence', () => {
   it('reports every answer change under the question id', () => {
     const onAnswer = vi.fn();
     act(() =>
-      root.render(
-        <QuestionnaireView
-          node={questionnaireNode}
-          answers={{}}
-          onAnswer={onAnswer}
-        />,
-      ),
+      root.render(<QuestionnaireView node={questionnaireNode} answers={{}} onAnswer={onAnswer} />),
     );
 
     act(() => input('first').click());
@@ -353,9 +307,7 @@ describe('QuestionnaireView persistence', () => {
 
     act(() => button('Next question').click());
     act(() => input('alpha').click());
-    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, [
-      'alpha',
-    ]);
+    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, ['alpha']);
   });
 
   it('persists multiple-choice answers as string arrays', () => {
@@ -398,15 +350,10 @@ describe('QuestionnaireView persistence', () => {
     // Toggling beta before alpha must still persist the authored order.
     act(() => input('beta').click());
     act(() => input('alpha').click());
-    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, [
-      'alpha',
-      'beta',
-    ]);
+    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, ['alpha', 'beta']);
 
     act(() => input('beta').click());
-    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, [
-      'alpha',
-    ]);
+    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, ['alpha']);
   });
 
   it('restores saved selections from the page answers', () => {
@@ -433,9 +380,7 @@ describe('QuestionnaireView persistence', () => {
 
   it('marks the wrapper submitted after a successful final submit', () => {
     const onSubmitted = vi.fn();
-    act(() =>
-      root.render(<ControlledQuestionnaire onSubmitted={onSubmitted} />),
-    );
+    act(() => root.render(<ControlledQuestionnaire onSubmitted={onSubmitted} />));
 
     act(() => input('first').click());
     act(() => button('Next question').click());
@@ -501,15 +446,9 @@ describe('QuestionnaireView persistence', () => {
     expect(submittedControl('beta').checked).toBe(false);
 
     // Every question is its own single-item root, all shown at once.
-    expect(
-      container.querySelectorAll('[data-slot="questionnaire"]'),
-    ).toHaveLength(2);
-    expect(
-      container.querySelectorAll('[data-slot="questionnaire-title"]'),
-    ).toHaveLength(2);
-    expect(
-      container.querySelectorAll('[data-slot="questionnaire-choice"]'),
-    ).toHaveLength(4);
+    expect(container.querySelectorAll('[data-slot="questionnaire"]')).toHaveLength(2);
+    expect(container.querySelectorAll('[data-slot="questionnaire-title"]')).toHaveLength(2);
+    expect(container.querySelectorAll('[data-slot="questionnaire-choice"]')).toHaveLength(4);
   });
 
   it('highlights every correct option green in a submitted questionnaire', () => {

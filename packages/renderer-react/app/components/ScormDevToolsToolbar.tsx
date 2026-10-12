@@ -44,12 +44,7 @@ export function ScormDevToolsToolbar({
     <div className='fixed right-3 top-3 z-40 print:hidden'>
       <Popover>
         <PopoverTrigger asChild>
-          <Button
-            type='button'
-            variant='outline'
-            size='sm'
-            className='shadow-md'
-          >
+          <Button type='button' variant='outline' size='sm' className='shadow-md'>
             <Settings2 aria-hidden='true' />
             Dev tools
           </Button>
@@ -78,9 +73,7 @@ interface CmiPersistenceState {
  * toolbar.
  */
 function CmiPersistenceControl() {
-  const [state, setState] = useState<CmiPersistenceState>(() =>
-    readCmiPersistenceState(),
-  );
+  const [state, setState] = useState<CmiPersistenceState>(() => readCmiPersistenceState());
   const checkboxId = useId();
   const descriptionId = useId();
 
@@ -130,9 +123,8 @@ function CmiPersistenceControl() {
             Persist CMI data
           </FieldLabel>
           <FieldDescription id={descriptionId} className='text-xs'>
-            Saves the <code>cmi.*</code> values in this browser&apos;s
-            localStorage and restores them on the next preview. Turning this off
-            clears the saved data.
+            Saves the <code>cmi.*</code> values in this browser&apos;s localStorage and restores
+            them on the next preview. Turning this off clears the saved data.
           </FieldDescription>
         </div>
       </Field>

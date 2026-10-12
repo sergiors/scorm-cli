@@ -24,16 +24,12 @@ export const singleChoiceQuestion: QuestionNode = {
     {
       value: 'first',
       correct: true,
-      content: [
-        { type: 'paragraph', children: [{ type: 'text', value: 'Option A' }] },
-      ],
+      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Option A' }] }],
     },
     {
       value: 'second',
       correct: false,
-      content: [
-        { type: 'paragraph', children: [{ type: 'text', value: 'Option B' }] },
-      ],
+      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Option B' }] }],
     },
   ],
 };
@@ -53,16 +49,12 @@ export const multipleChoiceQuestion: QuestionNode = {
     {
       value: 'alpha',
       correct: true,
-      content: [
-        { type: 'paragraph', children: [{ type: 'text', value: 'Alpha' }] },
-      ],
+      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Alpha' }] }],
     },
     {
       value: 'beta',
       correct: false,
-      content: [
-        { type: 'paragraph', children: [{ type: 'text', value: 'Beta' }] },
-      ],
+      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Beta' }] }],
     },
   ],
 };
@@ -188,14 +180,11 @@ function paragraph(value: string): ContentNode {
  * scroll and grid suites to assert that each depth maps straight to its
  * matching `h1`-`h6`, with no wrapper or nested context shifting the level.
  */
-export const headingDepths: ContentNode[] = Array.from(
-  { length: 6 },
-  (_, index) => ({
-    type: 'heading',
-    depth: index + 1,
-    children: [{ type: 'text', value: `Level ${index + 1}` }],
-  }),
-);
+export const headingDepths: ContentNode[] = Array.from({ length: 6 }, (_, index) => ({
+  type: 'heading',
+  depth: index + 1,
+  children: [{ type: 'text', value: `Level ${index + 1}` }],
+}));
 
 export const introPage: PageNode = {
   type: 'page',

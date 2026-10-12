@@ -11,12 +11,8 @@ export interface CompactSuspendData {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 const safeKey = (value: string) =>
-  value.length > 0 &&
-  value !== '__proto__' &&
-  value !== 'prototype' &&
-  value !== 'constructor';
-const hasOwn = (value: object, key: string) =>
-  Object.prototype.hasOwnProperty.call(value, key);
+  value.length > 0 && value !== '__proto__' && value !== 'prototype' && value !== 'constructor';
+const hasOwn = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
 
 /**
  * Encodes only manifest-indexed progress and answer selections. `p` is limited
@@ -32,21 +28,16 @@ export function encodeSuspendData(
   const pageEntries = Object.entries(manifest.pages);
   const encoded: CompactSuspendData = {
     v: 1,
-    p: Number.isFinite(progress)
-      ? Math.max(0, Math.min(100, Math.round(progress)))
-      : 0,
+    p: Number.isFinite(progress) ? Math.max(0, Math.min(100, Math.round(progress))) : 0,
     x: pageEntries
       .map(([, page]) =>
-        safeKey(page.id) &&
-        hasOwn(state.pages, page.id) &&
-        state.pages[page.id]?.visited === true
+        safeKey(page.id) && hasOwn(state.pages, page.id) && state.pages[page.id]?.visited === true
           ? '1'
           : '0',
       )
       .join(''),
   };
-  const dataByPage: Record<string, { a?: Record<string, number | number[]> }> =
-    {};
+  const dataByPage: Record<string, { a?: Record<string, number | number[]> }> = {};
 
   pageEntries.forEach(([pageIndex, page]) => {
     if (!safeKey(page.id)) return;
@@ -59,9 +50,7 @@ export function encodeSuspendData(
       const answer = pageState.answers[question.id];
       const optionIndexes = Object.entries(question.options)
         .filter(([, option]) =>
-          Array.isArray(answer)
-            ? answer.includes(option.value)
-            : answer === option.value,
+          Array.isArray(answer) ? answer.includes(option.value) : answer === option.value,
         )
         .map(([optionIndex]) => Number(optionIndex))
         .filter(Number.isSafeInteger)
@@ -78,10 +67,7 @@ export function encodeSuspendData(
 }
 
 /** Restores readable IDs/values only through the exact manifest dictionary. */
-export function decodeSuspendData(
-  manifest: ContentManifest,
-  raw: unknown,
-): PlayerState {
+export function decodeSuspendData(manifest: ContentManifest, raw: unknown): PlayerState {
   const fresh: PlayerState = { pages: {} };
   try {
     const parsed: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw;
@@ -122,9 +108,7 @@ export function decodeSuspendData(
       const encodedAnswers = isRecord(encodedPage) ? encodedPage.a : undefined;
       if (isRecord(encodedAnswers)) {
         const answers: Record<string, AnswerValue> = {};
-        for (const [questionIndex, question] of Object.entries(
-          page.questions,
-        )) {
+        for (const [questionIndex, question] of Object.entries(page.questions)) {
           if (!safeKey(question.id)) continue;
           const selection = encodedAnswers[questionIndex];
           const selections = Array.isArray(selection)
@@ -133,16 +117,12 @@ export function decodeSuspendData(
               ? [selection]
               : [];
           const values = [...new Set(selections)]
-            .filter(
-              (index): index is number =>
-                Number.isSafeInteger(index) && index >= 0,
-            )
+            .filter((index): index is number => Number.isSafeInteger(index) && index >= 0)
             .sort((left, right) => left - right)
             .map((index) => question.options[String(index)]?.value)
             .filter((value): value is string => typeof value === 'string');
           if (values.length === 0) continue;
-          answers[question.id] =
-            question.type === 'multiple-choice' ? values : values[0]!;
+          answers[question.id] = question.type === 'multiple-choice' ? values : values[0]!;
         }
         if (Object.keys(answers).length > 0) pageState.answers = answers;
       }

@@ -73,9 +73,7 @@ describe('core package helpers', () => {
   });
 
   it('calculates integer progress from completed scroll pages and visited grid items', () => {
-    expect(
-      getPackageProgress(contentPackage, { pages: { a: { visited: true } } }),
-    ).toBe(50);
+    expect(getPackageProgress(contentPackage, { pages: { a: { visited: true } } })).toBe(50);
     const scroll: ContentPackage = {
       metadata: { title: 'Scroll' },
       presentation: {
@@ -89,12 +87,8 @@ describe('core package helpers', () => {
         })),
       },
     };
-    expect(
-      getPackageProgress(scroll, { pages: { one: { completed: true } } }),
-    ).toBe(33);
-    expect(
-      getPackageProgress(scroll, { pages: { one: { visited: true } } }),
-    ).toBe(0);
+    expect(getPackageProgress(scroll, { pages: { one: { completed: true } } })).toBe(33);
+    expect(getPackageProgress(scroll, { pages: { one: { visited: true } } })).toBe(0);
   });
 
   it('collects assets from tight list inline runs and their sibling blocks', () => {
@@ -137,10 +131,7 @@ describe('core package helpers', () => {
         ],
       },
     };
-    expect(collectAssetReferences(tight)).toEqual([
-      'block/tight.svg',
-      'inline/tight.svg',
-    ]);
+    expect(collectAssetReferences(tight)).toEqual(['block/tight.svg', 'inline/tight.svg']);
   });
 
   it('collects local media references recursively throughout the content AST', () => {

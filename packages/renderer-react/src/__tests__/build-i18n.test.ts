@@ -7,8 +7,7 @@ import { renderReactPackage } from '..';
 
 function packageWith(lang: string | undefined): ContentPackage {
   return {
-    metadata:
-      lang === undefined ? { title: 'Package' } : { title: 'Package', lang },
+    metadata: lang === undefined ? { title: 'Package' } : { title: 'Package', lang },
     presentation: { type: 'scroll', pages: [] },
   };
 }
@@ -19,9 +18,7 @@ async function readBundle(outputDirectory: string): Promise<string> {
     await Promise.all(
       assets
         .filter((name) => name.endsWith('.js'))
-        .map((name) =>
-          readFile(path.join(outputDirectory, 'assets', name), 'utf-8'),
-        ),
+        .map((name) => readFile(path.join(outputDirectory, 'assets', name), 'utf-8')),
     )
   ).join('\n');
 }
@@ -43,10 +40,7 @@ describe('renderReactPackage language handling', () => {
     const outputDirectory = path.join(workDir, 'pt');
     await renderReactPackage(packageWith('pt-BR'), { outputDirectory });
 
-    const indexHtml = await readFile(
-      path.join(outputDirectory, 'index.html'),
-      'utf-8',
-    );
+    const indexHtml = await readFile(path.join(outputDirectory, 'index.html'), 'utf-8');
     expect(indexHtml).toContain('<html lang="pt-BR">');
     expect(indexHtml).toContain('<title>Package</title>');
 
@@ -62,10 +56,7 @@ describe('renderReactPackage language handling', () => {
       const outputDirectory = path.join(workDir, 'fr');
       await renderReactPackage(packageWith('fr'), { outputDirectory });
 
-      const indexHtml = await readFile(
-        path.join(outputDirectory, 'index.html'),
-        'utf-8',
-      );
+      const indexHtml = await readFile(path.join(outputDirectory, 'index.html'), 'utf-8');
       expect(indexHtml).toContain('<html lang="fr">');
 
       const unsupportedWarnings = warn.mock.calls

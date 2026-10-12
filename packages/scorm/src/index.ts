@@ -22,23 +22,17 @@ function identifier(value: string): string {
   return safe || 'scorm-package';
 }
 
-export function createManifest(
-  metadata: PackageScormOptions['metadata'],
-  files: string[],
-): string {
+export function createManifest(metadata: PackageScormOptions['metadata'], files: string[]): string {
   const id = identifier(metadata.title);
-  const manifest = create({ version: '1.0', encoding: 'UTF-8' }).ele(
-    'manifest',
-    {
-      identifier: id,
-      version: '1.0',
-      xmlns: 'http://www.imsproject.org/xsd/imscp_rootv1p1p2',
-      'xmlns:adlcp': 'http://www.adlnet.org/xsd/adlcp_rootv1p2',
-      'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
-      'xsi:schemaLocation':
-        'http://www.imsproject.org/xsd/imscp_rootv1p1p2 imscp_rootv1p1p2.xsd http://www.adlnet.org/xsd/adlcp_rootv1p2 adlcp_rootv1p2.xsd',
-    },
-  );
+  const manifest = create({ version: '1.0', encoding: 'UTF-8' }).ele('manifest', {
+    identifier: id,
+    version: '1.0',
+    xmlns: 'http://www.imsproject.org/xsd/imscp_rootv1p1p2',
+    'xmlns:adlcp': 'http://www.adlnet.org/xsd/adlcp_rootv1p2',
+    'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
+    'xsi:schemaLocation':
+      'http://www.imsproject.org/xsd/imscp_rootv1p1p2 imscp_rootv1p1p2.xsd http://www.adlnet.org/xsd/adlcp_rootv1p2 adlcp_rootv1p2.xsd',
+  });
 
   const manifestMetadata = manifest.ele('metadata');
   manifestMetadata.ele('schema').txt('ADL SCORM');
@@ -79,16 +73,12 @@ export function createManifest(
   })}\n`;
 }
 
-async function walkFiles(
-  directory: string,
-  current = directory,
-): Promise<string[]> {
+async function walkFiles(directory: string, current = directory): Promise<string[]> {
   const entries = await fs.readdir(current, { withFileTypes: true });
   const result: string[] = [];
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     const absolute = path.join(current, entry.name);
-    if (entry.isDirectory())
-      result.push(...(await walkFiles(directory, absolute)));
+    if (entry.isDirectory()) result.push(...(await walkFiles(directory, absolute)));
     else if (entry.isFile())
       result.push(path.relative(directory, absolute).split(path.sep).join('/'));
   }
@@ -100,8 +90,7 @@ async function injectRuntime(entrypoint: string): Promise<void> {
   const tag = '<script src="scorm-runtime.js"></script>';
   const headEnd = html.search(/<\/head\s*>/i);
   const script = html.search(/<script\b/i);
-  const insertAt =
-    script >= 0 && (headEnd < 0 || script < headEnd) ? script : headEnd;
+  const insertAt = script >= 0 && (headEnd < 0 || script < headEnd) ? script : headEnd;
   const updated =
     insertAt >= 0
       ? `${html.slice(0, insertAt)}${tag}\n  ${html.slice(insertAt)}`
@@ -110,19 +99,11 @@ async function injectRuntime(entrypoint: string): Promise<void> {
 }
 
 /** Stage a rendered web app as a single SCORM 1.2 SCO and write a ZIP archive. */
-export async function packageScorm(
-  options: PackageScormOptions,
-): Promise<string> {
+export async function packageScorm(options: PackageScormOptions): Promise<string> {
   const sourceDirectory = path.resolve(options.renderResult.directory);
-  const sourceEntrypoint = path.resolve(
-    sourceDirectory,
-    options.renderResult.entrypoint,
-  );
+  const sourceEntrypoint = path.resolve(sourceDirectory, options.renderResult.entrypoint);
   const relativeEntrypoint = path.relative(sourceDirectory, sourceEntrypoint);
-  if (
-    relativeEntrypoint.startsWith('..') ||
-    path.isAbsolute(relativeEntrypoint)
-  ) {
+  if (relativeEntrypoint.startsWith('..') || path.isAbsolute(relativeEntrypoint)) {
     throw new Error('renderer entrypoint must be inside its output directory');
   }
 
@@ -138,9 +119,7 @@ export async function packageScorm(
     if (path.basename(stageEntrypoint) !== 'index.html')
       throw new Error('renderer entrypoint must be named index.html');
     if (path.dirname(relativeEntrypoint) !== '.')
-      throw new Error(
-        'renderer entrypoint must be at the root of its output directory',
-      );
+      throw new Error('renderer entrypoint must be at the root of its output directory');
     const rendererFiles = await walkFiles(stage);
     if (
       rendererFiles.includes('imsmanifest.xml') ||

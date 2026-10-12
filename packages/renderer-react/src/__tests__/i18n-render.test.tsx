@@ -20,9 +20,7 @@ import { PlayerI18nProvider } from '../../app/lib/player-i18n';
 import { questionnaireNode } from './fixtures';
 
 function render(lang: string | undefined, ui: ReactNode): string {
-  return renderToStaticMarkup(
-    <PlayerI18nProvider lang={lang}>{ui}</PlayerI18nProvider>,
-  );
+  return renderToStaticMarkup(<PlayerI18nProvider lang={lang}>{ui}</PlayerI18nProvider>);
 }
 
 const videoNode = {
@@ -74,8 +72,7 @@ function pathView(): string {
 
 function emptyPackage(lang?: string): ContentPackage {
   return {
-    metadata:
-      lang === undefined ? { title: 'Empty' } : { title: 'Empty', lang },
+    metadata: lang === undefined ? { title: 'Empty' } : { title: 'Empty', lang },
     presentation: { type: 'scroll', pages: [] },
   };
 }
@@ -111,20 +108,14 @@ describe('player i18n: English', () => {
   });
 
   it('renders the questionnaire wizard labels', () => {
-    const html = render(
-      undefined,
-      <QuestionnaireView node={questionnaireNode} />,
-    );
+    const html = render(undefined, <QuestionnaireView node={questionnaireNode} />);
     expect(html).toContain('Previous question');
     expect(html).toContain('Next question');
     expect(html).toContain('Submit questionnaire');
   });
 
   it('renders the questionnaire progress counter with progressbar semantics', () => {
-    const html = render(
-      undefined,
-      <QuestionnaireView node={questionnaireNode} />,
-    );
+    const html = render(undefined, <QuestionnaireView node={questionnaireNode} />);
     expect(html).toContain('role="progressbar"');
     // English keeps the primitive's default accessible name unchanged.
     expect(html).toContain('aria-label="Questionnaire progress"');
@@ -147,9 +138,7 @@ describe('player i18n: English', () => {
   });
 
   it('renders the empty package message', () => {
-    const html = renderToStaticMarkup(
-      <PackageApp contentPackage={emptyPackage()} />,
-    );
+    const html = renderToStaticMarkup(<PackageApp contentPackage={emptyPackage()} />);
     expect(html).toContain('This package does not contain any content.');
   });
 
@@ -182,20 +171,14 @@ describe('player i18n: Brazilian Portuguese', () => {
   });
 
   it('renders the questionnaire wizard labels', () => {
-    const html = render(
-      'pt-BR',
-      <QuestionnaireView node={questionnaireNode} />,
-    );
+    const html = render('pt-BR', <QuestionnaireView node={questionnaireNode} />);
     expect(html).toContain('Pergunta anterior');
     expect(html).toContain('Próxima pergunta');
     expect(html).toContain('Enviar questionário');
   });
 
   it('renders the questionnaire progress counter with progressbar semantics', () => {
-    const html = render(
-      'pt-BR',
-      <QuestionnaireView node={questionnaireNode} />,
-    );
+    const html = render('pt-BR', <QuestionnaireView node={questionnaireNode} />);
     expect(html).toContain('role="progressbar"');
     // The accessible name is localized rather than the primitive's English.
     expect(html).toContain('aria-label="Progresso do questionário"');
@@ -231,9 +214,7 @@ describe('player i18n: Brazilian Portuguese', () => {
   });
 
   it('renders the empty package message', () => {
-    const html = renderToStaticMarkup(
-      <PackageApp contentPackage={emptyPackage('pt-BR')} />,
-    );
+    const html = renderToStaticMarkup(<PackageApp contentPackage={emptyPackage('pt-BR')} />);
     expect(html).toContain('Este pacote não contém nenhum conteúdo.');
   });
 });
@@ -247,9 +228,7 @@ describe('player i18n: unsupported languages fall back to English', () => {
   });
 
   it('renders the English empty package message', () => {
-    const html = renderToStaticMarkup(
-      <PackageApp contentPackage={emptyPackage('fr')} />,
-    );
+    const html = renderToStaticMarkup(<PackageApp contentPackage={emptyPackage('fr')} />);
     expect(html).toContain('This package does not contain any content.');
     expect(html).not.toContain('Este pacote');
   });
@@ -257,9 +236,7 @@ describe('player i18n: unsupported languages fall back to English', () => {
 
 describe('player i18n: authored content is never translated', () => {
   it('keeps authored titles, descriptions and body text verbatim', () => {
-    const html = renderToStaticMarkup(
-      <PackageApp contentPackage={authoredPackage('pt-BR')} />,
-    );
+    const html = renderToStaticMarkup(<PackageApp contentPackage={authoredPackage('pt-BR')} />);
     expect(html).toContain('Introdução');
     expect(html).toContain('Texto autoral');
   });
@@ -278,9 +255,7 @@ describe('player i18n: authored content is never translated', () => {
 
 function QuestionnaireDefaults() {
   return (
-    <Questionnaire
-      items={[{ name: 'q1', required: true, choices: [{ value: 'a' }] }]}
-    >
+    <Questionnaire items={[{ name: 'q1', required: true, choices: [{ value: 'a' }] }]}>
       <QuestionnaireItem name='q1' multiple={false} required>
         <QuestionnaireChoices>
           <QuestionnaireChoice value='a'>Option A</QuestionnaireChoice>

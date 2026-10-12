@@ -31,21 +31,13 @@ function makeHot(): {
 
 describe('parsePreviewErrorMessage', () => {
   it('returns a non-empty string message', () => {
-    expect(parsePreviewErrorMessage({ message: 'Missing asset' })).toBe(
-      'Missing asset',
-    );
+    expect(parsePreviewErrorMessage({ message: 'Missing asset' })).toBe('Missing asset');
   });
 
   it('falls back for missing, empty or malformed payloads', () => {
-    expect(parsePreviewErrorMessage(undefined)).toMatch(
-      /could not be rendered/,
-    );
-    expect(parsePreviewErrorMessage({ message: '   ' })).toMatch(
-      /could not be rendered/,
-    );
-    expect(parsePreviewErrorMessage({ message: 42 })).toMatch(
-      /could not be rendered/,
-    );
+    expect(parsePreviewErrorMessage(undefined)).toMatch(/could not be rendered/);
+    expect(parsePreviewErrorMessage({ message: '   ' })).toMatch(/could not be rendered/);
+    expect(parsePreviewErrorMessage({ message: 42 })).toMatch(/could not be rendered/);
   });
 });
 

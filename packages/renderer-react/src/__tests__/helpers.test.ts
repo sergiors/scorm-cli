@@ -42,19 +42,13 @@ describe('isPackageComplete', () => {
   });
 
   it('is true once every page has been visited', () => {
-    expect(
-      isPackageComplete(scrollPackage, ['page:intro.mdx', 'page:setup.mdx']),
-    ).toBe(true);
+    expect(isPackageComplete(scrollPackage, ['page:intro.mdx', 'page:setup.mdx'])).toBe(true);
   });
 
   it('tracks grid items the same way', () => {
     expect(isPackageComplete(gridPackage, ['item:functions.mdx'])).toBe(false);
     expect(
-      isPackageComplete(gridPackage, [
-        'item:functions.mdx',
-        'item:types.mdx',
-        'item:details.mdx',
-      ]),
+      isPackageComplete(gridPackage, ['item:functions.mdx', 'item:types.mdx', 'item:details.mdx']),
     ).toBe(true);
   });
 
@@ -117,10 +111,7 @@ describe('collectQuestionnaireIds', () => {
         children: [nested],
       },
     ];
-    expect(collectQuestionnaireIds(nodes)).toEqual([
-      questionnaireNode.id,
-      nested.id,
-    ]);
+    expect(collectQuestionnaireIds(nodes)).toEqual([questionnaireNode.id, nested.id]);
   });
 });
 
@@ -132,9 +123,7 @@ describe('collectQuestionnaires', () => {
 
   it('returns an empty list for content without questionnaires', () => {
     expect(
-      collectQuestionnaires([
-        { type: 'paragraph', children: [{ type: 'text', value: 'Plain' }] },
-      ]),
+      collectQuestionnaires([{ type: 'paragraph', children: [{ type: 'text', value: 'Plain' }] }]),
     ).toEqual([]);
   });
 });

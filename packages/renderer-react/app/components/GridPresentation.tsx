@@ -5,21 +5,14 @@ import { cn } from '../lib/utils';
 import { ContentRenderer } from './ContentRenderer';
 import { Button } from './ui/button';
 import { Card, CardHeader, CardTitle } from './ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from './ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 
 /**
  * Grid column counts are authored (1-12), so the count travels as a CSS custom
  * property and a single static class carries the responsive rule. On narrow
  * viewports the grid collapses to a single column.
  */
-const GRID_COLUMNS_CLASS =
-  'sm:grid-cols-[repeat(var(--grid-columns),minmax(0,1fr))]';
+const GRID_COLUMNS_CLASS = 'sm:grid-cols-[repeat(var(--grid-columns),minmax(0,1fr))]';
 
 function gridStyle(columns: number | undefined): CSSProperties {
   const safe = Math.min(12, Math.max(1, Math.trunc(columns ?? 2)));
@@ -63,9 +56,7 @@ export function GridPresentation({
   const [selected, setSelected] = useState<ItemNode | undefined>(() =>
     items.find((item) => item.id === initialItemId),
   );
-  const [open, setOpen] = useState(() =>
-    items.some((item) => item.id === initialItemId),
-  );
+  const [open, setOpen] = useState(() => items.some((item) => item.id === initialItemId));
 
   const openItem = (item: ItemNode) => {
     setSelected(item);
@@ -97,10 +88,7 @@ export function GridPresentation({
             <DialogTitle>{selected?.metadata.title}</DialogTitle>
             {selected ? (
               <DialogDescription className='sr-only'>
-                {intl.formatMessage(
-                  { id: 'content.for' },
-                  { title: selected.metadata.title },
-                )}
+                {intl.formatMessage({ id: 'content.for' }, { title: selected.metadata.title })}
               </DialogDescription>
             ) : null}
           </DialogHeader>
@@ -110,12 +98,8 @@ export function GridPresentation({
                 nodes={selected.content}
                 answers={pageState?.answers}
                 submittedQuestionnaires={pageState?.submittedQuestionnaires}
-                onAnswer={(questionId, value) =>
-                  onAnswer(selected.id, questionId, value)
-                }
-                onQuestionnaireSubmitted={(id) =>
-                  onQuestionnaireSubmitted(selected.id, id)
-                }
+                onAnswer={(questionId, value) => onAnswer(selected.id, questionId, value)}
+                onQuestionnaireSubmitted={(id) => onQuestionnaireSubmitted(selected.id, id)}
               />
             </div>
           ) : null}

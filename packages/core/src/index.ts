@@ -39,13 +39,7 @@ export interface ItemNode {
 }
 
 export type InlineNode =
-  | TextNode
-  | EmphasisNode
-  | StrongNode
-  | InlineCodeNode
-  | LinkNode
-  | ImageNode
-  | BreakNode;
+  TextNode | EmphasisNode | StrongNode | InlineCodeNode | LinkNode | ImageNode | BreakNode;
 
 export interface TextNode {
   type: 'text';
@@ -229,10 +223,13 @@ export interface RendererDevServer {
 
 export interface Renderer {
   build(content: ContentPackage, options: RenderOptions): Promise<RenderResult>;
-  dev?(
-    content: ContentPackage,
-    options: RendererDevOptions,
-  ): Promise<RendererDevServer>;
+  dev?(content: ContentPackage, options: RendererDevOptions): Promise<RendererDevServer>;
+}
+
+function presentationNodes(contentPackage: ContentPackage): (PageNode | ItemNode)[] {
+  return contentPackage.presentation.type === 'scroll'
+    ? contentPackage.presentation.pages
+    : contentPackage.presentation.items;
 }
 
 /** Completion is renderer-agnostic: a package is complete after every page/item is visited. */
@@ -240,12 +237,8 @@ export function isPackageComplete(
   contentPackage: ContentPackage,
   visitedItemIds: Iterable<string>,
 ): boolean {
-  const visited =
-    visitedItemIds instanceof Set ? visitedItemIds : new Set(visitedItemIds);
-  const ids =
-    contentPackage.presentation.type === 'scroll'
-      ? contentPackage.presentation.pages.map((page) => page.id)
-      : contentPackage.presentation.items.map((item) => item.id);
+  const visited = visitedItemIds instanceof Set ? visitedItemIds : new Set(visitedItemIds);
+  const ids = presentationNodes(contentPackage).map((node) => node.id);
   return ids.length > 0 && ids.every((id) => visited.has(id));
 }
 
@@ -254,10 +247,7 @@ export function getPackageProgress(
   contentPackage: ContentPackage,
   playerState: PlayerState,
 ): number {
-  const nodes =
-    contentPackage.presentation.type === 'scroll'
-      ? contentPackage.presentation.pages
-      : contentPackage.presentation.items;
+  const nodes = presentationNodes(contentPackage);
   if (nodes.length === 0) return 0;
   const count = nodes.reduce((total, node) => {
     const state = playerState.pages[node.id];
@@ -271,25 +261,16 @@ export function getPackageProgress(
 }
 
 /** Local references in the content AST are normalized relative to the package root. */
-export function collectAssetReferences(
-  contentPackage: ContentPackage,
-): string[] {
+export function collectAssetReferences(contentPackage: ContentPackage): string[] {
   const refs = new Set<string>();
-  const nodes =
-    contentPackage.presentation.type === 'scroll'
-      ? contentPackage.presentation.pages
-      : contentPackage.presentation.items;
+  const nodes = presentationNodes(contentPackage);
   const addLocal = (value: string | undefined) => {
     if (value && !isRemoteReference(value)) refs.add(value);
   };
   const visitInline = (nodes: InlineNode[]) => {
     for (const node of nodes) {
       if (node.type === 'image') addLocal(node.src);
-      else if (
-        node.type === 'emphasis' ||
-        node.type === 'strong' ||
-        node.type === 'link'
-      ) {
+      else if (node.type === 'emphasis' || node.type === 'strong' || node.type === 'link') {
         visitInline(node.children);
       }
     }

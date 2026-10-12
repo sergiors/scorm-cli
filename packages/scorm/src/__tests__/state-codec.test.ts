@@ -92,9 +92,7 @@ describe('compact suspend-data codec', () => {
     });
     expect(Object.keys(encoded).sort()).toEqual(['d', 'p', 'v', 'x']);
     const serialized = JSON.stringify(encoded);
-    expect(serialized).not.toMatch(
-      /location|Private prompt|Red label|correct|red|blue|green/,
-    );
+    expect(serialized).not.toMatch(/location|Private prompt|Red label|correct|red|blue|green/);
     expect(decodeSuspendData(manifest, serialized)).toEqual({
       pages: {
         'page-one': {
@@ -129,9 +127,7 @@ describe('compact suspend-data codec', () => {
       d: { '0': { a: { '0': 1 } }, '1': { a: { '0': 2 } } },
     });
     expect(Object.keys(encoded).sort()).toEqual(['d', 'p', 'v', 'x']);
-    expect(
-      decodeSuspendData(singleChoiceManifest, JSON.stringify(encoded)),
-    ).toEqual({
+    expect(decodeSuspendData(singleChoiceManifest, JSON.stringify(encoded))).toEqual({
       pages: {
         'page-one': { answers: { q1: 'blue' } },
         'page-two': { answers: { q1: 'green' } },
@@ -312,9 +308,7 @@ describe('compact suspend-data codec', () => {
         0,
       ),
     );
-    expect(JSON.stringify(compact)).not.toMatch(
-      /page:next|green|red|Private prompt/,
-    );
+    expect(JSON.stringify(compact)).not.toMatch(/page:next|green|red|Private prompt/);
   });
 
   it('rejects oversized SCORM 1.2 data without writing it, while saving location and committing', () => {
@@ -359,14 +353,10 @@ describe('compact suspend-data codec', () => {
     };
     window.parent = window;
     vm.runInNewContext(createScormRuntime(largeManifest), { window });
-    expect(
-      window.scormBridge.saveState({ location: 'still-saved', pages: {} }),
-    ).toBe(false);
+    expect(window.scormBridge.saveState({ location: 'still-saved', pages: {} })).toBe(false);
     expect(calls).toContainEqual(['cmi.core.lesson_location', 'still-saved']);
     expect(calls.some(([key]) => key === 'cmi.suspend_data')).toBe(false);
     expect(calls.at(-1)).toEqual(['commit']);
-    expect(
-      events.some((event) => event.name === 'lms.suspend-data-too-large'),
-    ).toBe(true);
+    expect(events.some((event) => event.name === 'lms.suspend-data-too-large')).toBe(true);
   });
 });

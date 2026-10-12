@@ -137,10 +137,7 @@ function collectImportBindings(nodes: AstNode[], file: string): ImportBindings {
       if (statement.type !== 'ImportDeclaration') continue;
       const fromAuthoring = statement.source?.value === authoringSource;
       for (const specifier of statement.specifiers ?? []) {
-        const local =
-          typeof specifier.local?.name === 'string'
-            ? specifier.local.name
-            : undefined;
+        const local = typeof specifier.local?.name === 'string' ? specifier.local.name : undefined;
         if (!local) continue;
         if (!fromAuthoring) {
           shadowed.add(local);
@@ -158,9 +155,7 @@ function collectImportBindings(nodes: AstNode[], file: string): ImportBindings {
           );
         if (specifier.type !== 'ImportSpecifier') continue;
         const imported =
-          typeof specifier.imported?.name === 'string'
-            ? specifier.imported.name
-            : undefined;
+          typeof specifier.imported?.name === 'string' ? specifier.imported.name : undefined;
         if (!imported) continue;
         if (!authoringComponents.has(imported))
           fail(
@@ -222,21 +217,13 @@ function resolveComponentName(
 }
 
 /** Records the canonical name of every JSX node in a parsed tree. */
-function resolveComponentNames(
-  nodes: AstNode[],
-  bindings: ImportBindings,
-  file: string,
-): void {
+function resolveComponentNames(nodes: AstNode[], bindings: ImportBindings, file: string): void {
   for (const node of nodes) {
     if (
-      (node.type === 'mdxJsxFlowElement' ||
-        node.type === 'mdxJsxTextElement') &&
+      (node.type === 'mdxJsxFlowElement' || node.type === 'mdxJsxTextElement') &&
       typeof node.name === 'string'
     ) {
-      resolvedComponentNames.set(
-        node,
-        resolveComponentName(node.name, bindings, file, node),
-      );
+      resolvedComponentNames.set(node, resolveComponentName(node.name, bindings, file, node));
     }
     if (node.children) resolveComponentNames(node.children, bindings, file);
   }
@@ -261,36 +248,24 @@ function attrs(node: AstNode, file: string): Record<string, unknown> {
     if (raw === null) output[attr.name] = true;
     else if (typeof raw === 'string') output[attr.name] = raw;
     else if (raw && typeof raw === 'object' && 'value' in raw) {
-      const value = (raw as { value: unknown }).value;
+      const value = raw.value;
       if (typeof value === 'string' && /^(?:true|false)$/.test(value))
         output[attr.name] = value === 'true';
-      else if (typeof value === 'string' && /^\d+$/.test(value))
-        output[attr.name] = Number(value);
-      else
-        fail(
-          file,
-          `dynamic value for attribute "${attr.name}" is not supported`,
-          node,
-        );
-    } else
-      fail(
-        file,
-        `dynamic value for attribute "${attr.name}" is not supported`,
-        node,
-      );
+      else if (typeof value === 'string' && /^\d+$/.test(value)) output[attr.name] = Number(value);
+      else fail(file, `dynamic value for attribute "${attr.name}" is not supported`, node);
+    } else fail(file, `dynamic value for attribute "${attr.name}" is not supported`, node);
   }
   return output;
 }
 
-function requiredString(
-  value: unknown,
-  name: string,
-  file: string,
-  node: AstNode,
-): string {
+function requiredString(value: unknown, name: string, file: string, node: AstNode): string {
   if (typeof value !== 'string' || !value.trim())
     fail(file, `"${name}" must be a non-empty string`, node);
   return value.trim();
+}
+
+function isQuestionType(value: unknown): value is QuestionType {
+  return value === 'single-choice' || value === 'multiple-choice' || value === 'true-false';
 }
 
 function optionalString(
@@ -330,8 +305,7 @@ function assertFrontmatterKeys(
   file: string,
 ): void {
   for (const key of Object.keys(data))
-    if (!allowed.includes(key))
-      fail(file, `unknown frontmatter field "${key}"`);
+    if (!allowed.includes(key)) fail(file, `unknown frontmatter field "${key}"`);
 }
 
 function normalizedRelative(
@@ -343,11 +317,7 @@ function normalizedRelative(
 ): string {
   const rel = path.relative(root, absolute);
   if (!rel || rel === '.')
-    fail(
-      file,
-      `${label} must refer to a file inside the content package directory`,
-      node,
-    );
+    fail(file, `${label} must refer to a file inside the content package directory`, node);
   if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
     fail(file, `${label} resolves outside the content package directory`, node);
   }
@@ -369,20 +339,14 @@ async function assetReference(
     fail(file, `asset reference "${value}" has invalid URL encoding`, node);
   }
   const absolute = path.resolve(path.dirname(sourceFile), decoded);
-  const relative = normalizedRelative(
-    root,
-    absolute,
-    file,
-    node,
-    'asset reference',
-  );
+  const relative = normalizedRelative(root, absolute, file, node, 'asset reference');
   let stat;
   try {
     stat = await fs.stat(absolute);
   } catch {
     fail(file, `asset "${value}" does not exist`, node);
   }
-  if (!stat!.isFile()) fail(file, `asset "${value}" is not a file`, node);
+  if (!stat.isFile()) fail(file, `asset "${value}" is not a file`, node);
   const realRoot = await fs.realpath(root);
   const realAsset = await fs.realpath(absolute);
   const realRelative = path.relative(realRoot, realAsset);
@@ -391,11 +355,7 @@ async function assetReference(
     realRelative.startsWith(`..${path.sep}`) ||
     path.isAbsolute(realRelative)
   ) {
-    fail(
-      file,
-      `asset "${value}" resolves outside the content package directory`,
-      node,
-    );
+    fail(file, `asset "${value}" resolves outside the content package directory`, node);
   }
   return relative;
 }
@@ -403,7 +363,7 @@ async function assetReference(
 function parseMdx(source: string, file: string): { children: AstNode[] } {
   let tree: { children: AstNode[] };
   try {
-    tree = processor.parse(source) as unknown as { children: AstNode[] };
+    tree = processor.parse(source) as { children: AstNode[] };
   } catch (error) {
     const detail = error as {
       message?: string;
@@ -418,20 +378,18 @@ function parseMdx(source: string, file: string): { children: AstNode[] } {
   const definitions = new Map(
     tree.children
       .filter(
-        (node) => node.type === 'definition' && node.identifier && node.url,
+        (node): node is AstNode & { identifier: string; url: string } =>
+          node.type === 'definition' &&
+          typeof node.identifier === 'string' &&
+          typeof node.url === 'string',
       )
-      .map((node) => [node.identifier!.toLowerCase(), node.url!]),
+      .map((node) => [node.identifier.toLowerCase(), node.url]),
   );
   const resolveReferences = (nodes: AstNode[]) => {
     for (const node of nodes) {
       if (node.type === 'linkReference' || node.type === 'imageReference') {
         const url = definitions.get(node.identifier?.toLowerCase() ?? '');
-        if (!url)
-          fail(
-            file,
-            `undefined Markdown reference "${node.identifier ?? ''}"`,
-            node,
-          );
+        if (!url) fail(file, `undefined Markdown reference "${node.identifier ?? ''}"`, node);
         node.type = node.type === 'linkReference' ? 'link' : 'image';
         node.url = url;
       }
@@ -446,9 +404,7 @@ function parseMdx(source: string, file: string): { children: AstNode[] } {
   // bindings; imports are removed before content validation. Non-import ESM
   // (for example `export` statements) is left in place and rejected below.
   tree.children = tree.children.filter(
-    (node) =>
-      node.type !== 'definition' &&
-      !(node.type === 'mdxjsEsm' && isImportOnlyEsm(node)),
+    (node) => node.type !== 'definition' && !(node.type === 'mdxjsEsm' && isImportOnlyEsm(node)),
   );
   return tree;
 }
@@ -475,21 +431,13 @@ async function parseInlineNodes(
       case 'emphasis':
         output.push({
           type: 'emphasis',
-          children: await parseInlineNodes(
-            node.children ?? [],
-            sourceFile,
-            root,
-          ),
+          children: await parseInlineNodes(node.children ?? [], sourceFile, root),
         });
         break;
       case 'strong':
         output.push({
           type: 'strong',
-          children: await parseInlineNodes(
-            node.children ?? [],
-            sourceFile,
-            root,
-          ),
+          children: await parseInlineNodes(node.children ?? [], sourceFile, root),
         });
         break;
       case 'inlineCode':
@@ -499,11 +447,7 @@ async function parseInlineNodes(
         output.push({
           type: 'link',
           href: node.url ?? '',
-          children: await parseInlineNodes(
-            node.children ?? [],
-            sourceFile,
-            root,
-          ),
+          children: await parseInlineNodes(node.children ?? [], sourceFile, root),
         });
         break;
       case 'image':
@@ -540,13 +484,7 @@ async function parseMarkdownImage(
 ): Promise<ImageNode> {
   return {
     type: 'image',
-    src: await assetReference(
-      node.url ?? '',
-      sourceFile,
-      root,
-      sourceFile,
-      node,
-    ),
+    src: await assetReference(node.url ?? '', sourceFile, root, sourceFile, node),
     alt: String(node.alt ?? node.value ?? ''),
   };
 }
@@ -564,9 +502,7 @@ function normalizeListItemChildren(
 ): Array<ContentNode | InlineContentNode> {
   if (!tight) return children;
   return children.map((child) =>
-    child.type === 'paragraph'
-      ? { type: 'inlineContent', children: child.children }
-      : child,
+    child.type === 'paragraph' ? { type: 'inlineContent', children: child.children } : child,
   );
 }
 
@@ -595,21 +531,14 @@ async function parseContentNode(
       return {
         type: 'list',
         ordered: Boolean(node.ordered),
-        ...(node.ordered && node.start != null && node.start !== 1
-          ? { start: node.start }
-          : {}),
+        ...(node.ordered && node.start != null && node.start !== 1 ? { start: node.start } : {}),
         // Carry the source parser's exact tightness through unchanged; no
         // inference from structure or child count.
         ...(typeof node.spread === 'boolean' ? { spread: node.spread } : {}),
         items: await Promise.all(
           (node.children ?? []).map(async (item): Promise<ListItemNode> => ({
             children: normalizeListItemChildren(
-              await contentChildren(
-                item.children ?? [],
-                sourceFile,
-                root,
-                rootPageSources,
-              ),
+              await contentChildren(item.children ?? [], sourceFile, root, rootPageSources),
               tight,
             ),
           })),
@@ -627,12 +556,7 @@ async function parseContentNode(
     case 'blockquote':
       return {
         type: 'quote',
-        children: await contentChildren(
-          node.children ?? [],
-          sourceFile,
-          root,
-          rootPageSources,
-        ),
+        children: await contentChildren(node.children ?? [], sourceFile, root, rootPageSources),
       };
     case 'mdxJsxFlowElement':
       return parseContentComponent(node, sourceFile, root, rootPageSources);
@@ -640,8 +564,7 @@ async function parseContentNode(
       if (componentName(node) !== 'Image')
         if (flowComponents.has(componentName(node)))
           return parseContentComponent(node, sourceFile, root, rootPageSources);
-        else
-          fail(sourceFile, `unknown MDX component <${node.name ?? ''}>`, node);
+        else fail(sourceFile, `unknown MDX component <${node.name ?? ''}>`, node);
       return parseImageComponent(node, sourceFile, root);
     default:
       fail(sourceFile, `unsupported content node "${node.type}"`, node);
@@ -654,17 +577,7 @@ async function parseContentNodes(
   root: string,
   rootPageSources?: Set<string>,
 ): Promise<ContentNode[]> {
-  if (
-    [
-      'text',
-      'emphasis',
-      'strong',
-      'inlineCode',
-      'link',
-      'image',
-      'break',
-    ].includes(node.type)
-  ) {
+  if (['text', 'emphasis', 'strong', 'inlineCode', 'link', 'image', 'break'].includes(node.type)) {
     return [
       {
         type: 'paragraph',
@@ -682,9 +595,7 @@ async function parseContentNodes(
   const flushInline = async () => {
     if (!inlineNodes.length) return;
     const parsed = await parseInlineNodes(inlineNodes, sourceFile, root);
-    if (
-      parsed.some((child) => child.type !== 'text' || child.value.trim() !== '')
-    ) {
+    if (parsed.some((child) => child.type !== 'text' || child.value.trim() !== '')) {
       output.push({ type: 'paragraph', children: parsed });
     }
     inlineNodes = [];
@@ -692,8 +603,7 @@ async function parseContentNodes(
   for (const child of node.children ?? []) {
     if (
       child.type === 'mdxJsxFlowElement' ||
-      (child.type === 'mdxJsxTextElement' &&
-        flowComponents.has(componentName(child)))
+      (child.type === 'mdxJsxTextElement' && flowComponents.has(componentName(child)))
     ) {
       if (componentName(child) === 'Question')
         fail(sourceFile, '<Question> must be inside <Questionnaire>', child);
@@ -711,9 +621,7 @@ async function parseContentNodes(
         );
       }
       await flushInline();
-      output.push(
-        await parseContentNode(child, sourceFile, root, rootPageSources),
-      );
+      output.push(await parseContentNode(child, sourceFile, root, rootPageSources));
     } else {
       inlineNodes.push(child);
     }
@@ -730,23 +638,15 @@ async function parseContentComponent(
 ): Promise<ContentNode> {
   const name = componentName(node);
   const file = sourceFile;
-  if (name === 'Question')
-    fail(file, '<Question> must be inside <Questionnaire>', node);
-  if (name === 'Questionnaire')
-    return parseQuestionnaire(node, sourceFile, root, rootPageSources);
-  if (name === 'Path')
-    return parsePath(node, sourceFile, root, rootPageSources);
+  if (name === 'Question') fail(file, '<Question> must be inside <Questionnaire>', node);
+  if (name === 'Questionnaire') return parseQuestionnaire(node, sourceFile, root, rootPageSources);
+  if (name === 'Path') return parsePath(node, sourceFile, root, rootPageSources);
   const values = attrs(node, file);
   if (name === 'Image') {
     return parseImageComponent(node, sourceFile, root);
   }
   if (name === 'Video') {
-    assertAttributes(
-      values,
-      ['src', 'title', 'poster', 'captions'],
-      file,
-      node,
-    );
+    assertAttributes(values, ['src', 'title', 'poster', 'captions'], file, node);
     const src = requiredString(values.src, 'src', file, node);
     const title = optionalString(values.title, 'title', file, node);
     const poster = optionalString(values.poster, 'poster', file, node);
@@ -755,18 +655,10 @@ async function parseContentComponent(
       type: 'video',
       src: await assetReference(src, sourceFile, root, file, node),
       ...(title ? { title } : {}),
-      ...(poster
-        ? { poster: await assetReference(poster, sourceFile, root, file, node) }
-        : {}),
+      ...(poster ? { poster: await assetReference(poster, sourceFile, root, file, node) } : {}),
       ...(captions
         ? {
-            captions: await assetReference(
-              captions,
-              sourceFile,
-              root,
-              file,
-              node,
-            ),
+            captions: await assetReference(captions, sourceFile, root, file, node),
           }
         : {}),
     };
@@ -811,19 +703,14 @@ async function contentChildren(
   };
   for (const child of nodes) {
     if (whitespace(child)) {
-      if (
-        child.type === 'text' &&
-        inline.length &&
-        !/[\r\n]/.test(String(child.value ?? ''))
-      ) {
+      if (child.type === 'text' && inline.length && !/[\r\n]/.test(String(child.value ?? ''))) {
         inline.push(child);
       } else {
         await flushInline();
       }
       continue;
     }
-    if (child.type === 'mdxjsEsm')
-      fail(sourceFile, 'MDX JavaScript is not supported', child);
+    if (child.type === 'mdxjsEsm') fail(sourceFile, 'MDX JavaScript is not supported', child);
     const inlineType = [
       'text',
       'emphasis',
@@ -833,14 +720,11 @@ async function contentChildren(
       'image',
       'break',
     ].includes(child.type);
-    const inlineImage =
-      child.type === 'mdxJsxTextElement' && componentName(child) === 'Image';
+    const inlineImage = child.type === 'mdxJsxTextElement' && componentName(child) === 'Image';
     if (inlineType || inlineImage) inline.push(child);
     else {
       await flushInline();
-      output.push(
-        ...(await parseContentNodes(child, sourceFile, root, rootPageSources)),
-      );
+      output.push(...(await parseContentNodes(child, sourceFile, root, rootPageSources)));
     }
   }
   await flushInline();
@@ -860,9 +744,7 @@ async function parsePath(
       if (
         child.type === 'paragraph' &&
         (child.children ?? []).every(
-          (nested) =>
-            whitespace(nested) ||
-            (isJsx(nested) && componentName(nested) === 'Page'),
+          (nested) => whitespace(nested) || (isJsx(nested) && componentName(nested) === 'Page'),
         )
       ) {
         return child.children ?? [];
@@ -872,29 +754,17 @@ async function parsePath(
     .filter((child) => !whitespace(child));
 
   if (children.length === 0)
-    fail(
-      file,
-      'Path requires at least one direct <Page ref="..." /> child',
-      node,
-    );
+    fail(file, 'Path requires at least one direct <Page ref="..." /> child', node);
 
   const pageIds: string[] = [];
   const seen = new Set<string>();
   for (const child of children) {
     if (child.type !== 'mdxJsxFlowElement' || componentName(child) !== 'Page') {
       const found = child.name ? `<${child.name}>` : child.type;
-      fail(
-        file,
-        `Path may contain only direct <Page ref="..." /> children; found ${found}`,
-        child,
-      );
+      fail(file, `Path may contain only direct <Page ref="..." /> children; found ${found}`, child);
     }
     if (meaningfulChildren(child.children ?? []).length > 0)
-      fail(
-        file,
-        '<Page> inside <Path> must be self-closing and cannot contain children',
-        child,
-      );
+      fail(file, '<Page> inside <Path> must be self-closing and cannot contain children', child);
     const pageValues = attrs(child, file);
     assertAttributes(pageValues, ['ref'], file, child);
     const ref = requiredString(pageValues.ref, 'ref', file, child);
@@ -904,13 +774,7 @@ async function parsePath(
         'Path references are only valid for pages declared directly in a root <Scroll> presentation',
         child,
       );
-    const source = normalizedRelative(
-      root,
-      path.resolve(root, ref),
-      file,
-      child,
-      'Path Page ref',
-    );
+    const source = normalizedRelative(root, path.resolve(root, ref), file, child, 'Path Page ref');
     if (!rootPageSources.has(source))
       fail(
         file,
@@ -933,16 +797,8 @@ async function parseQuestion(
   const values = attrs(node, file);
   assertAttributes(values, ['type'], file, node);
   const rawType = values.type;
-  if (
-    rawType !== 'single-choice' &&
-    rawType !== 'multiple-choice' &&
-    rawType !== 'true-false'
-  )
-    fail(
-      file,
-      'Question "type" must be "single-choice", "multiple-choice", or "true-false"',
-      node,
-    );
+  if (!isQuestionType(rawType))
+    fail(file, 'Question "type" must be "single-choice", "multiple-choice", or "true-false"', node);
   const children = (node.children ?? [])
     .flatMap((child) => {
       if (
@@ -951,8 +807,7 @@ async function parseQuestion(
           (nested) =>
             whitespace(nested) ||
             (isJsx(nested) &&
-              (componentName(nested) === 'Prompt' ||
-                componentName(nested) === 'Option')),
+              (componentName(nested) === 'Prompt' || componentName(nested) === 'Option')),
         )
       ) {
         return child.children ?? [];
@@ -964,86 +819,48 @@ async function parseQuestion(
   const options: AstNode[] = [];
   for (const child of children) {
     if (!isJsx(child))
-      fail(
-        file,
-        'Question may contain only <Prompt> and <Option> components',
-        child,
-      );
+      fail(file, 'Question may contain only <Prompt> and <Option> components', child);
     if (componentName(child) === 'Prompt') prompts.push(child);
     else if (componentName(child) === 'Option') options.push(child);
     else fail(file, `unknown Question child <${child.name ?? ''}>`, child);
   }
   if (prompts.length !== 1)
-    fail(
-      file,
-      `Question must contain exactly 1 Prompt; found ${prompts.length}`,
-      node,
-    );
+    fail(file, `Question must contain exactly 1 Prompt; found ${prompts.length}`, node);
   if (options.length < 2)
-    fail(
-      file,
-      `Question must contain at least 2 Options; found ${options.length}`,
-      node,
-    );
+    fail(file, `Question must contain at least 2 Options; found ${options.length}`, node);
   const promptNode = prompts[0]!;
   const promptAttrs = attrs(promptNode, file);
   assertAttributes(promptAttrs, [], file, promptNode);
-  const prompt = await contentChildren(
-    promptNode.children ?? [],
-    file,
-    root,
-    rootPageSources,
-  );
+  const prompt = await contentChildren(promptNode.children ?? [], file, root, rootPageSources);
   const seenValues = new Set<string>();
   const parsedOptions: QuestionOption[] = [];
   for (const option of options) {
     const optionAttrs = attrs(option, file);
     assertAttributes(optionAttrs, ['value', 'correct'], file, option);
     const value = requiredString(optionAttrs.value, 'value', file, option);
-    if (seenValues.has(value))
-      fail(file, `Option value "${value}" must be unique`, option);
+    if (seenValues.has(value)) fail(file, `Option value "${value}" must be unique`, option);
     seenValues.add(value);
-    if (
-      optionAttrs.correct !== undefined &&
-      typeof optionAttrs.correct !== 'boolean'
-    )
+    if (optionAttrs.correct !== undefined && typeof optionAttrs.correct !== 'boolean')
       fail(file, 'Option "correct" must be a boolean', option);
     parsedOptions.push({
       value,
       correct: optionAttrs.correct === true,
-      content: await contentChildren(
-        option.children ?? [],
-        file,
-        root,
-        rootPageSources,
-      ),
+      content: await contentChildren(option.children ?? [], file, root, rootPageSources),
     });
   }
   const correctCount = parsedOptions.filter((option) => option.correct).length;
   if (rawType === 'single-choice' && correctCount !== 1)
-    fail(
-      file,
-      'single-choice Question must have exactly one correct Option',
-      node,
-    );
+    fail(file, 'single-choice Question must have exactly one correct Option', node);
   if (rawType === 'multiple-choice' && correctCount < 1)
-    fail(
-      file,
-      'multiple-choice Question must have at least one correct Option',
-      node,
-    );
+    fail(file, 'multiple-choice Question must have at least one correct Option', node);
   if (rawType === 'true-false' && parsedOptions.length !== 2)
     fail(file, 'true-false Question must have exactly 2 Options', node);
   if (rawType === 'true-false' && correctCount !== 1)
-    fail(
-      file,
-      'true-false Question must have exactly one correct Option',
-      node,
-    );
+    fail(file, 'true-false Question must have exactly one correct Option', node);
   return {
     type: 'question',
     id: await sourceNodeId('question', node, file, root),
-    questionType: rawType as QuestionType,
+    questionType: rawType,
     prompt,
     options: parsedOptions,
   };
@@ -1064,8 +881,7 @@ async function sourceNodeId(
   );
   const raw = await fs.readFile(file, 'utf8');
   const bodyStart = raw.indexOf(matter(raw).content);
-  const lineOffset =
-    raw.slice(0, Math.max(0, bodyStart)).split('\n').length - 1;
+  const lineOffset = raw.slice(0, Math.max(0, bodyStart)).split('\n').length - 1;
   const line = lineOffset + (node.position?.start?.line ?? 1);
   const column = node.position?.start?.column ?? 1;
   return `${kind}:${relativeFile}:${line}:${column}`;
@@ -1085,9 +901,7 @@ async function parseQuestionnaire(
       if (
         child.type === 'paragraph' &&
         (child.children ?? []).every(
-          (nested) =>
-            whitespace(nested) ||
-            (isJsx(nested) && componentName(nested) === 'Question'),
+          (nested) => whitespace(nested) || (isJsx(nested) && componentName(nested) === 'Question'),
         )
       ) {
         return child.children ?? [];
@@ -1096,11 +910,7 @@ async function parseQuestionnaire(
     })
     .filter((child) => !whitespace(child));
   if (!children.length)
-    fail(
-      file,
-      'Questionnaire must contain at least one direct <Question>',
-      node,
-    );
+    fail(file, 'Questionnaire must contain at least one direct <Question>', node);
 
   const questions: QuestionNode[] = [];
   for (const child of children) {
@@ -1143,11 +953,7 @@ async function parseReference<T extends PageNode | ItemNode>(
   try {
     raw = await fs.readFile(sourcePath, 'utf8');
   } catch {
-    fail(
-      declaredIn,
-      `${kind === 'page' ? 'Page' : 'Item'} source "${src}" does not exist`,
-      node,
-    );
+    fail(declaredIn, `${kind === 'page' ? 'Page' : 'Item'} source "${src}" does not exist`, node);
   }
   const realRoot = await fs.realpath(root);
   const realSource = await fs.realpath(sourcePath);
@@ -1165,7 +971,7 @@ async function parseReference<T extends PageNode | ItemNode>(
   }
   const parsed = matter(raw!);
   assertFrontmatterKeys(
-    parsed.data as Record<string, unknown>,
+    parsed.data,
     kind === 'page' ? ['title', 'description'] : ['title'],
     sourcePath,
   );
@@ -1221,8 +1027,7 @@ async function parsePresentationChildren<T extends PageNode | ItemNode>(
   const output: T[] = [];
   const expected = kind === 'page' ? 'Page' : 'Item';
   for (const node of meaningfulChildren(nodes)) {
-    if (node.type === 'mdxjsEsm')
-      fail(declaredIn, 'MDX JavaScript is not supported', node);
+    if (node.type === 'mdxjsEsm') fail(declaredIn, 'MDX JavaScript is not supported', node);
     if (node.type !== 'mdxJsxFlowElement' || componentName(node) !== expected) {
       const found = node.name ? `<${node.name}>` : node.type;
       fail(
@@ -1232,11 +1037,7 @@ async function parsePresentationChildren<T extends PageNode | ItemNode>(
       );
     }
     if (meaningfulChildren(node.children ?? []).length > 0)
-      fail(
-        declaredIn,
-        `<${expected}> must be self-closing and cannot contain children`,
-        node,
-      );
+      fail(declaredIn, `<${expected}> must be self-closing and cannot contain children`, node);
     const values = attrs(node, declaredIn);
     assertAttributes(values, ['src'], declaredIn, node);
     const src = requiredString(values.src, 'src', declaredIn, node);
@@ -1255,30 +1056,19 @@ async function parsePresentationChildren<T extends PageNode | ItemNode>(
   return output;
 }
 
-function declaredRootPageSources(
-  nodes: AstNode[],
-  entry: string,
-  root: string,
-): Set<string> {
+function declaredRootPageSources(nodes: AstNode[], entry: string, root: string): Set<string> {
   const sources = new Set<string>();
   for (const node of meaningfulChildren(nodes)) {
     // The normal presentation validator reports malformed children. This
     // preliminary pass only gathers valid root Page declarations so content
     // can resolve forward references while each Page is parsed exactly once.
-    if (node.type !== 'mdxJsxFlowElement' || componentName(node) !== 'Page')
-      continue;
+    if (node.type !== 'mdxJsxFlowElement' || componentName(node) !== 'Page') continue;
     if (meaningfulChildren(node.children ?? []).length > 0) continue;
     const values = attrs(node, entry);
     assertAttributes(values, ['src'], entry, node);
     const src = requiredString(values.src, 'src', entry, node);
     sources.add(
-      normalizedRelative(
-        root,
-        path.resolve(path.dirname(entry), src),
-        entry,
-        node,
-        'Page src',
-      ),
+      normalizedRelative(root, path.resolve(path.dirname(entry), src), entry, node, 'Page src'),
     );
   }
   return sources;
@@ -1322,8 +1112,7 @@ async function parseRootPresentation(
       ids,
       declaredRootPageSources(node.children ?? [], entry, root),
     );
-    if (!pages.length)
-      fail(entry, '<Scroll> must contain at least one <Page>; found 0', node);
+    if (!pages.length) fail(entry, '<Scroll> must contain at least one <Page>; found 0', node);
     return { type: 'scroll', pages } satisfies ScrollNode;
   }
 
@@ -1342,8 +1131,7 @@ async function parseRootPresentation(
     root,
     ids,
   );
-  if (!items.length)
-    fail(entry, '<Grid> must contain at least one <Item>; found 0', node);
+  if (!items.length) fail(entry, '<Grid> must contain at least one <Item>; found 0', node);
   return {
     type: 'grid',
     ...(columns !== undefined ? { columns: Number(columns) } : {}),
@@ -1360,9 +1148,7 @@ export async function parsePackage(pathOrDir: string): Promise<ContentPackage> {
   } catch {
     throw new Error(`${absolute}: content package path does not exist`);
   }
-  const entry = stat.isDirectory()
-    ? path.join(absolute, 'index.mdx')
-    : absolute;
+  const entry = stat.isDirectory() ? path.join(absolute, 'index.mdx') : absolute;
   const root = stat.isDirectory() ? absolute : path.dirname(absolute);
   let source: string;
   try {
@@ -1371,11 +1157,7 @@ export async function parsePackage(pathOrDir: string): Promise<ContentPackage> {
     throw new Error(`${entry}: unable to read content package entry`);
   }
   const parsed = matter(source);
-  assertFrontmatterKeys(
-    parsed.data as Record<string, unknown>,
-    ['title', 'lang'],
-    entry,
-  );
+  assertFrontmatterKeys(parsed.data, ['title', 'lang'], entry);
   const title = requiredString(parsed.data.title, 'title', entry, {
     type: 'frontmatter',
   });

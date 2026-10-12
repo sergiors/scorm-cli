@@ -1,11 +1,4 @@
-import {
-  mkdir,
-  mkdtemp,
-  readdir,
-  readFile,
-  rm,
-  writeFile,
-} from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -40,10 +33,7 @@ beforeAll(async () => {
   });
 
   indexHtml = await readFile(path.join(outputDirectory, 'index.html'), 'utf-8');
-  appJs = await readFile(
-    path.join(outputDirectory, 'assets', 'app.js'),
-    'utf-8',
-  );
+  appJs = await readFile(path.join(outputDirectory, 'assets', 'app.js'), 'utf-8');
 
   // Concatenate every emitted script (not just the entry) so the exclusion
   // checks below cover lazily split dev-only chunks too.
@@ -51,9 +41,7 @@ beforeAll(async () => {
   const jsFiles = assetFiles.filter((name) => name.endsWith('.js'));
   bundleJs = (
     await Promise.all(
-      jsFiles.map((name) =>
-        readFile(path.join(outputDirectory, 'assets', name), 'utf-8'),
-      ),
+      jsFiles.map((name) => readFile(path.join(outputDirectory, 'assets', name), 'utf-8')),
     )
   ).join('\n');
 }, 120_000);
@@ -83,9 +71,7 @@ describe('renderReactPackage', () => {
   });
 
   it('clears stale files from the output directory', async () => {
-    await expect(
-      readFile(path.join(outputDirectory, 'stale.txt'), 'utf-8'),
-    ).rejects.toThrow();
+    await expect(readFile(path.join(outputDirectory, 'stale.txt'), 'utf-8')).rejects.toThrow();
   });
 
   it('embeds deterministic package data in the bundle', () => {
@@ -122,10 +108,7 @@ describe('renderReactPackage', () => {
     const assets = await readdir(path.join(outputDirectory, 'assets'));
     const cssFile = assets.find((name) => name.endsWith('.css'));
     expect(cssFile).toBeDefined();
-    const css = await readFile(
-      path.join(outputDirectory, 'assets', cssFile as string),
-      'utf-8',
-    );
+    const css = await readFile(path.join(outputDirectory, 'assets', cssFile as string), 'utf-8');
     expect(css.length).toBeGreaterThan(0);
     // The Typography plugin is registered and `prose` is applied by the
     // presentations, so the compiled stylesheet must carry its rules.
@@ -134,10 +117,7 @@ describe('renderReactPackage', () => {
   });
 
   it('copies provided assets to their target paths', async () => {
-    const copied = await readFile(
-      path.join(outputDirectory, 'assets', 'thumb.svg'),
-      'utf-8',
-    );
+    const copied = await readFile(path.join(outputDirectory, 'assets', 'thumb.svg'), 'utf-8');
     expect(copied).toBe(SVG);
   });
 
@@ -156,9 +136,9 @@ describe('renderReactPackage', () => {
   });
 
   it('requires an output directory', async () => {
-    await expect(
-      renderReactPackage(samplePackage, { outputDirectory: '' }),
-    ).rejects.toThrow(/outputDirectory/);
+    await expect(renderReactPackage(samplePackage, { outputDirectory: '' })).rejects.toThrow(
+      /outputDirectory/,
+    );
   });
 });
 

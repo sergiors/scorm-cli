@@ -9,21 +9,9 @@ import type {
   RendererDevScript,
   RendererDevServer,
 } from '@scorm-cli/core';
-import {
-  createServer,
-  searchForWorkspaceRoot,
-  type Plugin,
-  type ViteDevServer,
-} from 'vite';
-import {
-  PREVIEW_CLEAR_EVENT,
-  PREVIEW_ERROR_EVENT,
-} from '../app/lib/preview-events';
-import {
-  createPackageDataPlugin,
-  resolveAppRoot,
-  RESOLVED_PACKAGE_DATA_ID,
-} from './vite-app';
+import { createServer, searchForWorkspaceRoot, type Plugin, type ViteDevServer } from 'vite';
+import { PREVIEW_CLEAR_EVENT, PREVIEW_ERROR_EVENT } from '../app/lib/preview-events';
+import { createPackageDataPlugin, resolveAppRoot, RESOLVED_PACKAGE_DATA_ID } from './vite-app';
 
 const DEFAULT_PORT = 5173;
 const DEFAULT_HOST = 'localhost';
@@ -50,10 +38,7 @@ export async function renderReactDevServer(
   const host = options.host ?? DEFAULT_HOST;
   // Vite treats port 0 as "unset" and falls back to 5173, so resolve an
   // ephemeral port ourselves to honour the conventional meaning of 0.
-  const port =
-    options.port === 0
-      ? await findFreePort(host)
-      : (options.port ?? DEFAULT_PORT);
+  const port = options.port === 0 ? await findFreePort(host) : (options.port ?? DEFAULT_PORT);
   const appRoot = resolveAppRoot(import.meta.url);
 
   const handle = { current: contentPackage };
@@ -162,11 +147,7 @@ function invalidatePackageData(server: ViteDevServer): void {
   }
 }
 
-function resolveServerUrl(
-  server: ViteDevServer,
-  host: string,
-  port: number,
-): string {
+function resolveServerUrl(server: ViteDevServer, host: string, port: number): string {
   const resolved = server.resolvedUrls;
   const first = resolved?.local[0] ?? resolved?.network[0];
   if (first) {

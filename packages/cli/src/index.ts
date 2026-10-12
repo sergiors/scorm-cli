@@ -7,10 +7,7 @@ const cli = cac('scorm');
 
 cli
   .command('build <content>', 'Build a SCORM 1.2 package from authored content')
-  .option(
-    '-o, --output <path>',
-    'Output ZIP path (default: dist/<content-name>.zip)',
-  )
+  .option('-o, --output <path>', 'Output ZIP path (default: dist/<content-name>.zip)')
   .example('scorm build examples/typescript-content')
   .action(async (content: string, options: { output?: string }) => {
     try {
@@ -29,12 +26,8 @@ cli
   .example('scorm dev examples/typescript-content')
   .action(async (content: string, options: { port?: string | number }) => {
     try {
-      const port =
-        options.port === undefined ? undefined : Number(options.port);
-      if (
-        port !== undefined &&
-        (!Number.isInteger(port) || port < 0 || port > 65535)
-      ) {
+      const port = options.port === undefined ? undefined : Number(options.port);
+      if (port !== undefined && (!Number.isInteger(port) || port < 0 || port > 65535)) {
         throw new Error('--port must be an integer between 0 and 65535');
       }
       const session = await startDevPackage(content, { port });
@@ -47,8 +40,7 @@ cli
         void session
           .close()
           .catch((error) => {
-            const message =
-              error instanceof Error ? error.message : String(error);
+            const message = error instanceof Error ? error.message : String(error);
             console.error(`Error closing dev server: ${message}`);
           })
           .finally(() => {

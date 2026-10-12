@@ -21,12 +21,9 @@ export async function buildPackage(
   outputPath?: string,
   rendererBuild?: Renderer['build'],
 ): Promise<string> {
-  const { content: contentPackage, contentRoot } =
-    await loadPackage(contentPath);
+  const { content: contentPackage, contentRoot } = await loadPackage(contentPath);
   const contentManifest = createContentManifest(contentPackage);
-  const output = path.resolve(
-    outputPath ?? path.join('dist', `${packageName(contentPath)}.zip`),
-  );
+  const output = path.resolve(outputPath ?? path.join('dist', `${packageName(contentPath)}.zip`));
   const renderer = rendererBuild ?? (await loadRenderer()).build;
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'scorm-cli-build-'));
   const renderedDirectory = path.join(tempRoot, 'rendered');

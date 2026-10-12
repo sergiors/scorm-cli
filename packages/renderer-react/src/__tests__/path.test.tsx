@@ -31,9 +31,7 @@ function ContentRenderer(props: ComponentProps<typeof ContentRendererBase>) {
   );
 }
 
-function QuestionnaireView(
-  props: ComponentProps<typeof QuestionnaireViewBase>,
-) {
+function QuestionnaireView(props: ComponentProps<typeof QuestionnaireViewBase>) {
   return (
     <PlayerI18nProvider>
       <QuestionnaireViewBase {...props} />
@@ -74,11 +72,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function referencePage(
-  id: string,
-  title: string,
-  description?: string,
-): PageNode {
+function referencePage(id: string, title: string, description?: string): PageNode {
   return {
     type: 'page',
     id,
@@ -88,12 +82,7 @@ function referencePage(
   };
 }
 
-const refIds = [
-  'page:one.mdx',
-  'page:two.mdx',
-  'page:three.mdx',
-  'page:four.mdx',
-];
+const refIds = ['page:one.mdx', 'page:two.mdx', 'page:three.mdx', 'page:four.mdx'];
 
 const pathNode: PathNode = { type: 'path', pageIds: refIds };
 
@@ -126,9 +115,7 @@ function statuses(html: string): Array<string | null> {
   );
 }
 
-function pageStatesFor(
-  visited: readonly boolean[],
-): Record<string, PlayerPageState> {
+function pageStatesFor(visited: readonly boolean[]): Record<string, PlayerPageState> {
   const states: Record<string, PlayerPageState> = {};
   refIds.forEach((id, index) => {
     if (visited[index]) {
@@ -169,26 +156,10 @@ describe('canOpenPathPage', () => {
 
 describe('PathView status vectors', () => {
   const vectors: Array<[string, boolean[], string[]]> = [
-    [
-      '0000',
-      [false, false, false, false],
-      ['available', 'locked', 'locked', 'locked'],
-    ],
-    [
-      '1000',
-      [true, false, false, false],
-      ['visited', 'available', 'locked', 'locked'],
-    ],
-    [
-      '1100',
-      [true, true, false, false],
-      ['visited', 'visited', 'available', 'locked'],
-    ],
-    [
-      '1110',
-      [true, true, true, false],
-      ['visited', 'visited', 'visited', 'available'],
-    ],
+    ['0000', [false, false, false, false], ['available', 'locked', 'locked', 'locked']],
+    ['1000', [true, false, false, false], ['visited', 'available', 'locked', 'locked']],
+    ['1100', [true, true, false, false], ['visited', 'visited', 'available', 'locked']],
+    ['1110', [true, true, true, false], ['visited', 'visited', 'visited', 'available']],
   ];
 
   for (const [label, visited, expected] of vectors) {
@@ -208,9 +179,7 @@ describe('PathView status vectors', () => {
       pageStates: {},
       onNavigatePathPage: () => {},
     });
-    const entries = Array.from(
-      host(html).querySelectorAll<HTMLButtonElement>('[data-path-entry]'),
-    );
+    const entries = Array.from(host(html).querySelectorAll<HTMLButtonElement>('[data-path-entry]'));
     expect(entries).toHaveLength(4);
     expect(entries[0]?.disabled).toBe(false);
     for (const locked of entries.slice(1)) {
@@ -226,25 +195,21 @@ describe('PathView display metadata', () => {
       pageStates: {},
       onNavigatePathPage: () => {},
     });
-    const entries = Array.from(
-      host(html).querySelectorAll('[data-path-entry]'),
-    );
+    const entries = Array.from(host(html).querySelectorAll('[data-path-entry]'));
 
     expect(entries[0]?.textContent).toContain('One');
-    expect(
-      entries[0]?.querySelector('[data-slot="item-description"]')?.textContent,
-    ).toBe('The first page');
+    expect(entries[0]?.querySelector('[data-slot="item-description"]')?.textContent).toBe(
+      'The first page',
+    );
 
     // A page without a description renders only its required title.
     expect(entries[1]?.textContent).toContain('Two');
-    expect(
-      entries[1]?.querySelector('[data-slot="item-description"]'),
-    ).toBeNull();
+    expect(entries[1]?.querySelector('[data-slot="item-description"]')).toBeNull();
 
     expect(entries[3]?.textContent).toContain('Four');
-    expect(
-      entries[3]?.querySelector('[data-slot="item-description"]')?.textContent,
-    ).toBe('The last page');
+    expect(entries[3]?.querySelector('[data-slot="item-description"]')?.textContent).toBe(
+      'The last page',
+    );
   });
 
   it('falls back to the reference id when a page cannot be resolved', () => {
@@ -259,9 +224,7 @@ describe('PathView display metadata', () => {
 
 describe('PathView navigation', () => {
   function entries(): HTMLButtonElement[] {
-    return Array.from(
-      container.querySelectorAll<HTMLButtonElement>('[data-path-entry]'),
-    );
+    return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-path-entry]'));
   }
 
   it('navigates from available and visited entries', () => {
@@ -318,13 +281,7 @@ describe('PathView navigation', () => {
 
   it('renders inert without a page-switching callback', () => {
     act(() =>
-      root.render(
-        <ContentRenderer
-          nodes={[pathNode]}
-          pathPages={refPages}
-          pageStates={{}}
-        />,
-      ),
+      root.render(<ContentRenderer nodes={[pathNode]} pathPages={refPages} pageStates={{}} />),
     );
 
     const first = entries()[0]!;
@@ -352,9 +309,7 @@ describe('QuestionnaireView nested Path', () => {
   };
 
   function pathEntries(): HTMLButtonElement[] {
-    return Array.from(
-      container.querySelectorAll<HTMLButtonElement>('[data-path-entry]'),
-    );
+    return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-path-entry]'));
   }
 
   it('resolves reference status and navigation in prompt and option content', () => {
@@ -454,9 +409,7 @@ describe('PackageView Path navigation', () => {
     id: 'page:later.mdx',
     source: 'later.mdx',
     metadata: { title: 'Later' },
-    content: [
-      { type: 'paragraph', children: [{ type: 'text', value: 'Later body.' }] },
-    ],
+    content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Later body.' }] }],
   };
   const contentPackage: ContentPackage = {
     metadata: { title: 'Path package' },
@@ -464,9 +417,7 @@ describe('PackageView Path navigation', () => {
   };
 
   function entries(): HTMLButtonElement[] {
-    return Array.from(
-      container.querySelectorAll<HTMLButtonElement>('[data-path-entry]'),
-    );
+    return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-path-entry]'));
   }
 
   it('switches pages without mounting a duplicate and reuses visited state', () => {
@@ -478,10 +429,7 @@ describe('PackageView Path navigation', () => {
     // Only the gateway is mounted; its Path offers the first reference and locks
     // the rest.
     expect(sceneIndices(container)).toEqual([0]);
-    expect(entries().map((entry) => entry.dataset.pathStatus)).toEqual([
-      'available',
-      'locked',
-    ]);
+    expect(entries().map((entry) => entry.dataset.pathStatus)).toEqual(['available', 'locked']);
 
     // A locked entry cannot move the presentation.
     act(() => entries()[1]?.click());
@@ -510,17 +458,14 @@ describe('PackageView Path navigation', () => {
     expect(sceneIndices(container)).toEqual([1]);
 
     // Return to the gateway through the existing previous control.
-    const previous = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button'),
-    ).find((button) => button.textContent?.includes('Previous page'));
+    const previous = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
+      (button) => button.textContent?.includes('Previous page'),
+    );
     act(() => previous?.click());
     expect(sceneIndices(container)).toEqual([0]);
 
     // The visited reference stays open and unlocks the entry after it.
-    expect(entries().map((entry) => entry.dataset.pathStatus)).toEqual([
-      'visited',
-      'available',
-    ]);
+    expect(entries().map((entry) => entry.dataset.pathStatus)).toEqual(['visited', 'available']);
 
     act(() => entries()[1]?.click());
     expect(sceneIndices(container)).toEqual([2]);

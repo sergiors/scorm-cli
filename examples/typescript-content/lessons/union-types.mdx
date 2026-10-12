@@ -42,8 +42,7 @@ literal field, often called a discriminant, so a single check selects the right
 branch.
 
 ```ts
-type Result =
-  { status: 'ok'; value: number } | { status: 'error'; message: string };
+type Result = { status: 'ok'; value: number } | { status: 'error'; message: string };
 
 function describe(result: Result): string {
   if (result.status === 'ok') {
@@ -69,8 +68,7 @@ the wrong field, which catches mistakes before the code runs.
 <Questionnaire>
   <Question type='single-choice'>
     <Prompt>
-      Inside `if (typeof value === 'string')`, what does TypeScript know about
-      `value`?
+      Inside `if (typeof value === 'string')`, what does TypeScript know about `value`?
     </Prompt>
     <Option value='narrowed' correct={true}>
       It is a `string`, so string methods are safe to call

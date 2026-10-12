@@ -1,11 +1,6 @@
 import { Fragment } from 'react';
 import type { ComponentType, ReactNode } from 'react';
-import type {
-  AnswerValue,
-  ContentNode,
-  PageNode,
-  PlayerPageState,
-} from '../types';
+import type { AnswerValue, ContentNode, PageNode, PlayerPageState } from '../types';
 import { useIntl } from 'react-intl';
 import { cn } from '../lib/utils';
 import { InlineContent } from './InlineContent';
@@ -85,10 +80,7 @@ type ContentNodeRenderContext = Omit<ContentRendererProps, 'nodes'>;
 type ContentNodeType = ContentNode['type'];
 
 /** The exact node interface behind a block discriminant, e.g. `ImageNode`. */
-type ContentNodeOf<T extends ContentNodeType> = Extract<
-  ContentNode,
-  { type: T }
->;
+type ContentNodeOf<T extends ContentNodeType> = Extract<ContentNode, { type: T }>;
 
 /**
  * Props shared by every block view: the exact node interface behind its
@@ -142,14 +134,9 @@ function ListItemView({
     <li>
       {item.children.map((child, index) =>
         child.type === 'inlineContent' ? (
-          <InlineContent
-            key={`inlineContent-${index}`}
-            nodes={child.children}
-          />
+          <InlineContent key={`inlineContent-${index}`} nodes={child.children} />
         ) : (
-          <Fragment key={`${child.type}-${index}`}>
-            {renderContentNode(child, context)}
-          </Fragment>
+          <Fragment key={`${child.type}-${index}`}>{renderContentNode(child, context)}</Fragment>
         ),
       )}
     </li>
@@ -173,9 +160,7 @@ function ListView({ node, context }: ContentNodeViewProps<'list'>) {
 function CodeView({ node }: ContentNodeViewProps<'code'>) {
   return (
     <pre className='text-sm font-mono not-prose overflow-x-auto rounded-2xl border border-border bg-secondary p-6'>
-      <code className={node.language ? `language-${node.language}` : undefined}>
-        {node.value}
-      </code>
+      <code className={node.language ? `language-${node.language}` : undefined}>{node.value}</code>
     </pre>
   );
 }
@@ -194,10 +179,7 @@ function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
       src={node.src}
       alt={node.alt}
       loading='lazy'
-      className={cn(
-        'h-auto max-w-full rounded-2xl overflow-hidden',
-        node.caption ? undefined : '',
-      )}
+      className={cn('h-auto max-w-full rounded-2xl overflow-hidden', node.caption ? undefined : '')}
     />
   );
   if (!node.caption) {
@@ -206,9 +188,7 @@ function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
   return (
     <figure className='space-y-2'>
       {image}
-      <figcaption className='text-sm text-muted-foreground'>
-        {node.caption}
-      </figcaption>
+      <figcaption className='text-sm text-muted-foreground'>{node.caption}</figcaption>
     </figure>
   );
 }
@@ -239,9 +219,7 @@ function VideoView({ node }: ContentNodeViewProps<'video'>) {
       </video>
 
       {node.title ? (
-        <figcaption className='text-sm text-muted-foreground'>
-          {node.title}
-        </figcaption>
+        <figcaption className='text-sm text-muted-foreground'>{node.title}</figcaption>
       ) : null}
     </figure>
   );
@@ -253,10 +231,7 @@ function VideoView({ node }: ContentNodeViewProps<'video'>) {
  * questionnaire prompt or option may itself contain a Path block, which then
  * resolves its references and navigation through the same presentation.
  */
-function QuestionnaireBlockView({
-  node,
-  context,
-}: ContentNodeViewProps<'questionnaire'>) {
+function QuestionnaireBlockView({ node, context }: ContentNodeViewProps<'questionnaire'>) {
   return (
     <QuestionnaireView
       node={node}
@@ -307,9 +282,7 @@ export function ContentRenderer({ nodes, ...context }: ContentRendererProps) {
   return (
     <>
       {nodes.map((node, index) => (
-        <Fragment key={`${node.type}-${index}`}>
-          {renderContentNode(node, context)}
-        </Fragment>
+        <Fragment key={`${node.type}-${index}`}>{renderContentNode(node, context)}</Fragment>
       ))}
     </>
   );
@@ -321,15 +294,10 @@ export function ContentRenderer({ nodes, ...context }: ContentRendererProps) {
  * expresses the correlation TypeScript cannot follow through a union-indexed
  * lookup — the node's discriminant guarantees the resolved view matches it.
  */
-function renderContentNode(
-  node: ContentNode,
-  context: ContentNodeRenderContext,
-): ReactNode {
+function renderContentNode(node: ContentNode, context: ContentNodeRenderContext): ReactNode {
   if (!Object.hasOwn(contentNodeRenderers, node.type)) {
     // Runtime guard for malformed content: never silently drop a node.
-    throw new Error(
-      `Unsupported content node type: ${String(node.type ?? 'unknown')}`,
-    );
+    throw new Error(`Unsupported content node type: ${String(node.type ?? 'unknown')}`);
   }
   const View = contentNodeRenderers[node.type] as ComponentType<{
     node: ContentNode;

@@ -13,12 +13,8 @@ export interface LoadedPackage {
 export async function loadPackage(contentPath: string): Promise<LoadedPackage> {
   const absolutePath = path.resolve(contentPath);
   const stats = await fs.stat(absolutePath);
-  const contentRoot = stats.isDirectory()
-    ? absolutePath
-    : path.dirname(absolutePath);
-  const entrypoint = stats.isDirectory()
-    ? path.join(absolutePath, 'index.mdx')
-    : absolutePath;
+  const contentRoot = stats.isDirectory() ? absolutePath : path.dirname(absolutePath);
+  const entrypoint = stats.isDirectory() ? path.join(absolutePath, 'index.mdx') : absolutePath;
 
   return {
     content: await parsePackage(contentPath),

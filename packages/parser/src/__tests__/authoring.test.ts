@@ -16,9 +16,7 @@ import { authoringComponentNames, parsePackage } from '../index';
 
 const temps: string[] = [];
 afterEach(async () => {
-  await Promise.all(
-    temps.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
-  );
+  await Promise.all(temps.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
 async function makePackage(entry: string): Promise<string> {
@@ -53,8 +51,7 @@ describe('scorm-cli/authoring', () => {
   });
 
   it('keeps exported markers aligned with the parser canonical list', () => {
-    const canonical: readonly AuthoringComponentName[] =
-      authoringComponentNames;
+    const canonical: readonly AuthoringComponentName[] = authoringComponentNames;
     const markers = authoring as unknown as Record<string, unknown>;
     expect(
       Object.keys(markers)
@@ -123,10 +120,7 @@ describe('scorm-cli/authoring', () => {
 
   it('declares the scorm-cli/authoring subpath for runtime and types', async () => {
     const root = JSON.parse(
-      await readFile(
-        new URL('../../../../package.json', import.meta.url),
-        'utf8',
-      ),
+      await readFile(new URL('../../../../package.json', import.meta.url), 'utf8'),
     ) as { name: string; exports: Record<string, unknown> };
     expect(root.name).toBe('scorm-cli');
     expect(root.exports).toEqual({
@@ -172,17 +166,11 @@ describe('MDX authoring imports', () => {
       path.join(root, 'lessons/start.mdx'),
       `---\ntitle: Start\n---\nimport { Path as Journey, Page as Step } from 'scorm-cli/authoring';\n\n<Journey>\n  <Step ref='lessons/next.mdx' />\n</Journey>`,
     );
-    await writeFile(
-      path.join(root, 'lessons/next.mdx'),
-      '---\ntitle: Next\n---',
-    );
+    await writeFile(path.join(root, 'lessons/next.mdx'), '---\ntitle: Next\n---');
 
     const parsed = await parsePackage(root);
-    const pages =
-      parsed.presentation.type === 'scroll' ? parsed.presentation.pages : [];
-    expect(pages[0]?.content).toEqual([
-      { type: 'path', pageIds: ['page:lessons/next.mdx'] },
-    ]);
+    const pages = parsed.presentation.type === 'scroll' ? parsed.presentation.pages : [];
+    expect(pages[0]?.content).toEqual([{ type: 'path', pageIds: ['page:lessons/next.mdx'] }]);
   });
 
   it('resolves aliased root Scroll/Page declarations used by Path refs', async () => {
@@ -194,17 +182,11 @@ describe('MDX authoring imports', () => {
       path.join(root, 'lessons/start.mdx'),
       `---\ntitle: Start\n---\nimport { Path, Page } from 'scorm-cli/authoring';\n\n<Path>\n  <Page ref='lessons/next.mdx' />\n</Path>`,
     );
-    await writeFile(
-      path.join(root, 'lessons/next.mdx'),
-      '---\ntitle: Next\n---',
-    );
+    await writeFile(path.join(root, 'lessons/next.mdx'), '---\ntitle: Next\n---');
 
     const parsed = await parsePackage(root);
-    const pages =
-      parsed.presentation.type === 'scroll' ? parsed.presentation.pages : [];
-    expect(pages[0]?.content).toEqual([
-      { type: 'path', pageIds: ['page:lessons/next.mdx'] },
-    ]);
+    const pages = parsed.presentation.type === 'scroll' ? parsed.presentation.pages : [];
+    expect(pages[0]?.content).toEqual([{ type: 'path', pageIds: ['page:lessons/next.mdx'] }]);
   });
 
   it('ignores unrelated imports that do not shadow authoring markers', async () => {
@@ -221,9 +203,7 @@ describe('MDX authoring imports', () => {
       `<Scroll>\n  <Page src='lesson.mdx' />\n</Scroll>`,
       `import { Widget } from './widget';\n\n<Widget />`,
     );
-    await expect(parsePackage(unknownComponent)).rejects.toThrow(
-      /unknown MDX component <Widget>/,
-    );
+    await expect(parsePackage(unknownComponent)).rejects.toThrow(/unknown MDX component <Widget>/);
   });
 
   it('gives imported aliases precedence over canonical names', async () => {
@@ -274,16 +254,12 @@ describe('MDX authoring imports', () => {
     const unknown = await makePackage(
       `---\ntitle: Package\n---\nimport { Card } from 'scorm-cli/authoring';\n\n<Scroll>\n  <Page src='lesson.mdx' />\n</Scroll>`,
     );
-    await expect(parsePackage(unknown)).rejects.toThrow(
-      /"Card" is not an authoring component/,
-    );
+    await expect(parsePackage(unknown)).rejects.toThrow(/"Card" is not an authoring component/);
 
     const noDefault = await makePackage(
       `---\ntitle: Package\n---\nimport Authoring from 'scorm-cli/authoring';\n\n<Scroll>\n  <Page src='lesson.mdx' />\n</Scroll>`,
     );
-    await expect(parsePackage(noDefault)).rejects.toThrow(
-      /provides named exports only/,
-    );
+    await expect(parsePackage(noDefault)).rejects.toThrow(/provides named exports only/);
   });
 
   it('applies canonical validation to aliased components', async () => {
@@ -297,13 +273,8 @@ describe('MDX authoring imports', () => {
     const badAttribute = await makePackage(
       `---\ntitle: Package\n---\nimport { Scroll, Page as Slide } from 'scorm-cli/authoring';\n\n<Scroll>\n  <Slide src='lesson.mdx' title='nope' />\n</Scroll>`,
     );
-    await writeFile(
-      path.join(badAttribute, 'lesson.mdx'),
-      '---\ntitle: Lesson\n---',
-    );
-    await expect(parsePackage(badAttribute)).rejects.toThrow(
-      /unknown attribute "title"/,
-    );
+    await writeFile(path.join(badAttribute, 'lesson.mdx'), '---\ntitle: Lesson\n---');
+    await expect(parsePackage(badAttribute)).rejects.toThrow(/unknown attribute "title"/);
   });
 
   it('still rejects non-import MDX JavaScript', async () => {
@@ -311,9 +282,7 @@ describe('MDX authoring imports', () => {
       `<Scroll>\n  <Page src='lesson.mdx' />\n</Scroll>`,
       `export const runtime = 'edge';`,
     );
-    await expect(parsePackage(root)).rejects.toThrow(
-      /MDX JavaScript is not supported/,
-    );
+    await expect(parsePackage(root)).rejects.toThrow(/MDX JavaScript is not supported/);
   });
 
   it('rejects local component declarations instead of parsing them as canonical', async () => {
@@ -321,16 +290,12 @@ describe('MDX authoring imports', () => {
       `<Scroll>\n  <Page src='lesson.mdx' />\n</Scroll>`,
       `export function Scroll() {}\n\n<Scroll />`,
     );
-    await expect(parsePackage(localFunction)).rejects.toThrow(
-      /MDX JavaScript is not supported/,
-    );
+    await expect(parsePackage(localFunction)).rejects.toThrow(/MDX JavaScript is not supported/);
 
     const localConst = await scrollPackage(
       `<Scroll>\n  <Page src='lesson.mdx' />\n</Scroll>`,
       `const Page = () => null;\n\n<Page src='lesson.mdx' />`,
     );
-    await expect(parsePackage(localConst)).rejects.toThrow(
-      /unknown MDX component <Page>/,
-    );
+    await expect(parsePackage(localConst)).rejects.toThrow(/unknown MDX component <Page>/);
   });
 });

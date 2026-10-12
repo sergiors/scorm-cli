@@ -4,10 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { en, messages, ptBR } from '../../app/lib/messages';
 
-const appRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '../../app',
-);
+const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../app');
 
 describe('player message catalogs', () => {
   it('gives pt-BR exactly the canonical English key set', () => {
@@ -16,9 +13,7 @@ describe('player message catalogs', () => {
 
   it('ships a non-empty string for every key of every supported locale', () => {
     const canonical = Object.keys(en).sort();
-    for (const locale of Object.keys(messages) as Array<
-      keyof typeof messages
-    >) {
+    for (const locale of Object.keys(messages) as Array<keyof typeof messages>) {
       expect(Object.keys(messages[locale]).sort()).toEqual(canonical);
       for (const value of Object.values(messages[locale])) {
         expect(typeof value).toBe('string');

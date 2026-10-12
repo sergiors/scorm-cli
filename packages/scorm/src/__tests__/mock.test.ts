@@ -38,18 +38,13 @@ describe('SCORM dev mock CMI persistence', () => {
 
   it('restores existing state when the preference is absent', () => {
     const storage = new MemoryStorage();
-    storage.setItem(
-      stateKey,
-      JSON.stringify({ 'cmi.core.lesson_location': 'existing-lesson' }),
-    );
+    storage.setItem(stateKey, JSON.stringify({ 'cmi.core.lesson_location': 'existing-lesson' }));
 
     const window = createMock(storage);
     expect(storage.getItem(preferenceKey)).toBe('true');
     expect(window.scormDevTools.getCmiPersistenceEnabled()).toBe(true);
     expect(window.API.LMSInitialize('')).toBe('true');
-    expect(window.API.LMSGetValue('cmi.core.lesson_location')).toBe(
-      'existing-lesson',
-    );
+    expect(window.API.LMSGetValue('cmi.core.lesson_location')).toBe('existing-lesson');
   });
 
   it('saves CMI on first run and restores it after reload', () => {
@@ -57,9 +52,7 @@ describe('SCORM dev mock CMI persistence', () => {
     const firstRun = createMock(storage);
 
     expect(firstRun.API.LMSInitialize('')).toBe('true');
-    expect(
-      firstRun.API.LMSSetValue('cmi.core.lesson_location', 'lesson-2'),
-    ).toBe('true');
+    expect(firstRun.API.LMSSetValue('cmi.core.lesson_location', 'lesson-2')).toBe('true');
     expect(JSON.parse(storage.getItem(stateKey)!)).toMatchObject({
       'cmi.core.lesson_location': 'lesson-2',
     });
@@ -67,28 +60,21 @@ describe('SCORM dev mock CMI persistence', () => {
     const reloaded = createMock(storage);
     expect(reloaded.scormDevTools.getCmiPersistenceEnabled()).toBe(true);
     expect(reloaded.API.LMSInitialize('')).toBe('true');
-    expect(reloaded.API.LMSGetValue('cmi.core.lesson_location')).toBe(
-      'lesson-2',
-    );
+    expect(reloaded.API.LMSGetValue('cmi.core.lesson_location')).toBe('lesson-2');
   });
 
   it('keeps an explicit false preference disabled and clears saved state', () => {
     const storage = new MemoryStorage();
     const firstRun = createMock(storage);
     expect(firstRun.API.LMSInitialize('')).toBe('true');
-    expect(
-      firstRun.API.LMSSetValue('cmi.core.lesson_location', 'lesson-2'),
-    ).toBe('true');
+    expect(firstRun.API.LMSSetValue('cmi.core.lesson_location', 'lesson-2')).toBe('true');
     expect(storage.getItem(stateKey)).not.toBeNull();
 
     firstRun.scormDevTools.setCmiPersistenceEnabled(false);
     expect(storage.getItem(preferenceKey)).toBe('false');
     expect(storage.getItem(stateKey)).toBeNull();
 
-    storage.setItem(
-      stateKey,
-      JSON.stringify({ 'cmi.core.lesson_location': 'stale' }),
-    );
+    storage.setItem(stateKey, JSON.stringify({ 'cmi.core.lesson_location': 'stale' }));
     const reloaded = createMock(storage);
     expect(reloaded.scormDevTools.getCmiPersistenceEnabled()).toBe(false);
     expect(storage.getItem(stateKey)).toBeNull();
@@ -99,10 +85,7 @@ describe('SCORM dev mock CMI persistence', () => {
   it('honors an explicit true preference and restores saved CMI', () => {
     const storage = new MemoryStorage();
     storage.setItem(preferenceKey, 'true');
-    storage.setItem(
-      stateKey,
-      JSON.stringify({ 'cmi.core.lesson_location': 'lesson-3' }),
-    );
+    storage.setItem(stateKey, JSON.stringify({ 'cmi.core.lesson_location': 'lesson-3' }));
 
     const window = createMock(storage);
     expect(window.scormDevTools.getCmiPersistenceEnabled()).toBe(true);
@@ -112,10 +95,7 @@ describe('SCORM dev mock CMI persistence', () => {
 
   it('logs dev events straight to the console and buffers nothing', () => {
     const storage = new MemoryStorage();
-    storage.setItem(
-      stateKey,
-      JSON.stringify({ 'cmi.core.lesson_location': 'saved' }),
-    );
+    storage.setItem(stateKey, JSON.stringify({ 'cmi.core.lesson_location': 'saved' }));
     const logs: unknown[][] = [];
     const window: Record<string, any> = {
       localStorage: storage,
@@ -165,8 +145,6 @@ describe('SCORM dev mock CMI persistence', () => {
     expect(() => vm.runInNewContext(scormDevMock, { window })).not.toThrow();
     expect(window.scormDevTools.getCmiPersistenceEnabled()).toBe(false);
     expect(window.API.LMSInitialize('')).toBe('true');
-    expect(window.API.LMSSetValue('cmi.core.lesson_location', 'lesson-2')).toBe(
-      'true',
-    );
+    expect(window.API.LMSSetValue('cmi.core.lesson_location', 'lesson-2')).toBe('true');
   });
 });

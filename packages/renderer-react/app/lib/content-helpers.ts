@@ -20,13 +20,9 @@ export { getPackageProgress, isPackageComplete } from '@scorm-cli/core';
  * presentation. The two share the same shape (`id`, `source`, `metadata`,
  * `content`), so callers can treat them uniformly for completion tracking.
  */
-export function getPresentationNodes(
-  contentPackage: ContentPackage,
-): Array<PageNode | ItemNode> {
+export function getPresentationNodes(contentPackage: ContentPackage): Array<PageNode | ItemNode> {
   const { presentation } = contentPackage;
-  return presentation.type === 'scroll'
-    ? presentation.pages
-    : presentation.items;
+  return presentation.type === 'scroll' ? presentation.pages : presentation.items;
 }
 
 /**
@@ -35,9 +31,7 @@ export function getPresentationNodes(
  * content) is traversed the same way {@link ContentRenderer} renders it, so
  * callers can reason about exactly the questionnaires the learner can reach.
  */
-export function collectQuestionnaires(
-  nodes: ContentNode[],
-): QuestionnaireNode[] {
+export function collectQuestionnaires(nodes: ContentNode[]): QuestionnaireNode[] {
   const found: QuestionnaireNode[] = [];
   const visit = (list: Array<ContentNode | InlineContentNode>) => {
     for (const node of list) {

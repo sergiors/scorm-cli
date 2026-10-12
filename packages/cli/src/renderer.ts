@@ -6,12 +6,7 @@ export async function loadRenderer(): Promise<Renderer> {
   const renderer = (await import(rendererPackage)) as {
     reactRenderer?: Renderer;
   };
-  if (
-    !renderer.reactRenderer ||
-    typeof renderer.reactRenderer.build !== 'function'
-  )
-    throw new Error(
-      '@scorm-cli/renderer-react does not export a valid reactRenderer',
-    );
+  if (!renderer.reactRenderer || typeof renderer.reactRenderer.build !== 'function')
+    throw new Error('@scorm-cli/renderer-react does not export a valid reactRenderer');
   return renderer.reactRenderer;
 }

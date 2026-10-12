@@ -1,17 +1,17 @@
 import { useCallback, useRef, useState } from 'react';
 import type { AnswerValue, ContentPackage, PlayerState } from '../types';
-import { getPackageProgress, isPackageComplete } from '../lib/content-helpers';
+import {
+  getPackageProgress,
+  getPresentationNodes,
+  isPackageComplete,
+} from '../lib/content-helpers';
 import {
   sanitizePlayerState,
   sameAnswer,
   updatePageState,
   withLocation,
 } from '../lib/player-state';
-import {
-  restoreState,
-  saveState,
-  useScormBridge,
-} from '../lib/use-scorm-bridge';
+import { restoreState, saveState, useScormBridge } from '../lib/use-scorm-bridge';
 import { FormattedMessage } from 'react-intl';
 import { GridPresentation } from './GridPresentation';
 import { ScrollPresentation } from './ScrollPresentation';
@@ -138,17 +138,14 @@ export function PackageView({ contentPackage }: PackageViewProps) {
   // Scroll completion requires every page to be *completed*; grid completion
   // requires every item to be *visited*. Reusing the canonical helper keeps
   // both presentations (and the CLI) in agreement.
-  const complete = isPackageComplete(
-    contentPackage,
-    presentation.type === 'scroll'
-      ? presentation.pages
-          .filter((page) => state.pages[page.id]?.completed)
-          .map((page) => page.id)
-      : presentation.items
-          .filter((item) => state.pages[item.id]?.visited)
-          .map((item) => item.id),
-  );
-  useScormBridge(complete);
+  const doneNodeIds = getPresentationNodes(contentPackage)
+    .filter((node) =>
+      presentation.type === 'scroll'
+        ? state.pages[node.id]?.completed
+        : state.pages[node.id]?.visited,
+    )
+    .map((node) => node.id);
+  useScormBridge(isPackageComplete(contentPackage, doneNodeIds));
 
   if (presentation.type === 'scroll') {
     if (presentation.pages.length === 0) {

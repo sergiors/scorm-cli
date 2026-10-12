@@ -41,9 +41,7 @@ const content: ContentPackage = {
                 prompt: [
                   {
                     type: 'paragraph',
-                    children: [
-                      { type: 'text', value: 'Do not persist prompt' },
-                    ],
+                    children: [{ type: 'text', value: 'Do not persist prompt' }],
                   },
                 ],
                 options: [
@@ -79,18 +77,13 @@ const content: ContentPackage = {
 
 describe('SCORM 1.2 package', () => {
   it('creates a manifest with metadata and a single SCO resource', () => {
-    const xml = createManifest({ title: 'A <Course>' }, [
-      'index.html',
-      'index.html',
-    ]);
+    const xml = createManifest({ title: 'A <Course>' }, ['index.html', 'index.html']);
     const root = create(xml).root().node as any;
     const namespace = 'http://www.imsproject.org/xsd/imscp_rootv1p1p2';
     const resources = root.getElementsByTagNameNS(namespace, 'resource');
     expect(resources).toHaveLength(1);
     expect(resources[0].getAttribute('href')).toBe('index.html');
-    expect(root.getElementsByTagNameNS(namespace, 'title')[0].textContent).toBe(
-      'A <Course>',
-    );
+    expect(root.getElementsByTagNameNS(namespace, 'title')[0].textContent).toBe('A <Course>');
   });
 
   it('writes package language in IEEE LOM metadata, defaulting to English', () => {
@@ -127,13 +120,9 @@ describe('SCORM 1.2 package', () => {
     expect(Object.keys(zip.files)).toContain('scorm-runtime.js');
     expect(Object.keys(zip.files)).not.toContain('scorm-dev-mock.js');
 
-    const manifestContents = await zip
-      .file('content-manifest.json')!
-      .async('string');
+    const manifestContents = await zip.file('content-manifest.json')!.async('string');
     expect(JSON.parse(manifestContents)).toEqual(contentManifest);
-    const xml = create(
-      await zip.file('imsmanifest.xml')!.async('string'),
-    ).root().node as any;
+    const xml = create(await zip.file('imsmanifest.xml')!.async('string')).root().node as any;
     const namespace = 'http://www.imsproject.org/xsd/imscp_rootv1p1p2';
     const files = xml.getElementsByTagNameNS(namespace, 'file');
     expect([...files].map((file: any) => file.getAttribute('href'))).toContain(
@@ -141,9 +130,7 @@ describe('SCORM 1.2 package', () => {
     );
     const runtime = await zip.file('scorm-runtime.js')!.async('string');
     expect(runtime).toContain(JSON.stringify(contentManifest));
-    expect(await zip.file('index.html')!.async('string')).toContain(
-      'scorm-runtime.js',
-    );
+    expect(await zip.file('index.html')!.async('string')).toContain('scorm-runtime.js');
 
     // The serialized selection can be restored with precisely the shipped dictionary.
     const state = {

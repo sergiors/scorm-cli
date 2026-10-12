@@ -79,8 +79,7 @@ function plainText(nodes: ContentNode[]): string {
         case 'questionnaire':
           for (const question of node.questions) {
             chunks.push(plainText(question.prompt));
-            for (const option of question.options)
-              chunks.push(plainText(option.content));
+            for (const option of question.options) chunks.push(plainText(option.content));
           }
           break;
       }
@@ -106,8 +105,7 @@ function collectQuestions(
         output.push(...node.questions);
         for (const question of node.questions) {
           collectQuestions(question.prompt, output);
-          for (const option of question.options)
-            collectQuestions(option.content, output);
+          for (const option of question.options) collectQuestions(option.content, output);
         }
         break;
       case 'inlineContent':
@@ -121,9 +119,7 @@ function collectQuestions(
 }
 
 /** Creates the stable, content-free dictionary shared by packaging and runtime. */
-export function createContentManifest(
-  contentPackage: ContentPackage,
-): ContentManifest {
+export function createContentManifest(contentPackage: ContentPackage): ContentManifest {
   const nodes =
     contentPackage.presentation.type === 'scroll'
       ? contentPackage.presentation.pages

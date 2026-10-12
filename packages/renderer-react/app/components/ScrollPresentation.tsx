@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import type { AnswerValue, PageNode, PlayerPageState } from '../types';
@@ -81,6 +75,40 @@ function clampPageIndex(index: number, pageCount: number): number {
  */
 function resetDocumentScroll(): void {
   window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+/**
+ * Watches a boundary sentinel against the scroll viewport (`root: null`, matching
+ * the document scrolling the player uses) and reports whether it currently
+ * intersects. Repeated observer callbacks that do not change the boundary are
+ * ignored, so no redundant state updates are produced. Returns the disconnect
+ * cleanup; when `IntersectionObserver` is unavailable (e.g. server rendering)
+ * this is a no-op that returns an inert cleanup.
+ */
+function observeSentinel(
+  element: Element,
+  rootMargin: string,
+  onVisibilityChange: (visible: boolean) => void,
+): () => void {
+  if (typeof IntersectionObserver === 'undefined') {
+    return () => {};
+  }
+
+  let lastVisible: boolean | null = null;
+  const observer = new IntersectionObserver(
+    (entries) => {
+      const visible = entries.some((entry) => entry.isIntersecting);
+      if (lastVisible === visible) {
+        return;
+      }
+      lastVisible = visible;
+      onVisibilityChange(visible);
+    },
+    { root: null, rootMargin, threshold: 0 },
+  );
+
+  observer.observe(element);
+  return () => observer.disconnect();
 }
 
 /**
@@ -167,16 +195,12 @@ export function ScrollPresentation({
   const pageState = pageStates[currentPage.id];
   const submitted = pageState?.submittedQuestionnaires ?? [];
   const questionnaireIds = collectQuestionnaireIds(currentPage.content);
-  const allQuestionnairesSubmitted = questionnaireIds.every((id) =>
-    submitted.includes(id),
-  );
+  const allQuestionnairesSubmitted = questionnaireIds.every((id) => submitted.includes(id));
   const pageComplete = atEnd && allQuestionnairesSubmitted;
 
   return (
     <>
-      {currentIndex > 0 && atTop ? (
-        <PreviousControl onClick={goToPrevious} />
-      ) : null}
+      {currentIndex > 0 && atTop ? <PreviousControl onClick={goToPrevious} /> : null}
 
       <PageScene
         key={currentPage.id}
@@ -201,9 +225,7 @@ export function ScrollPresentation({
         onPageCompleted={onPageCompleted}
       />
 
-      {currentIndex < lastIndex && pageComplete ? (
-        <NextControl onClick={goToNext} />
-      ) : null}
+      {currentIndex < lastIndex && pageComplete ? <NextControl onClick={goToNext} /> : null}
     </>
   );
 }
@@ -303,66 +325,26 @@ function PageScene({
   onQuestionnaireSubmitted,
 }: PageSceneProps) {
   const startRef = useRef<HTMLDivElement>(null);
-  // Previous boundary value so repeated observer callbacks that do not change
-  // the state are ignored (no redundant state updates).
-  const lastTopRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     if (!hasPrev) {
       return;
     }
     const element = startRef.current;
-    if (!element || typeof IntersectionObserver === 'undefined') {
+    if (!element) {
       return;
     }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries.some((entry) => entry.isIntersecting);
-        if (lastTopRef.current === visible) {
-          return;
-        }
-        lastTopRef.current = visible;
-        onTopChange(visible);
-      },
-      {
-        root: null,
-        rootMargin: PAGE_START_MARGIN,
-        threshold: 0,
-      },
-    );
-
-    observer.observe(element);
-    return () => observer.disconnect();
+    return observeSentinel(element, PAGE_START_MARGIN, onTopChange);
   }, [hasPrev, index, onTopChange, page.id]);
 
   const endRef = useRef<HTMLDivElement>(null);
-  const lastEndRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     const element = endRef.current;
-    if (!element || typeof IntersectionObserver === 'undefined') {
+    if (!element) {
       return;
     }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries.some((entry) => entry.isIntersecting);
-        if (lastEndRef.current === visible) {
-          return;
-        }
-        lastEndRef.current = visible;
-        onEndChange(visible);
-      },
-      {
-        root: null,
-        rootMargin: PAGE_END_MARGIN,
-        threshold: 0,
-      },
-    );
-
-    observer.observe(element);
-    return () => observer.disconnect();
+    return observeSentinel(element, PAGE_END_MARGIN, onEndChange);
   }, [index, onEndChange, page.id]);
 
   return (
@@ -372,12 +354,7 @@ function PageScene({
       className='mx-auto min-h-dvh w-full max-w-3xl px-6 py-18 flex flex-col justify-center'
     >
       {hasPrev ? (
-        <div
-          ref={startRef}
-          data-scroll-start={index}
-          aria-hidden='true'
-          className='h-px w-full'
-        />
+        <div ref={startRef} data-scroll-start={index} aria-hidden='true' className='h-px w-full' />
       ) : null}
 
       <section className='prose prose-stone max-w-none! dark:prose-invert'>
@@ -389,18 +366,11 @@ function PageScene({
           answers={pageState?.answers}
           submittedQuestionnaires={pageState?.submittedQuestionnaires}
           onAnswer={(questionId, value) => onAnswer(page.id, questionId, value)}
-          onQuestionnaireSubmitted={(id) =>
-            onQuestionnaireSubmitted(page.id, id)
-          }
+          onQuestionnaireSubmitted={(id) => onQuestionnaireSubmitted(page.id, id)}
         />
       </section>
 
-      <div
-        ref={endRef}
-        data-scroll-end={index}
-        aria-hidden='true'
-        className='h-px w-full'
-      />
+      <div ref={endRef} data-scroll-end={index} aria-hidden='true' className='h-px w-full' />
     </div>
   );
 }

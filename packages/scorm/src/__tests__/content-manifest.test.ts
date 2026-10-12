@@ -1,16 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type {
-  ContentNode,
-  ContentPackage,
-  QuestionOption,
-} from '@scorm-cli/core';
+import type { ContentNode, ContentPackage, QuestionOption } from '@scorm-cli/core';
 import { createContentManifest } from '../content-manifest';
 
-const question = (
-  id: string,
-  prompt: ContentNode[],
-  options: QuestionOption[] = [],
-) => ({
+const question = (id: string, prompt: ContentNode[], options: QuestionOption[] = []) => ({
   type: 'question' as const,
   id,
   questionType: 'single-choice' as const,
@@ -57,9 +49,7 @@ describe('content manifest', () => {
                                       { type: 'text', value: 'Choose ' },
                                       {
                                         type: 'emphasis',
-                                        children: [
-                                          { type: 'text', value: 'one' },
-                                        ],
+                                        children: [{ type: 'text', value: 'one' }],
                                       },
                                     ],
                                   },
@@ -71,9 +61,7 @@ describe('content manifest', () => {
                                     content: [
                                       {
                                         type: 'paragraph',
-                                        children: [
-                                          { type: 'text', value: 'Alpha' },
-                                        ],
+                                        children: [{ type: 'text', value: 'Alpha' }],
                                       },
                                     ],
                                   },
@@ -86,9 +74,7 @@ describe('content manifest', () => {
                                         children: [
                                           {
                                             type: 'strong',
-                                            children: [
-                                              { type: 'text', value: 'Beta' },
-                                            ],
+                                            children: [{ type: 'text', value: 'Beta' }],
                                           },
                                         ],
                                       },
@@ -96,11 +82,7 @@ describe('content manifest', () => {
                                   },
                                 ],
                               ),
-                              question(
-                                'q2',
-                                [{ type: 'code', value: 'Second prompt' }],
-                                [],
-                              ),
+                              question('q2', [{ type: 'code', value: 'Second prompt' }], []),
                             ],
                           },
                         ],
@@ -262,9 +244,7 @@ describe('content manifest', () => {
         ],
       },
     };
-    expect(
-      createContentManifest(content).pages['0']!.questions['0'],
-    ).toMatchObject({
+    expect(createContentManifest(content).pages['0']!.questions['0']).toMatchObject({
       id: 'q-tight',
       prompt: 'See Prompt diagram',
     });
@@ -314,8 +294,9 @@ describe('content manifest', () => {
         ],
       },
     };
-    expect(
-      createContentManifest(content).pages['0']!.questions['0'],
-    ).toMatchObject({ id: 'q-nested', prompt: 'Nested' });
+    expect(createContentManifest(content).pages['0']!.questions['0']).toMatchObject({
+      id: 'q-nested',
+      prompt: 'Nested',
+    });
   });
 });

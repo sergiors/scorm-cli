@@ -3,14 +3,7 @@ import { useIntl } from 'react-intl';
 import type { PageNode, PathNode, PlayerPageState } from '../types';
 import type { MessageId } from '../lib/messages';
 import { cn } from '../lib/utils';
-import {
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemMedia,
-  ItemTitle,
-} from './ui/item';
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from './ui/item';
 
 /**
  * The state of a single Path entry, derived from the visited flags of the
@@ -32,10 +25,7 @@ export type PathPageStatus = 'visited' | 'available' | 'locked';
  * callers supply the flags already resolved from `PlayerPageState.visited`, so
  * the decision reuses the existing per-page state without adding any of its own.
  */
-export function canOpenPathPage(
-  index: number,
-  visited: readonly boolean[],
-): boolean {
+export function canOpenPathPage(index: number, visited: readonly boolean[]): boolean {
   if (index <= 0) {
     return true;
   }
@@ -47,10 +37,7 @@ export function canOpenPathPage(
   return visited[index - 1] === true;
 }
 
-function pathPageStatus(
-  index: number,
-  visited: readonly boolean[],
-): PathPageStatus {
+function pathPageStatus(index: number, visited: readonly boolean[]): PathPageStatus {
   if (visited[index]) {
     return 'visited';
   }
@@ -131,9 +118,7 @@ export function PathView({
             description={page?.metadata.description}
             status={status}
             disabled={status === 'locked' || onNavigatePathPage === undefined}
-            onOpen={
-              onNavigatePathPage ? () => onNavigatePathPage(id) : undefined
-            }
+            onOpen={onNavigatePathPage ? () => onNavigatePathPage(id) : undefined}
           />
         );
       })}
@@ -174,9 +159,7 @@ function PathEntry({
         <ItemContent>
           <ItemTitle>{title}</ItemTitle>
 
-          {description ? (
-            <ItemDescription>{description}</ItemDescription>
-          ) : null}
+          {description ? <ItemDescription>{description}</ItemDescription> : null}
         </ItemContent>
 
         <ItemActions>{label}</ItemActions>

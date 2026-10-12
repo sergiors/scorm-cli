@@ -6,8 +6,7 @@ import { reactRenderer } from '..';
 import type { RendererDevServer } from '..';
 import { samplePackage } from './fixtures';
 
-const SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>';
+const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>';
 
 interface HmrFrame {
   type?: string;
@@ -46,10 +45,7 @@ class HmrSocket {
     });
   }
 
-  waitFor(
-    match: (frame: HmrFrame) => boolean,
-    timeoutMs = 15_000,
-  ): Promise<HmrFrame> {
+  waitFor(match: (frame: HmrFrame) => boolean, timeoutMs = 15_000): Promise<HmrFrame> {
     const existing = this.received.find(match);
     if (existing) {
       return Promise.resolve(existing);
@@ -69,22 +65,16 @@ class HmrSocket {
 }
 
 async function connectHmr(baseUrl: string): Promise<HmrSocket> {
-  const clientSource = await fetch(`${baseUrl}@vite/client`).then((response) =>
-    response.text(),
-  );
+  const clientSource = await fetch(`${baseUrl}@vite/client`).then((response) => response.text());
   const token = clientSource.match(/const wsToken = "([^"]+)"/)?.[1] ?? '';
-  const wsUrl = `${baseUrl.replace(/^http/, 'ws')}?token=${encodeURIComponent(
-    token,
-  )}`;
+  const wsUrl = `${baseUrl.replace(/^http/, 'ws')}?token=${encodeURIComponent(token)}`;
 
   const socket = new WebSocket(wsUrl, 'vite-hmr');
   await new Promise<void>((resolve, reject) => {
     socket.addEventListener('open', () => resolve(), { once: true });
-    socket.addEventListener(
-      'error',
-      () => reject(new Error('HMR WebSocket failed to open')),
-      { once: true },
-    );
+    socket.addEventListener('error', () => reject(new Error('HMR WebSocket failed to open')), {
+      once: true,
+    });
   });
   return new HmrSocket(socket);
 }
@@ -158,9 +148,7 @@ describe('reactRenderer.dev', () => {
   });
 
   it('serves the virtual package data module', async () => {
-    const response = await fetch(
-      `${server.url}@id/__x00__virtual:package-data`,
-    );
+    const response = await fetch(`${server.url}@id/__x00__virtual:package-data`);
     expect(response.status).toBe(200);
     const code = await response.text();
     expect(code).toContain('Rendering Fundamentals');
@@ -175,9 +163,9 @@ describe('reactRenderer.dev', () => {
 
     await server.update(updated);
 
-    const module = await fetch(
-      `${server.url}@id/__x00__virtual:package-data`,
-    ).then((response) => response.text());
+    const module = await fetch(`${server.url}@id/__x00__virtual:package-data`).then((response) =>
+      response.text(),
+    );
     expect(module).toContain('Updated title');
 
     const html = await fetch(server.url).then((response) => response.text());
@@ -191,8 +179,7 @@ describe('reactRenderer.dev', () => {
       await client.waitFor((frame) => frame.type === 'connected');
 
       const errorFrame = client.waitFor(
-        (frame) =>
-          frame.type === 'custom' && frame.event === 'scorm:preview-error',
+        (frame) => frame.type === 'custom' && frame.event === 'scorm:preview-error',
       );
       server.reportError('Broken content at lessons/intro.mdx:3');
       const error = await errorFrame;
@@ -201,8 +188,7 @@ describe('reactRenderer.dev', () => {
       });
 
       const clearFrame = client.waitFor(
-        (frame) =>
-          frame.type === 'custom' && frame.event === 'scorm:preview-clear',
+        (frame) => frame.type === 'custom' && frame.event === 'scorm:preview-clear',
       );
       await server.update({
         ...samplePackage,

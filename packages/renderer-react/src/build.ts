@@ -5,11 +5,7 @@ import react from '@vitejs/plugin-react';
 import type { ContentPackage } from '@scorm-cli/core';
 import { build as viteBuild } from 'vite';
 import type { RenderAsset, RenderOptions, RenderResult } from './types';
-import {
-  createPackageDataPlugin,
-  ENTRYPOINT,
-  resolveAppRoot,
-} from './vite-app';
+import { createPackageDataPlugin, ENTRYPOINT, resolveAppRoot } from './vite-app';
 
 function resolveAssetTargets(
   assets: RenderAsset[] | undefined,
@@ -24,17 +20,13 @@ function resolveAssetTargets(
   return assets.map((asset) => {
     const destination = path.resolve(root, asset.targetPath);
     if (destination !== root && !destination.startsWith(root + path.sep)) {
-      throw new Error(
-        `Asset target path escapes the output directory: ${asset.targetPath}`,
-      );
+      throw new Error(`Asset target path escapes the output directory: ${asset.targetPath}`);
     }
     return { source: asset.sourcePath, destination };
   });
 }
 
-async function copyAssets(
-  targets: Array<{ source: string; destination: string }>,
-): Promise<void> {
+async function copyAssets(targets: Array<{ source: string; destination: string }>): Promise<void> {
   for (const target of targets) {
     await fs.mkdir(path.dirname(target.destination), { recursive: true });
     await fs.copyFile(target.source, target.destination);
@@ -72,11 +64,7 @@ export async function renderReactPackage(
     // Generated shadcn components import through the `@/` alias; resolve it to
     // the shipped `app` directory.
     resolve: { alias: { '@': appRoot } },
-    plugins: [
-      react(),
-      tailwindcss(),
-      createPackageDataPlugin({ current: contentPackage }),
-    ],
+    plugins: [react(), tailwindcss(), createPackageDataPlugin({ current: contentPackage })],
     build: {
       outDir: outputDirectory,
       emptyOutDir: true,

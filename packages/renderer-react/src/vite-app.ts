@@ -24,9 +24,7 @@ function findPackageRoot(startDirectory: string): string {
     }
     const parent = path.dirname(directory);
     if (parent === directory) {
-      throw new Error(
-        'Could not locate the renderer-react package root (no package.json found).',
-      );
+      throw new Error('Could not locate the renderer-react package root (no package.json found).');
     }
     directory = parent;
   }
@@ -92,10 +90,7 @@ function setDocumentLanguage(html: string, language: string): string {
     // Require an attribute boundary (whitespace) before `lang` so look-alikes
     // such as `data-lang` or `xml:lang` are not matched and rewritten.
     if (/(\s)lang\s*=/i.test(tag)) {
-      return tag.replace(
-        /(\s)lang\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i,
-        `$1lang="${escaped}"`,
-      );
+      return tag.replace(/(\s)lang\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, `$1lang="${escaped}"`);
     }
     return tag.replace(/^<html/i, `<html lang="${escaped}"`);
   });
@@ -144,10 +139,7 @@ export function createPackageDataPlugin(handle: PackageDataHandle): Plugin {
         );
       }
 
-      const withTitle = html.replace(
-        /<title>[\s\S]*?<\/title>/,
-        () => `<title>${title}</title>`,
-      );
+      const withTitle = html.replace(/<title>[\s\S]*?<\/title>/, () => `<title>${title}</title>`);
       return setDocumentLanguage(withTitle, language);
     },
   };

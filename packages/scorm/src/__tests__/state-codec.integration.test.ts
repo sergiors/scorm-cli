@@ -8,11 +8,7 @@ import type {
   QuestionType,
 } from '@scorm-cli/core';
 import { createContentManifest } from '../content-manifest';
-import {
-  browserCodecSource,
-  decodeSuspendData,
-  encodeSuspendData,
-} from '../state-codec';
+import { browserCodecSource, decodeSuspendData, encodeSuspendData } from '../state-codec';
 import { createScormRuntime } from '../runtime';
 
 function option(value: string, label: string): QuestionOption {
@@ -146,8 +142,7 @@ const restored: PlayerState = {
   },
 };
 
-const normalize = (value: unknown): unknown =>
-  JSON.parse(JSON.stringify(value)) as unknown;
+const normalize = (value: unknown): unknown => JSON.parse(JSON.stringify(value)) as unknown;
 
 describe('suspend-data codec integration', () => {
   it('maps authored option order into manifest indexes without sorting values', () => {
@@ -161,15 +156,9 @@ describe('suspend-data codec integration', () => {
       '1': { value: 'alpha', label: 'Alpha' },
     });
     // Index 1 is the authored second option, not the alphabetically first value.
-    expect(manifest.pages['3']!.questions['0']!.options['1']!.value).toBe(
-      'mango',
-    );
-    expect(manifest.pages['3']!.questions['0']!.options['2']!.value).toBe(
-      'apple',
-    );
-    expect(manifest.pages['3']!.questions['1']!.options['1']!.value).toBe(
-      'alpha',
-    );
+    expect(manifest.pages['3']!.questions['0']!.options['1']!.value).toBe('mango');
+    expect(manifest.pages['3']!.questions['0']!.options['2']!.value).toBe('apple');
+    expect(manifest.pages['3']!.questions['1']!.options['1']!.value).toBe('alpha');
   });
 
   it('encodes scalar vs array per question type and decodes page-local values', () => {
@@ -188,9 +177,7 @@ describe('suspend-data codec integration', () => {
     expect(answers3['q-3-multi']).toEqual(['mango']);
     expect(typeof answers3['q-3-single']).toBe('string');
     expect(answers3['q-3-single']).toBe('alpha');
-    expect(typeof decoded.pages['page-4']!.answers!['q-4-single']).toBe(
-      'string',
-    );
+    expect(typeof decoded.pages['page-4']!.answers!['q-4-single']).toBe('string');
   });
 
   it('round-trips the target fixture for both question types', () => {
@@ -217,9 +204,7 @@ describe('suspend-data codec integration', () => {
 
     // Page 4 also uses question index 0: scalar 0 resolves to gamma through its
     // own options, independent of page 3.
-    expect(manifest.pages['4']!.questions['0']!.options['0']!.value).toBe(
-      'gamma',
-    );
+    expect(manifest.pages['4']!.questions['0']!.options['0']!.value).toBe('gamma');
     expect(decoded.pages['page-4']!.answers!['q-4-single']).toBe('gamma');
 
     // p: 100 completes all five pages and x: '11111' marks each visited.
@@ -249,10 +234,7 @@ describe('suspend-data codec integration', () => {
       state: unknown,
       progress: number,
     ) => string;
-    const browserDecode = context.compactDecode as (
-      manifest: unknown,
-      raw: unknown,
-    ) => PlayerState;
+    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState;
     expect(typeof browserEncode).toBe('function');
     expect(typeof browserDecode).toBe('function');
 
@@ -286,14 +268,10 @@ describe('suspend-data codec integration', () => {
     window.parent = window;
     vm.runInNewContext(createScormRuntime(manifest), { window });
 
-    expect(
-      window.scormBridge.saveState({ location: 'page:resume-4', ...selected }),
-    ).toBe(true);
+    expect(window.scormBridge.saveState({ location: 'page:resume-4', ...selected })).toBe(true);
     expect(values['cmi.core.lesson_location']).toBe('page:resume-4');
     const suspendData = values['cmi.suspend_data']!;
-    expect(suspendData).not.toMatch(
-      /page:resume-4|zebra|mango|apple|beta|alpha|gamma|delta/i,
-    );
+    expect(suspendData).not.toMatch(/page:resume-4|zebra|mango|apple|beta|alpha|gamma|delta/i);
     expect(JSON.parse(suspendData)).toEqual(compact);
     expect(window.scormBridge.getResumeState()).toEqual({
       location: 'page:resume-4',

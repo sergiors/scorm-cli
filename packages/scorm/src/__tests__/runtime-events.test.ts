@@ -148,9 +148,7 @@ describe('SCORM runtime dev event logging', () => {
     const { window } = createWindow({ console: false });
 
     expect(() => vm.runInNewContext(runtime, { window })).not.toThrow();
-    expect(() =>
-      window.scormBridge.saveState({ location: 'page-one', pages: {} }),
-    ).not.toThrow();
+    expect(() => window.scormBridge.saveState({ location: 'page-one', pages: {} })).not.toThrow();
   });
 
   it('logs the complete serialized suspend_data on read and write events', () => {
@@ -172,14 +170,10 @@ describe('SCORM runtime dev event logging', () => {
       (args) => args[1] as { name: string; details: Record<string, unknown> },
     );
     const readEvent = events.find(
-      (event) =>
-        event.name === 'lms.get-value' &&
-        event.details.key === 'cmi.suspend_data',
+      (event) => event.name === 'lms.get-value' && event.details.key === 'cmi.suspend_data',
     );
     const writeEvent = events.find(
-      (event) =>
-        event.name === 'lms.set-value' &&
-        event.details.key === 'cmi.suspend_data',
+      (event) => event.name === 'lms.set-value' && event.details.key === 'cmi.suspend_data',
     );
 
     // Reads carry the raw LMS value in both `value` and `result`.
@@ -224,14 +218,9 @@ describe('SCORM runtime dev event logging', () => {
       expect(saved, scenario.label).toBe(false);
 
       const writeEvent = logs
-        .map(
-          (args) =>
-            args[1] as { name: string; details: Record<string, unknown> },
-        )
+        .map((args) => args[1] as { name: string; details: Record<string, unknown> })
         .find(
-          (event) =>
-            event.name === 'lms.set-value' &&
-            event.details.key === 'cmi.suspend_data',
+          (event) => event.name === 'lms.set-value' && event.details.key === 'cmi.suspend_data',
         );
 
       expect(writeEvent?.details.method, scenario.label).toBe('LMSSetValue');
@@ -240,9 +229,7 @@ describe('SCORM runtime dev event logging', () => {
       // even though the LMS rejected it.
       const serialized = writeEvent?.details.value as string;
       expect(typeof serialized, scenario.label).toBe('string');
-      expect(writeEvent?.details.length, scenario.label).toBe(
-        serialized.length,
-      );
+      expect(writeEvent?.details.length, scenario.label).toBe(serialized.length);
       expect(JSON.parse(serialized), scenario.label).toEqual({
         v: 1,
         p: 100,
@@ -265,14 +252,8 @@ describe('SCORM runtime dev event logging', () => {
     vm.runInNewContext(createScormRuntime(suspendManifest), { window });
 
     const readEvent = logs
-      .map(
-        (args) => args[1] as { name: string; details: Record<string, unknown> },
-      )
-      .find(
-        (event) =>
-          event.name === 'lms.get-value' &&
-          event.details.key === 'cmi.suspend_data',
-      );
+      .map((args) => args[1] as { name: string; details: Record<string, unknown> })
+      .find((event) => event.name === 'lms.get-value' && event.details.key === 'cmi.suspend_data');
 
     expect(readEvent?.details.method).toBe('LMSGetValue');
     expect(readEvent?.details.result).toBe('');
@@ -286,14 +267,8 @@ describe('SCORM runtime dev event logging', () => {
     vm.runInNewContext(createScormRuntime(suspendManifest), { window });
 
     const readEvent = logs
-      .map(
-        (args) => args[1] as { name: string; details: Record<string, unknown> },
-      )
-      .find(
-        (event) =>
-          event.name === 'lms.get-value' &&
-          event.details.key === 'cmi.suspend_data',
-      );
+      .map((args) => args[1] as { name: string; details: Record<string, unknown> })
+      .find((event) => event.name === 'lms.get-value' && event.details.key === 'cmi.suspend_data');
 
     expect(readEvent?.details.method).toBe('LMSGetValue');
     expect(readEvent?.details.reason).toBe('method-unavailable');

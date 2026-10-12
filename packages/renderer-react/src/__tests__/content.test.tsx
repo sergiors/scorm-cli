@@ -205,9 +205,7 @@ describe('ContentRenderer paragraphs and inline semantics', () => {
   });
 
   it('renders an inline image caption inside an inline span', () => {
-    const html = renderInline([
-      { type: 'image', src: './a.png', alt: 'A', caption: 'An icon' },
-    ]);
+    const html = renderInline([{ type: 'image', src: './a.png', alt: 'A', caption: 'An icon' }]);
     expect(html).toContain('<span');
     expect(html).toContain('An icon');
     expect(html).not.toContain('<figcaption');
@@ -222,9 +220,7 @@ describe('ContentRenderer lists', () => {
         ordered: false,
         items: [
           {
-            children: [
-              { type: 'paragraph', children: [{ type: 'text', value: 'One' }] },
-            ],
+            children: [{ type: 'paragraph', children: [{ type: 'text', value: 'One' }] }],
           },
         ],
       },
@@ -514,9 +510,7 @@ describe('ContentRenderer lists', () => {
 
 describe('ContentRenderer code and quotes', () => {
   it('renders code blocks with an optional language class and escaped value', () => {
-    const html = render([
-      { type: 'code', value: 'const x = 1 < 2;', language: 'ts' },
-    ]);
+    const html = render([{ type: 'code', value: 'const x = 1 < 2;', language: 'ts' }]);
     expect(html).toContain('<pre');
     expect(html).toContain('<code');
     expect(html).toContain('language-ts');
@@ -643,9 +637,7 @@ describe('ContentRenderer questionnaires', () => {
       },
     ]);
     expect((html.match(/data-slot="questionnaire"/g) ?? []).length).toBe(1);
-    expect((html.match(/data-slot="questionnaire-item"/g) ?? []).length).toBe(
-      2,
-    );
+    expect((html.match(/data-slot="questionnaire-item"/g) ?? []).length).toBe(2);
     expect(html).toContain('type="radio"');
     expect(html).toContain('type="checkbox"');
   });
@@ -912,9 +904,9 @@ describe('ContentRenderer safety', () => {
   });
 
   it('throws on an unknown runtime block node type', () => {
-    expect(() =>
-      render([{ type: 'mystery' } as unknown as ContentNode]),
-    ).toThrow(/Unsupported content node type/);
+    expect(() => render([{ type: 'mystery' } as unknown as ContentNode])).toThrow(
+      /Unsupported content node type/,
+    );
   });
 
   it('throws on an unknown runtime inline node type', () => {
@@ -929,9 +921,9 @@ describe('ContentRenderer safety', () => {
   });
 
   it('does not treat inherited object keys as node renderers', () => {
-    expect(() =>
-      render([{ type: 'toString' } as unknown as ContentNode]),
-    ).toThrow(/Unsupported content node type: toString/);
+    expect(() => render([{ type: 'toString' } as unknown as ContentNode])).toThrow(
+      /Unsupported content node type: toString/,
+    );
     expect(() =>
       render([
         {

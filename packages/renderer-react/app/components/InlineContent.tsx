@@ -74,10 +74,7 @@ function LinkView({ node }: InlineNodeViewProps<'link'>) {
     >
       <InlineContent nodes={node.children} />
       {isExternal ? (
-        <ExternalLink
-          aria-hidden='true'
-          className='ml-0.5 inline size-3.5 align-[-0.15em]'
-        />
+        <ExternalLink aria-hidden='true' className='ml-0.5 inline size-3.5 align-[-0.15em]' />
       ) : null}
     </a>
   );
@@ -89,10 +86,7 @@ function InlineImageView({ node }: InlineNodeViewProps<'image'>) {
       src={node.src}
       alt={node.alt}
       loading='lazy'
-      className={cn(
-        'h-auto max-w-full',
-        node.caption ? undefined : 'inline align-middle',
-      )}
+      className={cn('h-auto max-w-full', node.caption ? undefined : 'inline align-middle')}
     />
   );
 
@@ -130,9 +124,7 @@ export function InlineContent({ nodes }: InlineContentProps) {
   return (
     <>
       {nodes.map((node, index) => (
-        <Fragment key={`${node.type}-${index}`}>
-          {renderInlineNode(node)}
-        </Fragment>
+        <Fragment key={`${node.type}-${index}`}>{renderInlineNode(node)}</Fragment>
       ))}
     </>
   );
@@ -147,9 +139,7 @@ export function InlineContent({ nodes }: InlineContentProps) {
 function renderInlineNode(node: InlineNode): ReactNode {
   if (!Object.hasOwn(inlineNodeRenderers, node.type)) {
     // Runtime guard for malformed content: never silently drop a node.
-    throw new Error(
-      `Unsupported inline node type: ${String(node.type ?? 'unknown')}`,
-    );
+    throw new Error(`Unsupported inline node type: ${String(node.type ?? 'unknown')}`);
   }
   const View = inlineNodeRenderers[node.type] as ComponentType<{
     node: InlineNode;

@@ -25,9 +25,7 @@ afterEach(() => {
 });
 
 function questionnaireInput(): HTMLInputElement {
-  const element = container.querySelector<HTMLInputElement>(
-    '[data-slot="questionnaire-input"]',
-  );
+  const element = container.querySelector<HTMLInputElement>('[data-slot="questionnaire-input"]');
   if (!element) {
     throw new Error('Questionnaire input not found');
   }
@@ -59,10 +57,7 @@ function renderInput({
 
 /** React only reports `onChange` when the native value setter is used. */
 function setValue(element: HTMLInputElement, value: string) {
-  const setter = Object.getOwnPropertyDescriptor(
-    HTMLInputElement.prototype,
-    'value',
-  )?.set;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
   setter?.call(element, value);
   element.dispatchEvent(new Event('input', { bubbles: true }));
 }
@@ -71,9 +66,7 @@ describe('QuestionnaireInput', () => {
   it('renders the shadcn Input element with its base styles and questionnaire slots', () => {
     renderInput();
 
-    expect(
-      container.querySelector('[data-slot="questionnaire-input-wrapper"]'),
-    ).not.toBeNull();
+    expect(container.querySelector('[data-slot="questionnaire-input-wrapper"]')).not.toBeNull();
 
     const input = questionnaireInput();
     // Base styles are contributed by the shadcn `Input` component.

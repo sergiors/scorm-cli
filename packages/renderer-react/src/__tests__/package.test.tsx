@@ -120,8 +120,7 @@ describe('PackageView shared', () => {
       // Every progressbar must be an authored questionnaire's own wizard
       // counter; the package adds no progress chrome of its own.
       const progressbars = html.match(/role="progressbar"/g) ?? [];
-      const questionnaireProgress =
-        html.match(/data-slot="questionnaire-progress"/g) ?? [];
+      const questionnaireProgress = html.match(/data-slot="questionnaire-progress"/g) ?? [];
       expect(progressbars).toHaveLength(questionnaireProgress.length);
       expect(html).not.toContain('items visited');
       expect(html).not.toContain('Package complete');
@@ -132,16 +131,12 @@ describe('PackageView shared', () => {
 
 describe('PackageApp', () => {
   it('renders the authored scroll view for the provided content package', () => {
-    const html = renderToStaticMarkup(
-      <PackageApp contentPackage={scrollPackage} />,
-    );
+    const html = renderToStaticMarkup(<PackageApp contentPackage={scrollPackage} />);
     expect(html).toContain('Welcome');
   });
 
   it('renders the authored grid view for the provided content package', () => {
-    const html = renderToStaticMarkup(
-      <PackageApp contentPackage={gridPackage} />,
-    );
+    const html = renderToStaticMarkup(<PackageApp contentPackage={gridPackage} />);
     expect(html).toContain('Functions');
   });
 });

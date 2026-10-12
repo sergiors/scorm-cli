@@ -1,14 +1,6 @@
 import chokidar from 'chokidar';
-import type {
-  Renderer,
-  RendererDevOptions,
-  RendererDevServer,
-} from '@scorm-cli/core';
-import {
-  createContentManifest,
-  createScormRuntime,
-  scormDevMock,
-} from '@scorm-cli/scorm';
+import type { Renderer, RendererDevOptions, RendererDevServer } from '@scorm-cli/core';
+import { createContentManifest, createScormRuntime, scormDevMock } from '@scorm-cli/scorm';
 import type { LoadedPackage } from './content';
 import { loadPackage } from './content';
 import { loadRenderer } from './renderer';
@@ -26,10 +18,7 @@ export interface DevSession {
 export interface DevDependencies {
   loadPackage(contentPath: string): Promise<LoadedPackage>;
   loadRenderer(): Promise<Renderer>;
-  watch(
-    contentRoot: string,
-    onChange: () => void,
-  ): DevWatcher | Promise<DevWatcher>;
+  watch(contentRoot: string, onChange: () => void): DevWatcher | Promise<DevWatcher>;
   debounceMs: number;
 }
 
@@ -74,10 +63,7 @@ export async function startDevPackage(
     ...(options.port === undefined ? {} : { port: options.port }),
     ...(options.host === undefined ? {} : { host: options.host }),
   };
-  const server: RendererDevServer = await renderer.dev(
-    initialPackage.content,
-    rendererOptions,
-  );
+  const server: RendererDevServer = await renderer.dev(initialPackage.content, rendererOptions);
 
   let closed = false;
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -94,16 +80,9 @@ export async function startDevPackage(
           if (closed) return;
           try {
             const nextPackage = await dependencies.loadPackage(contentPath);
-            if (!closed)
-              await server.update(
-                nextPackage.content,
-                scriptsFor(nextPackage.content),
-              );
+            if (!closed) await server.update(nextPackage.content, scriptsFor(nextPackage.content));
           } catch (error) {
-            if (!closed)
-              server.reportError(
-                error instanceof Error ? error.message : String(error),
-              );
+            if (!closed) server.reportError(error instanceof Error ? error.message : String(error));
           }
         });
       }, dependencies.debounceMs);

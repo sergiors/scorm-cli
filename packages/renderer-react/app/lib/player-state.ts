@@ -24,10 +24,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * multiple-choice answers are string arrays, everything else a single string.
  * Correctness is never consulted, so a valid answer can never leak it.
  */
-function sanitizeAnswer(
-  question: QuestionNode,
-  value: unknown,
-): AnswerValue | undefined {
+function sanitizeAnswer(question: QuestionNode, value: unknown): AnswerValue | undefined {
   const options = new Set(question.options.map((option) => option.value));
   if (question.questionType === 'multiple-choice') {
     if (!Array.isArray(value)) {
@@ -80,9 +77,7 @@ function sanitizePageState(
   // persisted (the compact codec derives completion from progress).
   const provided = new Set(
     Array.isArray(raw.submittedQuestionnaires)
-      ? raw.submittedQuestionnaires.filter(
-          (id): id is string => typeof id === 'string',
-        )
+      ? raw.submittedQuestionnaires.filter((id): id is string => typeof id === 'string')
       : [],
   );
   const submitted: string[] = [];
@@ -108,12 +103,8 @@ function sanitizePageState(
  * always a plain in-memory state — never the raw persisted object — so the
  * renderer can mutate it without touching whatever the bridge returned.
  */
-export function sanitizePlayerState(
-  presentation: RootPresentation,
-  raw: unknown,
-): PlayerState {
-  const nodes =
-    presentation.type === 'scroll' ? presentation.pages : presentation.items;
+export function sanitizePlayerState(presentation: RootPresentation, raw: unknown): PlayerState {
+  const nodes = presentation.type === 'scroll' ? presentation.pages : presentation.items;
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const state: PlayerState = { pages: {} };
 
@@ -132,11 +123,7 @@ export function sanitizePlayerState(
   for (const [pageId, pageRaw] of Object.entries(raw.pages)) {
     const node = byId.get(pageId);
     if (!node || !isRecord(pageRaw)) continue;
-    const page = sanitizePageState(
-      node,
-      pageRaw,
-      presentation.type === 'scroll',
-    );
+    const page = sanitizePageState(node, pageRaw, presentation.type === 'scroll');
     if (page) state.pages[pageId] = page;
   }
 
@@ -162,25 +149,18 @@ export function updatePageState(
 }
 
 /** Returns a new state with `location` set, preserving pages state. */
-export function withLocation(
-  state: PlayerState,
-  location: string,
-): PlayerState {
+export function withLocation(state: PlayerState, location: string): PlayerState {
   return state.location === location ? state : { ...state, location };
 }
 
 /** Compares two answers so an unchanged selection never triggers a write. */
-export function sameAnswer(
-  previous: AnswerValue | undefined,
-  next: AnswerValue,
-): boolean {
+export function sameAnswer(previous: AnswerValue | undefined, next: AnswerValue): boolean {
   if (Array.isArray(previous) || Array.isArray(next)) {
     if (!Array.isArray(previous) || !Array.isArray(next)) {
       return false;
     }
     return (
-      previous.length === next.length &&
-      previous.every((value, index) => value === next[index])
+      previous.length === next.length && previous.every((value, index) => value === next[index])
     );
   }
   return previous === next;
