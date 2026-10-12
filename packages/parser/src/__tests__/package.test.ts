@@ -414,6 +414,29 @@ describe('parsePackage', () => {
     )
   })
 
+  it('rejects Page and Item sources symlinked outside the content package', async () => {
+    const parent = await mkdtemp(path.join(os.tmpdir(), 'content-package-'))
+    temp = parent
+
+    for (const kind of ['Page', 'Item'] as const) {
+      const root = path.join(parent, kind.toLowerCase())
+      const outside = path.join(parent, `${kind.toLowerCase()}-outside.mdx`)
+      await mkdir(root)
+      await writeFile(outside, '---\ntitle: Outside\n---')
+      await symlink(outside, path.join(root, 'linked.mdx'))
+      await writeFile(
+        path.join(root, 'index.mdx'),
+        kind === 'Page'
+          ? '---\ntitle: Package\n---\n<Scroll><Page src="linked.mdx" /></Scroll>'
+          : '---\ntitle: Package\n---\n<Grid><Item src="linked.mdx" /></Grid>'
+      )
+
+      await expect(parsePackage(root)).rejects.toThrow(
+        new RegExp(`${kind} source "linked\\.mdx" resolves outside the content package directory`)
+      )
+    }
+  })
+
   it('parses standard and semantic images in flow and inline contexts', async () => {
     const root = await makeLesson(
       '![Markdown](assets/pic.svg)\n\nBefore <Image src="assets/pic.svg" alt="" caption="A caption" /> after.\n\n<Image src="assets/pic.svg" alt="Semantic" />'

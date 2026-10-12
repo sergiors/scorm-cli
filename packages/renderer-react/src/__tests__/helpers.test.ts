@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  areQuestionnairesSubmitted,
   collectQuestionnaireIds,
   collectQuestionnaires,
   getPresentationNodes,
@@ -207,5 +208,21 @@ describe('collectQuestionnaires', () => {
     expect(
       collectQuestionnaires([{ type: 'paragraph', children: [{ type: 'text', value: 'Plain' }] }])
     ).toEqual([])
+  })
+})
+
+describe('areQuestionnairesSubmitted', () => {
+  it('is true when there are no questionnaires to submit', () => {
+    expect(areQuestionnairesSubmitted([], [])).toBe(true)
+    expect(areQuestionnairesSubmitted([], ['extra'])).toBe(true)
+  })
+
+  it('is true only when every questionnaire id is submitted', () => {
+    expect(areQuestionnairesSubmitted(['a', 'b'], ['b', 'a'])).toBe(true)
+    expect(areQuestionnairesSubmitted(['a', 'b'], ['a'])).toBe(false)
+  })
+
+  it('ignores submitted ids that no longer name a questionnaire', () => {
+    expect(areQuestionnairesSubmitted(['a'], ['stale', 'a'])).toBe(true)
   })
 })

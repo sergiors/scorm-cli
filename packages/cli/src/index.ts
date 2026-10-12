@@ -2,6 +2,7 @@
 import { cac } from 'cac'
 import { buildPackage } from './build'
 import { startDevPackage } from './dev'
+import { errorMessage } from './errors'
 
 const cli = cac('scorm-cli')
 
@@ -14,8 +15,7 @@ cli
       const output = await buildPackage(content, options.output)
       console.log(`SCORM package written to ${output}`)
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      console.error(`Error: ${message}`)
+      console.error(`Error: ${errorMessage(error)}`)
       process.exitCode = 1
     }
   })
@@ -40,8 +40,7 @@ cli
         void session
           .close()
           .catch((error) => {
-            const message = error instanceof Error ? error.message : String(error)
-            console.error(`Error closing preview server: ${message}`)
+            console.error(`Error closing preview server: ${errorMessage(error)}`)
           })
           .finally(() => {
             process.exitCode = signal === 'SIGINT' ? 130 : 143
@@ -52,8 +51,7 @@ cli
       process.once('SIGINT', onSigint)
       process.once('SIGTERM', onSigterm)
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      console.error(`Error: ${message}`)
+      console.error(`Error: ${errorMessage(error)}`)
       process.exitCode = 1
     }
   })

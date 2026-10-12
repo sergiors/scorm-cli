@@ -3,6 +3,7 @@ import type { Renderer, RendererDevOptions, RendererDevServer } from '@scorm-cli
 import { createContentManifest, createScormRuntime, scormDevMock } from '@scorm-cli/scorm'
 import type { LoadedPackage } from './content'
 import { loadPackage } from './content'
+import { errorMessage } from './errors'
 import { loadRenderer } from './renderer'
 
 interface DevWatcher {
@@ -82,7 +83,7 @@ export async function startDevPackage(
             const nextPackage = await dependencies.loadPackage(contentPath)
             if (!closed) await server.update(nextPackage.content, scriptsFor(nextPackage.content))
           } catch (error) {
-            if (!closed) server.reportError(error instanceof Error ? error.message : String(error))
+            if (!closed) server.reportError(errorMessage(error))
           }
         })
       }, dependencies.debounceMs)

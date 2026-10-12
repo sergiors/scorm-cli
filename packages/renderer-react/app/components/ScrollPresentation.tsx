@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { FormattedMessage } from 'react-intl'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import type { AnswerValue, PageNode, PlayerPageState } from '../types'
-import { collectQuestionnaireIds } from '../lib/content-helpers'
+import { areQuestionnairesSubmitted, collectQuestionnaireIds } from '../lib/content-helpers'
 import { Button } from './ui/button'
 import { ContentRenderer } from './ContentRenderer'
 
@@ -59,7 +59,7 @@ export interface ScrollPresentationProps {
 }
 
 /** Clamps a requested page index to the pages that actually exist. */
-function clampPageIndex(index: number, pageCount: number): number {
+export function clampPageIndex(index: number, pageCount: number): number {
   if (pageCount <= 0) {
     return 0
   }
@@ -152,18 +152,20 @@ export function ScrollPresentation({
     (index: number) => {
       setAtTop(true)
       setAtEnd(false)
-      setCurrentIndex(Math.max(0, Math.min(lastIndex, index)))
+      setCurrentIndex(clampPageIndex(index, pages.length))
     },
-    [lastIndex]
+    [pages.length]
   )
 
+  // Both controls delegate the boundary clamp to `goToPage`, so the page index
+  // rule has a single source of truth.
   const goToPrevious = useCallback(() => {
-    goToPage(Math.max(0, currentIndex - 1))
+    goToPage(currentIndex - 1)
   }, [currentIndex, goToPage])
 
   const goToNext = useCallback(() => {
-    goToPage(Math.min(lastIndex, currentIndex + 1))
-  }, [currentIndex, goToPage, lastIndex])
+    goToPage(currentIndex + 1)
+  }, [currentIndex, goToPage])
 
   // Opens a page referenced by a Path node through the same page switching the
   // previous/continue controls use, so a Path never mounts a second copy of the
@@ -193,7 +195,7 @@ export function ScrollPresentation({
   const pageState = pageStates[currentPage.id]
   const submitted = pageState?.submittedQuestionnaires ?? []
   const questionnaireIds = collectQuestionnaireIds(currentPage.content)
-  const allQuestionnairesSubmitted = questionnaireIds.every((id) => submitted.includes(id))
+  const allQuestionnairesSubmitted = areQuestionnairesSubmitted(questionnaireIds, submitted)
   const pageComplete = atEnd && allQuestionnairesSubmitted
 
   return (

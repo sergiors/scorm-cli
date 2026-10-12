@@ -91,3 +91,17 @@ function assertNever(node: never): never {
 export function collectQuestionnaireIds(nodes: ContentNode[]): string[] {
   return collectQuestionnaires(nodes).map((node) => node.id)
 }
+
+/**
+ * Whether every questionnaire in `questionnaireIds` has been submitted, ignoring
+ * any submitted ids that no longer name a reachable questionnaire. This is the
+ * completion gate a scroll page applies once its end boundary is reached, kept
+ * pure and shared so the decision never depends on viewport state.
+ */
+export function areQuestionnairesSubmitted(
+  questionnaireIds: readonly string[],
+  submittedQuestionnaires: readonly string[]
+): boolean {
+  const submitted = new Set(submittedQuestionnaires)
+  return questionnaireIds.every((id) => submitted.has(id))
+}

@@ -11,6 +11,7 @@ import type {
 } from '@scorm-cli/core'
 import { createServer, searchForWorkspaceRoot, type Plugin, type ViteDevServer } from 'vite'
 import { PREVIEW_CLEAR_EVENT, PREVIEW_ERROR_EVENT } from '../app/shared/preview-events'
+import { escapeInlineScript } from './html'
 import {
   createPackageDataPlugin,
   resolveAppRoot,
@@ -171,14 +172,6 @@ function createDevScriptsPlugin(handle: DevScriptsHandle): Plugin {
       }))
     }
   }
-}
-
-/**
- * Neutralises a `</script>` sequence in an inline script body so it cannot
- * close the tag early and break the surrounding document.
- */
-function escapeInlineScript(source: string): string {
-  return source.replace(/<\/script/gi, '<\\/script')
 }
 
 /**

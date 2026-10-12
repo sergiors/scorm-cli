@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { isRemoteReference } from '@scorm-cli/core'
 import type { AstNode } from './ast'
-import { sourceLocation, normalizedRelative } from './shared'
+import { isOutsideRelativePath, normalizedRelative, sourceLocation } from './shared'
 
 export async function assetReference(
   value: string,
@@ -40,12 +40,7 @@ export async function assetReference(
 
   const realRoot = await fs.realpath(root)
   const realAsset = await fs.realpath(absolute)
-  const realRelative = path.relative(realRoot, realAsset)
-  if (
-    realRelative === '..' ||
-    realRelative.startsWith(`..${path.sep}`) ||
-    path.isAbsolute(realRelative)
-  ) {
+  if (isOutsideRelativePath(path.relative(realRoot, realAsset))) {
     throw new Error(
       `${sourceLocation(file, node)}: asset "${value}" resolves outside the content package directory`
     )

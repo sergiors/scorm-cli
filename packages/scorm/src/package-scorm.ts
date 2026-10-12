@@ -6,6 +6,7 @@ import type { PackageMetadata, RenderResult } from '@scorm-cli/core'
 import { createScormRuntime } from './runtime'
 import type { ContentManifest } from './content-manifest'
 import { createManifest } from './ims-manifest'
+import { resolveRendererEntrypoint } from './package-paths'
 
 export interface PackageScormOptions {
   metadata: PackageMetadata
@@ -14,16 +15,20 @@ export interface PackageScormOptions {
   contentManifest: ContentManifest
 }
 
-async function walkFiles(directory: string, current = directory): Promise<string[]> {
+async function listFiles(directory: string, current = directory): Promise<string[]> {
   const entries = await fs.readdir(current, { withFileTypes: true })
-  const result: string[] = []
-  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    const absolute = path.join(current, entry.name)
-    if (entry.isDirectory()) result.push(...(await walkFiles(directory, absolute)))
-    else if (entry.isFile())
-      result.push(path.relative(directory, absolute).split(path.sep).join('/'))
-  }
-  return result
+  const nestedFiles = await Promise.all(
+    entries
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(async (entry) => {
+        const absolute = path.join(current, entry.name)
+        if (entry.isDirectory()) return listFiles(directory, absolute)
+        else if (entry.isFile())
+          return [path.relative(directory, absolute).split(path.sep).join('/')]
+        return []
+      })
+  )
+  return nestedFiles.flat()
 }
 
 async function injectRuntime(entrypoint: string): Promise<void> {
@@ -47,13 +52,7 @@ async function stageRendererOutput(
   const sourceDirectory = path.resolve(options.renderResult.directory)
   await fs.cp(sourceDirectory, stage, { recursive: true })
 
-  const stageEntrypoint = path.join(stage, relativeEntrypoint)
-  if (path.basename(stageEntrypoint) !== 'index.html')
-    throw new Error('renderer entrypoint must be named index.html')
-  if (path.dirname(relativeEntrypoint) !== '.')
-    throw new Error('renderer entrypoint must be at the root of its output directory')
-
-  const rendererFiles = await walkFiles(stage)
+  const rendererFiles = await listFiles(stage)
   if (
     rendererFiles.includes('imsmanifest.xml') ||
     rendererFiles.includes('scorm-runtime.js') ||
@@ -72,8 +71,8 @@ async function stageRendererOutput(
     `${JSON.stringify(options.contentManifest, null, 2)}\n`,
     'utf8'
   )
-  await injectRuntime(path.join(stage, 'index.html'))
-  return walkFiles(stage)
+  await injectRuntime(path.join(stage, relativeEntrypoint))
+  return listFiles(stage)
 }
 
 async function writeScormArchive(
@@ -101,12 +100,7 @@ async function writeScormArchive(
 
 /** Stage a rendered web app as a single SCORM 1.2 SCO and write a ZIP archive. */
 export async function packageScorm(options: PackageScormOptions): Promise<string> {
-  const sourceDirectory = path.resolve(options.renderResult.directory)
-  const sourceEntrypoint = path.resolve(sourceDirectory, options.renderResult.entrypoint)
-  const relativeEntrypoint = path.relative(sourceDirectory, sourceEntrypoint)
-  if (relativeEntrypoint.startsWith('..') || path.isAbsolute(relativeEntrypoint)) {
-    throw new Error('renderer entrypoint must be inside its output directory')
-  }
+  const relativeEntrypoint = resolveRendererEntrypoint(options.renderResult)
 
   const out = path.resolve(options.outputPath)
   const parent = path.dirname(out)

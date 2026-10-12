@@ -128,6 +128,11 @@ export function assertFrontmatterKeys(
   }
 }
 
+/** Whether a path.relative result escapes its root directory. */
+export function isOutsideRelativePath(relative: string): boolean {
+  return relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)
+}
+
 export function normalizedRelative(
   root: string,
   absolute: string,
@@ -142,7 +147,7 @@ export function normalizedRelative(
     )
   }
 
-  if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
+  if (isOutsideRelativePath(rel)) {
     throw new Error(
       `${sourceLocation(file, node)}: ${label} resolves outside the content package directory`
     )

@@ -182,8 +182,9 @@ export function parseMdx(source: string, file: string): { children: AstNode[] } 
   // canonical component resolution while every other import shadows its local
   // bindings; imports are removed before content validation. Non-import ESM
   // (for example `export` statements) is left in place and rejected below.
-  tree.children = normalizedChildren.filter(
-    (node) => !isDefinition(node) && !(isMdxjsEsm(node) && isImportOnlyEsm(node))
-  )
-  return tree
+  return {
+    children: normalizedChildren.filter(
+      (node) => !isDefinition(node) && !(isMdxjsEsm(node) && isImportOnlyEsm(node))
+    )
+  }
 }

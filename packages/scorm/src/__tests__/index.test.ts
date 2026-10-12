@@ -1,9 +1,10 @@
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import JSZip from 'jszip'
 import { create } from 'xmlbuilder2'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ContentPackage } from '@scorm-cli/core'
 import {
   createContentManifest,
@@ -16,6 +17,7 @@ import {
 
 let temp: string
 afterEach(async () => {
+  vi.restoreAllMocks()
   if (temp) await rm(temp, { recursive: true, force: true })
 })
 
@@ -150,6 +152,59 @@ describe('SCORM 1.2 package', () => {
         }
       }
     })
+  })
+
+  it('rejects invalid entrypoints before creating staging or output paths', async () => {
+    temp = await mkdtemp(path.join(os.tmpdir(), 'scorm-test-'))
+    const renderDir = path.join(temp, 'render')
+    await mkdir(renderDir)
+    const outputParent = path.join(temp, 'not-created')
+    const mkdirSpy = vi.spyOn(fs, 'mkdir')
+    const mkdtempSpy = vi.spyOn(fs, 'mkdtemp')
+    const copySpy = vi.spyOn(fs, 'cp')
+    const writeFileSpy = vi.spyOn(fs, 'writeFile')
+
+    for (const [entrypoint, message] of [
+      ['../outside.html', 'renderer entrypoint must be inside its output directory'],
+      ['nested/index.html', 'renderer entrypoint must be at the root of its output directory']
+    ]) {
+      await expect(
+        packageScorm({
+          metadata: content.metadata,
+          contentManifest: createContentManifest(content),
+          renderResult: { directory: renderDir, entrypoint },
+          outputPath: path.join(outputParent, 'content-package.zip')
+        })
+      ).rejects.toThrow(message)
+    }
+
+    expect(mkdirSpy).not.toHaveBeenCalled()
+    expect(mkdtempSpy).not.toHaveBeenCalled()
+    expect(copySpy).not.toHaveBeenCalled()
+    expect(writeFileSpy).not.toHaveBeenCalled()
+    await expect(readFile(path.join(outputParent, 'content-package.zip'))).rejects.toMatchObject({
+      code: 'ENOENT'
+    })
+  })
+
+  it('rejects renderer output containing a reserved SCORM filename', async () => {
+    temp = await mkdtemp(path.join(os.tmpdir(), 'scorm-test-'))
+    const renderDir = path.join(temp, 'render')
+    await mkdir(renderDir)
+    await writeFile(path.join(renderDir, 'index.html'), '<html><head></head><body></body></html>')
+    await writeFile(path.join(renderDir, 'scorm-runtime.js'), 'renderer-owned file')
+    const outputPath = path.join(temp, 'content-package.zip')
+
+    await expect(
+      packageScorm({
+        metadata: content.metadata,
+        contentManifest: createContentManifest(content),
+        renderResult: { directory: renderDir, entrypoint: 'index.html' },
+        outputPath
+      })
+    ).rejects.toThrow('renderer output uses a reserved SCORM package filename')
+
+    await expect(readFile(outputPath)).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   it('keeps the dev mock isolated from production packaging', () => {

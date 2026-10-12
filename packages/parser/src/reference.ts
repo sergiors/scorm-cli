@@ -5,6 +5,7 @@ import type { ContentNode, ItemNode, PageNode } from '@scorm-cli/core'
 import type { AstNode } from './ast'
 import {
   assertFrontmatterKeys,
+  isOutsideRelativePath,
   sourceLocation,
   normalizedRelative,
   optionalString,
@@ -41,12 +42,7 @@ export async function parseReference<T extends PageNode | ItemNode>(
   }
   const realRoot = await fs.realpath(root)
   const realSource = await fs.realpath(sourcePath)
-  const realSourceRelative = path.relative(realRoot, realSource)
-  if (
-    realSourceRelative === '..' ||
-    realSourceRelative.startsWith(`..${path.sep}`) ||
-    path.isAbsolute(realSourceRelative)
-  ) {
+  if (isOutsideRelativePath(path.relative(realRoot, realSource))) {
     throw new Error(
       `${sourceLocation(declaredIn, node)}: ${kind === 'page' ? 'Page' : 'Item'} source "${src}" resolves outside the content package directory`
     )
