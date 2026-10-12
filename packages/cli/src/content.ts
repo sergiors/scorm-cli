@@ -3,6 +3,6 @@ import { parsePackageWithPaths, type ParsedPackageLocation } from '@scorm-cli/pa
 export type LoadedPackage = ParsedPackageLocation
 
 /** Parse authored content once and resolve the root used for local asset serving. */
-export async function loadPackage(contentPath: string): Promise<LoadedPackage> {
+export function loadPackage(contentPath: string): Promise<LoadedPackage> {
   return parsePackageWithPaths(contentPath)
 }

@@ -330,6 +330,20 @@ const sharedQuestionPackage: ContentPackage = {
   }
 }
 
+/** A page whose only content is a Path pointing back to itself. */
+const selfPathPage: PageNode = {
+  type: 'page',
+  id: 'page:self.mdx',
+  source: 'self.mdx',
+  metadata: { title: 'Self' },
+  content: [{ type: 'path', pageIds: ['page:self.mdx'] }]
+}
+
+const selfPathPackage: ContentPackage = {
+  metadata: { title: 'Self path' },
+  presentation: { type: 'scroll', pages: [selfPathPage, plainPage(2)] }
+}
+
 const gridQuizItem: ItemNode = {
   type: 'item',
   id: 'item:quiz.mdx',
@@ -695,6 +709,39 @@ describe('PackageView scroll navigation controls', () => {
     // The previous page's observer is torn down rather than left watching a
     // sentinel that is no longer mounted.
     expect(observer.elements.has(sentinel as Element)).toBe(false)
+  })
+})
+
+describe('PackageView same-page Path navigation', () => {
+  /**
+   * The displayed page's own Path references the page itself. Reacting to that
+   * confirmation must be a no-op rather than resetting the page's boundary
+   * signals behind React's back.
+   */
+  it('keeps an end-reached page completed when its Path points back to itself', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+
+    act(() => root.render(<Player contentPackage={selfPathPackage} />))
+
+    // Reaching the page end completes it and offers the continue control.
+    setEndIntersecting(0, true)
+    expect(nextButtons()).toHaveLength(1)
+    expect(lastSaved(saveState).pages['page:self.mdx']?.completed).toBe(true)
+
+    // Its Path points back to the page on screen: the entry is visited and open.
+    const selfEntry = container.querySelector<HTMLButtonElement>('[data-path-entry]')
+    expect(selfEntry?.dataset.pathStatus).toBe('visited')
+    expect(selfEntry?.disabled).toBe(false)
+
+    act(() => selfEntry?.click())
+
+    // Confirming the page already on screen must not reset its boundary signals:
+    // it stays on the same scene, stays completed and keeps offering the
+    // continue control instead of silently hiding it.
+    expect(sceneIndices()).toEqual([0])
+    expect(nextButtons()).toHaveLength(1)
+    expect(lastSaved(saveState).pages['page:self.mdx']?.completed).toBe(true)
   })
 })
 

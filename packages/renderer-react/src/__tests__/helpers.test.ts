@@ -3,6 +3,7 @@ import {
   areQuestionnairesSubmitted,
   collectQuestionnaireIds,
   collectQuestionnaires,
+  getDoneNodeIds,
   getPresentationNodes,
   isPackageComplete
 } from '../../app/lib/content-helpers'
@@ -54,6 +55,54 @@ describe('getPresentationNodes', () => {
   it('returns an empty list for an empty presentation', () => {
     expect(getPresentationNodes(makeEmptyPackage())).toEqual([])
     expect(getPresentationNodes(makeEmptyGridPackage())).toEqual([])
+  })
+})
+
+describe('getDoneNodeIds', () => {
+  it('counts scroll pages that are completed, not merely visited', () => {
+    expect(
+      getDoneNodeIds(scrollPackage, {
+        pages: {
+          'page:intro.mdx': { visited: true, completed: true },
+          'page:setup.mdx': { visited: true }
+        }
+      })
+    ).toEqual(['page:intro.mdx'])
+  })
+
+  it('counts grid items that were visited, regardless of completion', () => {
+    expect(
+      getDoneNodeIds(gridPackage, {
+        pages: {
+          'item:functions.mdx': { visited: true },
+          'item:types.mdx': {}
+        }
+      })
+    ).toEqual(['item:functions.mdx'])
+  })
+
+  it('ignores state for ids that are not presentation nodes', () => {
+    expect(
+      getDoneNodeIds(scrollPackage, {
+        pages: { 'page:missing.mdx': { visited: true, completed: true } }
+      })
+    ).toEqual([])
+  })
+
+  it('is empty for an empty presentation', () => {
+    expect(getDoneNodeIds(makeEmptyPackage(), { pages: {} })).toEqual([])
+    expect(getDoneNodeIds(makeEmptyGridPackage(), { pages: {} })).toEqual([])
+  })
+
+  it('gates package completion through the canonical core helper', () => {
+    const state = {
+      pages: {
+        'page:intro.mdx': { completed: true },
+        'page:setup.mdx': { completed: true }
+      }
+    }
+    expect(isPackageComplete(scrollPackage, getDoneNodeIds(scrollPackage, state))).toBe(true)
+    expect(isPackageComplete(gridPackage, getDoneNodeIds(gridPackage, state))).toBe(false)
   })
 })
 

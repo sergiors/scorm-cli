@@ -1036,6 +1036,30 @@ describe('parsePackage', () => {
     }
   })
 
+  it('keeps the declaration look-ahead from masking earlier invalid Scroll children', async () => {
+    const root = await makePackage(
+      `---\ntitle: Package\n---\n<Scroll><Video src="missing.mp4" /><Page src={dynamic} /></Scroll>`
+    )
+    await expect(parsePackage(root)).rejects.toThrow(
+      /<Scroll> children may only contain direct <Page .*found <Video>/
+    )
+  })
+
+  it('keeps later valid declarations available past a malformed look-ahead declaration', async () => {
+    const root = await makePackage(
+      `---\ntitle: Package\n---\n<Scroll>\n  <Page src="first.mdx" />\n  <Page src={dynamic} />\n  <Page src="later.mdx" />\n</Scroll>`
+    )
+    await writeFile(
+      path.join(root, 'first.mdx'),
+      '---\ntitle: First\n---\n<Path><Page ref="later.mdx" /></Path>'
+    )
+    await writeFile(path.join(root, 'later.mdx'), '---\ntitle: Later\n---')
+
+    await expect(parsePackage(root)).rejects.toThrow(
+      /index\.mdx:\d+(?::\d+)?: dynamic value for attribute "src" is not supported/
+    )
+  })
+
   it('resolves references and assets relative to each source file', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'content-package-'))
     temp = root
@@ -1180,5 +1204,7 @@ describe('parsePackage', () => {
     await expect(parsePackage(root)).rejects.toThrow(
       /only valid for pages declared directly in a root <Scroll>/
     )
+    await writeFile(path.join(root, 'lesson.mdx'), '---\ntitle: Lesson\n---\n<Path><Page /></Path>')
+    await expect(parsePackage(root)).rejects.toThrow(/"ref" must be a non-empty string/)
   })
 })

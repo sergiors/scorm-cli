@@ -247,6 +247,18 @@ export function isPackageComplete(
   return ids.length > 0 && ids.every((id) => visited.has(id))
 }
 
+/** Returns presentation-node IDs considered complete by the package's progress semantics. */
+export function getDoneNodeIds(contentPackage: ContentPackage, playerState: PlayerState): string[] {
+  return presentationNodes(contentPackage)
+    .filter((node) => {
+      const state = playerState.pages[node.id]
+      return contentPackage.presentation.type === 'scroll'
+        ? state?.completed === true
+        : state?.visited === true
+    })
+    .map((node) => node.id)
+}
+
 /** Returns integer package progress, independently of any SCORM encoding. */
 export function getPackageProgress(
   contentPackage: ContentPackage,
@@ -257,14 +269,7 @@ export function getPackageProgress(
     return 0
   }
 
-  const count = nodes.reduce((total, node) => {
-    const state = playerState.pages[node.id]
-    const done =
-      contentPackage.presentation.type === 'scroll'
-        ? state?.completed === true
-        : state?.visited === true
-    return total + (done ? 1 : 0)
-  }, 0)
+  const count = getDoneNodeIds(contentPackage, playerState).length
 
   return Math.max(0, Math.min(100, Math.round((count / nodes.length) * 100)))
 }

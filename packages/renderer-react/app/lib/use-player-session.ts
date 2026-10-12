@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import type { AnswerValue, ContentPackage, PlayerState } from '../types'
-import { getPackageProgress, getPresentationNodes, isPackageComplete } from './content-helpers'
+import { getDoneNodeIds, getPackageProgress, isPackageComplete } from './content-helpers'
 import { sanitizePlayerState, sameAnswer, updatePageState, withLocation } from './player-state'
 import { restoreState, saveState, useScormBridge } from './use-scorm-bridge'
 
@@ -138,14 +138,7 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
   // Scroll completion requires every page to be *completed*; grid completion
   // requires every item to be *visited*. Reusing the canonical helper keeps
   // both presentations (and the CLI) in agreement.
-  const doneNodeIds = getPresentationNodes(contentPackage)
-    .filter((node) =>
-      presentation.type === 'scroll'
-        ? state.pages[node.id]?.completed
-        : state.pages[node.id]?.visited
-    )
-    .map((node) => node.id)
-  useScormBridge(isPackageComplete(contentPackage, doneNodeIds))
+  useScormBridge(isPackageComplete(contentPackage, getDoneNodeIds(contentPackage, state)))
 
   return { state, markSeen, markCompleted, setAnswer, markQuestionnaireSubmitted }
 }

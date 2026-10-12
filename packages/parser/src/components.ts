@@ -81,7 +81,7 @@ export interface ComponentParseContext {
 export type FlowComponentParser = (
   node: AstNode,
   context: ComponentParseContext
-) => Promise<ContentNode>
+) => Promise<ContentNode> | ContentNode
 
 export type InlineComponentParser = (
   node: AstNode,

@@ -7,6 +7,7 @@ import {
   isFlowComponent
 } from '../components'
 import { parseContentNodes } from '../content'
+import { parsePath } from '../path'
 
 const flow = (name: string): AstNode => ({ type: 'mdxJsxFlowElement', name })
 const inline = (name: string): MdxJsxTextElementAstNode => ({ type: 'mdxJsxTextElement', name })
@@ -111,5 +112,33 @@ describe('nested grammar ownership', () => {
     await expect(parse(withVideo)).rejects.toThrow(
       /Questionnaire may contain only direct <Question> children; found <Video>/
     )
+  })
+})
+
+describe('Path child normalization', () => {
+  it('accepts a Page text element when flattening a whitespace-only paragraph', () => {
+    const path: AstNode = {
+      type: 'mdxJsxFlowElement',
+      name: 'Path',
+      children: [
+        paragraph(
+          text('\n  '),
+          {
+            type: 'mdxJsxTextElement',
+            name: 'Page',
+            attributes: [{ type: 'mdxJsxAttribute', name: 'ref', value: 'lessons/next.mdx' }]
+          },
+          text('\n')
+        )
+      ]
+    }
+
+    expect(
+      parsePath(path, {
+        sourceFile: '/package/lessons/start.mdx',
+        root: '/package',
+        rootPageSources: new Set(['lessons/next.mdx'])
+      })
+    ).toEqual({ type: 'path', pageIds: ['page:lessons/next.mdx'] })
   })
 })

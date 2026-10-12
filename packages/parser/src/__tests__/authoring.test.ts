@@ -43,6 +43,32 @@ describe('@scorm-cli/authoring', () => {
 })
 
 describe('MDX authoring imports', () => {
+  it('normalizes JSX-only Path children as flow elements and inline JSX in paragraphs as text elements', () => {
+    const flowPath = parseMdx('<Path>\n  <Page ref="next.mdx" />\n</Path>', 'flow.mdx').children[0]
+    const paragraphPath = parseMdx(
+      '<Path>\n<Page ref="next.mdx" /> trailing text\n</Path>',
+      'paragraph.mdx'
+    ).children[0]
+
+    expect(flowPath).toMatchObject({
+      type: 'mdxJsxFlowElement',
+      canonicalName: 'Path',
+      children: [{ type: 'mdxJsxFlowElement', canonicalName: 'Page' }]
+    })
+    expect(paragraphPath).toMatchObject({
+      type: 'mdxJsxFlowElement',
+      children: [
+        {
+          type: 'paragraph',
+          children: [
+            { type: 'mdxJsxTextElement', canonicalName: 'Page' },
+            { type: 'text', value: ' trailing text' }
+          ]
+        }
+      ]
+    })
+  })
+
   it('stores direct and renamed authoring identities on normalized JSX nodes', () => {
     const direct = parseMdx('<Scroll><Page src="lesson.mdx" /></Scroll>', 'direct.mdx')
     const renamed = parseMdx(

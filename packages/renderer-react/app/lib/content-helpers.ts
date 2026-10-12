@@ -10,9 +10,10 @@ import type {
 /**
  * Re-exported from `@scorm-cli/core` so completion semantics stay canonical
  * across the CLI and the renderer. In particular, an empty package is never
- * considered complete.
+ * considered complete, and the done-node rule — a scroll page counts once
+ * `completed`, a grid item once `visited` — lives in one place.
  */
-export { getPackageProgress, isPackageComplete } from '@scorm-cli/core'
+export { getDoneNodeIds, getPackageProgress, isPackageComplete } from '@scorm-cli/core'
 
 /**
  * Flattens the authored presentation into the ordered list of leaf nodes it

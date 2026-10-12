@@ -10,8 +10,14 @@ describe('renderer entrypoint validation', () => {
 
   it('rejects entrypoints outside the renderer output directory', () => {
     expect(() =>
-      resolveRendererEntrypoint({ directory: 'build/site', entrypoint: '../index.html' })
+      resolveRendererEntrypoint({ directory: 'build/site', entrypoint: '../outside/index.html' })
     ).toThrow('renderer entrypoint must be inside its output directory')
+  })
+
+  it('does not mistake an in-directory `..hidden` segment for traversal', () => {
+    expect(() =>
+      resolveRendererEntrypoint({ directory: 'build/site', entrypoint: '..hidden/index.html' })
+    ).toThrow('renderer entrypoint must be at the root of its output directory')
   })
 
   it('requires the root entrypoint to be named index.html', () => {

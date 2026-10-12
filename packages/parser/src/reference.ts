@@ -15,7 +15,24 @@ import { parseMdx } from './mdx'
 import { parseContentNodes } from './content'
 import { sourceLineOffset } from './io'
 
-export async function parseReference<T extends PageNode | ItemNode>(
+export function parseReference(
+  kind: 'page',
+  src: string,
+  node: AstNode,
+  declaredIn: string,
+  root: string,
+  ids: Set<string>,
+  rootPageSources?: Set<string>
+): Promise<PageNode>
+export function parseReference(
+  kind: 'item',
+  src: string,
+  node: AstNode,
+  declaredIn: string,
+  root: string,
+  ids: Set<string>
+): Promise<ItemNode>
+export async function parseReference(
   kind: 'page' | 'item',
   src: string,
   node: AstNode,
@@ -23,7 +40,7 @@ export async function parseReference<T extends PageNode | ItemNode>(
   root: string,
   ids: Set<string>,
   rootPageSources?: Set<string>
-): Promise<T> {
+): Promise<PageNode | ItemNode> {
   const sourcePath = path.resolve(path.dirname(declaredIn), src)
   const source = normalizedRelative(
     root,
@@ -47,8 +64,8 @@ export async function parseReference<T extends PageNode | ItemNode>(
       `${sourceLocation(declaredIn, node)}: ${kind === 'page' ? 'Page' : 'Item'} source "${src}" resolves outside the content package directory`
     )
   }
-  const parsed = matter(raw!)
-  const lineOffset = sourceLineOffset(raw!, parsed.content)
+  const parsed = matter(raw)
+  const lineOffset = sourceLineOffset(raw, parsed.content)
   assertFrontmatterKeys(
     parsed.data,
     kind === 'page' ? ['title', 'description'] : ['title'],
@@ -89,11 +106,21 @@ export async function parseReference<T extends PageNode | ItemNode>(
     )
   }
 
+  if (kind === 'page') {
+    return {
+      type: 'page',
+      id,
+      source,
+      metadata,
+      content
+    }
+  }
+
   return {
-    type: kind,
+    type: 'item',
     id,
     source,
-    metadata,
+    metadata: { title },
     content
-  } as T
+  }
 }

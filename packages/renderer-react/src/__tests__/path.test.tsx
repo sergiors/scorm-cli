@@ -195,6 +195,34 @@ describe('PathView status vectors', () => {
   })
 })
 
+describe('PathView status affordances', () => {
+  it('pairs each status with its own icon and localized label', () => {
+    const html = renderStatic([pathNode], {
+      pathPages: refPages,
+      pageStates: { 'page:one.mdx': { visited: true } },
+      onNavigatePathPage: () => {}
+    })
+    const entries = Array.from(host(html).querySelectorAll('[data-path-entry]'))
+
+    // The icon identifier lucide attaches, independent of the base/size classes.
+    const iconName = (entry: Element) =>
+      Array.from(entry.querySelector('svg')?.classList ?? []).find((name) =>
+        name.startsWith('lucide-')
+      )
+
+    // visited=['one']: one is visited, two available, three/four locked.
+    expect(entries.map(iconName)).toEqual([
+      'lucide-check',
+      'lucide-circle',
+      'lucide-lock',
+      'lucide-lock'
+    ])
+    expect(
+      entries.map((entry) => entry.querySelector('[data-slot="item-actions"]')?.textContent)
+    ).toEqual(['Visited', 'Available', 'Locked', 'Locked'])
+  })
+})
+
 describe('PathView display metadata', () => {
   it('shows the resolved title and optional description', () => {
     const html = renderStatic([pathNode], {

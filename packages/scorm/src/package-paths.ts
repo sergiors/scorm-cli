@@ -7,7 +7,11 @@ export function resolveRendererEntrypoint(renderResult: RenderResult): string {
   const sourceEntrypoint = path.resolve(sourceDirectory, renderResult.entrypoint)
   const relativeEntrypoint = path.relative(sourceDirectory, sourceEntrypoint)
 
-  if (relativeEntrypoint.startsWith('..') || path.isAbsolute(relativeEntrypoint)) {
+  if (
+    relativeEntrypoint === '..' ||
+    relativeEntrypoint.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativeEntrypoint)
+  ) {
     throw new Error('renderer entrypoint must be inside its output directory')
   }
   if (path.basename(relativeEntrypoint) !== 'index.html') {

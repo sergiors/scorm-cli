@@ -26,15 +26,40 @@ import { parseMdx } from './mdx'
 import { hasComponentContext } from './components'
 import { parseReference } from './reference'
 
-async function parsePresentationChildren<T extends PageNode | ItemNode>(
+function presentationChildSource(node: AstNode, declaredIn: string): string {
+  const values = attrs(node, declaredIn)
+  assertAttributes(values, ['src'], declaredIn, node)
+  return requiredString(values.src, 'src', declaredIn, node)
+}
+
+function hasPresentationChildContent(node: AstNode): boolean {
+  return meaningfulChildren(node.children ?? []).length > 0
+}
+
+function parsePresentationChildren(
+  nodes: AstNode[],
+  kind: 'page',
+  declaredIn: string,
+  root: string,
+  ids: Set<string>,
+  rootPageSources?: Set<string>
+): Promise<PageNode[]>
+function parsePresentationChildren(
+  nodes: AstNode[],
+  kind: 'item',
+  declaredIn: string,
+  root: string,
+  ids: Set<string>
+): Promise<ItemNode[]>
+async function parsePresentationChildren(
   nodes: AstNode[],
   kind: 'page' | 'item',
   declaredIn: string,
   root: string,
   ids: Set<string>,
   rootPageSources?: Set<string>
-): Promise<T[]> {
-  const output: T[] = []
+): Promise<Array<PageNode | ItemNode>> {
+  const output: Array<PageNode | ItemNode> = []
   const expected = kind === 'page' ? 'Page' : 'Item'
   for (const node of meaningfulChildren(nodes)) {
     if (node.type === 'mdxjsEsm')
@@ -46,24 +71,16 @@ async function parsePresentationChildren<T extends PageNode | ItemNode>(
         `${sourceLocation(declaredIn, node)}: ${kind === 'page' ? '<Scroll>' : '<Grid>'} children may only contain direct <${expected} src="..." /> components; found ${found}`
       )
     }
-    if (meaningfulChildren(node.children ?? []).length > 0)
+    if (hasPresentationChildContent(node))
       throw new Error(
         `${sourceLocation(declaredIn, node)}: <${expected}> must be self-closing and cannot contain children`
       )
-    const values = attrs(node, declaredIn)
-    assertAttributes(values, ['src'], declaredIn, node)
-    const src = requiredString(values.src, 'src', declaredIn, node)
-    output.push(
-      await parseReference<T>(
-        kind,
-        src,
-        node,
-        declaredIn,
-        root,
-        ids,
-        kind === 'page' ? rootPageSources : undefined
-      )
-    )
+    const src = presentationChildSource(node, declaredIn)
+    if (kind === 'page') {
+      output.push(await parseReference('page', src, node, declaredIn, root, ids, rootPageSources))
+    } else {
+      output.push(await parseReference('item', src, node, declaredIn, root, ids))
+    }
   }
   return output
 }
@@ -75,13 +92,19 @@ function declaredRootPageSources(nodes: AstNode[], entry: string, root: string):
     // preliminary pass only gathers valid root Page declarations so content
     // can resolve forward references while each Page is parsed exactly once.
     if (node.type !== 'mdxJsxFlowElement' || componentName(node) !== 'Page') continue
-    if (meaningfulChildren(node.children ?? []).length > 0) continue
-    const values = attrs(node, entry)
-    assertAttributes(values, ['src'], entry, node)
-    const src = requiredString(values.src, 'src', entry, node)
-    sources.add(
-      normalizedRelative(root, path.resolve(path.dirname(entry), src), entry, node, 'Page src')
-    )
+    if (hasPresentationChildContent(node)) continue
+    try {
+      const src = presentationChildSource(node, entry)
+      sources.add(
+        normalizedRelative(root, path.resolve(path.dirname(entry), src), entry, node, 'Page src')
+      )
+    } catch {
+      // Defer malformed declarations to the ordered presentation parser below.
+      // In particular, a later Page must not make this look-ahead pass mask an
+      // earlier invalid Scroll child. Keep scanning so references can still
+      // resolve to later valid declarations.
+      continue
+    }
   }
   return sources
 }
@@ -111,7 +134,7 @@ async function parseRootPresentation(
   const values = attrs(node, entry)
   if (componentName(node) === 'Scroll') {
     assertAttributes(values, [], entry, node)
-    const pages = await parsePresentationChildren<PageNode>(
+    const pages = await parsePresentationChildren(
       node.children ?? [],
       'page',
       entry,
@@ -138,13 +161,7 @@ async function parseRootPresentation(
       `${sourceLocation(entry, node)}: <Grid> "columns" must be an integer from 1 to 12`
     )
   }
-  const items = await parsePresentationChildren<ItemNode>(
-    node.children ?? [],
-    'item',
-    entry,
-    root,
-    ids
-  )
+  const items = await parsePresentationChildren(node.children ?? [], 'item', entry, root, ids)
 
   if (!items.length) {
     throw new Error(

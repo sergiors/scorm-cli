@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   collectAssetReferences,
+  getDoneNodeIds,
   getPackageProgress,
   isPackageComplete,
   type ContentPackage
@@ -89,6 +90,36 @@ describe('core package helpers', () => {
     }
     expect(getPackageProgress(scroll, { pages: { one: { completed: true } } })).toBe(33)
     expect(getPackageProgress(scroll, { pages: { one: { visited: true } } })).toBe(0)
+  })
+
+  it('returns done node IDs using presentation-specific completion semantics', () => {
+    expect(
+      getDoneNodeIds(contentPackage, { pages: { a: { visited: true }, b: { completed: true } } })
+    ).toEqual(['a'])
+
+    const scroll: ContentPackage = {
+      metadata: { title: 'Scroll' },
+      presentation: {
+        type: 'scroll',
+        pages: ['one', 'two'].map((id) => ({
+          type: 'page',
+          id,
+          source: id,
+          metadata: { title: id },
+          content: []
+        }))
+      }
+    }
+    expect(
+      getDoneNodeIds(scroll, { pages: { one: { completed: true }, two: { visited: true } } })
+    ).toEqual(['one'])
+
+    const empty: ContentPackage = {
+      metadata: { title: 'Empty' },
+      presentation: { type: 'grid', items: [] }
+    }
+    expect(getDoneNodeIds(empty, { pages: {} })).toEqual([])
+    expect(getPackageProgress(empty, { pages: {} })).toBe(0)
   })
 
   it('collects assets from tight list inline runs and their sibling blocks', () => {

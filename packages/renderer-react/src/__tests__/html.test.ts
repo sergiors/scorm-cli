@@ -69,8 +69,65 @@ describe('setDocumentLanguage', () => {
     )
   })
 
+  it('ignores a lang look-alike inside a double-quoted attribute value', () => {
+    // The `lang=` sits inside the `title` value, so no real `lang` exists and
+    // the attribute is added without corrupting the quoted value.
+    expect(setDocumentLanguage('<html title="see lang=x">', 'pt')).toBe(
+      '<html lang="pt" title="see lang=x">'
+    )
+    // A genuine `lang` after the quoted value is still rewritten, and the
+    // embedded look-alike is preserved verbatim.
+    expect(setDocumentLanguage('<html title="see lang=x" lang="en">', 'pt')).toBe(
+      '<html title="see lang=x" lang="pt">'
+    )
+  })
+
+  it('ignores a lang look-alike inside a single-quoted attribute value', () => {
+    expect(setDocumentLanguage(`<html title='see lang=x'>`, 'pt')).toBe(
+      `<html lang="pt" title='see lang=x'>`
+    )
+    expect(setDocumentLanguage(`<html title='see lang=x' lang="en">`, 'pt')).toBe(
+      `<html title='see lang=x' lang="pt">`
+    )
+  })
+
+  it('ignores quoted lang attributes embedded in another attribute value', () => {
+    // The single-quoted value contains a whole double-quoted `lang` attribute;
+    // it must not be rewritten as if it were a real attribute.
+    expect(setDocumentLanguage(`<html title='lang="en"'>`, 'pt')).toBe(
+      `<html lang="pt" title='lang="en"'>`
+    )
+    expect(setDocumentLanguage(`<html title="lang='en'">`, 'pt')).toBe(
+      `<html lang="pt" title="lang='en'">`
+    )
+  })
+
+  it('does not mistake a > inside a quoted value for the end of the start tag', () => {
+    // The `>` sits inside the `title` value, so it cannot end `<html ...>`; the
+    // real `lang` after it is still rewritten and the value kept verbatim.
+    expect(setDocumentLanguage('<html title="a>b" lang="en">', 'pt')).toBe(
+      '<html title="a>b" lang="pt">'
+    )
+    expect(setDocumentLanguage(`<html title='a>b' lang="en">`, 'pt')).toBe(
+      `<html title='a>b' lang="pt">`
+    )
+  })
+
   it('escapes the language value', () => {
     expect(setDocumentLanguage('<html>', 'a"b')).toBe('<html lang="a&quot;b">')
+  })
+
+  it('treats dollar signs in the added language value literally', () => {
+    // The escaped value keeps `$`, so the add-attribute fallback must use a
+    // function replacement: a string replacement would interpret the special
+    // patterns `$&` (the matched `<html`), `$$` and the backtick form that
+    // inserts the preceding text, even though the pattern has no capture
+    // groups. The `$1` case is asserted only to document that a group reference
+    // with no matching group is left literal.
+    expect(setDocumentLanguage('<html>', '$&')).toBe('<html lang="$&amp;">')
+    expect(setDocumentLanguage('<html>', '$1')).toBe('<html lang="$1">')
+    expect(setDocumentLanguage('<html>', '$$')).toBe('<html lang="$$">')
+    expect(setDocumentLanguage('<html>', '$`')).toBe('<html lang="$`">')
   })
 })
 

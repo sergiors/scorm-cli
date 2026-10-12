@@ -150,11 +150,20 @@ export function ScrollPresentation({
 
   const goToPage = useCallback(
     (index: number) => {
+      const nextIndex = clampPageIndex(index, pages.length)
+      // Navigating to the page already on screen is a no-op. Resetting the
+      // boundary signals here would clear a reached end while React bails out of
+      // the unchanged index, so the observers — already past their last reported
+      // value — would never fire again and the continue affordance would stay
+      // hidden on an otherwise complete page.
+      if (nextIndex === currentIndex) {
+        return
+      }
       setAtTop(true)
       setAtEnd(false)
-      setCurrentIndex(clampPageIndex(index, pages.length))
+      setCurrentIndex(nextIndex)
     },
-    [pages.length]
+    [currentIndex, pages.length]
   )
 
   // Both controls delegate the boundary clamp to `goToPage`, so the page index

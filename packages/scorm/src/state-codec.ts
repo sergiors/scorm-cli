@@ -45,7 +45,8 @@ function createSuspendDataCodec() {
         return
       }
       const pageState = state.pages[page.id]
-      if (!pageState || !isRecord(pageState.answers)) {
+      const pageAnswers = pageState?.answers
+      if (!isRecord(pageAnswers)) {
         return
       }
 
@@ -54,7 +55,7 @@ function createSuspendDataCodec() {
         if (!safeKey(question.id)) {
           return
         }
-        const answer = pageState.answers![question.id]
+        const answer = pageAnswers[question.id]
         const optionIndexes = Object.entries(question.options)
           .filter(([, option]) =>
             Array.isArray(answer) ? answer.includes(option.value) : answer === option.value
@@ -64,7 +65,7 @@ function createSuspendDataCodec() {
           .sort((left, right) => left - right)
         if (optionIndexes.length > 0) {
           answers[questionIndex] =
-            question.type === 'multiple-choice' ? optionIndexes : optionIndexes[0]!
+            question.type === 'multiple-choice' ? optionIndexes : optionIndexes[0]
         }
       })
       if (Object.keys(answers).length > 0) {
@@ -139,7 +140,7 @@ function createSuspendDataCodec() {
               .map((index) => question.options[String(index)]?.value)
               .filter((value): value is string => typeof value === 'string')
             if (values.length > 0) {
-              answers[question.id] = question.type === 'multiple-choice' ? values : values[0]!
+              answers[question.id] = question.type === 'multiple-choice' ? values : values[0]
             }
           })
           if (Object.keys(answers).length > 0) {

@@ -37,6 +37,8 @@ describe('parsePreviewErrorMessage', () => {
     expect(parsePreviewErrorMessage(undefined)).toMatch(/could not be rendered/)
     expect(parsePreviewErrorMessage({ message: '   ' })).toMatch(/could not be rendered/)
     expect(parsePreviewErrorMessage({ message: 42 })).toMatch(/could not be rendered/)
+    // An array is an object but carries no `message` property, so it falls back.
+    expect(parsePreviewErrorMessage(['message'])).toMatch(/could not be rendered/)
   })
 })
 

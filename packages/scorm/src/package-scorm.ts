@@ -20,11 +20,15 @@ async function listFiles(directory: string, current = directory): Promise<string
   const nestedFiles = await Promise.all(
     entries
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map(async (entry) => {
+      .map((entry) => {
         const absolute = path.join(current, entry.name)
-        if (entry.isDirectory()) return listFiles(directory, absolute)
-        else if (entry.isFile())
+
+        if (entry.isDirectory()) {
+          return listFiles(directory, absolute)
+        } else if (entry.isFile()) {
           return [path.relative(directory, absolute).split(path.sep).join('/')]
+        }
+
         return []
       })
   )

@@ -20,8 +20,10 @@ const FALLBACK_MESSAGE = 'The content could not be rendered.'
 
 /** Extracts an author-friendly message from a preview-error payload. */
 export function parsePreviewErrorMessage(data: unknown): string {
+  // `'message' in data` narrows `data` to an object carrying an `unknown`
+  // `message`, so the value is read without an assertion and still checked.
   if (data && typeof data === 'object' && 'message' in data) {
-    const message = (data as { message?: unknown }).message
+    const message = data.message
     if (typeof message === 'string' && message.trim().length > 0) {
       return message
     }

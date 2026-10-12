@@ -1,4 +1,4 @@
-import { Check, Circle, Lock } from 'lucide-react'
+import { Check, Circle, Lock, type LucideIcon } from 'lucide-react'
 import { useIntl } from 'react-intl'
 import type { PageNode, PathNode, PlayerPageState } from '../types'
 import type { MessageId } from '../lib/messages'
@@ -47,18 +47,16 @@ function pathPageStatus(index: number, visited: readonly boolean[]): PathPageSta
   return canOpenPathPage(index, visited) ? 'available' : 'locked'
 }
 
-const STATUS_ICONS = {
-  visited: Check,
-  available: Circle,
-  locked: Lock
-} as const
-
-/** Message id for each entry status, kept in sync with the icon registry. */
-const STATUS_MESSAGES = {
-  visited: 'path.visited',
-  available: 'path.available',
-  locked: 'path.locked'
-} as const satisfies Record<PathPageStatus, MessageId>
+/**
+ * The icon and localized message id for each entry status. Kept as a single
+ * exhaustively-typed record so the two mappings can never drift apart and a new
+ * status cannot be added without providing both.
+ */
+const PATH_PAGE_STATUS = {
+  visited: { icon: Check, message: 'path.visited' },
+  available: { icon: Circle, message: 'path.available' },
+  locked: { icon: Lock, message: 'path.locked' }
+} as const satisfies Record<PathPageStatus, { icon: LucideIcon; message: MessageId }>
 
 export interface PathViewProps {
   node: PathNode
@@ -139,9 +137,9 @@ function PathEntry({
   disabled: boolean
   onOpen?: () => void
 }) {
-  const Icon = STATUS_ICONS[status]
+  const { icon: Icon, message } = PATH_PAGE_STATUS[status]
   const intl = useIntl()
-  const label = intl.formatMessage({ id: STATUS_MESSAGES[status] })
+  const label = intl.formatMessage({ id: message })
 
   return (
     <Item data-path-entry data-path-status={status} variant="outline" asChild>
