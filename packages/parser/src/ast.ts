@@ -35,7 +35,6 @@ export interface AstJsxAttribute {
   position?: unknown;
 }
 
-/** A JSX spread or expression attribute (`{...props}`). */
 export interface AstJsxExpressionAttribute {
   type: 'mdxJsxExpressionAttribute';
   value?: unknown;
@@ -43,7 +42,6 @@ export interface AstJsxExpressionAttribute {
 
 export type AstAttribute = AstJsxAttribute | AstJsxExpressionAttribute;
 
-/** One statement in the embedded ESTree program of an MDX ESM block. */
 export interface AstEstreeStatement {
   type?: string;
   source?: { value?: unknown };
@@ -188,12 +186,10 @@ export type AstNode =
   | MdxJsxTextElementAstNode
   | UnknownAstNode;
 
-/** Whether a node is an MDX JSX element, in either flow or text position. */
 export function isJsx(node: AstNode): boolean {
   return node.type === 'mdxJsxFlowElement' || node.type === 'mdxJsxTextElement';
 }
 
-/** Whether a node is an MDX ESM block (imports or other JavaScript). */
 export function isMdxjsEsm(node: AstNode): node is MdxjsEsmAstNode {
   return node.type === 'mdxjsEsm';
 }
@@ -202,7 +198,6 @@ export function isText(node: AstNode): node is TextAstNode {
   return node.type === 'text';
 }
 
-/** Whether a node is a Markdown link reference, before it is resolved. */
 export function isLinkReference(node: AstNode): node is LinkReferenceAstNode {
   return node.type === 'linkReference';
 }
@@ -211,7 +206,6 @@ export function isReference(node: AstNode): node is LinkReferenceAstNode | Image
   return node.type === 'linkReference' || node.type === 'imageReference';
 }
 
-/** Whether a node is a Markdown link definition (`[label]: url`). */
 export function isDefinition(node: AstNode): node is DefinitionAstNode {
   return node.type === 'definition';
 }

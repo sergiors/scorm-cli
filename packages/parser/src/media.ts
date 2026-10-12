@@ -3,12 +3,6 @@ import type { AstNode } from './ast';
 import { assetReference } from './io';
 import { assertAttributes, attrs, optionalString, requiredString, sourceLocation } from './shared';
 
-/**
- * Media component handlers. Both the inline `<Image>` and the block-level
- * `<Image>`/`<Video>` authoring components resolve their local assets relative
- * to the declaring file and reject unknown or dynamic attributes here.
- */
-
 export async function parseImageComponent(
   node: AstNode,
   sourceFile: string,

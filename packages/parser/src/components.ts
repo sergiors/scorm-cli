@@ -58,18 +58,14 @@ type ComponentRegistry = typeof componentRegistry;
 
 export type AuthoringComponentName = keyof ComponentRegistry;
 
-/** The canonical component names, derived from the registry keys. */
 export const authoringComponentNames = Object.keys(componentRegistry) as AuthoringComponentName[];
 
-/** The canonical names accepted where a context is required. */
 type ComponentNamesIn<C extends ComponentContext> = {
   [K in AuthoringComponentName]: C extends ComponentRegistry[K]['contexts'][number] ? K : never;
 }[AuthoringComponentName];
 
-/** Components that may be authored as a top-level content block. */
 export type FlowComponentName = ComponentNamesIn<'flow'>;
 
-/** Components that may be authored inside a paragraph. */
 export type InlineComponentName = ComponentNamesIn<'inline'>;
 
 /**

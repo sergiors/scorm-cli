@@ -39,14 +39,8 @@ import { sourceLocation } from './shared';
 export interface MarkdownConversion {
   sourceFile: string;
   root: string;
-  /** Converts a run of inline nodes, dispatching inline authoring components. */
   convertInline(nodes: AstNode[]): Promise<InlineNode[]>;
-  /** Converts sibling block/inline nodes at content level. */
   convertChildren(nodes: AstNode[]): Promise<ContentNode[]>;
-  /**
-   * Converts the body of a paragraph, where inline runs interleave with
-   * hoistable block components.
-   */
   convertParagraph(nodes: AstNode[]): Promise<ContentNode[]>;
 }
 
@@ -169,10 +163,8 @@ export type MarkdownBlockType = keyof typeof markdownBlockHandlers;
 
 export const markdownBlockTypes = Object.keys(markdownBlockHandlers) as MarkdownBlockType[];
 
-/** The inline variants of {@link AstNode}, behind a membership check. */
 export type MarkdownInlineNode = Extract<AstNode, { type: MarkdownInlineType }>;
 
-/** The block variants of {@link AstNode}, behind a membership check. */
 export type MarkdownBlockNode = Extract<AstNode, { type: MarkdownBlockType }>;
 
 export function isMarkdownInline(node: AstNode): node is MarkdownInlineNode {

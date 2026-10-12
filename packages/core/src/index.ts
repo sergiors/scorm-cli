@@ -109,7 +109,6 @@ export interface ParagraphNode {
   children: InlineNode[];
 }
 
-/** A thematic break (`---`): a horizontal rule between blocks. */
 export interface ThematicBreakNode {
   type: 'thematicBreak';
 }

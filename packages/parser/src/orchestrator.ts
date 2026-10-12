@@ -157,7 +157,6 @@ async function parseRootPresentation(
   } satisfies GridNode;
 }
 
-/** Parse an entry MDX file, or a directory containing index.mdx, into a content package. */
 export async function parsePackage(pathOrDir: string): Promise<ContentPackage> {
   const absolute = path.resolve(pathOrDir);
   let stat;

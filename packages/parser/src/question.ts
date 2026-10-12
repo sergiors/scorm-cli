@@ -45,7 +45,6 @@ const answerCountRules: Record<QuestionType, AnswerCountRule[]> = {
   ],
 };
 
-/** Returns the first answer-count violation for a question type, if any. */
 export function questionAnswerRuleError(
   type: QuestionType,
   optionCount: number,

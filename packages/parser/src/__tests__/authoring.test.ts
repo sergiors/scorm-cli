@@ -26,7 +26,6 @@ async function makePackage(entry: string): Promise<string> {
   return root;
 }
 
-/** Builds a package whose root is `entry` and writes `lesson.mdx` content. */
 async function scrollPackage(entry: string, lesson = ''): Promise<string> {
   const root = await makePackage(`---\ntitle: Package\n---\n${entry}`);
   await writeFile(

@@ -21,9 +21,7 @@ const authoringSource = 'scorm-cli/authoring';
 const shadowedComponentName = '\u0000shadowed';
 
 interface ImportBindings {
-  /** Local names bound by named authoring imports, mapped to their marker. */
   aliases: Map<string, string>;
-  /** Local names bound by `import * as` authoring imports. */
   namespaces: Set<string>;
   /**
    * Local names bound by imports from modules other than `scorm-cli/authoring`.
@@ -84,7 +82,6 @@ function collectImportBindings(nodes: AstNode[], file: string): ImportBindings {
   return { aliases, namespaces, shadowed };
 }
 
-/** Whether an ESM node contains only import declarations and can be ignored. */
 function isImportOnlyEsm(node: MdxjsEsmAstNode): boolean {
   const body = node.data?.estree?.body;
   return (
