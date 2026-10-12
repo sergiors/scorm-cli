@@ -18,5 +18,6 @@ export type {
   QuestionType,
   RootPresentation,
   ScrollNode,
+  ThematicBreakNode,
   VideoNode,
 } from '@scorm-cli/core';

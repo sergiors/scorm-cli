@@ -134,6 +134,29 @@ describe('core package helpers', () => {
     expect(collectAssetReferences(tight)).toEqual(['block/tight.svg', 'inline/tight.svg']);
   });
 
+  it('ignores thematic breaks when collecting assets', () => {
+    const withBreak: ContentPackage = {
+      metadata: { title: 'Break' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'break',
+            source: 'break.mdx',
+            metadata: { title: 'Break' },
+            content: [
+              { type: 'paragraph', children: [{ type: 'text', value: 'a' }] },
+              { type: 'thematicBreak' },
+              { type: 'image', src: 'images/b.svg', alt: 'B' },
+            ],
+          },
+        ],
+      },
+    };
+    expect(collectAssetReferences(withBreak)).toEqual(['images/b.svg']);
+  });
+
   it('collects local media references recursively throughout the content AST', () => {
     const nested: ContentPackage = {
       metadata: { title: 'Nested' },

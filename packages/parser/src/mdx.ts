@@ -1,41 +1,16 @@
 import remarkMdx from 'remark-mdx';
 import remarkParse from 'remark-parse';
 import { unified } from 'unified';
-import { AstNode, sourceLocation } from './shared';
+import type { AstNode, ImageReferenceAstNode, LinkReferenceAstNode, MdxjsEsmAstNode } from './ast';
+import { isDefinition, isJsx, isLinkReference, isMdxjsEsm, isReference } from './ast';
+import { setComponentName } from './component-name';
+import { isAuthoringComponent } from './components';
+import { sourceLocation } from './shared';
 
 const processor = unified().use(remarkParse).use(remarkMdx);
-export const flowComponents = new Set(['Video', 'Question', 'Questionnaire', 'Path']);
 
 /** The only module MDX content may import components from. */
 const authoringSource = 'scorm-cli/authoring';
-
-/**
- * Canonical component names recognized by the parser, in the same order as the
- * `scorm-cli/authoring` marker exports. Exported so tooling and tests can
- * assert the authoring vocabulary stays aligned with the parser contract.
- */
-export const authoringComponentNames = [
-  'Scroll',
-  'Grid',
-  'Page',
-  'Item',
-  'Path',
-  'Image',
-  'Video',
-  'Questionnaire',
-  'Question',
-  'Prompt',
-  'Option',
-] as const;
-
-const authoringComponents = new Set<string>(authoringComponentNames);
-
-/**
- * Canonical component name for every parsed JSX node, resolved from
- * `scorm-cli/authoring` imports. Keyed by node identity so the same traversal
- * helpers can read it without threading resolver state through every call.
- */
-const resolvedComponentNames = new WeakMap<AstNode, string>();
 
 /**
  * Sentinel canonical name for JSX bound by an import from a module other than
@@ -44,11 +19,6 @@ const resolvedComponentNames = new WeakMap<AstNode, string>();
  * vocabulary.
  */
 const shadowedComponentName = '\u0000shadowed';
-
-/** The canonical name a JSX node refers to after resolving authoring imports. */
-export function componentName(node: AstNode): string {
-  return resolvedComponentNames.get(node) ?? node.name ?? '';
-}
 
 interface ImportBindings {
   /** Local names bound by named authoring imports, mapped to their marker. */
@@ -75,7 +45,7 @@ function collectImportBindings(nodes: AstNode[], file: string): ImportBindings {
   const namespaces = new Set<string>();
   const shadowed = new Set<string>();
   for (const node of nodes) {
-    if (node.type !== 'mdxjsEsm') continue;
+    if (!isMdxjsEsm(node)) continue;
     for (const statement of node.data?.estree?.body ?? []) {
       if (statement.type !== 'ImportDeclaration') continue;
       const fromAuthoring = statement.source?.value === authoringSource;
@@ -98,7 +68,7 @@ function collectImportBindings(nodes: AstNode[], file: string): ImportBindings {
         const imported =
           typeof specifier.imported?.name === 'string' ? specifier.imported.name : undefined;
         if (!imported) continue;
-        if (!authoringComponents.has(imported))
+        if (!isAuthoringComponent(imported))
           throw new Error(
             `${sourceLocation(file, node)}: "${imported}" is not an authoring component exported by "${authoringSource}"`,
           );
@@ -115,7 +85,7 @@ function collectImportBindings(nodes: AstNode[], file: string): ImportBindings {
 }
 
 /** Whether an ESM node contains only import declarations and can be ignored. */
-function isImportOnlyEsm(node: AstNode): boolean {
+function isImportOnlyEsm(node: MdxjsEsmAstNode): boolean {
   const body = node.data?.estree?.body;
   return (
     Array.isArray(body) &&
@@ -136,7 +106,7 @@ function resolveComponentName(
     const namespace = name.slice(0, dot);
     const member = name.slice(dot + 1);
     if (bindings.namespaces.has(namespace)) {
-      if (!authoringComponents.has(member))
+      if (!isAuthoringComponent(member))
         throw new Error(
           `${sourceLocation(file, node)}: "${member}" is not an authoring component exported by "${authoringSource}"`,
         );
@@ -154,11 +124,8 @@ function resolveComponentName(
 /** Records the canonical name of every JSX node in a parsed tree. */
 function resolveComponentNames(nodes: AstNode[], bindings: ImportBindings, file: string): void {
   for (const node of nodes) {
-    if (
-      (node.type === 'mdxJsxFlowElement' || node.type === 'mdxJsxTextElement') &&
-      typeof node.name === 'string'
-    ) {
-      resolvedComponentNames.set(node, resolveComponentName(node.name, bindings, file, node));
+    if (isJsx(node) && typeof node.name === 'string') {
+      setComponentName(node, resolveComponentName(node.name, bindings, file, node));
     }
     if (node.children) resolveComponentNames(node.children, bindings, file);
   }
@@ -179,31 +146,35 @@ export function parseMdx(source: string, file: string): { children: AstNode[] } 
       : '';
     throw new Error(`${file}${position}: ${detail.message ?? String(error)}`);
   }
-  const definitions = new Map(
-    tree.children
-      .filter(
-        (node): node is AstNode & { identifier: string; url: string } =>
-          node.type === 'definition' &&
-          typeof node.identifier === 'string' &&
-          typeof node.url === 'string',
-      )
-      .map((node) => [node.identifier.toLowerCase(), node.url]),
-  );
-  const resolveReferences = (nodes: AstNode[]) => {
-    for (const node of nodes) {
-      if (node.type === 'linkReference' || node.type === 'imageReference') {
-        const url = definitions.get(node.identifier?.toLowerCase() ?? '');
-        if (!url)
-          throw new Error(
-            `${sourceLocation(file, node)}: undefined Markdown reference "${node.identifier ?? ''}"`,
-          );
-        node.type = node.type === 'linkReference' ? 'link' : 'image';
-        node.url = url;
-      }
-      if (node.children) resolveReferences(node.children);
+  const definitions = new Map<string, string>();
+  for (const node of tree.children) {
+    if (isDefinition(node) && typeof node.identifier === 'string' && typeof node.url === 'string') {
+      definitions.set(node.identifier.toLowerCase(), node.url);
     }
+  }
+
+  // References are normalized to their resolved link/image variants by
+  // building new nodes rather than mutating the parsed ones, so the node union
+  // keeps its literal discriminants.
+  const resolveReference = (node: LinkReferenceAstNode | ImageReferenceAstNode): AstNode => {
+    const url = definitions.get((node.identifier ?? '').toLowerCase());
+    if (!url)
+      throw new Error(
+        `${sourceLocation(file, node)}: undefined Markdown reference "${node.identifier ?? ''}"`,
+      );
+    return isLinkReference(node)
+      ? { type: 'link', url, children: node.children, position: node.position }
+      : { type: 'image', url, alt: node.alt, position: node.position };
   };
-  resolveReferences(tree.children);
+  const resolveReferences = (nodes: AstNode[]): AstNode[] =>
+    nodes.map((node) => {
+      const resolved = isReference(node) ? resolveReference(node) : node;
+      return resolved.children
+        ? { ...resolved, children: resolveReferences(resolved.children) }
+        : resolved;
+    });
+
+  tree.children = resolveReferences(tree.children);
   const bindings = collectImportBindings(tree.children, file);
   resolveComponentNames(tree.children, bindings, file);
   // Import declarations are inert metadata: `scorm-cli/authoring` imports drive
@@ -211,7 +182,7 @@ export function parseMdx(source: string, file: string): { children: AstNode[] } 
   // bindings; imports are removed before content validation. Non-import ESM
   // (for example `export` statements) is left in place and rejected below.
   tree.children = tree.children.filter(
-    (node) => node.type !== 'definition' && !(node.type === 'mdxjsEsm' && isImportOnlyEsm(node)),
+    (node) => !isDefinition(node) && !(isMdxjsEsm(node) && isImportOnlyEsm(node)),
   );
   return tree;
 }

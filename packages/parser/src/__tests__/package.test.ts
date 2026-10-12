@@ -119,6 +119,15 @@ describe('parsePackage', () => {
     ]);
   });
 
+  it('parses a thematic break as a canonical block between other blocks', async () => {
+    const root = await makeLesson('Before\n\n---\n\nAfter');
+    expect(await lessonContent(root)).toEqual([
+      { type: 'paragraph', children: [{ type: 'text', value: 'Before' }] },
+      { type: 'thematicBreak' },
+      { type: 'paragraph', children: [{ type: 'text', value: 'After' }] },
+    ]);
+  });
+
   it('preserves nested lists, blockquotes, ordered starts, and fenced code languages', async () => {
     const root = await makeLesson(
       '3. First\n   - nested **item**\n4. Second\n\n> A quote\n>\n> - quoted list\n\n```ts\nconst answer: number = 42;\n```',

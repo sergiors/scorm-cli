@@ -6,17 +6,10 @@ import type {
   QuestionnaireNode,
 } from '@scorm-cli/core';
 import { sourceNodeId } from './io';
-import { componentName } from './mdx';
-import {
-  AstNode,
-  assertAttributes,
-  attrs,
-  isJsx,
-  isQuestionType,
-  requiredString,
-  sourceLocation,
-  whitespace,
-} from './shared';
+import { componentName } from './component-name';
+import type { AstNode } from './ast';
+import { isJsx, whitespace } from './ast';
+import { assertAttributes, attrs, isQuestionType, requiredString, sourceLocation } from './shared';
 
 export type ParseQuestionContentChildren = (nodes: AstNode[]) => Promise<ContentNode[]>;
 

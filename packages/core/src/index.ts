@@ -83,6 +83,7 @@ export type QuestionType = 'single-choice' | 'multiple-choice' | 'true-false';
 export type ContentNode =
   | HeadingNode
   | ParagraphNode
+  | ThematicBreakNode
   | ListNode
   | CodeNode
   | QuoteNode
@@ -106,6 +107,11 @@ export interface HeadingNode {
 export interface ParagraphNode {
   type: 'paragraph';
   children: InlineNode[];
+}
+
+/** A thematic break (`---`): a horizontal rule between blocks. */
+export interface ThematicBreakNode {
+  type: 'thematicBreak';
 }
 
 export interface ListNode {
@@ -307,6 +313,7 @@ export function collectAssetReferences(contentPackage: ContentPackage): string[]
           break;
         case 'path':
         case 'code':
+        case 'thematicBreak':
           break;
       }
     }

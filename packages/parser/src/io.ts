@@ -2,7 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import matter from 'gray-matter';
 import { isRemoteReference } from '@scorm-cli/core';
-import { AstNode, sourceLocation, normalizedRelative } from './shared';
+import type { AstNode } from './ast';
+import { sourceLocation, normalizedRelative } from './shared';
 
 export async function assetReference(
   value: string,

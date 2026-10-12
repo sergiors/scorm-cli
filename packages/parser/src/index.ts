@@ -1,5 +1,5 @@
 export { parsePackage } from './orchestrator';
-export { authoringComponentNames } from './mdx';
+export { authoringComponentNames } from './components';
 export type {
   AnswerValue,
   BreakNode,
@@ -29,6 +29,7 @@ export type {
   ScrollNode,
   StrongNode,
   TextNode,
+  ThematicBreakNode,
   PlayerPageState,
   PlayerState,
   VideoNode,

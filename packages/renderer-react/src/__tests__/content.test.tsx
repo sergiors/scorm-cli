@@ -210,6 +210,17 @@ describe('ContentRenderer paragraphs and inline semantics', () => {
     expect(html).toContain('An icon');
     expect(html).not.toContain('<figcaption');
   });
+
+  it('renders a thematic break as a horizontal rule between blocks', () => {
+    const html = render([
+      { type: 'paragraph', children: [{ type: 'text', value: 'Before' }] },
+      { type: 'thematicBreak' },
+      { type: 'paragraph', children: [{ type: 'text', value: 'After' }] },
+    ]);
+    expect(html).toContain('<hr');
+    expect(html).toContain('Before');
+    expect(html).toContain('After');
+  });
 });
 
 describe('ContentRenderer lists', () => {

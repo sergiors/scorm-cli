@@ -1,40 +1,6 @@
 import path from 'node:path';
 import type { QuestionType } from '@scorm-cli/core';
-
-export type AstNode = {
-  type: string;
-  name?: string | null;
-  value?: unknown;
-  alt?: string | null;
-  url?: string;
-  identifier?: string;
-  depth?: number;
-  ordered?: boolean | null;
-  start?: number | null;
-  spread?: boolean | null;
-  lang?: string | null;
-  children?: AstNode[];
-  position?: { start?: { line?: number; column?: number } };
-  attributes?: Array<{
-    type: string;
-    name?: string;
-    value?: unknown;
-    position?: unknown;
-  }>;
-  data?: {
-    estree?: {
-      body?: Array<{
-        type?: string;
-        source?: { value?: unknown };
-        specifiers?: Array<{
-          type?: string;
-          local?: { name?: unknown };
-          imported?: { name?: unknown } | null;
-        }>;
-      }>;
-    };
-  };
-};
+import type { AstNode } from './ast';
 
 export function sourceLocation(file: string, node?: AstNode): string {
   const line = node?.position?.start?.line;
@@ -139,16 +105,4 @@ export function normalizedRelative(
     );
   }
   return rel.split(path.sep).join('/');
-}
-
-export function isJsx(node: AstNode): boolean {
-  return node.type === 'mdxJsxFlowElement' || node.type === 'mdxJsxTextElement';
-}
-
-export function whitespace(node: AstNode): boolean {
-  return node.type === 'text' && !String(node.value ?? '').trim();
-}
-
-export function meaningfulChildren(nodes: AstNode[]): AstNode[] {
-  return nodes.filter((node) => !whitespace(node));
 }

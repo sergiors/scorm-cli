@@ -117,6 +117,11 @@ function ParagraphView({ node }: ContentNodeViewProps<'paragraph'>) {
   );
 }
 
+/** A thematic break renders as a horizontal rule separating blocks. */
+function ThematicBreakView() {
+  return <hr className='border-border' />;
+}
+
 /**
  * A single `<li>`. The AST records the inline-vs-block distinction directly:
  * `inlineContent` runs render through {@link InlineContent} without a block
@@ -269,6 +274,7 @@ function PathBlockView({ node, context }: ContentNodeViewProps<'path'>) {
 const contentNodeRenderers = {
   heading: HeadingView,
   paragraph: ParagraphView,
+  thematicBreak: ThematicBreakView,
   list: ListView,
   code: CodeView,
   quote: QuoteView,

@@ -9,19 +9,21 @@ import type {
   RootPresentation,
   ScrollNode,
 } from '@scorm-cli/core';
+import type { AstNode } from './ast';
+import { meaningfulChildren } from './ast';
 import {
-  AstNode,
   assertAttributes,
   assertFrontmatterKeys,
   attrs,
   canonicalLanguage,
   sourceLocation,
-  meaningfulChildren,
   normalizedRelative,
   optionalString,
   requiredString,
 } from './shared';
-import { componentName, parseMdx } from './mdx';
+import { componentName } from './component-name';
+import { parseMdx } from './mdx';
+import { hasComponentContext } from './components';
 import { parseReference } from './reference';
 
 async function parsePresentationChildren<T extends PageNode | ItemNode>(
@@ -96,10 +98,7 @@ async function parseRootPresentation(
   }
 
   const node = directNodes[0]!;
-  if (
-    node.type !== 'mdxJsxFlowElement' ||
-    (componentName(node) !== 'Scroll' && componentName(node) !== 'Grid')
-  ) {
+  if (node.type !== 'mdxJsxFlowElement' || !hasComponentContext(componentName(node), 'root')) {
     const found = node.name ? `<${node.name}>` : node.type;
     throw new Error(
       `${sourceLocation(entry, node)}: root must contain exactly one <Scroll> or <Grid> presentation; found 1 direct node (${found})`,

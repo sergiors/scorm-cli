@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AstNode } from '../shared';
+import type { AstNode } from '../ast';
 import { normalizeQuestionChildren, questionAnswerRuleError } from '../question';
 
 describe('question answer rules', () => {
