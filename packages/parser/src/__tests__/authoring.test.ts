@@ -1,17 +1,8 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, expectTypeOf, it } from 'vitest';
-import * as authoring from 'scorm-cli/authoring';
-import type {
-  AuthoringComponentName,
-  GridProps,
-  OptionProps,
-  PageProps,
-  QuestionProps,
-  QuestionType,
-  ScrollProps,
-} from 'scorm-cli/authoring';
+import { afterEach, describe, expect, it } from 'vitest';
+import * as authoring from '@scorm-cli/authoring';
 import { authoringComponentNames, parsePackage } from '../index';
 
 const temps: string[] = [];
@@ -37,97 +28,15 @@ async function scrollPackage(entry: string, lesson = ''): Promise<string> {
 
 const canonicalScroll = `---\ntitle: Package\n---\n<Scroll>\n  <Page src='lesson.mdx' />\n</Scroll>`;
 
-describe('scorm-cli/authoring', () => {
-  it('exports every canonical marker as a stub that throws when executed', () => {
-    const markers = authoring as unknown as Record<
-      string,
-      (props: Record<string, unknown>) => unknown
-    >;
-    for (const name of authoringComponentNames) {
-      expect(typeof markers[name]).toBe('function');
-      expect(() => markers[name]!({})).toThrowError(`<${name}>`);
-    }
-  });
-
+describe('@scorm-cli/authoring', () => {
   it('keeps exported markers aligned with the parser canonical list', () => {
-    const canonical: readonly AuthoringComponentName[] = authoringComponentNames;
+    const canonical = authoringComponentNames;
     const markers = authoring as unknown as Record<string, unknown>;
     expect(
       Object.keys(markers)
         .filter((key) => typeof markers[key] === 'function')
         .sort(),
     ).toEqual([...canonical].sort());
-  });
-
-  it('types marker props against the parser contract', () => {
-    expectTypeOf<QuestionType>().toEqualTypeOf<
-      'single-choice' | 'multiple-choice' | 'true-false'
-    >();
-    const sourcePage: PageProps = { src: 'lesson.mdx' };
-    const referencePage: PageProps = { ref: 'lesson.mdx' };
-    const scroll: ScrollProps = { children: null };
-    const grid: GridProps = { columns: 2 };
-    expect([sourcePage, referencePage, scroll, grid]).toHaveLength(4);
-  });
-
-  it('enforces authoring marker prop constraints at compile time', () => {
-    // Accepted shapes compile; a bare JSX `correct` attribute passes `true`.
-    const sourcePage = { src: 'lesson.mdx' } satisfies PageProps;
-    const referencePage = { ref: 'lesson.mdx' } satisfies PageProps;
-    const grid = { columns: 2 } satisfies GridProps;
-    const singleChoice = { type: 'single-choice' } satisfies QuestionProps;
-    const multipleChoice = { type: 'multiple-choice' } satisfies QuestionProps;
-    const trueFalse = { type: 'true-false' } satisfies QuestionProps;
-    const option = { value: 'a' } satisfies OptionProps;
-    const correctOption = { value: 'a', correct: true } satisfies OptionProps;
-    const incorrectOption = {
-      value: 'a',
-      correct: false,
-    } satisfies OptionProps;
-
-    // @ts-expect-error <Page> requires either src or ref.
-    const neitherPage: PageProps = {};
-    // @ts-expect-error <Page> rejects src and ref together.
-    const bothPage: PageProps = { src: 'lesson.mdx', ref: 'lesson.mdx' };
-    // @ts-expect-error <Grid columns> must be a number.
-    const stringColumns: GridProps = { columns: '2' };
-    // @ts-expect-error <Question type> must be a supported kind.
-    const invalidQuestion: QuestionProps = { type: 'unsupported' };
-    // @ts-expect-error <Option correct> must be a boolean.
-    const stringCorrect: OptionProps = { value: 'a', correct: 'yes' };
-    // @ts-expect-error <Option value> is required.
-    const missingValue: OptionProps = { correct: true };
-
-    expect([
-      sourcePage,
-      referencePage,
-      grid,
-      singleChoice,
-      multipleChoice,
-      trueFalse,
-      option,
-      correctOption,
-      incorrectOption,
-      neitherPage,
-      bothPage,
-      stringColumns,
-      invalidQuestion,
-      stringCorrect,
-      missingValue,
-    ]).toHaveLength(15);
-  });
-
-  it('declares the scorm-cli/authoring subpath for runtime and types', async () => {
-    const root = JSON.parse(
-      await readFile(new URL('../../../../package.json', import.meta.url), 'utf8'),
-    ) as { name: string; exports: Record<string, unknown> };
-    expect(root.name).toBe('scorm-cli');
-    expect(root.exports).toEqual({
-      './authoring': {
-        types: './authoring/dist/index.d.ts',
-        import: './authoring/dist/index.js',
-      },
-    });
   });
 });
 

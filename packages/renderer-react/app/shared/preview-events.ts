@@ -10,5 +10,5 @@
  * The strings themselves are only referenced by dead code in a production
  * build, so no dev-preview surface is shipped to learners.
  */
-export const PREVIEW_ERROR_EVENT = 'scorm:preview-error';
-export const PREVIEW_CLEAR_EVENT = 'scorm:preview-clear';
+export const PREVIEW_ERROR_EVENT = 'scorm:preview-error'
+export const PREVIEW_CLEAR_EVENT = 'scorm:preview-clear'

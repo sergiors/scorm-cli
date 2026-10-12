@@ -1,11 +1,11 @@
-import { FormattedMessage } from 'react-intl';
-import type { ContentPackage } from '../types';
-import { usePlayerSession } from '../lib/use-player-session';
-import { GridPresentation } from './GridPresentation';
-import { ScrollPresentation } from './ScrollPresentation';
+import { FormattedMessage } from 'react-intl'
+import type { ContentPackage } from '../types'
+import { usePlayerSession } from '../lib/use-player-session'
+import { GridPresentation } from './GridPresentation'
+import { ScrollPresentation } from './ScrollPresentation'
 
 export interface PackageViewProps {
-  contentPackage: ContentPackage;
+  contentPackage: ContentPackage
 }
 
 /**
@@ -19,19 +19,19 @@ export interface PackageViewProps {
  * and handlers to it, so completion is tracked but never rendered.
  */
 export function PackageView({ contentPackage }: PackageViewProps) {
-  const { presentation } = contentPackage;
+  const { presentation } = contentPackage
   const { state, markSeen, markCompleted, setAnswer, markQuestionnaireSubmitted } =
-    usePlayerSession(contentPackage);
+    usePlayerSession(contentPackage)
 
   if (presentation.type === 'scroll') {
     if (presentation.pages.length === 0) {
-      return <EmptyPackage />;
+      return <EmptyPackage />
     }
 
     const initialIndex = Math.max(
       0,
-      presentation.pages.findIndex((page) => page.id === state.location),
-    );
+      presentation.pages.findIndex((page) => page.id === state.location)
+    )
 
     return (
       <ScrollPresentation
@@ -43,11 +43,11 @@ export function PackageView({ contentPackage }: PackageViewProps) {
         onAnswer={setAnswer}
         onQuestionnaireSubmitted={markQuestionnaireSubmitted}
       />
-    );
+    )
   }
 
   if (presentation.items.length === 0) {
-    return <EmptyPackage />;
+    return <EmptyPackage />
   }
 
   return (
@@ -60,13 +60,13 @@ export function PackageView({ contentPackage }: PackageViewProps) {
       onAnswer={setAnswer}
       onQuestionnaireSubmitted={markQuestionnaireSubmitted}
     />
-  );
+  )
 }
 
 function EmptyPackage() {
   return (
-    <p className='p-6 text-sm text-muted-foreground'>
-      <FormattedMessage id='package.empty' />
+    <p className="p-6 text-sm text-muted-foreground">
+      <FormattedMessage id="package.empty" />
     </p>
-  );
+  )
 }

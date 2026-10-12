@@ -1,19 +1,19 @@
-import { useId, useRef } from 'react';
-import { FormattedMessage, useIntl } from 'react-intl';
+import { useId, useRef } from 'react'
+import { FormattedMessage, useIntl } from 'react-intl'
 import type {
   AnswerValue,
   PageNode,
   PlayerPageState,
   QuestionnaireNode,
-  QuestionNode,
-} from '../types';
+  QuestionNode
+} from '../types'
 import {
   answerAfterChange,
   isOptionSelected,
   submittedOptionResult,
-  type SubmittedOptionResult,
-} from '../lib/questionnaire';
-import { ContentRenderer } from './ContentRenderer';
+  type SubmittedOptionResult
+} from '../lib/questionnaire'
+import { ContentRenderer } from './ContentRenderer'
 import {
   Questionnaire,
   QuestionnaireActions,
@@ -25,26 +25,26 @@ import {
   QuestionnairePrevious,
   QuestionnaireProgress,
   QuestionnaireSubmit,
-  QuestionnaireTitle,
-} from './ui/questionnaire';
-import { Card, CardContent } from './ui/card';
+  QuestionnaireTitle
+} from './ui/questionnaire'
+import { Card, CardContent } from './ui/card'
 
-export type { QuestionNode };
+export type { QuestionNode }
 
 export interface QuestionnaireViewProps {
-  node: QuestionnaireNode;
+  node: QuestionnaireNode
   /**
    * Saved answers for the owning page/item, keyed by `QuestionNode.id`.
    * Supplying this controls the rendered selection, so restored answers display
    * as checked. It does not report interactions on its own; supply
    * {@link onAnswer} as well for a fully controlled questionnaire.
    */
-  answers?: Record<string, AnswerValue>;
+  answers?: Record<string, AnswerValue>
   /**
    * Whether this questionnaire's wrapper id is already in the owning page's
    * `submittedQuestionnaires`. Submitted questionnaires render read-only.
    */
-  submitted?: boolean;
+  submitted?: boolean
   /**
    * Reports a single question interaction for the owning page/item so the owner
    * can persist it. Multiple-choice answers are string arrays; single-choice and
@@ -52,32 +52,32 @@ export interface QuestionnaireViewProps {
    * drive the selection; supply {@link answers} as well for fully controlled
    * updates.
    */
-  onAnswer?: (questionId: string, value: AnswerValue) => void;
+  onAnswer?: (questionId: string, value: AnswerValue) => void
   /**
    * Invoked exactly once, with the questionnaire id, after every question has
    * been answered and the learner submits. Submission is never graded, but the
    * read-only result view does reveal correctness: correct options are marked
    * green and a wrong option the learner selected is marked red.
    */
-  onSubmitted?: (id: string) => void;
+  onSubmitted?: (id: string) => void
   /**
    * The root presentation's pages, so a Path authored inside a question prompt
    * or option resolves its references to display metadata. Forwarded unchanged
    * to every nested {@link ContentRenderer}.
    */
-  pathPages?: readonly PageNode[];
+  pathPages?: readonly PageNode[]
   /**
    * Persisted state per root page id, so a nested Path can read which referenced
    * pages are already visited. Forwarded unchanged to every nested
    * {@link ContentRenderer}.
    */
-  pageStates?: Record<string, PlayerPageState>;
+  pageStates?: Record<string, PlayerPageState>
   /**
    * Opens a referenced root page through the presentation's existing page
    * switching, so a nested Path can offer navigation. Forwarded unchanged to
    * every nested {@link ContentRenderer}.
    */
-  onNavigatePathPage?: (pageId: string) => void;
+  onNavigatePathPage?: (pageId: string) => void
 }
 
 /**
@@ -88,7 +88,7 @@ export interface QuestionnaireViewProps {
 type NestedPathContext = Pick<
   QuestionnaireViewProps,
   'pathPages' | 'pageStates' | 'onNavigatePathPage'
->;
+>
 
 /**
  * A grouped questionnaire rendered through the shadcn questionnaire UI: one
@@ -126,38 +126,38 @@ export function QuestionnaireView({
   onSubmitted,
   pathPages,
   pageStates,
-  onNavigatePathPage,
+  onNavigatePathPage
 }: QuestionnaireViewProps) {
-  const submittedRef = useRef(false);
-  const intl = useIntl();
+  const submittedRef = useRef(false)
+  const intl = useIntl()
   // Bundled once so it can be forwarded verbatim to every nested renderer.
   const pathContext: NestedPathContext = {
     pathPages,
     pageStates,
-    onNavigatePathPage,
-  };
+    onNavigatePathPage
+  }
 
   if (node.questions.length === 0) {
-    return null;
+    return null
   }
 
   if (submitted) {
-    return <SubmittedQuestionnaire node={node} answers={answers} pathContext={pathContext} />;
+    return <SubmittedQuestionnaire node={node} answers={answers} pathContext={pathContext} />
   }
 
   // The primitive owns the selection only when the owner supplies neither
   // `answers` nor `onAnswer` (the standalone/default case). Supplying `answers`
   // controls the rendered selection, supplying `onAnswer` reports interactions,
   // and callers that want fully controlled updates supply both.
-  const controlled = onAnswer !== undefined || answers !== undefined;
+  const controlled = onAnswer !== undefined || answers !== undefined
 
   // Declare the authored questions once: the Root uses the collection for
   // server rendering, required-answer validation and the wizard order.
   const items = node.questions.map((question) => ({
     name: question.id,
     required: true,
-    choices: question.options.map((option) => ({ value: option.value })),
-  }));
+    choices: question.options.map((option) => ({ value: option.value }))
+  }))
 
   return (
     <Card>
@@ -168,12 +168,12 @@ export function QuestionnaireView({
             // The root only reaches this handler once every required item has an
             // answer. Never let the browser navigate away, and forward the
             // submission once even if the learner submits repeatedly.
-            event.preventDefault();
+            event.preventDefault()
             if (submittedRef.current) {
-              return;
+              return
             }
-            submittedRef.current = true;
-            onSubmitted?.(node.id);
+            submittedRef.current = true
+            onSubmitted?.(node.id)
           }}
         >
           <QuestionnaireProgress
@@ -184,19 +184,19 @@ export function QuestionnaireView({
               // value.
               const label = intl.formatMessage(
                 { id: 'questionnaire.progress' },
-                { current: state.current, total: state.total },
-              );
+                { current: state.current, total: state.total }
+              )
               return (
                 <div
                   {...props}
                   aria-label={intl.formatMessage({
-                    id: 'questionnaire.progressLabel',
+                    id: 'questionnaire.progressLabel'
                   })}
                   aria-valuetext={label}
                 >
                   {label}
                 </div>
-              );
+              )
             }}
           />
 
@@ -214,19 +214,19 @@ export function QuestionnaireView({
 
           <QuestionnaireActions>
             <QuestionnairePrevious>
-              <FormattedMessage id='questionnaire.previous' />
+              <FormattedMessage id="questionnaire.previous" />
             </QuestionnairePrevious>
             <QuestionnaireNext>
-              <FormattedMessage id='questionnaire.next' />
+              <FormattedMessage id="questionnaire.next" />
             </QuestionnaireNext>
             <QuestionnaireSubmit>
-              <FormattedMessage id='questionnaire.submit' />
+              <FormattedMessage id="questionnaire.submit" />
             </QuestionnaireSubmit>
           </QuestionnaireActions>
         </Questionnaire>
       </CardContent>
     </Card>
-  );
+  )
 }
 
 /**
@@ -239,12 +239,12 @@ export function QuestionnaireView({
  */
 function resultClassName(result: SubmittedOptionResult): string | undefined {
   if (result === 'correct') {
-    return 'border-emerald-600/60 bg-emerald-500/10 data-checked:border-emerald-600 data-checked:bg-emerald-500/15 dark:border-emerald-500/60 dark:bg-emerald-500/15 dark:data-checked:border-emerald-500 dark:data-checked:bg-emerald-500/20';
+    return 'border-emerald-600/60 bg-emerald-500/10 data-checked:border-emerald-600 data-checked:bg-emerald-500/15 dark:border-emerald-500/60 dark:bg-emerald-500/15 dark:data-checked:border-emerald-500 dark:data-checked:bg-emerald-500/20'
   }
   if (result === 'incorrect') {
-    return 'border-destructive/60 bg-destructive/10 data-checked:border-destructive data-checked:bg-destructive/15 dark:border-destructive/60 dark:bg-destructive/15 dark:data-checked:border-destructive dark:data-checked:bg-destructive/20';
+    return 'border-destructive/60 bg-destructive/10 data-checked:border-destructive data-checked:bg-destructive/15 dark:border-destructive/60 dark:bg-destructive/15 dark:data-checked:border-destructive dark:data-checked:bg-destructive/20'
   }
-  return undefined;
+  return undefined
 }
 
 function QuestionnaireQuestion({
@@ -253,27 +253,27 @@ function QuestionnaireQuestion({
   value,
   onAnswer,
   onQuestionnaireSubmitted,
-  pathContext,
+  pathContext
 }: {
-  node: QuestionNode;
-  controlled: boolean;
-  value: AnswerValue | undefined;
-  onAnswer?: (questionId: string, value: AnswerValue) => void;
-  onQuestionnaireSubmitted?: (id: string) => void;
-  pathContext: NestedPathContext;
+  node: QuestionNode
+  controlled: boolean
+  value: AnswerValue | undefined
+  onAnswer?: (questionId: string, value: AnswerValue) => void
+  onQuestionnaireSubmitted?: (id: string) => void
+  pathContext: NestedPathContext
 }) {
-  const promptId = useId();
+  const promptId = useId()
   // Single-choice and true-false become radios; multiple-choice checkboxes.
-  const multiple = node.questionType === 'multiple-choice';
+  const multiple = node.questionType === 'multiple-choice'
 
   const handleChange = (optionValue: string, checked: boolean) => {
     if (!onAnswer) {
-      return;
+      return
     }
     // The derivation keeps multiple-choice answers in authored option order so
     // the persisted value is deterministic regardless of the toggle order.
-    onAnswer(node.id, answerAfterChange(node, value, optionValue, checked));
-  };
+    onAnswer(node.id, answerAfterChange(node, value, optionValue, checked))
+  }
 
   return (
     <QuestionnaireItem
@@ -281,7 +281,7 @@ function QuestionnaireQuestion({
       multiple={multiple}
       required
       aria-labelledby={promptId}
-      className='not-prose'
+      className="not-prose"
     >
       <QuestionnaireTitle id={promptId}>
         <ContentRenderer
@@ -311,10 +311,10 @@ function QuestionnaireQuestion({
       </QuestionnaireChoices>
 
       <QuestionnaireError>
-        <FormattedMessage id='questionnaire.answerRequired' />
+        <FormattedMessage id="questionnaire.answerRequired" />
       </QuestionnaireError>
     </QuestionnaireItem>
-  );
+  )
 }
 
 /**
@@ -336,15 +336,15 @@ function QuestionnaireQuestion({
 function SubmittedQuestionnaire({
   node,
   answers,
-  pathContext,
+  pathContext
 }: {
-  node: QuestionnaireNode;
-  answers?: Record<string, AnswerValue>;
-  pathContext: NestedPathContext;
+  node: QuestionnaireNode
+  answers?: Record<string, AnswerValue>
+  pathContext: NestedPathContext
 }) {
   return (
-    <Card className='not-prose '>
-      <CardContent className='space-y-6'>
+    <Card className="not-prose ">
+      <CardContent className="space-y-6">
         {node.questions.map((question) => (
           <SubmittedQuestion
             key={question.id}
@@ -355,21 +355,21 @@ function SubmittedQuestionnaire({
         ))}
       </CardContent>
     </Card>
-  );
+  )
 }
 
 function SubmittedQuestion({
   question,
   value,
-  pathContext,
+  pathContext
 }: {
-  question: QuestionNode;
-  value: AnswerValue | undefined;
-  pathContext: NestedPathContext;
+  question: QuestionNode
+  value: AnswerValue | undefined
+  pathContext: NestedPathContext
 }) {
-  const promptId = useId();
+  const promptId = useId()
   // Single-choice and true-false become radios; multiple-choice checkboxes.
-  const multiple = question.questionType === 'multiple-choice';
+  const multiple = question.questionType === 'multiple-choice'
 
   return (
     <Questionnaire items={[{ name: question.id }]}>
@@ -380,7 +380,7 @@ function SubmittedQuestion({
 
         <QuestionnaireChoices>
           {question.options.map((option) => {
-            const selected = isOptionSelected(question, value, option.value);
+            const selected = isOptionSelected(question, value, option.value)
             return (
               <QuestionnaireChoice
                 key={option.value}
@@ -391,10 +391,10 @@ function SubmittedQuestion({
               >
                 <ContentRenderer nodes={option.content} {...pathContext} />
               </QuestionnaireChoice>
-            );
+            )
           })}
         </QuestionnaireChoices>
       </QuestionnaireItem>
     </Questionnaire>
-  );
+  )
 }

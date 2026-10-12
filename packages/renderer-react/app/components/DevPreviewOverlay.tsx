@@ -1,5 +1,5 @@
-import { PreviewErrorOverlay } from './PreviewErrorOverlay';
-import { usePreviewError } from '../lib/use-preview-error';
+import { PreviewErrorOverlay } from './PreviewErrorOverlay'
+import { usePreviewError } from '../lib/use-preview-error'
 
 /**
  * Dev-only preview surface: subscribes to `scorm dev` content errors and shows
@@ -12,6 +12,6 @@ import { usePreviewError } from '../lib/use-preview-error';
  * dependency while preserving the exact dev behaviour.
  */
 export function DevPreviewOverlay() {
-  const message = usePreviewError();
-  return message ? <PreviewErrorOverlay message={message} /> : null;
+  const message = usePreviewError()
+  return message ? <PreviewErrorOverlay message={message} /> : null
 }

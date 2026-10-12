@@ -10,7 +10,14 @@
     "resolveJsonModule": true,
     "noEmit": true,
     "outDir": "dist",
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@scorm-cli/authoring": ["../authoring/dist/index"],
+      "@scorm-cli/core": ["../core/dist/index"],
+      "@scorm-cli/parser": ["../parser/dist/index"],
+      "@scorm-cli/renderer-react": ["../renderer-react/dist/index"],
+      "@scorm-cli/scorm": ["../scorm/dist/index"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]

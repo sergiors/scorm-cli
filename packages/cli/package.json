@@ -1,10 +1,41 @@
 {
-  "name": "@scorm-cli/cli",
-  "version": "0.0.1",
+  "name": "scorm-cli",
+  "version": "0.1.0",
+  "description": "Build SCORM 1.2 packages from authored MDX content, with a local preview server.",
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "bin": {
-    "scorm": "./dist/index.js"
+    "scorm-cli": "./dist/index.js"
   },
+  "exports": {
+    "./authoring": {
+      "types": "./dist/authoring.d.ts",
+      "import": "./dist/authoring.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sergiors/scorm-cli.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/sergiors/scorm-cli/issues"
+  },
+  "homepage": "https://github.com/sergiors/scorm-cli#readme",
+  "keywords": [
+    "scorm",
+    "scorm-1.2",
+    "elearning",
+    "mdx",
+    "cli"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsx src/index.ts",
@@ -12,16 +43,37 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@scorm-cli/core": "workspace:*",
-    "@scorm-cli/parser": "workspace:*",
-    "@scorm-cli/renderer-react": "workspace:*",
-    "@scorm-cli/scorm": "workspace:*",
+    "@shadcn/react": "^0.3.1",
+    "@tailwindcss/typography": "^0.5.20",
+    "@tailwindcss/vite": "^4.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
     "cac": "^6.7.14",
-    "chokidar": "^4.0.3"
+    "chokidar": "^4.0.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cn": "^0.4.0",
+    "gray-matter": "^4.0.3",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.454.0",
+    "radix-ui": "^1.7.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-intl": "^12.1.4",
+    "remark-mdx": "^3.1.1",
+    "remark-parse": "^11.0.0",
+    "tailwind-merge": "^2.5.0",
+    "tailwindcss": "^4.0.0",
+    "unified": "^11.0.5",
+    "vite": "^6.0.0",
+    "xmlbuilder2": "^3.1.1"
+  },
+  "peerDependencies": {
+    "@types/react": "^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.2",
-    "jszip": "^3.10.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",

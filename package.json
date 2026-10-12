@@ -1,33 +1,26 @@
 {
   "name": "scorm-cli",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": {
-    "./authoring": {
-      "types": "./authoring/dist/index.d.ts",
-      "import": "./authoring/dist/index.js"
-    }
-  },
+  "description": "Monorepo for the public scorm-cli package and its private workspace packages.",
   "scripts": {
-    "build": "pnpm run build:authoring && pnpm -r --if-present --workspace-concurrency=1 run build",
-    "build:authoring": "tsup --config authoring/tsup.config.ts",
-    "dev": "pnpm --filter @scorm-cli/cli dev",
+    "build": "pnpm run build:packages && pnpm run build:cli",
+    "build:packages": "pnpm --filter @scorm-cli/core build && pnpm --filter @scorm-cli/authoring build && pnpm --filter @scorm-cli/parser build && pnpm --filter @scorm-cli/scorm build && pnpm --filter @scorm-cli/renderer-react build",
+    "build:cli": "pnpm --filter scorm-cli build",
+    "dev": "pnpm --filter scorm-cli dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm build && pnpm -r --if-present run test",
-    "typecheck": "pnpm build && pnpm run typecheck:authoring && pnpm -r --if-present run typecheck",
-    "typecheck:authoring": "tsc -p authoring/tsconfig.json",
+    "typecheck": "pnpm build && pnpm -r --if-present run typecheck",
     "scorm": "node packages/cli/dist/index.js"
   },
   "devDependencies": {
-    "@types/node": "^25.6.2",
-    "@types/react": "^19.0.0",
     "prettier": "3.9.9",
-    "react": "^19.0.0",
-    "tsup": "^8.5.1",
-    "tsx": "^4.21.0",
     "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=20.19.0"
   },
   "packageManager": "pnpm@9.0.0"
 }

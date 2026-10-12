@@ -7,11 +7,16 @@ import type {
   ContentPackage,
   RendererDevOptions,
   RendererDevScript,
-  RendererDevServer,
+  RendererDevServer
 } from '@scorm-cli/core';
 import { createServer, searchForWorkspaceRoot, type Plugin, type ViteDevServer } from 'vite';
 import { PREVIEW_CLEAR_EVENT, PREVIEW_ERROR_EVENT } from '../app/shared/preview-events';
-import { createPackageDataPlugin, resolveAppRoot, RESOLVED_PACKAGE_DATA_ID } from './vite-app';
+import {
+  createPackageDataPlugin,
+  resolveAppRoot,
+  resolveCoreEntry,
+  RESOLVED_PACKAGE_DATA_ID
+} from './vite-app';
 
 const DEFAULT_PORT = 5173;
 const DEFAULT_HOST = 'localhost';
@@ -32,7 +37,7 @@ const DEFAULT_HOST = 'localhost';
  */
 export async function renderReactDevServer(
   contentPackage: ContentPackage,
-  options: RendererDevOptions,
+  options: RendererDevOptions
 ): Promise<RendererDevServer> {
   const contentRoot = path.resolve(options.contentRoot);
   const host = options.host ?? DEFAULT_HOST;
@@ -40,25 +45,36 @@ export async function renderReactDevServer(
   // ephemeral port ourselves to honour the conventional meaning of 0.
   const port = options.port === 0 ? await findFreePort(host) : (options.port ?? DEFAULT_PORT);
   const appRoot = resolveAppRoot(import.meta.url);
+  const coreEntry = resolveCoreEntry(appRoot);
 
   const handle = { current: contentPackage };
+
+  // Generated shadcn components import through the `@/` alias; resolve it to the
+  // app directory. When the renderer runs from its own workspace the app's
+  // `@scorm-cli/core` import resolves to the workspace package normally; when it
+  // runs from the bundled CLI it is aliased to the browser core copy the CLI
+  // build emits next to its executable.
+  const alias: Record<string, string> = { '@': appRoot };
+  if (coreEntry) {
+    alias['@scorm-cli/core'] = coreEntry;
+  }
 
   const server = await createServer({
     configFile: false,
     root: appRoot,
     base: '/',
     logLevel: 'warn',
-    // Generated shadcn components import through the `@/` alias; resolve it to
-    // the shipped `app` directory.
-    resolve: { alias: { '@': appRoot } },
+    resolve: { alias },
     // Keep Vite's dep cache inside the package's node_modules instead of
-    // creating a stray `app/node_modules` directory that would ship.
-    cacheDir: path.resolve(appRoot, '..', 'node_modules', '.vite'),
+    // creating a stray `app/node_modules` (or `dist/node_modules`) directory
+    // that would ship. The app sits at `<package>/app` in the workspace and at
+    // `<package>/dist/app` in the bundled CLI, so resolve the package root.
+    cacheDir: path.join(packageRootFor(appRoot), 'node_modules', '.vite'),
     plugins: [
       createDevScriptsPlugin(options.scripts ?? []),
       react(),
       tailwindcss(),
-      createPackageDataPlugin(handle),
+      createPackageDataPlugin(handle)
     ],
     // Local references in the parsed AST are relative to the package root, so
     // serving that directory as static assets makes them resolve untouched.
@@ -70,9 +86,16 @@ export async function renderReactDevServer(
       // never fails on a busy port.
       strictPort: false,
       fs: {
-        allow: [searchForWorkspaceRoot(appRoot), contentRoot],
-      },
-    },
+        // In the bundled CLI the app's `@scorm-cli/core` alias points at the
+        // browser core copy emitted under the sibling `dist/internal` directory,
+        // so allow that directory too.
+        allow: [
+          searchForWorkspaceRoot(appRoot),
+          contentRoot,
+          ...(coreEntry ? [path.dirname(coreEntry)] : [])
+        ]
+      }
+    }
   });
 
   await server.listen();
@@ -100,12 +123,12 @@ export async function renderReactDevServer(
       server.ws.send({
         type: 'custom',
         event: PREVIEW_ERROR_EVENT,
-        data: { message },
+        data: { message }
       });
     },
     async close() {
       await server.close();
-    },
+    }
   };
 }
 
@@ -122,9 +145,9 @@ function createDevScriptsPlugin(scripts: RendererDevScript[]): Plugin {
       return scripts.map((script) => ({
         tag: 'script',
         children: escapeInlineScript(script.source),
-        injectTo: 'head-prepend' as const,
+        injectTo: 'head-prepend' as const
       }));
-    },
+    }
   };
 }
 
@@ -154,6 +177,16 @@ function resolveServerUrl(server: ViteDevServer, host: string, port: number): st
     return first;
   }
   return `http://${host}:${port}/`;
+}
+
+/**
+ * The package that owns the app directory. The app sits at `<package>/app` in
+ * the workspace and at `<package>/dist/app` in the bundled CLI, so the package
+ * root is one or two levels up from the resolved app directory.
+ */
+function packageRootFor(appRoot: string): string {
+  const parent = path.dirname(appRoot);
+  return path.basename(parent) === 'dist' ? path.dirname(parent) : parent;
 }
 
 /** Asks the OS for an unused port on `host` (used when port 0 is requested). */

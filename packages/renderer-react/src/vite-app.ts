@@ -33,20 +33,45 @@ function findPackageRoot(startDirectory: string): string {
 /**
  * Resolves the shipped `app` directory from the calling module URL, validating
  * that the HTML template exists so failures surface early with a clear message.
+ *
+ * The app source is owned by this package and lives in its `app` directory, so
+ * the renderer resolves it there when it runs from its own workspace source or
+ * build. The published CLI bundles this renderer and ships a copy of the app
+ * next to its executable, so when the caller lives in `<cli>/dist` the app sits
+ * at the sibling `<cli>/dist/app`.
  */
 export function resolveAppRoot(moduleUrl: string): string {
   const packageRoot = findPackageRoot(path.dirname(fileURLToPath(moduleUrl)));
-  const appRoot = path.join(packageRoot, 'app');
-  const indexHtml = path.join(appRoot, ENTRYPOINT);
+  const candidates = [path.join(packageRoot, 'dist', 'app'), path.join(packageRoot, 'app')];
+  const appRoot = candidates.find((candidate) => existsSync(path.join(candidate, ENTRYPOINT)));
 
-  if (!existsSync(indexHtml)) {
+  if (!appRoot) {
     throw new Error(
-      `Renderer app template not found. Expected ${indexHtml}. ` +
-        "The 'app' directory must be shipped with the package.",
+      `Renderer app template not found. Looked for ${ENTRYPOINT} in ${candidates.join(', ')}. ` +
+        "Run 'pnpm build' so the app is emitted with the CLI package.",
     );
   }
 
   return appRoot;
+}
+
+/**
+ * Browser-safe copy of the private `@scorm-cli/core` module, emitted next to the
+ * CLI executable by `pnpm build` (a normal `tsup` entry, not an assembly step).
+ *
+ * The shipped app is compiled by Vite in a consumer where the private
+ * `@scorm-cli/core` specifier does not exist, so the app's runtime import is
+ * aliased to this built artifact. When the renderer runs from its own workspace
+ * (tests and `scorm dev` against the workspace package) the copy does not exist,
+ * so the app's `@scorm-cli/core` import resolves to the workspace package
+ * normally and no alias is needed.
+ */
+const CORE_ENTRY = path.join('internal', 'core.js');
+
+/** Resolves {@link CORE_ENTRY} from the app directory, which sits under `dist`. */
+export function resolveCoreEntry(appRoot: string): string | undefined {
+  const entry = path.resolve(appRoot, '..', CORE_ENTRY);
+  return existsSync(entry) ? entry : undefined;
 }
 
 function escapeHtml(value: string): string {

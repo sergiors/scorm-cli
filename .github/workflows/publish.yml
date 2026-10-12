@@ -1,0 +1,68 @@
+name: Publish
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish scorm-cli
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Publish to npm
+        working-directory: packages/cli
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          echo "Publishing scorm-cli@$version"
+
+          # Determine whether this exact version is already on the registry. A definite E404 means
+          # "not published yet"; any other failure is a real error and must fail the run.
+          set +e
+          view_output="$(npm view "scorm-cli@$version" version 2>&1)"
+          view_status=$?
+          set -e
+
+          if [ "$view_status" -eq 0 ]; then
+            echo "scorm-cli@$version is already published; nothing to do."
+            exit 0
+          fi
+
+          if printf '%s\n' "$view_output" | grep -q 'E404'; then
+            echo "scorm-cli@$version is not published yet; publishing."
+          else
+            echo "Unable to confirm whether scorm-cli@$version exists on npm:" >&2
+            printf '%s\n' "$view_output" >&2
+            exit 1
+          fi
+
+          npm publish --provenance --registry=https://registry.npmjs.org

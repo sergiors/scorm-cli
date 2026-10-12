@@ -5,17 +5,17 @@ import type {
   PlayerPageState,
   PlayerState,
   QuestionNode,
-  RootPresentation,
-} from '../types';
-import { collectQuestionnaires } from './content-helpers';
+  RootPresentation
+} from '../types'
+import { collectQuestionnaires } from './content-helpers'
 
 /** A fresh player state with no location and no recorded pages. */
 export function emptyPlayerState(): PlayerState {
-  return { pages: {} };
+  return { pages: {} }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /**
@@ -25,50 +25,50 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * Correctness is never consulted, so a valid answer can never leak it.
  */
 function sanitizeAnswer(question: QuestionNode, value: unknown): AnswerValue | undefined {
-  const options = new Set(question.options.map((option) => option.value));
+  const options = new Set(question.options.map((option) => option.value))
   if (question.questionType === 'multiple-choice') {
     if (!Array.isArray(value)) {
-      return undefined;
+      return undefined
     }
     if (!value.every((item) => typeof item === 'string' && options.has(item))) {
-      return undefined;
+      return undefined
     }
-    return [...new Set(value as string[])];
+    return [...new Set(value as string[])]
   }
   if (typeof value !== 'string' || !options.has(value)) {
-    return undefined;
+    return undefined
   }
-  return value;
+  return value
 }
 
 function sanitizePageState(
   node: PageNode | ItemNode,
   raw: Record<string, unknown>,
-  completedImpliesSubmitted: boolean,
+  completedImpliesSubmitted: boolean
 ): PlayerPageState | undefined {
-  const questionnaires = collectQuestionnaires(node.content);
-  const questions = new Map<string, QuestionNode>();
-  const wrapperIds = new Set<string>();
+  const questionnaires = collectQuestionnaires(node.content)
+  const questions = new Map<string, QuestionNode>()
+  const wrapperIds = new Set<string>()
   for (const questionnaire of questionnaires) {
-    wrapperIds.add(questionnaire.id);
+    wrapperIds.add(questionnaire.id)
     for (const question of questionnaire.questions) {
-      questions.set(question.id, question);
+      questions.set(question.id, question)
     }
   }
 
-  const page: PlayerPageState = {};
-  if (raw.visited === true) page.visited = true;
-  if (raw.completed === true) page.completed = true;
+  const page: PlayerPageState = {}
+  if (raw.visited === true) page.visited = true
+  if (raw.completed === true) page.completed = true
 
   if (isRecord(raw.answers)) {
-    const answers: Record<string, AnswerValue> = {};
+    const answers: Record<string, AnswerValue> = {}
     for (const [questionId, value] of Object.entries(raw.answers)) {
-      const question = questions.get(questionId);
-      if (!question) continue;
-      const sanitized = sanitizeAnswer(question, value);
-      if (sanitized !== undefined) answers[questionId] = sanitized;
+      const question = questions.get(questionId)
+      if (!question) continue
+      const sanitized = sanitizeAnswer(question, value)
+      if (sanitized !== undefined) answers[questionId] = sanitized
     }
-    if (Object.keys(answers).length > 0) page.answers = answers;
+    if (Object.keys(answers).length > 0) page.answers = answers
   }
 
   // Normalise submissions against the questionnaires this page actually owns.
@@ -78,19 +78,19 @@ function sanitizePageState(
   const provided = new Set(
     Array.isArray(raw.submittedQuestionnaires)
       ? raw.submittedQuestionnaires.filter((id): id is string => typeof id === 'string')
-      : [],
-  );
-  const submitted: string[] = [];
+      : []
+  )
+  const submitted: string[] = []
   for (const id of wrapperIds) {
     if (provided.has(id) || (completedImpliesSubmitted && page.completed)) {
-      submitted.push(id);
+      submitted.push(id)
     }
   }
   if (submitted.length > 0) {
-    page.submittedQuestionnaires = submitted;
+    page.submittedQuestionnaires = submitted
   }
 
-  return Object.keys(page).length > 0 ? page : undefined;
+  return Object.keys(page).length > 0 ? page : undefined
 }
 
 /**
@@ -104,30 +104,30 @@ function sanitizePageState(
  * renderer can mutate it without touching whatever the bridge returned.
  */
 export function sanitizePlayerState(presentation: RootPresentation, raw: unknown): PlayerState {
-  const nodes = presentation.type === 'scroll' ? presentation.pages : presentation.items;
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const state: PlayerState = { pages: {} };
+  const nodes = presentation.type === 'scroll' ? presentation.pages : presentation.items
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const state: PlayerState = { pages: {} }
 
   if (!isRecord(raw)) {
-    return state;
+    return state
   }
 
   if (typeof raw.location === 'string' && byId.has(raw.location)) {
-    state.location = raw.location;
+    state.location = raw.location
   }
 
   if (!isRecord(raw.pages)) {
-    return state;
+    return state
   }
 
   for (const [pageId, pageRaw] of Object.entries(raw.pages)) {
-    const node = byId.get(pageId);
-    if (!node || !isRecord(pageRaw)) continue;
-    const page = sanitizePageState(node, pageRaw, presentation.type === 'scroll');
-    if (page) state.pages[pageId] = page;
+    const node = byId.get(pageId)
+    if (!node || !isRecord(pageRaw)) continue
+    const page = sanitizePageState(node, pageRaw, presentation.type === 'scroll')
+    if (page) state.pages[pageId] = page
   }
 
-  return state;
+  return state
 }
 
 /**
@@ -138,30 +138,30 @@ export function sanitizePlayerState(presentation: RootPresentation, raw: unknown
 export function updatePageState(
   state: PlayerState,
   pageId: string,
-  update: (page: PlayerPageState) => PlayerPageState,
+  update: (page: PlayerPageState) => PlayerPageState
 ): PlayerState {
-  const page = state.pages[pageId] ?? {};
-  const nextPage = update(page);
+  const page = state.pages[pageId] ?? {}
+  const nextPage = update(page)
   if (nextPage === page) {
-    return state;
+    return state
   }
-  return { ...state, pages: { ...state.pages, [pageId]: nextPage } };
+  return { ...state, pages: { ...state.pages, [pageId]: nextPage } }
 }
 
 /** Returns a new state with `location` set, preserving pages state. */
 export function withLocation(state: PlayerState, location: string): PlayerState {
-  return state.location === location ? state : { ...state, location };
+  return state.location === location ? state : { ...state, location }
 }
 
 /** Compares two answers so an unchanged selection never triggers a write. */
 export function sameAnswer(previous: AnswerValue | undefined, next: AnswerValue): boolean {
   if (Array.isArray(previous) || Array.isArray(next)) {
     if (!Array.isArray(previous) || !Array.isArray(next)) {
-      return false;
+      return false
     }
     return (
       previous.length === next.length && previous.every((value, index) => value === next[index])
-    );
+    )
   }
-  return previous === next;
+  return previous === next
 }

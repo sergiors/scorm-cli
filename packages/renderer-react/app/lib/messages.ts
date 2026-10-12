@@ -1,4 +1,4 @@
-import type { PlayerLocale } from '../i18n/locale';
+import type { PlayerLocale } from '../i18n/locale'
 
 /**
  * Every string the player itself generates — never authored content. Titles,
@@ -28,11 +28,11 @@ export const en = {
   'questionnaire.answerRequired': 'Choose an answer to continue.',
   'dialog.close': 'Close',
   'package.empty': 'This package does not contain any content.',
-  'content.for': 'Content for {title}',
-} as const;
+  'content.for': 'Content for {title}'
+} as const
 
 /** Canonical message ids, derived from the English dictionary. */
-export type MessageId = keyof typeof en;
+export type MessageId = keyof typeof en
 
 /**
  * Brazilian Portuguese. Typing it as `Record<MessageId, string>` makes the
@@ -56,14 +56,14 @@ export const ptBR: Record<MessageId, string> = {
   'questionnaire.answerRequired': 'Escolha uma resposta para continuar.',
   'dialog.close': 'Fechar',
   'package.empty': 'Este pacote não contém nenhum conteúdo.',
-  'content.for': 'Conteúdo de {title}',
-};
+  'content.for': 'Conteúdo de {title}'
+}
 
 /** Complete message catalogs for every supported UI locale. */
 export const messages: Record<PlayerLocale, Record<MessageId, string>> = {
   en,
-  'pt-BR': ptBR,
-};
+  'pt-BR': ptBR
+}
 
 declare global {
   namespace FormatjsIntl {
@@ -72,7 +72,7 @@ declare global {
      * shipped catalog, so an unknown or misspelled id is a compile-time error.
      */
     interface Message {
-      ids: MessageId;
+      ids: MessageId
     }
 
     /**
@@ -81,13 +81,13 @@ declare global {
      * every call site.
      */
     interface MessageArguments {
-      'questionnaire.progress': { current: number; total: number };
-      'content.for': { title: string };
+      'questionnaire.progress': { current: number; total: number }
+      'content.for': { title: string }
     }
 
     /** The active UI locale is always one the player ships a catalog for. */
     interface IntlConfig {
-      locale: PlayerLocale;
+      locale: PlayerLocale
     }
   }
 }

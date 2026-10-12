@@ -1,41 +1,41 @@
-import { useState, type CSSProperties } from 'react';
-import { useIntl } from 'react-intl';
-import type { AnswerValue, ItemNode, PlayerPageState } from '../types';
-import { cn } from '../lib/utils';
-import { ContentRenderer } from './ContentRenderer';
-import { Button } from './ui/button';
-import { Card, CardHeader, CardTitle } from './ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
+import { useState, type CSSProperties } from 'react'
+import { useIntl } from 'react-intl'
+import type { AnswerValue, ItemNode, PlayerPageState } from '../types'
+import { cn } from '../lib/utils'
+import { ContentRenderer } from './ContentRenderer'
+import { Button } from './ui/button'
+import { Card, CardHeader, CardTitle } from './ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog'
 
 /**
  * Grid column counts are authored (1-12), so the count travels as a CSS custom
  * property and a single static class carries the responsive rule. On narrow
  * viewports the grid collapses to a single column.
  */
-const GRID_COLUMNS_CLASS = 'sm:grid-cols-[repeat(var(--grid-columns),minmax(0,1fr))]';
+const GRID_COLUMNS_CLASS = 'sm:grid-cols-[repeat(var(--grid-columns),minmax(0,1fr))]'
 
 function gridStyle(columns: number | undefined): CSSProperties {
-  const safe = Math.min(12, Math.max(1, Math.trunc(columns ?? 2)));
-  return { '--grid-columns': safe } as CSSProperties;
+  const safe = Math.min(12, Math.max(1, Math.trunc(columns ?? 2)))
+  return { '--grid-columns': safe } as CSSProperties
 }
 
 export interface GridPresentationProps {
-  items: ItemNode[];
+  items: ItemNode[]
   /** Authored column count; a layout intent, not a hard constraint. */
-  columns?: number;
+  columns?: number
   /** Persisted state per item id, for restoring answers and submitted state. */
-  pageStates: Record<string, PlayerPageState>;
+  pageStates: Record<string, PlayerPageState>
   /**
    * Item id named by the saved lesson location. When it matches an item, that
    * item's dialog reopens on mount so a refresh resumes in the same place.
    */
-  initialItemId?: string;
+  initialItemId?: string
   /** Stores an item as the current location and marks it visited. */
-  onItemOpened: (id: string) => void;
+  onItemOpened: (id: string) => void
   /** Persists a question answer for the opened item. */
-  onAnswer: (pageId: string, questionId: string, value: AnswerValue) => void;
+  onAnswer: (pageId: string, questionId: string, value: AnswerValue) => void
   /** Marks a questionnaire on the opened item as submitted. */
-  onQuestionnaireSubmitted: (pageId: string, questionnaireId: string) => void;
+  onQuestionnaireSubmitted: (pageId: string, questionnaireId: string) => void
 }
 
 /**
@@ -50,26 +50,26 @@ export function GridPresentation({
   initialItemId,
   onItemOpened,
   onAnswer,
-  onQuestionnaireSubmitted,
+  onQuestionnaireSubmitted
 }: GridPresentationProps) {
-  const intl = useIntl();
+  const intl = useIntl()
   const [selected, setSelected] = useState<ItemNode | undefined>(() =>
-    items.find((item) => item.id === initialItemId),
-  );
-  const [open, setOpen] = useState(() => items.some((item) => item.id === initialItemId));
+    items.find((item) => item.id === initialItemId)
+  )
+  const [open, setOpen] = useState(() => items.some((item) => item.id === initialItemId))
 
   const openItem = (item: ItemNode) => {
-    setSelected(item);
-    setOpen(true);
-    onItemOpened(item.id);
-  };
+    setSelected(item)
+    setOpen(true)
+    onItemOpened(item.id)
+  }
 
-  const pageState = selected ? pageStates[selected.id] : undefined;
+  const pageState = selected ? pageStates[selected.id] : undefined
 
   return (
     <>
       <div
-        role='list'
+        role="list"
         style={gridStyle(columns)}
         className={cn('grid grid-cols-1 gap-4 p-6', GRID_COLUMNS_CLASS)}
       >
@@ -80,20 +80,20 @@ export function GridPresentation({
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
-          className='max-h-[85dvh] overflow-y-auto sm:max-w-2xl'
+          className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl"
           aria-describedby={undefined}
           closeLabel={intl.formatMessage({ id: 'dialog.close' })}
         >
           <DialogHeader>
             <DialogTitle>{selected?.metadata.title}</DialogTitle>
             {selected ? (
-              <DialogDescription className='sr-only'>
+              <DialogDescription className="sr-only">
                 {intl.formatMessage({ id: 'content.for' }, { title: selected.metadata.title })}
               </DialogDescription>
             ) : null}
           </DialogHeader>
           {selected ? (
-            <div className='prose'>
+            <div className="prose">
               <ContentRenderer
                 nodes={selected.content}
                 answers={pageState?.answers}
@@ -106,20 +106,20 @@ export function GridPresentation({
         </DialogContent>
       </Dialog>
     </>
-  );
+  )
 }
 
 function ItemCard({ item, onOpen }: { item: ItemNode; onOpen: () => void }) {
   return (
     <Card
-      role='listitem'
-      className='group/card relative h-full transition-colors hover:border-primary/50 has-[button:focus-visible]:border-primary/50 has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-ring/40'
+      role="listitem"
+      className="group/card relative h-full transition-colors hover:border-primary/50 has-[button:focus-visible]:border-primary/50 has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-ring/40"
     >
       <CardHeader>
-        <CardTitle className='text-base'>
+        <CardTitle className="text-base">
           <Button
-            type='button'
-            variant='ghost'
+            type="button"
+            variant="ghost"
             onClick={onOpen}
             className='h-auto w-full justify-start gap-0 rounded-none border-0 bg-transparent p-0 text-start text-base leading-none font-semibold tracking-tight whitespace-normal text-card-foreground hover:bg-transparent hover:text-card-foreground dark:hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 active:not-aria-[haspopup]:translate-y-0 after:absolute after:inset-0 after:content-[""]'
           >
@@ -128,5 +128,5 @@ function ItemCard({ item, onOpen }: { item: ItemNode; onOpen: () => void }) {
         </CardTitle>
       </CardHeader>
     </Card>
-  );
+  )
 }

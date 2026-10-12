@@ -1,9 +1,9 @@
-import { Check, Circle, Lock } from 'lucide-react';
-import { useIntl } from 'react-intl';
-import type { PageNode, PathNode, PlayerPageState } from '../types';
-import type { MessageId } from '../lib/messages';
-import { cn } from '../lib/utils';
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from './ui/item';
+import { Check, Circle, Lock } from 'lucide-react'
+import { useIntl } from 'react-intl'
+import type { PageNode, PathNode, PlayerPageState } from '../types'
+import type { MessageId } from '../lib/messages'
+import { cn } from '../lib/utils'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from './ui/item'
 
 /**
  * The state of a single Path entry, derived from the visited flags of the
@@ -12,7 +12,7 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle }
  * else is locked, so a learner can revisit and advance one step, but never skip
  * ahead.
  */
-export type PathPageStatus = 'visited' | 'available' | 'locked';
+export type PathPageStatus = 'visited' | 'available' | 'locked'
 
 /**
  * Whether the Path entry at `index` may be opened, given the `visited` flags of
@@ -27,59 +27,59 @@ export type PathPageStatus = 'visited' | 'available' | 'locked';
  */
 export function canOpenPathPage(index: number, visited: readonly boolean[]): boolean {
   if (index <= 0) {
-    return true;
+    return true
   }
 
   if (visited[index]) {
-    return true;
+    return true
   }
 
-  return visited[index - 1] === true;
+  return visited[index - 1] === true
 }
 
 function pathPageStatus(index: number, visited: readonly boolean[]): PathPageStatus {
   if (visited[index]) {
-    return 'visited';
+    return 'visited'
   }
 
-  return canOpenPathPage(index, visited) ? 'available' : 'locked';
+  return canOpenPathPage(index, visited) ? 'available' : 'locked'
 }
 
 const STATUS_ICONS = {
   visited: Check,
   available: Circle,
-  locked: Lock,
-} as const;
+  locked: Lock
+} as const
 
 /** Message id for each entry status, kept in sync with the icon registry. */
 const STATUS_MESSAGES = {
   visited: 'path.visited',
   available: 'path.available',
-  locked: 'path.locked',
-} as const satisfies Record<PathPageStatus, MessageId>;
+  locked: 'path.locked'
+} as const satisfies Record<PathPageStatus, MessageId>
 
 export interface PathViewProps {
-  node: PathNode;
+  node: PathNode
 
   /**
    * The root presentation's pages, used to resolve each referenced id to its
    * display metadata. A Path only references root Scroll pages; unresolved ids
    * fall back to the raw id so a malformed reference is still visible.
    */
-  pathPages?: readonly PageNode[];
+  pathPages?: readonly PageNode[]
 
   /**
    * Persisted state per page id. Only `visited` is consulted, so Path adds no
    * state of its own and never persists anything.
    */
-  pageStates?: Record<string, PlayerPageState>;
+  pageStates?: Record<string, PlayerPageState>
 
   /**
    * Opens a referenced page through the presentation's existing page switching.
    * When absent the whole Path renders inert, without offering dead controls;
    * this is the case whenever the surrounding presentation cannot switch pages.
    */
-  onNavigatePathPage?: (pageId: string) => void;
+  onNavigatePathPage?: (pageId: string) => void
 }
 
 /**
@@ -93,21 +93,21 @@ export function PathView({
   node,
   pathPages = [],
   pageStates = {},
-  onNavigatePathPage,
+  onNavigatePathPage
 }: PathViewProps) {
-  const intl = useIntl();
-  const pagesById = new Map(pathPages.map((page) => [page.id, page]));
-  const visited = node.pageIds.map((id) => pageStates[id]?.visited === true);
+  const intl = useIntl()
+  const pagesById = new Map(pathPages.map((page) => [page.id, page]))
+  const visited = node.pageIds.map((id) => pageStates[id]?.visited === true)
 
   return (
     <nav
       aria-label={intl.formatMessage({ id: 'path.label' })}
-      data-slot='path'
-      className='not-prose space-y-2.5'
+      data-slot="path"
+      className="not-prose space-y-2.5"
     >
       {node.pageIds.map((id, index) => {
-        const page = pagesById.get(id);
-        const status = pathPageStatus(index, visited);
+        const page = pagesById.get(id)
+        const status = pathPageStatus(index, visited)
 
         return (
           <PathEntry
@@ -118,10 +118,10 @@ export function PathView({
             disabled={status === 'locked' || onNavigatePathPage === undefined}
             onOpen={onNavigatePathPage ? () => onNavigatePathPage(id) : undefined}
           />
-        );
+        )
       })}
     </nav>
-  );
+  )
 }
 
 function PathEntry({
@@ -129,28 +129,28 @@ function PathEntry({
   description,
   status,
   disabled,
-  onOpen,
+  onOpen
 }: {
-  title: string;
-  description?: string;
-  status: PathPageStatus;
-  disabled: boolean;
-  onOpen?: () => void;
+  title: string
+  description?: string
+  status: PathPageStatus
+  disabled: boolean
+  onOpen?: () => void
 }) {
-  const Icon = STATUS_ICONS[status];
-  const intl = useIntl();
-  const label = intl.formatMessage({ id: STATUS_MESSAGES[status] });
+  const Icon = STATUS_ICONS[status]
+  const intl = useIntl()
+  const label = intl.formatMessage({ id: STATUS_MESSAGES[status] })
 
   return (
-    <Item data-path-entry data-path-status={status} variant='outline' asChild>
+    <Item data-path-entry data-path-status={status} variant="outline" asChild>
       <button
-        type='button'
+        type="button"
         onClick={onOpen}
         disabled={disabled}
-        className='cursor-pointer not-disabled:hover:border-foreground/20 not-disabled:hover:bg-muted/50 disabled:cursor-not-allowed'
+        className="cursor-pointer not-disabled:hover:border-foreground/20 not-disabled:hover:bg-muted/50 disabled:cursor-not-allowed"
       >
         <ItemMedia>
-          <Icon aria-hidden='true' className='size-4' />
+          <Icon aria-hidden="true" className="size-4" />
         </ItemMedia>
 
         <ItemContent>
@@ -162,5 +162,5 @@ function PathEntry({
         <ItemActions>{label}</ItemActions>
       </button>
     </Item>
-  );
+  )
 }

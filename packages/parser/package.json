@@ -1,6 +1,7 @@
 {
   "name": "@scorm-cli/parser",
   "version": "0.0.1",
+  "private": true,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -25,8 +26,8 @@
     "unified": "^11.0.5"
   },
   "devDependencies": {
+    "@scorm-cli/authoring": "workspace:*",
     "@types/node": "^25.6.2",
-    "scorm-cli": "link:../..",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",

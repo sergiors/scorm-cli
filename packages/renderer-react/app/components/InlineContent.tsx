@@ -1,8 +1,8 @@
-import { Fragment } from 'react';
-import type { ComponentType, ReactNode } from 'react';
-import { ExternalLink } from 'lucide-react';
-import type { InlineNode } from '../types';
-import { cn } from '../lib/utils';
+import { Fragment } from 'react'
+import type { ComponentType, ReactNode } from 'react'
+import { ExternalLink } from 'lucide-react'
+import type { InlineNode } from '../types'
+import { cn } from '../lib/utils'
 
 /**
  * Renders a run of inline nodes inside a single flow context (a paragraph, a
@@ -14,20 +14,20 @@ import { cn } from '../lib/utils';
  * introducing a `<figure>`/`<figcaption>` block.
  */
 export interface InlineContentProps {
-  nodes: InlineNode[];
+  nodes: InlineNode[]
 }
 
-type InlineNodeType = InlineNode['type'];
+type InlineNodeType = InlineNode['type']
 
 /** The exact node interface behind an inline discriminant, e.g. `LinkNode`. */
-type InlineNodeOf<T extends InlineNodeType> = Extract<InlineNode, { type: T }>;
+type InlineNodeOf<T extends InlineNodeType> = Extract<InlineNode, { type: T }>
 
 /**
  * Props shared by every inline view: the exact node interface behind its
  * discriminant.
  */
 interface InlineNodeViewProps<T extends InlineNodeType> {
-  node: InlineNodeOf<T>;
+  node: InlineNodeOf<T>
 }
 
 /**
@@ -36,35 +36,35 @@ interface InlineNodeViewProps<T extends InlineNodeType> {
  * is a compile-time error.
  */
 type InlineNodeRenderers = {
-  [T in InlineNodeType]: ComponentType<InlineNodeViewProps<T>>;
-};
+  [T in InlineNodeType]: ComponentType<InlineNodeViewProps<T>>
+}
 
 function TextView({ node }: InlineNodeViewProps<'text'>) {
-  return <>{node.value}</>;
+  return <>{node.value}</>
 }
 
 function EmphasisView({ node }: InlineNodeViewProps<'emphasis'>) {
   return (
-    <em className='italic'>
+    <em className="italic">
       <InlineContent nodes={node.children} />
     </em>
-  );
+  )
 }
 
 function StrongView({ node }: InlineNodeViewProps<'strong'>) {
   return (
-    <strong className='font-semibold text-foreground'>
+    <strong className="font-semibold text-foreground">
       <InlineContent nodes={node.children} />
     </strong>
-  );
+  )
 }
 
 function InlineCodeView({ node }: InlineNodeViewProps<'inlineCode'>) {
-  return <code className='font-mono not-prose'>{node.value}</code>;
+  return <code className="font-mono not-prose">{node.value}</code>
 }
 
 function LinkView({ node }: InlineNodeViewProps<'link'>) {
-  const isExternal = /^https?:\/\//i.test(node.href);
+  const isExternal = /^https?:\/\//i.test(node.href)
 
   return (
     <a
@@ -74,10 +74,10 @@ function LinkView({ node }: InlineNodeViewProps<'link'>) {
     >
       <InlineContent nodes={node.children} />
       {isExternal ? (
-        <ExternalLink aria-hidden='true' className='ml-0.5 inline size-3.5 align-[-0.15em]' />
+        <ExternalLink aria-hidden="true" className="ml-0.5 inline size-3.5 align-[-0.15em]" />
       ) : null}
     </a>
-  );
+  )
 }
 
 function InlineImageView({ node }: InlineNodeViewProps<'image'>) {
@@ -85,25 +85,25 @@ function InlineImageView({ node }: InlineNodeViewProps<'image'>) {
     <img
       src={node.src}
       alt={node.alt}
-      loading='lazy'
+      loading="lazy"
       className={cn('h-auto max-w-full', node.caption ? undefined : 'inline align-middle')}
     />
-  );
+  )
 
   if (!node.caption) {
-    return image;
+    return image
   }
 
   return (
-    <span className='inline-flex flex-col items-start align-middle'>
+    <span className="inline-flex flex-col items-start align-middle">
       {image}
-      <span className='text-xs text-muted-foreground'>{node.caption}</span>
+      <span className="text-xs text-muted-foreground">{node.caption}</span>
     </span>
-  );
+  )
 }
 
 function BreakView() {
-  return <br />;
+  return <br />
 }
 
 /**
@@ -117,8 +117,8 @@ const inlineNodeRenderers = {
   inlineCode: InlineCodeView,
   link: LinkView,
   image: InlineImageView,
-  break: BreakView,
-} satisfies InlineNodeRenderers;
+  break: BreakView
+} satisfies InlineNodeRenderers
 
 export function InlineContent({ nodes }: InlineContentProps) {
   return (
@@ -127,7 +127,7 @@ export function InlineContent({ nodes }: InlineContentProps) {
         <Fragment key={`${node.type}-${index}`}>{renderInlineNode(node)}</Fragment>
       ))}
     </>
-  );
+  )
 }
 
 /**
@@ -139,11 +139,11 @@ export function InlineContent({ nodes }: InlineContentProps) {
 function renderInlineNode(node: InlineNode): ReactNode {
   if (!Object.hasOwn(inlineNodeRenderers, node.type)) {
     // Runtime guard for malformed content: never silently drop a node.
-    throw new Error(`Unsupported inline node type: ${String(node.type ?? 'unknown')}`);
+    throw new Error(`Unsupported inline node type: ${String(node.type ?? 'unknown')}`)
   }
 
   const View = inlineNodeRenderers[node.type] as ComponentType<{
-    node: InlineNode;
-  }>;
-  return <View node={node} />;
+    node: InlineNode
+  }>
+  return <View node={node} />
 }
