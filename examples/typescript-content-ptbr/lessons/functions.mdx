@@ -1,0 +1,15 @@
+---
+title: Funções tipadas
+---
+
+# Funções como contratos
+
+A assinatura de uma função comunica o que quem chama precisa fornecer e o que recebe em troca.
+
+```ts
+function completionPercent(done: number, total: number): number {
+  return total === 0 ? 0 : Math.round((done / total) * 100)
+}
+```
+
+O tipo de retorno ajuda o TypeScript a detectar valores acidentais em todos os caminhos do código.

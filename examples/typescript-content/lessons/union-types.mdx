@@ -2,7 +2,7 @@
 title: Union types and narrowing
 ---
 
-import { Questionnaire, Question, Prompt, Option } from 'scorm-cli/authoring';
+import { Questionnaire, Question, Prompt, Option } from 'scorm-cli/authoring'
 
 # One value, a few possibilities
 
@@ -11,7 +11,7 @@ or it might be present or missing. A union type describes that set of
 possibilities.
 
 ```ts
-type LessonId = string | number;
+type LessonId = string | number
 ```
 
 `LessonId` accepts either a string such as `'welcome'` or a number such as `1`.
@@ -26,9 +26,9 @@ narrowing, and it happens automatically inside common checks such as `typeof`.
 ```ts
 function label(id: string | number): string {
   if (typeof id === 'number') {
-    return `Lesson #${id}`;
+    return `Lesson #${id}`
   }
-  return id.toUpperCase();
+  return id.toUpperCase()
 }
 ```
 
@@ -42,13 +42,13 @@ literal field, often called a discriminant, so a single check selects the right
 branch.
 
 ```ts
-type Result = { status: 'ok'; value: number } | { status: 'error'; message: string };
+type Result = { status: 'ok'; value: number } | { status: 'error'; message: string }
 
 function describe(result: Result): string {
   if (result.status === 'ok') {
-    return `Value: ${result.value}`;
+    return `Value: ${result.value}`
   }
-  return `Error: ${result.message}`;
+  return `Error: ${result.message}`
 }
 ```
 
@@ -66,17 +66,17 @@ the wrong field, which catches mistakes before the code runs.
 ## Check your understanding
 
 <Questionnaire>
-  <Question type='single-choice'>
+  <Question type="single-choice">
     <Prompt>
       Inside `if (typeof value === 'string')`, what does TypeScript know about `value`?
     </Prompt>
-    <Option value='narrowed' correct={true}>
+    <Option value="narrowed" correct={true}>
       It is a `string`, so string methods are safe to call
     </Option>
-    <Option value='union' correct={false}>
+    <Option value="union" correct={false}>
       It is still the full original union
     </Option>
-    <Option value='any' correct={false}>
+    <Option value="any" correct={false}>
       It becomes `any` and loses its type information
     </Option>
   </Question>
