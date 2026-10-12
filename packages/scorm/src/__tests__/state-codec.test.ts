@@ -361,7 +361,7 @@ describe('compact suspend-data codec', () => {
       },
       addEventListener: () => undefined,
       console: {
-        log: (_message: string, event: { name: string }) => events.push(event)
+        debug: (_prefix: string, event: { name: string }) => events.push(event)
       }
     }
     window.parent = window

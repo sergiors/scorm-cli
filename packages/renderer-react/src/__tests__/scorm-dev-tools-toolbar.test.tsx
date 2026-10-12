@@ -25,21 +25,51 @@ afterEach(() => {
   delete window.scormDevTools
 })
 
+type CmiSnapshot = Record<string, string>
+
+/** A representative SCORM 1.2 `cmi.*` storage model. */
+const CMI_12_SNAPSHOT: CmiSnapshot = {
+  'cmi.core.lesson_location': '0',
+  'cmi.core.lesson_status': 'incomplete',
+  'cmi.core.score.raw': '0',
+  'cmi.core.session_time': '0000:00:00'
+}
+
+/** A representative SCORM 2004 `cmi.*` storage model (no 1.2-only keys). */
+const CMI_2004_SNAPSHOT: CmiSnapshot = {
+  'cmi.location': '0',
+  'cmi.completion_status': 'incomplete',
+  'cmi.score.raw': '0',
+  'cmi.session_time': 'PT0H0M0S'
+}
+
 /**
- * Installs a mock `window.scormDevTools` whose persisted flag and SCORM version
- * can be read and written. Returns the spies so tests can assert on calls.
+ * Installs a mock `window.scormDevTools` whose persisted flag, SCORM version and
+ * CMI snapshot can be read and written. Returns the spies (and the emitted CMI
+ * helpers) so tests can assert on calls and drive subscription notifications.
  */
 function installBridge(
   initialEnabled: boolean,
-  options: { version?: '1.2' | '2004' } = {}
+  options: { version?: '1.2' | '2004'; cmi?: CmiSnapshot } = {}
 ): {
   getCmiPersistenceEnabled: ReturnType<typeof vi.fn>
   setCmiPersistenceEnabled: ReturnType<typeof vi.fn>
   getScormVersion: ReturnType<typeof vi.fn>
   getApiName: ReturnType<typeof vi.fn>
   setScormVersion: ReturnType<typeof vi.fn>
+  getCmiSnapshot: ReturnType<typeof vi.fn>
+  subscribeToCmi: ReturnType<typeof vi.fn>
+  unsubscribe: ReturnType<typeof vi.fn>
+  listeners: Set<(snapshot: CmiSnapshot) => void>
+  /** Replaces the stored snapshot and notifies every current subscriber. */
+  emitCmi: (snapshot: CmiSnapshot) => void
 } {
-  const bridge = { enabled: initialEnabled, version: options.version ?? ('1.2' as const) }
+  const bridge = {
+    enabled: initialEnabled,
+    version: options.version ?? ('1.2' as const),
+    cmi: { ...(options.cmi ?? (options.version === '2004' ? CMI_2004_SNAPSHOT : CMI_12_SNAPSHOT)) }
+  }
+  const listeners = new Set<(snapshot: CmiSnapshot) => void>()
   const getCmiPersistenceEnabled = vi.fn(() => bridge.enabled)
   const setCmiPersistenceEnabled = vi.fn((enabled: boolean) => {
     bridge.enabled = enabled
@@ -49,19 +79,46 @@ function installBridge(
   const setScormVersion = vi.fn((version: '1.2' | '2004') => {
     bridge.version = version
   })
+  // Fresh copies keep the inspector honest: it must treat each return as a
+  // complete snapshot rather than mutating the mock's own storage.
+  const getCmiSnapshot = vi.fn(() => ({ ...bridge.cmi }))
+  const unsubscribe = vi.fn()
+  const subscribeToCmi = vi.fn((listener: (snapshot: CmiSnapshot) => void) => {
+    listeners.add(listener)
+    // The runtime delivers a snapshot at subscription time as well as after
+    // every state change.
+    listener({ ...bridge.cmi })
+    return () => {
+      listeners.delete(listener)
+      unsubscribe()
+    }
+  })
+  const emitCmi = (snapshot: CmiSnapshot) => {
+    bridge.cmi = { ...snapshot }
+    for (const listener of listeners) {
+      listener({ ...bridge.cmi })
+    }
+  }
   window.scormDevTools = {
     getCmiPersistenceEnabled,
     setCmiPersistenceEnabled,
     getScormVersion,
     getApiName,
-    setScormVersion
+    setScormVersion,
+    getCmiSnapshot,
+    subscribeToCmi
   }
   return {
     getCmiPersistenceEnabled,
     setCmiPersistenceEnabled,
     getScormVersion,
     getApiName,
-    setScormVersion
+    setScormVersion,
+    getCmiSnapshot,
+    subscribeToCmi,
+    unsubscribe,
+    listeners,
+    emitCmi
   }
 }
 
@@ -120,6 +177,20 @@ function fieldDescriptionContaining(text: string): HTMLElement {
 /** Reads the text of the field description that shows the active API name. */
 function activeApiText(): string {
   return fieldDescriptionContaining('Active API').textContent ?? ''
+}
+
+/** The read-only CMI inspector's snapshot element, when the bridge exposes one. */
+function cmiPre(): HTMLPreElement | null {
+  return document.querySelector<HTMLPreElement>('pre[aria-label="CMI data"]')
+}
+
+/** Parses the rendered snapshot back into its flat `cmi.*` map. */
+function cmiSnapshot(): CmiSnapshot {
+  const pre = cmiPre()
+  if (!pre) {
+    throw new Error('CMI inspector snapshot not found')
+  }
+  return JSON.parse(pre.textContent ?? '{}') as CmiSnapshot
 }
 
 /** The shadcn Popover portals its content into `document.body`. */
@@ -442,5 +513,88 @@ describe('ScormDevToolsToolbar', () => {
     expect(document.body.textContent).not.toContain('SCORM version')
     // The persistence control still renders on its own.
     expect(persistenceCheckboxChecked()).toBe(true)
+  })
+
+  it('shows the complete CMI snapshot hydrated from the dev bridge', () => {
+    const bridge = installBridge(true)
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+    togglePopover()
+
+    expect(bridge.getCmiSnapshot).toHaveBeenCalled()
+    // The whole flat `cmi.*` map is rendered verbatim, pretty-printed.
+    expect(cmiSnapshot()).toEqual(CMI_12_SNAPSHOT)
+    expect(cmiPre()?.textContent).toContain('\n')
+  })
+
+  it('replaces the whole snapshot when the mock notifies subscribers', () => {
+    const bridge = installBridge(true)
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+    togglePopover()
+
+    expect(bridge.subscribeToCmi).toHaveBeenCalledTimes(1)
+    expect(cmiSnapshot()).toEqual(CMI_12_SNAPSHOT)
+
+    act(() => bridge.emitCmi({ 'cmi.core.lesson_status': 'completed' }))
+
+    // Notifications are complete snapshots, so the previous keys are replaced
+    // outright rather than merged with the new ones.
+    expect(cmiSnapshot()).toEqual({ 'cmi.core.lesson_status': 'completed' })
+    expect(cmiSnapshot()).not.toHaveProperty('cmi.core.lesson_location')
+  })
+
+  it('replaces the CMI model on a version switch without carrying 1.2 keys', () => {
+    const bridge = installBridge(true)
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+    togglePopover()
+
+    expect(Object.keys(cmiSnapshot())).toContain('cmi.core.lesson_location')
+
+    openVersionSelect()
+    act(() => versionOption('SCORM 2004').click())
+    expect(bridge.setScormVersion).toHaveBeenCalledWith('2004')
+
+    // The reloaded preview starts from its own 2004 storage; nothing from the
+    // previous version is merged in.
+    act(() => bridge.emitCmi(CMI_2004_SNAPSHOT))
+
+    expect(cmiSnapshot()).toEqual(CMI_2004_SNAPSHOT)
+    expect(Object.keys(cmiSnapshot()).some((key) => key.startsWith('cmi.core.'))).toBe(false)
+  })
+
+  it('unsubscribes from the mock when the inspector unmounts', () => {
+    const bridge = installBridge(true)
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+    togglePopover()
+
+    expect(bridge.subscribeToCmi).toHaveBeenCalledTimes(1)
+    expect(bridge.listeners.size).toBe(1)
+    expect(bridge.unsubscribe).not.toHaveBeenCalled()
+
+    // Closing the popover unmounts the inspector, releasing its subscription.
+    togglePopover()
+
+    expect(bridge.unsubscribe).toHaveBeenCalledTimes(1)
+    expect(bridge.listeners.size).toBe(0)
+  })
+
+  it('renders an empty snapshot as an empty object', () => {
+    installBridge(true, { cmi: {} })
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+    togglePopover()
+
+    expect(cmiSnapshot()).toEqual({})
+  })
+
+  it('shows an unavailable note and no snapshot without the CMI contract', () => {
+    window.scormDevTools = {
+      getCmiPersistenceEnabled: () => true,
+      setCmiPersistenceEnabled: () => {}
+    }
+
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+    togglePopover()
+
+    expect(cmiPre()).toBeNull()
+    expect(document.body.textContent).toContain('CMI data is not available')
   })
 })

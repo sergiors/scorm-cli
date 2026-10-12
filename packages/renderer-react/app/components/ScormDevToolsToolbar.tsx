@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Settings2 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
@@ -29,8 +29,8 @@ export interface ScormDevToolsToolbarProps {
  * It is deliberately not an event log. Every SCORM runtime event is written
  * straight to the browser console by the injected mock/runtime, so this toolbar
  * only hosts the mock controls: the active SCORM version (with the learner API
- * global it installed) and whether the mock persists `cmi.*` values in
- * localStorage.
+ * global it installed), whether the mock persists `cmi.*` values in
+ * localStorage, and a read-only snapshot of the current `cmi.*` storage.
  *
  * Mounted only in Vite dev mode (see `main.tsx`), collapsed by default and
  * pinned out of the way in the top-right corner so it never competes with the
@@ -61,6 +61,7 @@ export function ScormDevToolsToolbar({
         <PopoverContent align="end" aria-label="Dev tools" className="w-80 p-6">
           <CmiPersistenceControl />
           <ScormVersionControl />
+          <CmiInspector />
         </PopoverContent>
       </Popover>
     </div>
@@ -229,6 +230,47 @@ function CmiPersistenceControl() {
   )
 }
 
+/**
+ * Dev-only, read-only inspector for the mock's current `cmi.*` storage.
+ *
+ * The whole snapshot is held in a single React state value: it hydrates from
+ * `getCmiSnapshot` and is replaced wholesale by every `subscribeToCmi`
+ * notification, so what is rendered is exactly the mock's flat `cmi.*` map with
+ * no per-field UI, polling or event replay. Both bridge methods are optional, so
+ * an older injected mock simply shows an unavailable note instead of crashing.
+ */
+function CmiInspector() {
+  const [cmi, setCmi] = useState<Record<string, string>>(() => readCmiSnapshot())
+  const available = typeof getScormDevTools()?.getCmiSnapshot === 'function'
+
+  useEffect(() => {
+    const bridge = getScormDevTools()
+    if (!bridge || typeof bridge.subscribeToCmi !== 'function') {
+      return
+    }
+    // Each notification carries a complete snapshot (never a patch), so the
+    // state is replaced outright rather than merged. Switching SCORM version
+    // reloads the preview, so the new mock starts its own snapshot with nothing
+    // carried over from the previous version.
+    return bridge.subscribeToCmi((snapshot) => setCmi(snapshot))
+  }, [])
+
+  return (
+    <section className="space-y-2.5 overflow-hidden">
+      <p className="text-sm font-medium">CMI data</p>
+      {available ? (
+        <div className="rounded-2xl border border-border bg-secondary overflow-hidden">
+          <pre aria-label="CMI data" className="text-sm font-mono not-prose overflow-x-auto p-2.5">
+            <code>{JSON.stringify(cmi, null, 2)}</code>
+          </pre>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">CMI data is not available in this preview.</p>
+      )}
+    </section>
+  )
+}
+
 function getScormDevTools(): ScormDevTools | undefined {
   if (typeof window === 'undefined') {
     return undefined
@@ -271,6 +313,18 @@ function readCmiPersistenceState(): CmiPersistenceState {
       status: 'error',
       message: describeDevToolsError(error)
     }
+  }
+}
+
+function readCmiSnapshot(): Record<string, string> {
+  const bridge = getScormDevTools()
+  if (!bridge || typeof bridge.getCmiSnapshot !== 'function') {
+    return {}
+  }
+  try {
+    return bridge.getCmiSnapshot()
+  } catch {
+    return {}
   }
 }
 

@@ -92,7 +92,7 @@ function createWindow(options: CreateWindowOptions = {}) {
   const window: Record<string, any> = { API: api }
   if (options.devtools !== false) window.__SCORM_DEVTOOLS__ = true
   if (options.console !== false) {
-    window.console = { log: (...args: unknown[]) => logs.push(args) }
+    window.console = { debug: (...args: unknown[]) => logs.push(args) }
   }
   window.parent = window
   window.addEventListener = () => {}
@@ -120,12 +120,15 @@ describe('SCORM runtime dev event logging', () => {
     expect(logs.length).toBeGreaterThan(100)
 
     for (const args of logs) {
-      expect(args[0]).toMatch(/^\[scorm\] lms\./)
-      expect(args[1]).toMatchObject({
+      expect(args).toHaveLength(2)
+      expect(args[0]).toBe('[scorm]')
+      const event = args[1] as Record<string, unknown>
+      expect(event).toMatchObject({
         name: expect.any(String),
         at: expect.any(Number),
         details: expect.any(Object)
       })
+      expect(Object.keys(event).sort()).toEqual(['at', 'details', 'name'])
     }
   })
 
@@ -296,7 +299,7 @@ describe('SCORM 2004 runtime', () => {
     const window: any = {
       __SCORM_DEVTOOLS__: true,
       parent,
-      console: { log: () => undefined },
+      console: { debug: () => undefined },
       addEventListener: () => undefined
     }
 
@@ -363,7 +366,7 @@ describe('SCORM 2004 runtime', () => {
       __SCORM_DEVTOOLS__: true,
       API_1484_11: api,
       parent: null,
-      console: { log: (...args: unknown[]) => logs.push(args) },
+      console: { debug: (...args: unknown[]) => logs.push(args) },
       addEventListener: () => undefined
     }
     window.parent = window

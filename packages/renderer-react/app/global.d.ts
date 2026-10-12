@@ -66,6 +66,21 @@ declare global {
      * reloads the preview so the runtime rebinds against the matching API.
      */
     setScormVersion?: (version: '1.2' | '2004') => void
+    /**
+     * Reads a fresh, complete flat snapshot of the mock's current CMI storage,
+     * keyed by the actual `cmi.*` SCORM element names (never compact indices).
+     * The renderer renders it verbatim rather than interpreting the elements, so
+     * it treats the method and its result as optional input like the other
+     * controls.
+     */
+    getCmiSnapshot?: () => Record<string, string>
+    /**
+     * Subscribes to the mock's CMI storage. The listener receives a complete
+     * snapshot (never a patch) at subscription time and again after every state
+     * change, and the returned function unsubscribes. Optional for the same
+     * reason as {@link getCmiSnapshot}: an older injected mock may not expose it.
+     */
+    subscribeToCmi?: (listener: (snapshot: Record<string, string>) => void) => () => void
   }
 
   interface Window {

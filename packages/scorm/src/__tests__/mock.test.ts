@@ -93,30 +93,134 @@ describe('SCORM dev mock CMI persistence', () => {
     expect(window.API.LMSGetValue('cmi.core.lesson_location')).toBe('lesson-3')
   })
 
+  it('returns detached complete snapshots from the native flat CMI map', () => {
+    const window = createMock(new MemoryStorage())
+    const snapshot = window.scormDevTools.getCmiSnapshot()
+
+    expect(snapshot).toEqual({
+      'cmi.core.lesson_status': '',
+      'cmi.core.lesson_location': ''
+    })
+    snapshot['cmi.core.lesson_location'] = 'changed-outside'
+    snapshot.extra = 'not-in-cmi'
+    expect(window.scormDevTools.getCmiSnapshot()).toEqual({
+      'cmi.core.lesson_status': '',
+      'cmi.core.lesson_location': ''
+    })
+  })
+
+  it('notifies with fresh full replacement snapshots after successful SetValue only', () => {
+    const window = createMock(new MemoryStorage())
+    const snapshots: Array<Record<string, string>> = []
+    window.scormDevTools.subscribeToCmi((snapshot: Record<string, string>) =>
+      snapshots.push(snapshot)
+    )
+
+    expect(snapshots).toHaveLength(1)
+    expect(snapshots[0]).toEqual(window.scormDevTools.getCmiSnapshot())
+    expect(window.API.LMSInitialize('')).toBe('true')
+    expect(window.API.LMSSetValue('cmi.core.lesson_location', 'page-1')).toBe('true')
+    expect(window.API.LMSSetValue('cmi.suspend_data', 'state')).toBe('true')
+    expect(window.API.LMSCommit('')).toBe('true')
+    expect(window.API.LMSGetValue('cmi.core.lesson_location')).toBe('page-1')
+    expect(window.API.LMSSetValue('cmi.core.lesson_status', 'invalid-status')).toBe('false')
+
+    expect(snapshots).toHaveLength(3)
+    expect(snapshots[1]).toEqual({
+      'cmi.core.lesson_status': '',
+      'cmi.core.lesson_location': 'page-1'
+    })
+    expect(snapshots[2]).toEqual({
+      'cmi.core.lesson_status': '',
+      'cmi.core.lesson_location': 'page-1',
+      'cmi.suspend_data': 'state'
+    })
+    expect(snapshots[0]).not.toBe(snapshots[1])
+    expect(snapshots[1]).not.toBe(snapshots[2])
+  })
+
+  it('hydrates subscribers with restored CMI and unsubscribes cleanly', () => {
+    const storage = new MemoryStorage()
+    storage.setItem(
+      stateKey,
+      JSON.stringify({
+        'cmi.core.lesson_location': 'restored-page',
+        'cmi.suspend_data': 'restored-state'
+      })
+    )
+    const window = createMock(storage)
+    const snapshots: Array<Record<string, string>> = []
+    const unsubscribe = window.scormDevTools.subscribeToCmi((snapshot: Record<string, string>) =>
+      snapshots.push(snapshot)
+    )
+
+    expect(snapshots).toEqual([
+      {
+        'cmi.core.lesson_status': '',
+        'cmi.core.lesson_location': 'restored-page',
+        'cmi.suspend_data': 'restored-state'
+      }
+    ])
+    unsubscribe()
+    window.API.LMSInitialize('')
+    window.API.LMSSetValue('cmi.core.lesson_location', 'later-page')
+    expect(snapshots).toHaveLength(1)
+  })
+
+  it('replaces snapshots on version resets without leaking fields between versions', () => {
+    const window = createMock(new MemoryStorage())
+    const snapshots: Array<Record<string, string>> = []
+    window.scormDevTools.subscribeToCmi((snapshot: Record<string, string>) =>
+      snapshots.push(snapshot)
+    )
+    window.API.LMSInitialize('')
+    window.API.LMSSetValue('cmi.suspend_data', 'old-state')
+
+    window.scormDevTools.setScormVersion('2004')
+    expect(snapshots.at(-1)).toEqual({
+      'cmi.completion_status': '',
+      'cmi.location': ''
+    })
+    expect(window.scormDevTools.getCmiSnapshot()).not.toHaveProperty('cmi.suspend_data')
+
+    window.API_1484_11.Initialize('')
+    window.API_1484_11.SetValue('cmi.suspend_data', '2004-state')
+    window.scormDevTools.setScormVersion('1.2')
+    expect(snapshots.at(-1)).toEqual({
+      'cmi.core.lesson_status': '',
+      'cmi.core.lesson_location': ''
+    })
+    expect(window.scormDevTools.getCmiSnapshot()).not.toHaveProperty('cmi.location')
+    expect(window.scormDevTools.getCmiSnapshot()).not.toHaveProperty('cmi.suspend_data')
+  })
+
   it('logs dev events straight to the console and buffers nothing', () => {
     const storage = new MemoryStorage()
     storage.setItem(stateKey, JSON.stringify({ 'cmi.core.lesson_location': 'saved' }))
     const logs: unknown[][] = []
     const window: Record<string, any> = {
       localStorage: storage,
-      console: { log: (...args: unknown[]) => logs.push(args) }
+      console: { debug: (...args: unknown[]) => logs.push(args) }
     }
 
     vm.runInNewContext(scormDevMock, { window })
 
     expect(window.__SCORM_DEV_EVENT_BUFFER__).toBeUndefined()
     expect(logs).toHaveLength(1)
-    expect(logs[0]?.[0]).toBe('[scorm] cmi.persistence-restored')
-    expect(logs[0]?.[1]).toMatchObject({
+    expect(logs[0]).toHaveLength(2)
+    expect(logs[0]?.[0]).toBe('[scorm]')
+    const event = logs[0]?.[1] as Record<string, unknown>
+    expect(event).toMatchObject({
       name: 'cmi.persistence-restored',
       details: { count: 1 }
     })
+    expect(Object.keys(event).sort()).toEqual(['at', 'details', 'name'])
   })
 
-  it('reports storage errors through the console log', () => {
+  it('reports storage errors through console.debug', () => {
     const logs: unknown[][] = []
     const window: Record<string, any> = {
-      console: { log: (...args: unknown[]) => logs.push(args) }
+      console: { debug: (...args: unknown[]) => logs.push(args) }
     }
     Object.defineProperty(window, 'localStorage', {
       get() {

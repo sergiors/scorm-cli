@@ -89,8 +89,8 @@ function buildRuntimeSource(manifest: ContentManifest, apiMappingDeclaration: st
     if (window.__SCORM_DEVTOOLS__ !== true) return;
     var event = { name: name, at: Date.now(), details: details || {} };
     try {
-      if (window.console && typeof window.console.log === "function") {
-        window.console.log("[scorm] " + name, event);
+      if (window.console && typeof window.console.debug === "function") {
+        window.console.debug("[scorm]", event);
       }
     } catch (_) {}
   }

@@ -50,7 +50,7 @@ const previewRuntime = createScormPreviewRuntime(manifest)
 function createPreviewWindow(storage: MemoryStorage): Record<string, any> {
   const window = createMockWindow(storage)
   window.parent = window
-  window.console = { log: () => undefined }
+  window.console = { debug: () => undefined }
   window.addEventListener = () => undefined
   vm.runInNewContext(previewRuntime, { window })
   return window
@@ -195,7 +195,7 @@ describe('SCORM version-aware preview runtime', () => {
       __SCORM_DEVTOOLS__: true,
       __SCORM_PREVIEW_VERSION__: '2004',
       API_1484_11: api,
-      console: { log: () => undefined },
+      console: { debug: () => undefined },
       addEventListener: () => undefined
     }
     window.parent = window
@@ -230,7 +230,7 @@ describe('SCORM version-aware preview runtime', () => {
       __SCORM_DEVTOOLS__: true,
       __SCORM_PREVIEW_VERSION__: '1.2',
       API: api,
-      console: { log: () => undefined },
+      console: { debug: () => undefined },
       addEventListener: () => undefined
     }
     window.parent = window

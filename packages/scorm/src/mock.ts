@@ -57,8 +57,8 @@ export const scormDevMock = `;(function () {
     if (window.__SCORM_DEVTOOLS__ !== true) return;
     var event = { name: name, at: Date.now(), details: details || {} };
     try {
-      if (window.console && typeof window.console.log === "function") {
-        window.console.log("[scorm] " + name, event);
+      if (window.console && typeof window.console.debug === "function") {
+        window.console.debug("[scorm]", event);
       }
     } catch (_) {}
   }
@@ -87,6 +87,21 @@ export const scormDevMock = `;(function () {
   var initialized = false;
   var finished = false;
   var values = Object.create(null);
+  var cmiListeners = [];
+
+  function getCmiSnapshot() {
+    var snapshot = {};
+    Object.keys(values).forEach(function (key) {
+      snapshot[key] = values[key];
+    });
+    return snapshot;
+  }
+
+  function notifyCmiListeners() {
+    cmiListeners.slice().forEach(function (listener) {
+      try { listener(getCmiSnapshot()); } catch (_) {}
+    });
+  }
 
   function resetApiState(version) {
     initialized = false;
@@ -95,6 +110,7 @@ export const scormDevMock = `;(function () {
     var definition = apiDefinitions[version];
     values[definition.completionElement] = "";
     values[definition.locationElement] = "";
+    notifyCmiListeners();
   }
 
   function isCmiStringEntry(key, value) {
@@ -150,6 +166,7 @@ export const scormDevMock = `;(function () {
       if (key === definition.completionElement && definition.statuses.indexOf(value) < 0) return "false";
       values[key] = value;
       persistState("set-value");
+      notifyCmiListeners();
       return "true";
     };
     api[definition.commit] = function (parameter) {
@@ -233,6 +250,9 @@ export const scormDevMock = `;(function () {
       }
     }
   }
+  // Restoration is a complete CMI state replacement from the inspector's
+  // perspective, even when storage is unavailable or contains no saved state.
+  notifyCmiListeners();
 
   function reloadPage() {
     try {
@@ -278,6 +298,16 @@ export const scormDevMock = `;(function () {
   }
 
   window.scormDevTools = {
+    getCmiSnapshot: getCmiSnapshot,
+    subscribeToCmi: function (listener) {
+      if (typeof listener !== "function") return function () {};
+      cmiListeners.push(listener);
+      try { listener(getCmiSnapshot()); } catch (_) {}
+      return function () {
+        var index = cmiListeners.indexOf(listener);
+        if (index >= 0) cmiListeners.splice(index, 1);
+      };
+    },
     getCmiPersistenceEnabled: function () {
       return persistenceEnabled;
     },
