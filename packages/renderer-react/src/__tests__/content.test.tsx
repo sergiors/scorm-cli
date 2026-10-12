@@ -1,26 +1,26 @@
-import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
-import { ContentRenderer } from '../../app/components/ContentRenderer';
-import { InlineContent } from '../../app/components/InlineContent';
-import { PlayerI18nProvider } from '../../app/lib/player-i18n';
-import type { ContentNode, InlineNode } from '../../app/types';
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it } from 'vitest'
+import { ContentRenderer } from '../../app/components/ContentRenderer'
+import { InlineContent } from '../../app/components/InlineContent'
+import { PlayerI18nProvider } from '../../app/lib/player-i18n'
+import type { ContentNode, InlineNode } from '../../app/types'
 import {
   headingDepths,
   multipleChoiceQuestion,
   questionnaireNode,
-  singleChoiceQuestion,
-} from './fixtures';
+  singleChoiceQuestion
+} from './fixtures'
 
 function render(nodes: ContentNode[]): string {
   return renderToStaticMarkup(
     <PlayerI18nProvider>
       <ContentRenderer nodes={nodes} />
-    </PlayerI18nProvider>,
-  );
+    </PlayerI18nProvider>
+  )
 }
 
 function renderInline(nodes: InlineNode[]): string {
-  return renderToStaticMarkup(<InlineContent nodes={nodes} />);
+  return renderToStaticMarkup(<InlineContent nodes={nodes} />)
 }
 
 describe('ContentRenderer headings', () => {
@@ -31,25 +31,25 @@ describe('ContentRenderer headings', () => {
         depth: 2,
         children: [
           { type: 'text', value: 'Welcome ' },
-          { type: 'strong', children: [{ type: 'text', value: 'back' }] },
-        ],
-      },
-    ]);
-    expect(html).toContain('<h2');
-    expect(html).toContain('Welcome ');
-    expect(html).toContain('<strong');
-    expect(html).toContain('back');
-  });
+          { type: 'strong', children: [{ type: 'text', value: 'back' }] }
+        ]
+      }
+    ])
+    expect(html).toContain('<h2')
+    expect(html).toContain('Welcome ')
+    expect(html).toContain('<strong')
+    expect(html).toContain('back')
+  })
 
   it('maps every authored depth 1-6 straight to its matching h1-h6', () => {
-    const html = render(headingDepths);
+    const html = render(headingDepths)
     for (let level = 1; level <= 6; level += 1) {
-      expect(html).toContain(`<h${level}`);
-      expect(html).toContain(`Level ${level}`);
+      expect(html).toContain(`<h${level}`)
+      expect(html).toContain(`Level ${level}`)
     }
     // No wrapper may shift a depth onto a neighbouring level.
-    expect(html).not.toContain('<h7');
-  });
+    expect(html).not.toContain('<h7')
+  })
 
   it('keeps authored depths inside a nested quote', () => {
     const html = render([
@@ -59,21 +59,21 @@ describe('ContentRenderer headings', () => {
           {
             type: 'heading',
             depth: 1,
-            children: [{ type: 'text', value: 'Quoted one' }],
+            children: [{ type: 'text', value: 'Quoted one' }]
           },
           {
             type: 'heading',
             depth: 6,
-            children: [{ type: 'text', value: 'Quoted six' }],
-          },
-        ],
-      },
-    ]);
-    expect(html).toContain('<h1');
-    expect(html).toContain('Quoted one');
-    expect(html).toContain('<h6');
-    expect(html).toContain('Quoted six');
-  });
+            children: [{ type: 'text', value: 'Quoted six' }]
+          }
+        ]
+      }
+    ])
+    expect(html).toContain('<h1')
+    expect(html).toContain('Quoted one')
+    expect(html).toContain('<h6')
+    expect(html).toContain('Quoted six')
+  })
 
   it('keeps authored depths inside nested list items', () => {
     const html = render([
@@ -86,7 +86,7 @@ describe('ContentRenderer headings', () => {
               {
                 type: 'heading',
                 depth: 2,
-                children: [{ type: 'text', value: 'List two' }],
+                children: [{ type: 'text', value: 'List two' }]
               },
               {
                 type: 'list',
@@ -97,22 +97,22 @@ describe('ContentRenderer headings', () => {
                       {
                         type: 'heading',
                         depth: 5,
-                        children: [{ type: 'text', value: 'Nested five' }],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-    expect(html).toContain('<h2');
-    expect(html).toContain('List two');
-    expect(html).toContain('<h5');
-    expect(html).toContain('Nested five');
-  });
+                        children: [{ type: 'text', value: 'Nested five' }]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+    expect(html).toContain('<h2')
+    expect(html).toContain('List two')
+    expect(html).toContain('<h5')
+    expect(html).toContain('Nested five')
+  })
 
   it('clamps heading depth to the 1-6 range', () => {
     expect(
@@ -120,21 +120,21 @@ describe('ContentRenderer headings', () => {
         {
           type: 'heading',
           depth: 9,
-          children: [{ type: 'text', value: 'Big' }],
-        },
-      ]),
-    ).toContain('<h6');
+          children: [{ type: 'text', value: 'Big' }]
+        }
+      ])
+    ).toContain('<h6')
     expect(
       render([
         {
           type: 'heading',
           depth: 0,
-          children: [{ type: 'text', value: 'Small' }],
-        },
-      ]),
-    ).toContain('<h1');
-  });
-});
+          children: [{ type: 'text', value: 'Small' }]
+        }
+      ])
+    ).toContain('<h1')
+  })
+})
 
 describe('ContentRenderer paragraphs and inline semantics', () => {
   it('renders an inline sequence without flattening it into a string', () => {
@@ -149,42 +149,42 @@ describe('ContentRenderer paragraphs and inline semantics', () => {
           { type: 'text', value: ', ' },
           { type: 'inlineCode', value: 'run()' },
           { type: 'break' },
-          { type: 'text', value: 'after' },
-        ],
-      },
-    ]);
-    expect(html).toContain('<p');
-    expect(html).toContain('<em');
-    expect(html).toContain('<strong');
-    expect(html).toContain('<code');
-    expect(html).toContain('<br');
-    expect(html).toContain('See ');
-    expect(html).toContain('after');
-  });
+          { type: 'text', value: 'after' }
+        ]
+      }
+    ])
+    expect(html).toContain('<p')
+    expect(html).toContain('<em')
+    expect(html).toContain('<strong')
+    expect(html).toContain('<code')
+    expect(html).toContain('<br')
+    expect(html).toContain('See ')
+    expect(html).toContain('after')
+  })
 
   it('marks external links and leaves internal links alone', () => {
     const external = renderInline([
       {
         type: 'link',
         href: 'https://example.com',
-        children: [{ type: 'text', value: 'Docs' }],
-      },
-    ]);
-    expect(external).toContain('href="https://example.com"');
-    expect(external).toContain('target="_blank"');
-    expect(external).toContain('rel="noreferrer noopener"');
-    expect(external).toContain('Docs');
+        children: [{ type: 'text', value: 'Docs' }]
+      }
+    ])
+    expect(external).toContain('href="https://example.com"')
+    expect(external).toContain('target="_blank"')
+    expect(external).toContain('rel="noreferrer noopener"')
+    expect(external).toContain('Docs')
 
     const internal = renderInline([
       {
         type: 'link',
         href: './other.mdx',
-        children: [{ type: 'text', value: 'Other' }],
-      },
-    ]);
-    expect(internal).not.toContain('target=');
-    expect(internal).not.toContain('rel=');
-  });
+        children: [{ type: 'text', value: 'Other' }]
+      }
+    ])
+    expect(internal).not.toContain('target=')
+    expect(internal).not.toContain('rel=')
+  })
 
   it('renders Markdown inline images in flow instead of a figure block', () => {
     const html = render([
@@ -193,35 +193,35 @@ describe('ContentRenderer paragraphs and inline semantics', () => {
         children: [
           { type: 'text', value: 'before ' },
           { type: 'image', src: './inline.svg', alt: 'Inline icon' },
-          { type: 'text', value: ' after' },
-        ],
-      },
-    ]);
-    expect(html).toContain('<img');
-    expect(html).toContain('src="./inline.svg"');
-    expect(html).toContain('alt="Inline icon"');
-    expect(html).not.toContain('<figure');
-    expect(html).not.toContain('<figcaption');
-  });
+          { type: 'text', value: ' after' }
+        ]
+      }
+    ])
+    expect(html).toContain('<img')
+    expect(html).toContain('src="./inline.svg"')
+    expect(html).toContain('alt="Inline icon"')
+    expect(html).not.toContain('<figure')
+    expect(html).not.toContain('<figcaption')
+  })
 
   it('renders an inline image caption inside an inline span', () => {
-    const html = renderInline([{ type: 'image', src: './a.png', alt: 'A', caption: 'An icon' }]);
-    expect(html).toContain('<span');
-    expect(html).toContain('An icon');
-    expect(html).not.toContain('<figcaption');
-  });
+    const html = renderInline([{ type: 'image', src: './a.png', alt: 'A', caption: 'An icon' }])
+    expect(html).toContain('<span')
+    expect(html).toContain('An icon')
+    expect(html).not.toContain('<figcaption')
+  })
 
   it('renders a thematic break as a horizontal rule between blocks', () => {
     const html = render([
       { type: 'paragraph', children: [{ type: 'text', value: 'Before' }] },
       { type: 'thematicBreak' },
-      { type: 'paragraph', children: [{ type: 'text', value: 'After' }] },
-    ]);
-    expect(html).toContain('<hr');
-    expect(html).toContain('Before');
-    expect(html).toContain('After');
-  });
-});
+      { type: 'paragraph', children: [{ type: 'text', value: 'After' }] }
+    ])
+    expect(html).toContain('<hr')
+    expect(html).toContain('Before')
+    expect(html).toContain('After')
+  })
+})
 
 describe('ContentRenderer lists', () => {
   it('renders unordered and ordered lists', () => {
@@ -231,15 +231,15 @@ describe('ContentRenderer lists', () => {
         ordered: false,
         items: [
           {
-            children: [{ type: 'paragraph', children: [{ type: 'text', value: 'One' }] }],
-          },
-        ],
-      },
-    ]);
-    expect(unordered).toContain('<ul');
-    expect(unordered).toContain('list-disc');
-    expect(unordered).toContain('<li');
-    expect(unordered).toContain('One');
+            children: [{ type: 'paragraph', children: [{ type: 'text', value: 'One' }] }]
+          }
+        ]
+      }
+    ])
+    expect(unordered).toContain('<ul')
+    expect(unordered).not.toContain('<ol')
+    expect(unordered).toContain('<li')
+    expect(unordered).toContain('One')
 
     const ordered = render([
       {
@@ -250,16 +250,17 @@ describe('ContentRenderer lists', () => {
             children: [
               {
                 type: 'paragraph',
-                children: [{ type: 'text', value: 'First' }],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-    expect(ordered).toContain('<ol');
-    expect(ordered).toContain('list-decimal');
-  });
+                children: [{ type: 'text', value: 'First' }]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+    expect(ordered).toContain('<ol')
+    expect(ordered).not.toContain('<ul')
+    expect(ordered).toContain('First')
+  })
 
   it('renders a tight item inlineContent without a paragraph wrapper', () => {
     const html = render([
@@ -272,28 +273,28 @@ describe('ContentRenderer lists', () => {
             children: [
               {
                 type: 'inlineContent',
-                children: [{ type: 'text', value: 'Choose ' }],
-              },
-            ],
+                children: [{ type: 'text', value: 'Choose ' }]
+              }
+            ]
           },
           {
             children: [
               {
                 type: 'inlineContent',
-                children: [{ type: 'text', value: 'one option' }],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-    expect(html).toContain('<ol');
-    expect(html).toContain('<li');
-    expect(html).toContain('Choose ');
-    expect(html).toContain('one option');
+                children: [{ type: 'text', value: 'one option' }]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+    expect(html).toContain('<ol')
+    expect(html).toContain('<li')
+    expect(html).toContain('Choose ')
+    expect(html).toContain('one option')
     // A tight list renders each inlineContent run directly inside <li>.
-    expect(html).not.toContain('<p');
-  });
+    expect(html).not.toContain('<p')
+  })
 
   it('keeps the paragraph wrapper for a loose list', () => {
     const html = render([
@@ -306,26 +307,26 @@ describe('ContentRenderer lists', () => {
             children: [
               {
                 type: 'paragraph',
-                children: [{ type: 'text', value: 'First' }],
-              },
-            ],
+                children: [{ type: 'text', value: 'First' }]
+              }
+            ]
           },
           {
             children: [
               {
                 type: 'paragraph',
-                children: [{ type: 'text', value: 'Second' }],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-    expect(html).toContain('<li');
-    expect(html).toContain('<p');
-    expect(html).toContain('First');
-    expect(html).toContain('Second');
-  });
+                children: [{ type: 'text', value: 'Second' }]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+    expect(html).toContain('<li')
+    expect(html).toContain('<p')
+    expect(html).toContain('First')
+    expect(html).toContain('Second')
+  })
 
   it('treats a list without spread metadata as loose', () => {
     const html = render([
@@ -337,16 +338,16 @@ describe('ContentRenderer lists', () => {
             children: [
               {
                 type: 'paragraph',
-                children: [{ type: 'text', value: 'Legacy' }],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-    expect(html).toContain('<p');
-    expect(html).toContain('Legacy');
-  });
+                children: [{ type: 'text', value: 'Legacy' }]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+    expect(html).toContain('<p')
+    expect(html).toContain('Legacy')
+  })
 
   it('renders a tight item with an inline run and a nested block in order', () => {
     const html = render([
@@ -359,7 +360,7 @@ describe('ContentRenderer lists', () => {
             children: [
               {
                 type: 'inlineContent',
-                children: [{ type: 'text', value: 'Outer' }],
+                children: [{ type: 'text', value: 'Outer' }]
               },
               {
                 type: 'list',
@@ -370,25 +371,25 @@ describe('ContentRenderer lists', () => {
                     children: [
                       {
                         type: 'inlineContent',
-                        children: [{ type: 'text', value: 'Inner' }],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-    expect(html).toContain('Outer');
-    expect(html).toContain('Inner');
+                        children: [{ type: 'text', value: 'Inner' }]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+    expect(html).toContain('Outer')
+    expect(html).toContain('Inner')
     // The tight item's inline run loses its wrapper, while the nested list still
     // renders as a block and its tight inline run stays inline too.
-    expect(html).not.toContain('<p');
-    expect((html.match(/<ul/g) ?? []).length).toBe(1);
-    expect((html.match(/<ol/g) ?? []).length).toBe(1);
-  });
+    expect(html).not.toContain('<p')
+    expect((html.match(/<ul/g) ?? []).length).toBe(1)
+    expect((html.match(/<ol/g) ?? []).length).toBe(1)
+  })
 
   it('keeps inline links and images inside a tight item', () => {
     const html = render([
@@ -406,31 +407,31 @@ describe('ContentRenderer lists', () => {
                   {
                     type: 'link',
                     href: './guide.mdx',
-                    children: [{ type: 'text', value: 'the guide' }],
+                    children: [{ type: 'text', value: 'the guide' }]
                   },
                   { type: 'text', value: ' and ' },
                   {
                     type: 'image',
                     src: './inline.svg',
-                    alt: 'Inline icon',
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-    expect(html).toContain('<a');
-    expect(html).toContain('href="./guide.mdx"');
-    expect(html).toContain('the guide');
-    expect(html).toContain('<img');
-    expect(html).toContain('src="./inline.svg"');
-    expect(html).toContain('alt="Inline icon"');
+                    alt: 'Inline icon'
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+    expect(html).toContain('<a')
+    expect(html).toContain('href="./guide.mdx"')
+    expect(html).toContain('the guide')
+    expect(html).toContain('<img')
+    expect(html).toContain('src="./inline.svg"')
+    expect(html).toContain('alt="Inline icon"')
     // Inline content stays phrasing content: no block wrapper or figure.
-    expect(html).not.toContain('<p');
-    expect(html).not.toContain('<figure');
-  });
+    expect(html).not.toContain('<p')
+    expect(html).not.toContain('<figure')
+  })
 
   it('keeps nested block questionnaires inside a tight item', () => {
     const html = render([
@@ -443,22 +444,22 @@ describe('ContentRenderer lists', () => {
             children: [
               {
                 type: 'inlineContent',
-                children: [{ type: 'text', value: 'Answer this:' }],
+                children: [{ type: 'text', value: 'Answer this:' }]
               },
-              questionnaireNode,
-            ],
-          },
-        ],
-      },
-    ]);
-    expect(html).toContain('<li');
-    expect(html).toContain('Answer this:');
-    expect(html).toContain('data-slot="questionnaire"');
-    expect(html).toContain('Which option is correct?');
+              questionnaireNode
+            ]
+          }
+        ]
+      }
+    ])
+    expect(html).toContain('<li')
+    expect(html).toContain('Answer this:')
+    expect(html).toContain('data-slot="questionnaire"')
+    expect(html).toContain('Which option is correct?')
     // The item's inline run stays unwrapped; only the nested questionnaire's
     // own prompt/option blocks keep their paragraph wrappers.
-    expect(html).not.toContain('<p>Answer this:</p>');
-  });
+    expect(html).not.toContain('<p>Answer this:</p>')
+  })
 
   it('honours the ordered list start value', () => {
     const html = render([
@@ -471,15 +472,15 @@ describe('ContentRenderer lists', () => {
             children: [
               {
                 type: 'paragraph',
-                children: [{ type: 'text', value: 'Third' }],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-    expect(html).toContain('start="3"');
-  });
+                children: [{ type: 'text', value: 'Third' }]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+    expect(html).toContain('start="3"')
+  })
 
   it('renders nested block content inside list items', () => {
     const html = render([
@@ -491,7 +492,7 @@ describe('ContentRenderer lists', () => {
             children: [
               {
                 type: 'paragraph',
-                children: [{ type: 'text', value: 'Outer' }],
+                children: [{ type: 'text', value: 'Outer' }]
               },
               {
                 type: 'list',
@@ -501,32 +502,32 @@ describe('ContentRenderer lists', () => {
                     children: [
                       {
                         type: 'paragraph',
-                        children: [{ type: 'text', value: 'Inner' }],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-    expect(html).toContain('Outer');
-    expect(html).toContain('Inner');
-    expect((html.match(/<ul/g) ?? []).length).toBe(1);
-    expect((html.match(/<ol/g) ?? []).length).toBe(1);
-  });
-});
+                        children: [{ type: 'text', value: 'Inner' }]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+    expect(html).toContain('Outer')
+    expect(html).toContain('Inner')
+    expect((html.match(/<ul/g) ?? []).length).toBe(1)
+    expect((html.match(/<ol/g) ?? []).length).toBe(1)
+  })
+})
 
 describe('ContentRenderer code and quotes', () => {
   it('renders code blocks with an optional language class and escaped value', () => {
-    const html = render([{ type: 'code', value: 'const x = 1 < 2;', language: 'ts' }]);
-    expect(html).toContain('<pre');
-    expect(html).toContain('<code');
-    expect(html).toContain('language-ts');
-    expect(html).toContain('const x = 1 &lt; 2;');
-  });
+    const html = render([{ type: 'code', value: 'const x = 1 < 2;', language: 'ts' }])
+    expect(html).toContain('<pre')
+    expect(html).toContain('<code')
+    expect(html).toContain('language-ts')
+    expect(html).toContain('const x = 1 &lt; 2;')
+  })
 
   it('renders quotes with nested rich content', () => {
     const html = render([
@@ -539,19 +540,19 @@ describe('ContentRenderer code and quotes', () => {
               { type: 'text', value: 'Stay ' },
               {
                 type: 'emphasis',
-                children: [{ type: 'text', value: 'curious' }],
+                children: [{ type: 'text', value: 'curious' }]
               },
-              { type: 'text', value: '.' },
-            ],
-          },
-        ],
-      },
-    ]);
-    expect(html).toContain('<blockquote');
-    expect(html).toContain('<em');
-    expect(html).toContain('Stay ');
-  });
-});
+              { type: 'text', value: '.' }
+            ]
+          }
+        ]
+      }
+    ])
+    expect(html).toContain('<blockquote')
+    expect(html).toContain('<em')
+    expect(html).toContain('Stay ')
+  })
+})
 
 describe('ContentRenderer images and video', () => {
   it('renders a block image with a caption as figure/figcaption', () => {
@@ -560,23 +561,23 @@ describe('ContentRenderer images and video', () => {
         type: 'image',
         src: './a.png',
         alt: 'A picture',
-        caption: 'A caption',
-      },
-    ]);
-    expect(html).toContain('<figure');
-    expect(html).toContain('<figcaption');
-    expect(html).toContain('src="./a.png"');
-    expect(html).toContain('alt="A picture"');
-    expect(html).toContain('loading="lazy"');
-    expect(html).toContain('A caption');
-  });
+        caption: 'A caption'
+      }
+    ])
+    expect(html).toContain('<figure')
+    expect(html).toContain('<figcaption')
+    expect(html).toContain('src="./a.png"')
+    expect(html).toContain('alt="A picture"')
+    expect(html).toContain('loading="lazy"')
+    expect(html).toContain('A caption')
+  })
 
   it('renders a block image without a caption as a bare img', () => {
-    const html = render([{ type: 'image', src: './a.png', alt: 'A picture' }]);
-    expect(html).toContain('<img');
-    expect(html).not.toContain('<figure');
-    expect(html).not.toContain('<figcaption');
-  });
+    const html = render([{ type: 'image', src: './a.png', alt: 'A picture' }])
+    expect(html).toContain('<img')
+    expect(html).not.toContain('<figure')
+    expect(html).not.toContain('<figcaption')
+  })
 
   it('renders video with poster, source, caption track and title', () => {
     const html = render([
@@ -585,32 +586,32 @@ describe('ContentRenderer images and video', () => {
         src: './v.mp4',
         title: 'Intro video',
         poster: './poster.png',
-        captions: './v.vtt',
-      },
-    ]);
-    expect(html).toContain('<video');
-    expect(html).toContain('controls');
-    expect(html).toContain('preload="metadata"');
-    expect(html).toContain('poster="./poster.png"');
-    expect(html).toContain('aria-label="Intro video"');
-    expect(html).toContain('<source src="./v.mp4"');
-    expect(html).toContain('<track');
-    expect(html).toContain('kind="captions"');
-    expect(html).toContain('src="./v.vtt"');
+        captions: './v.vtt'
+      }
+    ])
+    expect(html).toContain('<video')
+    expect(html).toContain('controls')
+    expect(html).toContain('preload="metadata"')
+    expect(html).toContain('poster="./poster.png"')
+    expect(html).toContain('aria-label="Intro video"')
+    expect(html).toContain('<source src="./v.mp4"')
+    expect(html).toContain('<track')
+    expect(html).toContain('kind="captions"')
+    expect(html).toContain('src="./v.vtt"')
     // Unspecified locale must not be reported as a concrete, wrong locale.
-    expect(html).toContain('srcLang="und"');
-    expect(html).toContain('<figcaption');
-    expect(html).toContain('Intro video');
-  });
+    expect(html).toContain('srcLang="und"')
+    expect(html).toContain('<figcaption')
+    expect(html).toContain('Intro video')
+  })
 
   it('omits the caption track and figcaption when not provided', () => {
-    const html = render([{ type: 'video', src: './v.mp4' }]);
-    expect(html).toContain('aria-label="Video"');
-    expect(html).not.toContain('<track');
-    expect(html).not.toContain('<figcaption');
-    expect(html).not.toContain('poster=');
-  });
-});
+    const html = render([{ type: 'video', src: './v.mp4' }])
+    expect(html).toContain('aria-label="Video"')
+    expect(html).not.toContain('<track')
+    expect(html).not.toContain('<figcaption')
+    expect(html).not.toContain('poster=')
+  })
+})
 
 describe('ContentRenderer questionnaires', () => {
   it('renders a grouped questionnaire through a single shadcn questionnaire root', () => {
@@ -618,40 +619,40 @@ describe('ContentRenderer questionnaires', () => {
       {
         type: 'questionnaire',
         id: 'questionnaire:lesson.mdx:1:1',
-        questions: [singleChoiceQuestion],
-      },
-    ]);
-    expect(html).toContain('data-slot="questionnaire"');
-    expect(html).toContain('data-slot="questionnaire-item"');
-    expect(html).toContain('data-slot="questionnaire-choice"');
-    expect(html).toContain('<fieldset');
-    expect(html).toContain('aria-labelledby=');
-    expect(html).toContain('Which option is correct?');
-    expect(html).toContain('type="radio"');
-    expect(html).not.toContain('type="checkbox"');
-    expect(html).toContain('value="first"');
-    expect(html).toContain('value="second"');
-    expect(html).toContain('Option A');
-    expect(html).toContain('Option B');
-    expect(html).toContain('Submit questionnaire');
+        questions: [singleChoiceQuestion]
+      }
+    ])
+    expect(html).toContain('data-slot="questionnaire"')
+    expect(html).toContain('data-slot="questionnaire-item"')
+    expect(html).toContain('data-slot="questionnaire-choice"')
+    expect(html).toContain('<fieldset')
+    expect(html).toContain('aria-labelledby=')
+    expect(html).toContain('Which option is correct?')
+    expect(html).toContain('type="radio"')
+    expect(html).not.toContain('type="checkbox"')
+    expect(html).toContain('value="first"')
+    expect(html).toContain('value="second"')
+    expect(html).toContain('Option A')
+    expect(html).toContain('Option B')
+    expect(html).toContain('Submit questionnaire')
     // Correctness must never be surfaced to the DOM.
-    expect(html).not.toContain('correct=');
-    expect(html).not.toContain('data-correct');
-  });
+    expect(html).not.toContain('correct=')
+    expect(html).not.toContain('data-correct')
+  })
 
   it('groups every question into one root instead of a wrapper per question', () => {
     const html = render([
       {
         type: 'questionnaire',
         id: 'questionnaire:lesson.mdx:1:1',
-        questions: [singleChoiceQuestion, multipleChoiceQuestion],
-      },
-    ]);
-    expect((html.match(/data-slot="questionnaire"/g) ?? []).length).toBe(1);
-    expect((html.match(/data-slot="questionnaire-item"/g) ?? []).length).toBe(2);
-    expect(html).toContain('type="radio"');
-    expect(html).toContain('type="checkbox"');
-  });
+        questions: [singleChoiceQuestion, multipleChoiceQuestion]
+      }
+    ])
+    expect((html.match(/data-slot="questionnaire"/g) ?? []).length).toBe(1)
+    expect((html.match(/data-slot="questionnaire-item"/g) ?? []).length).toBe(2)
+    expect(html).toContain('type="radio"')
+    expect(html).toContain('type="checkbox"')
+  })
 
   it('renders a true-false question as radios using the option values', () => {
     const html = render([
@@ -666,8 +667,8 @@ describe('ContentRenderer questionnaires', () => {
             prompt: [
               {
                 type: 'paragraph',
-                children: [{ type: 'text', value: 'Is it true?' }],
-              },
+                children: [{ type: 'text', value: 'Is it true?' }]
+              }
             ],
             options: [
               {
@@ -676,9 +677,9 @@ describe('ContentRenderer questionnaires', () => {
                 content: [
                   {
                     type: 'paragraph',
-                    children: [{ type: 'text', value: 'True' }],
-                  },
-                ],
+                    children: [{ type: 'text', value: 'True' }]
+                  }
+                ]
               },
               {
                 value: 'false',
@@ -686,20 +687,20 @@ describe('ContentRenderer questionnaires', () => {
                 content: [
                   {
                     type: 'paragraph',
-                    children: [{ type: 'text', value: 'False' }],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-    expect(html).toContain('type="radio"');
-    expect(html).not.toContain('type="checkbox"');
-    expect(html).toContain('value="true"');
-    expect(html).toContain('value="false"');
-  });
+                    children: [{ type: 'text', value: 'False' }]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+    expect(html).toContain('type="radio"')
+    expect(html).not.toContain('type="checkbox"')
+    expect(html).toContain('value="true"')
+    expect(html).toContain('value="false"')
+  })
 
   it('supports rich prompt and option content', () => {
     const html = render([
@@ -715,7 +716,7 @@ describe('ContentRenderer questionnaires', () => {
               {
                 type: 'heading',
                 depth: 3,
-                children: [{ type: 'text', value: 'Context' }],
+                children: [{ type: 'text', value: 'Context' }]
               },
               {
                 type: 'paragraph',
@@ -723,11 +724,11 @@ describe('ContentRenderer questionnaires', () => {
                   { type: 'text', value: 'Read the ' },
                   {
                     type: 'strong',
-                    children: [{ type: 'text', value: 'details' }],
+                    children: [{ type: 'text', value: 'details' }]
                   },
-                  { type: 'text', value: '.' },
-                ],
-              },
+                  { type: 'text', value: '.' }
+                ]
+              }
             ],
             options: [
               {
@@ -740,29 +741,29 @@ describe('ContentRenderer questionnaires', () => {
                       { type: 'text', value: 'An ' },
                       {
                         type: 'emphasis',
-                        children: [{ type: 'text', value: 'emphasised' }],
+                        children: [{ type: 'text', value: 'emphasised' }]
                       },
-                      { type: 'text', value: ' option' },
-                    ],
-                  },
-                ],
+                      { type: 'text', value: ' option' }
+                    ]
+                  }
+                ]
               },
               {
                 value: 'b',
                 correct: false,
-                content: [{ type: 'code', value: 'codeOption()' }],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-    expect(html).toContain('<h3');
-    expect(html).toContain('<strong');
-    expect(html).toContain('<em');
-    expect(html).toContain('<pre');
-    expect(html).toContain('codeOption()');
-  });
+                content: [{ type: 'code', value: 'codeOption()' }]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+    expect(html).toContain('<h3')
+    expect(html).toContain('<strong')
+    expect(html).toContain('<em')
+    expect(html).toContain('<pre')
+    expect(html).toContain('codeOption()')
+  })
 
   it('maps authored depths 1-6 inside questionnaire prompts and options', () => {
     const html = render([
@@ -783,9 +784,9 @@ describe('ContentRenderer questionnaires', () => {
                   {
                     type: 'heading',
                     depth: 4,
-                    children: [{ type: 'text', value: 'Option four' }],
-                  },
-                ],
+                    children: [{ type: 'text', value: 'Option four' }]
+                  }
+                ]
               },
               {
                 value: 'b',
@@ -793,22 +794,22 @@ describe('ContentRenderer questionnaires', () => {
                 content: [
                   {
                     type: 'paragraph',
-                    children: [{ type: 'text', value: 'Option B' }],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
+                    children: [{ type: 'text', value: 'Option B' }]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ])
     for (let level = 1; level <= 6; level += 1) {
-      expect(html).toContain(`<h${level}`);
-      expect(html).toContain(`Level ${level}`);
+      expect(html).toContain(`<h${level}`)
+      expect(html).toContain(`Level ${level}`)
     }
-    expect(html).toContain('<h4');
-    expect(html).toContain('Option four');
-  });
+    expect(html).toContain('<h4')
+    expect(html).toContain('Option four')
+  })
 
   it('renders questionnaires nested in list items', () => {
     const html = render([
@@ -821,18 +822,18 @@ describe('ContentRenderer questionnaires', () => {
               {
                 type: 'questionnaire',
                 id: 'questionnaire:nested.mdx:1:1',
-                questions: [singleChoiceQuestion],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-    expect(html).toContain('<li');
-    expect(html).toContain('data-slot="questionnaire"');
-    expect(html).toContain('Which option is correct?');
-  });
-});
+                questions: [singleChoiceQuestion]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+    expect(html).toContain('<li')
+    expect(html).toContain('data-slot="questionnaire"')
+    expect(html).toContain('Which option is correct?')
+  })
+})
 
 describe('ContentRenderer context propagation', () => {
   it('threads answers and submitted state through nested blocks', () => {
@@ -846,7 +847,7 @@ describe('ContentRenderer context propagation', () => {
                 {
                   type: 'heading',
                   depth: 1,
-                  children: [{ type: 'text', value: 'Context' }],
+                  children: [{ type: 'text', value: 'Context' }]
                 },
                 {
                   type: 'list',
@@ -857,46 +858,46 @@ describe('ContentRenderer context propagation', () => {
                         {
                           type: 'questionnaire',
                           id: 'questionnaire:nested.mdx:1:1',
-                          questions: [singleChoiceQuestion],
-                        },
-                      ],
-                    },
-                  ],
-                },
-              ],
-            },
+                          questions: [singleChoiceQuestion]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
           ]}
           answers={{ [singleChoiceQuestion.id]: 'second' }}
           submittedQuestionnaires={['questionnaire:nested.mdx:1:1']}
         />
-      </PlayerI18nProvider>,
-    );
+      </PlayerI18nProvider>
+    )
 
     // A heading nested inside a quote keeps its authored depth...
-    expect(html).toContain('<h1');
+    expect(html).toContain('<h1')
     // ...and saved answers/submitted state reach a questionnaire nested inside
     // a list, rendered read-only with the restored selection.
-    expect(html).toContain('value="second"');
-    expect(html).toContain('checked');
-    expect(html).toContain('disabled');
-    expect(html).not.toContain('Submit questionnaire');
-  });
-});
+    expect(html).toContain('value="second"')
+    expect(html).toContain('checked')
+    expect(html).toContain('disabled')
+    expect(html).not.toContain('Submit questionnaire')
+  })
+})
 
 describe('ContentRenderer safety', () => {
   it('escapes unsafe text in paragraphs and code', () => {
     const html = render([
       {
         type: 'paragraph',
-        children: [{ type: 'text', value: '<script>alert(1)</script>' }],
+        children: [{ type: 'text', value: '<script>alert(1)</script>' }]
       },
-      { type: 'code', value: '<img src=x onerror=alert(1)>' },
-    ]);
-    expect(html).not.toContain('<script>');
-    expect(html).toContain('&lt;script&gt;');
-    expect(html).not.toContain('<img src=x');
-    expect(html).toContain('&lt;img src=x');
-  });
+      { type: 'code', value: '<img src=x onerror=alert(1)>' }
+    ])
+    expect(html).not.toContain('<script>')
+    expect(html).toContain('&lt;script&gt;')
+    expect(html).not.toContain('<img src=x')
+    expect(html).toContain('&lt;img src=x')
+  })
 
   it('escapes unsafe text in inline nodes and link hrefs', () => {
     const html = renderInline([
@@ -905,43 +906,43 @@ describe('ContentRenderer safety', () => {
       {
         type: 'link',
         href: './a.png?x="y"',
-        children: [{ type: 'text', value: 'step' }],
-      },
-    ]);
-    expect(html).toContain('&lt;b&gt;');
-    expect(html).toContain('&amp;');
-    expect(html).not.toContain('"y"');
-    expect(html).toContain('&quot;y&quot;');
-  });
+        children: [{ type: 'text', value: 'step' }]
+      }
+    ])
+    expect(html).toContain('&lt;b&gt;')
+    expect(html).toContain('&amp;')
+    expect(html).not.toContain('"y"')
+    expect(html).toContain('&quot;y&quot;')
+  })
 
   it('throws on an unknown runtime block node type', () => {
     expect(() => render([{ type: 'mystery' } as unknown as ContentNode])).toThrow(
-      /Unsupported content node type/,
-    );
-  });
+      /Unsupported content node type/
+    )
+  })
 
   it('throws on an unknown runtime inline node type', () => {
     expect(() =>
       render([
         {
           type: 'paragraph',
-          children: [{ type: 'mystery' } as unknown as InlineNode],
-        },
-      ]),
-    ).toThrow(/Unsupported inline node type/);
-  });
+          children: [{ type: 'mystery' } as unknown as InlineNode]
+        }
+      ])
+    ).toThrow(/Unsupported inline node type/)
+  })
 
   it('does not treat inherited object keys as node renderers', () => {
     expect(() => render([{ type: 'toString' } as unknown as ContentNode])).toThrow(
-      /Unsupported content node type: toString/,
-    );
+      /Unsupported content node type: toString/
+    )
     expect(() =>
       render([
         {
           type: 'paragraph',
-          children: [{ type: 'constructor' } as unknown as InlineNode],
-        },
-      ]),
-    ).toThrow(/Unsupported inline node type: constructor/);
-  });
-});
+          children: [{ type: 'constructor' } as unknown as InlineNode]
+        }
+      ])
+    ).toThrow(/Unsupported inline node type: constructor/)
+  })
+})

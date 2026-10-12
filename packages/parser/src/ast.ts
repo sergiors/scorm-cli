@@ -11,7 +11,7 @@
  */
 
 export interface AstPosition {
-  start?: { line?: number; column?: number };
+  start?: { line?: number; column?: number }
 }
 
 /**
@@ -19,144 +19,152 @@ export interface AstPosition {
  * only properties shared by all variants, including unmodelled nodes.
  */
 interface AstNodeBase {
-  type: string;
-  position?: AstPosition;
-  /** Raw JSX element name; canonical resolution lives in `component-name`. */
-  name?: string | null;
-  children?: AstNode[];
-  /** Raw JSX attributes; decoded and validated by `attrs`. */
-  attributes?: AstAttribute[];
+  type: string
+  position?: AstPosition
+  children?: AstNode[]
 }
 
 export interface AstJsxAttribute {
-  type: 'mdxJsxAttribute';
-  name?: string;
-  value?: unknown;
-  position?: unknown;
+  type: 'mdxJsxAttribute'
+  name?: string
+  value?: unknown
+  position?: unknown
 }
 
 export interface AstJsxExpressionAttribute {
-  type: 'mdxJsxExpressionAttribute';
-  value?: unknown;
+  type: 'mdxJsxExpressionAttribute'
+  value?: unknown
 }
 
-export type AstAttribute = AstJsxAttribute | AstJsxExpressionAttribute;
+export type AstAttribute = AstJsxAttribute | AstJsxExpressionAttribute
 
 export interface AstEstreeStatement {
-  type?: string;
-  source?: { value?: unknown };
+  type?: string
+  source?: { value?: string }
   specifiers?: Array<{
-    type?: string;
-    local?: { name?: unknown };
-    imported?: { name?: unknown } | null;
-  }>;
+    type?: string
+    local?: { name?: string }
+    imported?: { name?: string } | null
+  }>
 }
 
 export interface AstEstreeData {
-  estree?: { body?: AstEstreeStatement[] };
+  estree?: { body?: AstEstreeStatement[] }
 }
 
 export interface TextAstNode extends AstNodeBase {
-  type: 'text';
-  value?: string | null;
+  type: 'text'
+  value?: string | null
 }
 
 export interface EmphasisAstNode extends AstNodeBase {
-  type: 'emphasis';
+  type: 'emphasis'
 }
 
 export interface StrongAstNode extends AstNodeBase {
-  type: 'strong';
+  type: 'strong'
 }
 
 export interface InlineCodeAstNode extends AstNodeBase {
-  type: 'inlineCode';
-  value?: string | null;
+  type: 'inlineCode'
+  value?: string | null
 }
 
 export interface LinkAstNode extends AstNodeBase {
-  type: 'link';
-  url?: string;
+  type: 'link'
+  url?: string
 }
 
 export interface ImageAstNode extends AstNodeBase {
-  type: 'image';
-  url?: string;
-  alt?: string | null;
+  type: 'image'
+  url?: string
+  alt?: string | null
 }
 
 export interface BreakAstNode extends AstNodeBase {
-  type: 'break';
+  type: 'break'
 }
 
 export interface LinkReferenceAstNode extends AstNodeBase {
-  type: 'linkReference';
-  identifier?: string;
+  type: 'linkReference'
+  identifier?: string
 }
 
 export interface ImageReferenceAstNode extends AstNodeBase {
-  type: 'imageReference';
-  identifier?: string;
-  alt?: string | null;
+  type: 'imageReference'
+  identifier?: string
+  alt?: string | null
 }
 
 export interface ParagraphAstNode extends AstNodeBase {
-  type: 'paragraph';
+  type: 'paragraph'
 }
 
 export interface HeadingAstNode extends AstNodeBase {
-  type: 'heading';
-  depth?: number | null;
+  type: 'heading'
+  depth?: number | null
 }
 
 export interface ListAstNode extends AstNodeBase {
-  type: 'list';
-  ordered?: boolean | null;
-  start?: number | null;
-  spread?: boolean | null;
+  type: 'list'
+  ordered?: boolean | null
+  start?: number | null
+  spread?: boolean | null
 }
 
 export interface ListItemAstNode extends AstNodeBase {
-  type: 'listItem';
+  type: 'listItem'
 }
 
 export interface CodeAstNode extends AstNodeBase {
-  type: 'code';
-  value?: string | null;
-  lang?: string | null;
+  type: 'code'
+  value?: string | null
+  lang?: string | null
 }
 
 export interface BlockquoteAstNode extends AstNodeBase {
-  type: 'blockquote';
+  type: 'blockquote'
 }
 
 export interface ThematicBreakAstNode extends AstNodeBase {
-  type: 'thematicBreak';
+  type: 'thematicBreak'
 }
 
 export interface HtmlAstNode extends AstNodeBase {
-  type: 'html';
-  value?: unknown;
+  type: 'html'
+  value?: unknown
 }
 
 export interface DefinitionAstNode extends AstNodeBase {
-  type: 'definition';
-  identifier?: string;
-  url?: string;
+  type: 'definition'
+  identifier?: string
+  url?: string
 }
 
 export interface MdxjsEsmAstNode extends AstNodeBase {
-  type: 'mdxjsEsm';
-  value?: unknown;
-  data?: AstEstreeData;
+  type: 'mdxjsEsm'
+  value?: unknown
+  data?: AstEstreeData
 }
 
 export interface MdxJsxFlowElementAstNode extends AstNodeBase {
-  type: 'mdxJsxFlowElement';
+  type: 'mdxJsxFlowElement'
+  /** Raw JSX element name. */
+  name?: string | null
+  /** Raw JSX attributes; decoded and validated by `attrs`. */
+  attributes?: AstAttribute[]
+  /** Canonical authoring identity, assigned by the MDX normalization pass. */
+  canonicalName?: string
 }
 
 export interface MdxJsxTextElementAstNode extends AstNodeBase {
-  type: 'mdxJsxTextElement';
+  type: 'mdxJsxTextElement'
+  /** Raw JSX element name. */
+  name?: string | null
+  /** Raw JSX attributes; decoded and validated by `attrs`. */
+  attributes?: AstAttribute[]
+  /** Canonical authoring identity, assigned by the MDX normalization pass. */
+  canonicalName?: string
 }
 
 /** A node the parser does not model; kept so it can be reported, not dropped. */
@@ -184,39 +192,43 @@ export type AstNode =
   | MdxjsEsmAstNode
   | MdxJsxFlowElementAstNode
   | MdxJsxTextElementAstNode
-  | UnknownAstNode;
+  | UnknownAstNode
 
-export function isJsx(node: AstNode): boolean {
-  return node.type === 'mdxJsxFlowElement' || node.type === 'mdxJsxTextElement';
+export function isJsx(node: AstNode): node is MdxJsxFlowElementAstNode | MdxJsxTextElementAstNode {
+  return node.type === 'mdxJsxFlowElement' || node.type === 'mdxJsxTextElement'
+}
+
+export function rawComponentName(node: AstNode): string {
+  return isJsx(node) ? (node.name ?? '') : ''
 }
 
 export function isMdxjsEsm(node: AstNode): node is MdxjsEsmAstNode {
-  return node.type === 'mdxjsEsm';
+  return node.type === 'mdxjsEsm'
 }
 
 export function isText(node: AstNode): node is TextAstNode {
-  return node.type === 'text';
+  return node.type === 'text'
 }
 
 export function isLinkReference(node: AstNode): node is LinkReferenceAstNode {
-  return node.type === 'linkReference';
+  return node.type === 'linkReference'
 }
 
 export function isReference(node: AstNode): node is LinkReferenceAstNode | ImageReferenceAstNode {
-  return node.type === 'linkReference' || node.type === 'imageReference';
+  return node.type === 'linkReference' || node.type === 'imageReference'
 }
 
 export function isDefinition(node: AstNode): node is DefinitionAstNode {
-  return node.type === 'definition';
+  return node.type === 'definition'
 }
 
 /** Whether a node is whitespace-only text (used to ignore MDX formatting). */
 export function whitespace(node: AstNode): boolean {
-  return isText(node) && !String(node.value ?? '').trim();
+  return isText(node) && !String(node.value ?? '').trim()
 }
 
 export function meaningfulChildren(nodes: AstNode[]): AstNode[] {
-  return nodes.filter((node) => !whitespace(node));
+  return nodes.filter((node) => !whitespace(node))
 }
 
 /**
@@ -225,7 +237,8 @@ export function meaningfulChildren(nodes: AstNode[]): AstNode[] {
  * sources that `<Path>` references resolve against.
  */
 export interface ContentSource {
-  sourceFile: string;
-  root: string;
-  rootPageSources?: Set<string>;
+  sourceFile: string
+  root: string
+  sourceLineOffset?: number
+  rootPageSources?: Set<string>
 }

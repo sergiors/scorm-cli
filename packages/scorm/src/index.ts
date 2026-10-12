@@ -1,9 +1,9 @@
-export { createManifest } from './ims-manifest';
-export { packageScorm } from './package-scorm';
-export type { PackageScormOptions } from './package-scorm';
-export { scormDevMock } from './mock';
-export { createScormRuntime, scormRuntime } from './runtime';
-export { createContentManifest } from './content-manifest';
-export type { ContentManifest } from './content-manifest';
-export { decodeSuspendData, encodeSuspendData } from './state-codec';
-export type { CompactSuspendData } from './state-codec';
+export { createManifest } from './ims-manifest'
+export { packageScorm } from './package-scorm'
+export type { PackageScormOptions } from './package-scorm'
+export { scormDevMock } from './mock'
+export { createScormRuntime, scormRuntime } from './runtime'
+export { createContentManifest } from './content-manifest'
+export type { ContentManifest } from './content-manifest'
+export { decodeSuspendData, encodeSuspendData } from './state-codec'
+export type { CompactSuspendData } from './state-codec'

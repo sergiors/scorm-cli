@@ -1,4 +1,4 @@
-import type { AnswerValue, QuestionNode, QuestionOption } from '../types';
+import type { AnswerValue, QuestionNode, QuestionOption } from '../types'
 
 /**
  * Whether a learner's saved answer selects a given option. Multiple-choice
@@ -10,12 +10,12 @@ import type { AnswerValue, QuestionNode, QuestionOption } from '../types';
 export function isOptionSelected(
   question: QuestionNode,
   value: AnswerValue | undefined,
-  optionValue: string,
+  optionValue: string
 ): boolean {
   if (question.questionType === 'multiple-choice') {
-    return Array.isArray(value) && value.includes(optionValue);
+    return Array.isArray(value) && value.includes(optionValue)
   }
-  return value === optionValue;
+  return value === optionValue
 }
 
 /**
@@ -29,15 +29,15 @@ export function answerAfterChange(
   question: QuestionNode,
   value: AnswerValue | undefined,
   optionValue: string,
-  checked: boolean,
+  checked: boolean
 ): AnswerValue {
   if (question.questionType !== 'multiple-choice') {
-    return optionValue;
+    return optionValue
   }
-  const current = Array.isArray(value) ? value : [];
+  const current = Array.isArray(value) ? value : []
   return question.options
     .map((option) => option.value)
-    .filter((candidate) => (candidate === optionValue ? checked : current.includes(candidate)));
+    .filter((candidate) => (candidate === optionValue ? checked : current.includes(candidate)))
 }
 
 /**
@@ -47,14 +47,14 @@ export function answerAfterChange(
  * submitted view classifies options, so correctness is never revealed before
  * results.
  */
-export type SubmittedOptionResult = 'correct' | 'incorrect' | 'neutral';
+export type SubmittedOptionResult = 'correct' | 'incorrect' | 'neutral'
 
 export function submittedOptionResult(
   option: QuestionOption,
-  selected: boolean,
+  selected: boolean
 ): SubmittedOptionResult {
   if (option.correct) {
-    return 'correct';
+    return 'correct'
   }
-  return selected ? 'incorrect' : 'neutral';
+  return selected ? 'incorrect' : 'neutral'
 }

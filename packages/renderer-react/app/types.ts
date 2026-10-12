@@ -19,5 +19,5 @@ export type {
   RootPresentation,
   ScrollNode,
   ThematicBreakNode,
-  VideoNode,
-} from '@scorm-cli/core';
+  VideoNode
+} from '@scorm-cli/core'

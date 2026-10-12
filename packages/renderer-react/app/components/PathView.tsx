@@ -7,34 +7,36 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle }
 
 /**
  * The state of a single Path entry, derived from the visited flags of the
- * referenced pages in Path order. A visited entry stays open; the first entry
- * and the entry immediately after the visited prefix are available; everything
- * else is locked, so a learner can revisit and advance one step, but never skip
- * ahead.
+ * referenced pages in Path order. A Path uses contiguous-prefix progression:
+ * any visited entry stays open, and exactly the first entry after the longest
+ * run of visited entries from the start is available. Everything beyond that
+ * next entry is locked, so a learner can revisit or advance one step, but never
+ * skip ahead — and a gap in the visited prefix gates the rest of the Path.
  */
 export type PathPageStatus = 'visited' | 'available' | 'locked'
 
 /**
  * Whether the Path entry at `index` may be opened, given the `visited` flags of
- * the referenced pages in Path order. The first entry is always available, an
- * already visited entry stays open, and otherwise an unvisited entry is
- * available only when the previous referenced entry is visited.
+ * the referenced pages in Path order. The policy is contiguous-prefix
+ * progression: every visited entry stays open, and the only unvisited entry
+ * that opens is the first one after the longest visited run from the start
+ * (which makes the first entry available on a fresh package). A gap in that
+ * prefix locks everything after it.
  *
- * This exactly permits the visited pages plus the next page after the visited
- * sequence while blocking a learner from skipping ahead. It is a pure lookup:
- * callers supply the flags already resolved from `PlayerPageState.visited`, so
- * the decision reuses the existing per-page state without adding any of its own.
+ * It is a pure lookup: callers supply the flags already resolved from
+ * `PlayerPageState.visited`, so the decision reuses the existing per-page state
+ * without adding any of its own.
  */
 export function canOpenPathPage(index: number, visited: readonly boolean[]): boolean {
-  if (index <= 0) {
-    return true
-  }
-
   if (visited[index]) {
     return true
   }
 
-  return visited[index - 1] === true
+  let prefix = 0
+  while (visited[prefix]) {
+    prefix += 1
+  }
+  return index === prefix
 }
 
 function pathPageStatus(index: number, visited: readonly boolean[]): PathPageStatus {

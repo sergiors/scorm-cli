@@ -1,7 +1,7 @@
-import type { PlayerState } from '@scorm-cli/core';
-import type { PreviewHotContext } from './lib/preview-client';
+import type { PlayerState } from '@scorm-cli/core'
+import type { PreviewHotContext } from './lib/preview-client'
 
-export {};
+export {}
 
 declare global {
   /**
@@ -19,7 +19,7 @@ declare global {
      * package runtime, so the renderer treats both the method and its result as
      * optional input.
      */
-    restoreState?: () => PlayerState;
+    restoreState?: () => PlayerState
     /**
      * Persists the full resume state together with the integer package progress
      * (0-100), both in renderer terms. The runtime owns encoding them against
@@ -28,9 +28,9 @@ declare global {
      * LMS accepted every write; a missing bridge, a missing method, a thrown
      * call or a `void` return is treated as a best-effort no-op.
      */
-    saveState?: (state: PlayerState, progress: number) => boolean | void;
-    markCompleted?: () => void;
-    finish?: () => void;
+    saveState?: (state: PlayerState, progress: number) => boolean | void
+    markCompleted?: () => void
+    finish?: () => void
   }
 
   /**
@@ -42,17 +42,17 @@ declare global {
    */
   interface ScormDevTools {
     /** Whether the mock LMS persists `cmi.*` values to localStorage. */
-    getCmiPersistenceEnabled: () => boolean;
+    getCmiPersistenceEnabled: () => boolean
     /**
      * Enables or disables persistence. Disabling clears the previously saved
      * CMI state; enabling immediately writes the current state.
      */
-    setCmiPersistenceEnabled: (enabled: boolean) => void;
+    setCmiPersistenceEnabled: (enabled: boolean) => void
   }
 
   interface Window {
-    scormBridge?: ScormBridge;
-    scormDevTools?: ScormDevTools;
+    scormBridge?: ScormBridge
+    scormDevTools?: ScormDevTools
   }
 
   /**
@@ -61,6 +61,6 @@ declare global {
    * `undefined` outside Vite dev mode.
    */
   interface ImportMeta {
-    readonly hot?: PreviewHotContext;
+    readonly hot?: PreviewHotContext
   }
 }

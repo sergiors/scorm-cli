@@ -3,21 +3,21 @@ import type {
   QuestionNode,
   QuestionOption,
   QuestionType,
-  QuestionnaireNode,
-} from '@scorm-cli/core';
-import { sourceNodeId } from './io';
-import { componentName } from './component-name';
-import type { AstNode } from './ast';
-import { isJsx, whitespace } from './ast';
-import { assertAttributes, attrs, requiredString, sourceLocation } from './shared';
+  QuestionnaireNode
+} from '@scorm-cli/core'
+import { sourceNodeId } from './io'
+import { componentName } from './component-name'
+import type { AstNode } from './ast'
+import { isJsx, rawComponentName, whitespace } from './ast'
+import { assertAttributes, attrs, requiredString, sourceLocation } from './shared'
 
-export type ParseQuestionContentChildren = (nodes: AstNode[]) => Promise<ContentNode[]>;
+export type ParseQuestionContentChildren = (nodes: AstNode[]) => Promise<ContentNode[]>
 
 interface AnswerCountRule {
-  count: 'options' | 'correct';
-  exactly?: number;
-  atLeast?: number;
-  message: string;
+  count: 'options' | 'correct'
+  exactly?: number
+  atLeast?: number
+  message: string
 }
 
 const answerCountRules: Record<QuestionType, AnswerCountRule[]> = {
@@ -25,47 +25,47 @@ const answerCountRules: Record<QuestionType, AnswerCountRule[]> = {
     {
       count: 'correct',
       exactly: 1,
-      message: 'single-choice Question must have exactly one correct Option',
-    },
+      message: 'single-choice Question must have exactly one correct Option'
+    }
   ],
   'multiple-choice': [
     {
       count: 'correct',
       atLeast: 1,
-      message: 'multiple-choice Question must have at least one correct Option',
-    },
+      message: 'multiple-choice Question must have at least one correct Option'
+    }
   ],
   'true-false': [
     { count: 'options', exactly: 2, message: 'true-false Question must have exactly 2 Options' },
     {
       count: 'correct',
       exactly: 1,
-      message: 'true-false Question must have exactly one correct Option',
-    },
-  ],
-};
+      message: 'true-false Question must have exactly one correct Option'
+    }
+  ]
+}
 
 export function questionAnswerRuleError(
   type: QuestionType,
   optionCount: number,
-  correctCount: number,
+  correctCount: number
 ): string | undefined {
   for (const rule of answerCountRules[type]) {
-    const count = rule.count === 'options' ? optionCount : correctCount;
+    const count = rule.count === 'options' ? optionCount : correctCount
     if (rule.exactly !== undefined && count !== rule.exactly) {
-      return rule.message;
+      return rule.message
     }
     if (rule.atLeast !== undefined && count < rule.atLeast) {
-      return rule.message;
+      return rule.message
     }
   }
-  return undefined;
+  return undefined
 }
 
 /** Unwraps parser-generated paragraphs that contain only the allowed components. */
 export function normalizeQuestionChildren(
   children: AstNode[],
-  componentNames: readonly string[],
+  componentNames: readonly string[]
 ): AstNode[] {
   return children
     .flatMap((child) => {
@@ -73,80 +73,80 @@ export function normalizeQuestionChildren(
         child.type === 'paragraph' &&
         (child.children ?? []).every(
           (nested) =>
-            whitespace(nested) || (isJsx(nested) && componentNames.includes(componentName(nested))),
+            whitespace(nested) || (isJsx(nested) && componentNames.includes(componentName(nested)))
         )
       ) {
-        return child.children ?? [];
+        return child.children ?? []
       }
-      return [child];
+      return [child]
     })
-    .filter((child) => !whitespace(child));
+    .filter((child) => !whitespace(child))
 }
 
 function questionParts(node: AstNode, file: string): { prompt: AstNode; options: AstNode[] } {
-  const prompts: AstNode[] = [];
-  const options: AstNode[] = [];
+  const prompts: AstNode[] = []
+  const options: AstNode[] = []
   for (const child of normalizeQuestionChildren(node.children ?? [], ['Prompt', 'Option'])) {
     if (!isJsx(child)) {
       throw new Error(
-        `${sourceLocation(file, child)}: Question may contain only <Prompt> and <Option> components`,
-      );
+        `${sourceLocation(file, child)}: Question may contain only <Prompt> and <Option> components`
+      )
     }
     if (componentName(child) === 'Prompt') {
-      prompts.push(child);
+      prompts.push(child)
     } else if (componentName(child) === 'Option') {
-      options.push(child);
+      options.push(child)
     } else {
       throw new Error(
-        `${sourceLocation(file, child)}: unknown Question child <${child.name ?? ''}>`,
-      );
+        `${sourceLocation(file, child)}: unknown Question child <${rawComponentName(child)}>`
+      )
     }
   }
 
   if (prompts.length !== 1) {
     throw new Error(
-      `${sourceLocation(file, node)}: Question must contain exactly 1 Prompt; found ${prompts.length}`,
-    );
+      `${sourceLocation(file, node)}: Question must contain exactly 1 Prompt; found ${prompts.length}`
+    )
   }
 
   if (options.length < 2) {
     throw new Error(
-      `${sourceLocation(file, node)}: Question must contain at least 2 Options; found ${options.length}`,
-    );
+      `${sourceLocation(file, node)}: Question must contain at least 2 Options; found ${options.length}`
+    )
   }
 
-  return { prompt: prompts[0]!, options };
+  return { prompt: prompts[0]!, options }
 }
 
 function isQuestionType(value: unknown): value is QuestionType {
-  return value === 'single-choice' || value === 'multiple-choice' || value === 'true-false';
+  return value === 'single-choice' || value === 'multiple-choice' || value === 'true-false'
 }
 
 async function parseOptions(
   nodes: AstNode[],
   file: string,
-  parseContentChildren: ParseQuestionContentChildren,
+  parseContentChildren: ParseQuestionContentChildren
 ): Promise<QuestionOption[]> {
-  const seenValues = new Set<string>();
-  const options: QuestionOption[] = [];
+  const seenValues = new Set<string>()
+  const options: QuestionOption[] = []
   for (const node of nodes) {
-    const values = attrs(node, file);
-    assertAttributes(values, ['value', 'correct'], file, node);
-    const value = requiredString(values.value, 'value', file, node);
+    const values = attrs(node, file)
+    assertAttributes(values, ['value', 'correct'], file, node)
+    const value = requiredString(values.value, 'value', file, node)
     if (seenValues.has(value)) {
-      throw new Error(`${sourceLocation(file, node)}: Option value "${value}" must be unique`);
+      throw new Error(`${sourceLocation(file, node)}: Option value "${value}" must be unique`)
     }
-    seenValues.add(value);
+    seenValues.add(value)
     if (values.correct !== undefined && typeof values.correct !== 'boolean') {
-      throw new Error(`${sourceLocation(file, node)}: Option "correct" must be a boolean`);
+      throw new Error(`${sourceLocation(file, node)}: Option "correct" must be a boolean`)
     }
     options.push({
       value,
       correct: values.correct === true,
-      content: await parseContentChildren(node.children ?? []),
-    });
+      content: await parseContentChildren(node.children ?? [])
+    })
   }
-  return options;
+  return options
 }
 
 export async function parseQuestion(
@@ -154,34 +154,35 @@ export async function parseQuestion(
   file: string,
   root: string,
   parseContentChildren: ParseQuestionContentChildren,
+  sourceLineOffset = 0
 ): Promise<QuestionNode> {
-  const values = attrs(node, file);
-  assertAttributes(values, ['type'], file, node);
-  const type = values.type;
+  const values = attrs(node, file)
+  assertAttributes(values, ['type'], file, node)
+  const type = values.type
   if (!isQuestionType(type)) {
     throw new Error(
-      `${sourceLocation(file, node)}: Question "type" must be "single-choice", "multiple-choice", or "true-false"`,
-    );
+      `${sourceLocation(file, node)}: Question "type" must be "single-choice", "multiple-choice", or "true-false"`
+    )
   }
 
-  const { prompt: promptNode, options: optionNodes } = questionParts(node, file);
-  const promptAttrs = attrs(promptNode, file);
-  assertAttributes(promptAttrs, [], file, promptNode);
-  const prompt = await parseContentChildren(promptNode.children ?? []);
-  const options = await parseOptions(optionNodes, file, parseContentChildren);
-  const correctCount = options.filter((option) => option.correct).length;
-  const ruleError = questionAnswerRuleError(type, options.length, correctCount);
+  const { prompt: promptNode, options: optionNodes } = questionParts(node, file)
+  const promptAttrs = attrs(promptNode, file)
+  assertAttributes(promptAttrs, [], file, promptNode)
+  const prompt = await parseContentChildren(promptNode.children ?? [])
+  const options = await parseOptions(optionNodes, file, parseContentChildren)
+  const correctCount = options.filter((option) => option.correct).length
+  const ruleError = questionAnswerRuleError(type, options.length, correctCount)
   if (ruleError) {
-    throw new Error(`${sourceLocation(file, node)}: ${ruleError}`);
+    throw new Error(`${sourceLocation(file, node)}: ${ruleError}`)
   }
 
   return {
     type: 'question',
-    id: await sourceNodeId('question', node, file, root),
+    id: sourceNodeId('question', node, file, root, sourceLineOffset),
     questionType: type,
     prompt,
-    options,
-  };
+    options
+  }
 }
 
 export async function parseQuestionnaire(
@@ -189,31 +190,33 @@ export async function parseQuestionnaire(
   file: string,
   root: string,
   parseContentChildren: ParseQuestionContentChildren,
+  sourceLineOffset = 0
 ): Promise<QuestionnaireNode> {
-  const values = attrs(node, file);
-  assertAttributes(values, [], file, node);
+  const values = attrs(node, file)
+  assertAttributes(values, [], file, node)
 
-  const children = normalizeQuestionChildren(node.children ?? [], ['Question']);
+  const children = normalizeQuestionChildren(node.children ?? [], ['Question'])
   if (children.length === 0) {
     throw new Error(
-      `${sourceLocation(file, node)}: Questionnaire must contain at least one direct <Question>`,
-    );
+      `${sourceLocation(file, node)}: Questionnaire must contain at least one direct <Question>`
+    )
   }
 
-  const questions: QuestionNode[] = [];
+  const questions: QuestionNode[] = []
   for (const child of children) {
     if (!isJsx(child) || componentName(child) !== 'Question') {
-      const found = child.name ? `<${child.name}>` : child.type;
+      const name = rawComponentName(child)
+      const found = name ? `<${name}>` : child.type
       throw new Error(
-        `${sourceLocation(file, child)}: Questionnaire may contain only direct <Question> children; found ${found}`,
-      );
+        `${sourceLocation(file, child)}: Questionnaire may contain only direct <Question> children; found ${found}`
+      )
     }
-    questions.push(await parseQuestion(child, file, root, parseContentChildren));
+    questions.push(await parseQuestion(child, file, root, parseContentChildren, sourceLineOffset))
   }
 
   return {
     type: 'questionnaire',
-    id: await sourceNodeId('questionnaire', node, file, root),
-    questions,
-  };
+    id: sourceNodeId('questionnaire', node, file, root, sourceLineOffset),
+    questions
+  }
 }

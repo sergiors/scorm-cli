@@ -1,12 +1,12 @@
-import type { ReactNode } from 'react';
-import { IntlProvider } from 'react-intl';
-import { resolvePlayerLocale } from '../i18n/locale';
-import { messages } from './messages';
+import type { ReactNode } from 'react'
+import { IntlProvider } from 'react-intl'
+import { resolvePlayerLocale } from '../i18n/locale'
+import { messages } from './messages'
 
 export interface PlayerI18nProviderProps {
   /** Authored BCP-47 language tag from the package metadata. */
-  lang?: string | null;
-  children: ReactNode;
+  lang?: string | null
+  children: ReactNode
 }
 
 /**
@@ -20,10 +20,10 @@ export interface PlayerI18nProviderProps {
  * language stay independent concerns.
  */
 export function PlayerI18nProvider({ lang, children }: PlayerI18nProviderProps) {
-  const locale = resolvePlayerLocale(lang);
+  const locale = resolvePlayerLocale(lang)
   return (
     <IntlProvider locale={locale} messages={messages[locale]}>
       {children}
     </IntlProvider>
-  );
+  )
 }

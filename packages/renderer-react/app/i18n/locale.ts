@@ -3,7 +3,7 @@
  * locale concept; the document's declared `lang` is resolved separately (see
  * `vite-app`) and is deliberately not narrowed to these values.
  */
-export type PlayerLocale = 'en' | 'pt-BR';
+export type PlayerLocale = 'en' | 'pt-BR'
 
 /**
  * Resolves an authored BCP-47 language tag to the UI locale whose catalog
@@ -16,6 +16,6 @@ export type PlayerLocale = 'en' | 'pt-BR';
  * and region subtags without canonicalizing the tag.
  */
 export function resolvePlayerLocale(lang?: string | null): PlayerLocale {
-  const base = lang?.trim().toLowerCase().split('-')[0];
-  return base === 'pt' ? 'pt-BR' : 'en';
+  const base = lang?.trim().toLowerCase().split('-')[0]
+  return base === 'pt' ? 'pt-BR' : 'en'
 }

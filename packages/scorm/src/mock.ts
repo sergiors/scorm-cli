@@ -168,4 +168,4 @@ export const scormDevMock = `;(function () {
       return "true";
     }
   };
-})();`;
+})();`

@@ -1,5 +1,6 @@
-export { parsePackage } from './orchestrator';
-export { authoringComponentNames } from './components';
+export { parsePackage, parsePackageWithPaths } from './orchestrator'
+export type { ParsedPackageLocation } from './orchestrator'
+export { authoringComponentNames } from './components'
 export type {
   AnswerValue,
   BreakNode,
@@ -32,5 +33,5 @@ export type {
   ThematicBreakNode,
   PlayerPageState,
   PlayerState,
-  VideoNode,
-} from '@scorm-cli/core';
+  VideoNode
+} from '@scorm-cli/core'

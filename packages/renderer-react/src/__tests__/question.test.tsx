@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
-import { act, useState, type ComponentProps } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { QuestionnaireView as QuestionnaireViewBase } from '../../app/components/QuestionnaireView';
-import { PlayerI18nProvider } from '../../app/lib/player-i18n';
-import type { AnswerValue, ContentNode } from '../../app/types';
-import { multipleChoiceQuestion, questionnaireNode, singleChoiceQuestion } from './fixtures';
+import { act, useState, type ComponentProps } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { QuestionnaireView as QuestionnaireViewBase } from '../../app/components/QuestionnaireView'
+import { PlayerI18nProvider } from '../../app/lib/player-i18n'
+import type { AnswerValue, ContentNode } from '../../app/types'
+import { multipleChoiceQuestion, questionnaireNode, singleChoiceQuestion } from './fixtures'
 
 /**
  * Wraps the questionnaire in the player's i18n provider, matching how a page
@@ -21,10 +21,10 @@ function QuestionnaireView({
     <PlayerI18nProvider lang={lang}>
       <QuestionnaireViewBase {...props} />
     </PlayerI18nProvider>
-  );
+  )
 }
 
-type QuestionNode = Extract<ContentNode, { type: 'questionnaire' }>['questions'][number];
+type QuestionNode = Extract<ContentNode, { type: 'questionnaire' }>['questions'][number]
 
 const trueFalse: QuestionNode = {
   type: 'question',
@@ -35,37 +35,37 @@ const trueFalse: QuestionNode = {
     {
       value: 'true',
       correct: true,
-      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'True' }] }],
+      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'True' }] }]
     },
     {
       value: 'false',
       correct: false,
-      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'False' }] }],
-    },
-  ],
-};
+      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'False' }] }]
+    }
+  ]
+}
 
-let container: HTMLDivElement;
-let root: Root;
+let container: HTMLDivElement
+let root: Root
 
 beforeEach(() => {
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-  container = document.createElement('div');
-  document.body.appendChild(container);
-  root = createRoot(container);
-});
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true
+  container = document.createElement('div')
+  document.body.appendChild(container)
+  root = createRoot(container)
+})
 
 afterEach(() => {
-  act(() => root.unmount());
-  container.remove();
-});
+  act(() => root.unmount())
+  container.remove()
+})
 
 function input(value: string): HTMLInputElement {
-  const element = container.querySelector<HTMLInputElement>(`input[value="${value}"]`);
+  const element = container.querySelector<HTMLInputElement>(`input[value="${value}"]`)
   if (!element) {
-    throw new Error(`Input not found for value: ${value}`);
+    throw new Error(`Input not found for value: ${value}`)
   }
-  return element;
+  return element
 }
 
 /**
@@ -74,126 +74,126 @@ function input(value: string): HTMLInputElement {
  */
 function submittedControl(value: string): HTMLInputElement {
   const element = container.querySelector<HTMLInputElement>(
-    `[data-slot="questionnaire-choice-input"][value="${value}"]`,
-  );
+    `[data-slot="questionnaire-choice-input"][value="${value}"]`
+  )
   if (!element) {
-    throw new Error(`Submitted control not found for value: ${value}`);
+    throw new Error(`Submitted control not found for value: ${value}`)
   }
-  return element;
+  return element
 }
 
 function submittedChecked(value: string): boolean {
-  return submittedControl(value).checked;
+  return submittedControl(value).checked
 }
 
-/** Class list of the submitted choice container for an option value. */
-function submittedChoiceClass(value: string): string {
-  const choice = submittedControl(value).closest('[data-slot="questionnaire-choice"]');
+/**
+ * The result the submitted choice exposes for an option value. Correctness is
+ * asserted through this semantic hook rather than through the color classes the
+ * result styling happens to use.
+ */
+function submittedChoiceResult(value: string): string | null {
+  const choice = submittedControl(value).closest('[data-slot="questionnaire-choice"]')
   if (!choice) {
-    throw new Error(`Submitted choice not found for value: ${value}`);
+    throw new Error(`Submitted choice not found for value: ${value}`)
   }
-  return choice.className;
+  return choice.getAttribute('data-result')
 }
 
-/** Whether a submitted option is result-highlighted green (correct). */
-function submittedChoiceIsGreen(value: string): boolean {
-  return submittedChoiceClass(value).includes('border-emerald-600');
+/** Whether a submitted option is classified as correct. */
+function submittedChoiceIsCorrect(value: string): boolean {
+  return submittedChoiceResult(value) === 'correct'
 }
 
-/** Whether a submitted option is result-highlighted red (selected wrong). */
-function submittedChoiceIsRed(value: string): boolean {
-  return submittedChoiceClass(value).includes('border-destructive/60');
+/** Whether a submitted option is classified as a selected-wrong result. */
+function submittedChoiceIsIncorrect(value: string): boolean {
+  return submittedChoiceResult(value) === 'incorrect'
 }
 
 /** Visible button whose label matches exactly; hidden wizard controls are skipped. */
 function button(label: string): HTMLButtonElement {
   const element = Array.from(container.querySelectorAll('button')).find(
-    (candidate) => !candidate.hasAttribute('hidden') && candidate.textContent?.trim() === label,
-  );
+    (candidate) => !candidate.hasAttribute('hidden') && candidate.textContent?.trim() === label
+  )
   if (!element) {
-    throw new Error(`Visible button not found: ${label}`);
+    throw new Error(`Visible button not found: ${label}`)
   }
-  return element;
+  return element
 }
 
 /** The currently displayed question item. */
 function activeItem(): HTMLElement {
   const element = container.querySelector<HTMLElement>(
-    '[data-slot="questionnaire-item"]:not([hidden])',
-  );
+    '[data-slot="questionnaire-item"]:not([hidden])'
+  )
   if (!element) {
-    throw new Error('No active questionnaire item');
+    throw new Error('No active questionnaire item')
   }
-  return element;
+  return element
 }
 
 describe('QuestionnaireView', () => {
   it('renders one questionnaire item per question and navigates as a wizard', () => {
-    act(() => root.render(<QuestionnaireView node={questionnaireNode} />));
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
-    expect(container.querySelectorAll('[data-slot="questionnaire-item"]')).toHaveLength(2);
-    expect(activeItem().textContent).toContain('Which option is correct?');
+    expect(container.querySelectorAll('[data-slot="questionnaire-item"]')).toHaveLength(2)
+    expect(activeItem().textContent).toContain('Which option is correct?')
 
-    act(() => input('first').click());
-    expect(input('first').checked).toBe(true);
-    act(() => button('Next question').click());
+    act(() => input('first').click())
+    expect(input('first').checked).toBe(true)
+    act(() => button('Next question').click())
 
-    expect(activeItem().textContent).toContain('Which options apply?');
+    expect(activeItem().textContent).toContain('Which options apply?')
 
-    act(() => button('Previous question').click());
-    expect(activeItem().textContent).toContain('Which option is correct?');
+    act(() => button('Previous question').click())
+    expect(activeItem().textContent).toContain('Which option is correct?')
     // Returning to an answered question preserves the answer.
-    expect(input('first').checked).toBe(true);
-  });
+    expect(input('first').checked).toBe(true)
+  })
 
   it('uses radios for single-choice and checkboxes for multiple-choice', () => {
-    act(() => root.render(<QuestionnaireView node={questionnaireNode} />));
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
-    expect(input('first').type).toBe('radio');
-    expect(input('second').type).toBe('radio');
+    expect(input('first').type).toBe('radio')
+    expect(input('second').type).toBe('radio')
 
-    act(() => input('first').click());
-    act(() => button('Next question').click());
+    act(() => input('first').click())
+    act(() => button('Next question').click())
 
-    expect(input('alpha').type).toBe('checkbox');
-    expect(input('beta').type).toBe('checkbox');
-  });
+    expect(input('alpha').type).toBe('checkbox')
+    expect(input('beta').type).toBe('checkbox')
+  })
 
   it('refuses to submit until every question is answered', () => {
-    const onSubmitted = vi.fn();
-    act(() =>
-      root.render(<QuestionnaireView node={questionnaireNode} onSubmitted={onSubmitted} />),
-    );
+    const onSubmitted = vi.fn()
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} onSubmitted={onSubmitted} />))
 
-    act(() => input('first').click());
-    act(() => button('Next question').click());
+    act(() => input('first').click())
+    act(() => button('Next question').click())
 
     // On the final question the submit action is offered, but the unanswered
     // multiple-choice item blocks it.
-    act(() => button('Submit questionnaire').click());
-    expect(onSubmitted).not.toHaveBeenCalled();
-    expect(activeItem().textContent).toContain('Which options apply?');
+    act(() => button('Submit questionnaire').click())
+    expect(onSubmitted).not.toHaveBeenCalled()
+    expect(activeItem().textContent).toContain('Which options apply?')
 
-    act(() => input('alpha').click());
-    act(() => button('Submit questionnaire').click());
-    expect(onSubmitted).toHaveBeenCalledTimes(1);
-    expect(onSubmitted).toHaveBeenCalledWith(questionnaireNode.id);
-  });
+    act(() => input('alpha').click())
+    act(() => button('Submit questionnaire').click())
+    expect(onSubmitted).toHaveBeenCalledTimes(1)
+    expect(onSubmitted).toHaveBeenCalledWith(questionnaireNode.id)
+  })
 
   it('invokes the submitted callback exactly once across repeated submits', () => {
-    const onSubmitted = vi.fn();
-    act(() =>
-      root.render(<QuestionnaireView node={questionnaireNode} onSubmitted={onSubmitted} />),
-    );
+    const onSubmitted = vi.fn()
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} onSubmitted={onSubmitted} />))
 
-    act(() => input('first').click());
-    act(() => button('Next question').click());
-    act(() => input('alpha').click());
-    act(() => button('Submit questionnaire').click());
-    act(() => button('Submit questionnaire').click());
+    act(() => input('first').click())
+    act(() => button('Next question').click())
+    act(() => input('alpha').click())
+    act(() => button('Submit questionnaire').click())
+    act(() => button('Submit questionnaire').click())
 
-    expect(onSubmitted).toHaveBeenCalledTimes(1);
-  });
+    expect(onSubmitted).toHaveBeenCalledTimes(1)
+  })
 
   it('renders true-false as a radio group keyed by option value', () => {
     act(() =>
@@ -202,87 +202,86 @@ describe('QuestionnaireView', () => {
           node={{
             type: 'questionnaire',
             id: 'questionnaire:check.mdx:1:1',
-            questions: [trueFalse],
+            questions: [trueFalse]
           }}
-        />,
-      ),
-    );
+        />
+      )
+    )
 
-    expect(input('true').type).toBe('radio');
-    expect(input('false').type).toBe('radio');
-    act(() => input('false').click());
-    expect(input('false').checked).toBe(true);
-    expect(input('true').checked).toBe(false);
-  });
+    expect(input('true').type).toBe('radio')
+    expect(input('false').type).toBe('radio')
+    act(() => input('false').click())
+    expect(input('false').checked).toBe(true)
+    expect(input('true').checked).toBe(false)
+  })
 
   it('names the fieldset from the rich prompt without result highlighting', () => {
-    act(() => root.render(<QuestionnaireView node={questionnaireNode} />));
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
-    const fieldset = activeItem();
-    const labelledBy = fieldset.getAttribute('aria-labelledby');
-    expect(labelledBy).toBeTruthy();
+    const fieldset = activeItem()
+    const labelledBy = fieldset.getAttribute('aria-labelledby')
+    expect(labelledBy).toBeTruthy()
     expect(document.getElementById(labelledBy as string)?.textContent).toContain(
-      'Which option is correct?',
-    );
-    // Correctness is not revealed before submission: no option carries the
-    // result-highlight classes the submitted view applies.
-    expect(container.innerHTML).not.toContain('border-emerald-600');
-    expect(container.innerHTML).not.toContain('border-destructive/60');
-    expect(container.innerHTML).not.toContain('data-correct');
-  });
+      'Which option is correct?'
+    )
+    // Correctness is not revealed before submission: no option exposes a
+    // result classification.
+    expect(container.querySelector('[data-result]')).toBeNull()
+    expect(container.querySelector('[data-correct]')).toBeNull()
+  })
 
   it('declares the authored questions as the Root item collection', () => {
-    act(() => root.render(<QuestionnaireView node={questionnaireNode} />));
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     // The Root receives `items`, so each question is keyed by its stable id
     // (surfaced as the native input name) and the active question renders
     // without waiting for a layout effect, keeping the markup server-renderable.
-    expect(input('first').getAttribute('name')).toBe(singleChoiceQuestion.id);
-    expect(activeItem().hasAttribute('hidden')).toBe(false);
+    expect(input('first').getAttribute('name')).toBe(singleChoiceQuestion.id)
+    expect(activeItem().hasAttribute('hidden')).toBe(false)
 
-    act(() => button('Next question').click());
-    expect(input('alpha').getAttribute('name')).toBe(multipleChoiceQuestion.id);
-  });
-});
+    act(() => button('Next question').click())
+    expect(input('alpha').getAttribute('name')).toBe(multipleChoiceQuestion.id)
+  })
+})
 
 describe('QuestionnaireView required-answer message', () => {
   it('shows the English required-answer message when a required item is invalid', () => {
-    act(() => root.render(<QuestionnaireView node={questionnaireNode} />));
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
-    act(() => input('first').click());
-    act(() => button('Next question').click());
+    act(() => input('first').click())
+    act(() => button('Next question').click())
     // The last question is still unanswered, so submitting marks it invalid.
-    act(() => button('Submit questionnaire').click());
+    act(() => button('Submit questionnaire').click())
 
-    const error = activeItem().querySelector('[data-slot="questionnaire-error"]');
-    expect(error?.hasAttribute('hidden')).toBe(false);
-    expect(error?.textContent).toBe('Choose an answer to continue.');
-  });
+    const error = activeItem().querySelector('[data-slot="questionnaire-error"]')
+    expect(error?.hasAttribute('hidden')).toBe(false)
+    expect(error?.textContent).toBe('Choose an answer to continue.')
+  })
 
   it('localizes the required-answer message under pt-BR', () => {
-    act(() => root.render(<QuestionnaireView node={questionnaireNode} lang='pt-BR' />));
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} lang="pt-BR" />))
 
-    act(() => input('first').click());
-    act(() => button('Próxima pergunta').click());
-    act(() => button('Enviar questionário').click());
+    act(() => input('first').click())
+    act(() => button('Próxima pergunta').click())
+    act(() => button('Enviar questionário').click())
 
-    const error = activeItem().querySelector('[data-slot="questionnaire-error"]');
-    expect(error?.hasAttribute('hidden')).toBe(false);
-    expect(error?.textContent).toBe('Escolha uma resposta para continuar.');
+    const error = activeItem().querySelector('[data-slot="questionnaire-error"]')
+    expect(error?.hasAttribute('hidden')).toBe(false)
+    expect(error?.textContent).toBe('Escolha uma resposta para continuar.')
     // The primitive's English fallback never leaks into the pt-BR player.
-    expect(container.textContent).not.toContain('Choose an answer to continue.');
-  });
-});
+    expect(container.textContent).not.toContain('Choose an answer to continue.')
+  })
+})
 
 /** Renders a questionnaire controlled by local answer state, like a page does. */
 function ControlledQuestionnaire({
   initialAnswers = {},
-  onSubmitted,
+  onSubmitted
 }: {
-  initialAnswers?: Record<string, AnswerValue>;
-  onSubmitted?: (id: string) => void;
+  initialAnswers?: Record<string, AnswerValue>
+  onSubmitted?: (id: string) => void
 }) {
-  const [answers, setAnswers] = useState<Record<string, AnswerValue>>(initialAnswers);
+  const [answers, setAnswers] = useState<Record<string, AnswerValue>>(initialAnswers)
   return (
     <QuestionnaireView
       node={questionnaireNode}
@@ -292,69 +291,69 @@ function ControlledQuestionnaire({
       }
       onSubmitted={onSubmitted}
     />
-  );
+  )
 }
 
 describe('QuestionnaireView persistence', () => {
   it('reports every answer change under the question id', () => {
-    const onAnswer = vi.fn();
+    const onAnswer = vi.fn()
     act(() =>
-      root.render(<QuestionnaireView node={questionnaireNode} answers={{}} onAnswer={onAnswer} />),
-    );
+      root.render(<QuestionnaireView node={questionnaireNode} answers={{}} onAnswer={onAnswer} />)
+    )
 
-    act(() => input('first').click());
-    expect(onAnswer).toHaveBeenLastCalledWith(singleChoiceQuestion.id, 'first');
+    act(() => input('first').click())
+    expect(onAnswer).toHaveBeenLastCalledWith(singleChoiceQuestion.id, 'first')
 
-    act(() => button('Next question').click());
-    act(() => input('alpha').click());
-    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, ['alpha']);
-  });
+    act(() => button('Next question').click())
+    act(() => input('alpha').click())
+    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, ['alpha'])
+  })
 
   it('persists multiple-choice answers as string arrays', () => {
-    act(() => root.render(<ControlledQuestionnaire />));
+    act(() => root.render(<ControlledQuestionnaire />))
 
-    act(() => input('first').click());
-    act(() => button('Next question').click());
-    act(() => input('alpha').click());
-    expect(input('alpha').checked).toBe(true);
+    act(() => input('first').click())
+    act(() => button('Next question').click())
+    act(() => input('alpha').click())
+    expect(input('alpha').checked).toBe(true)
 
-    act(() => input('beta').click());
-    expect(input('alpha').checked).toBe(true);
-    expect(input('beta').checked).toBe(true);
+    act(() => input('beta').click())
+    expect(input('alpha').checked).toBe(true)
+    expect(input('beta').checked).toBe(true)
 
-    act(() => input('alpha').click());
-    expect(input('alpha').checked).toBe(false);
-    expect(input('beta').checked).toBe(true);
-  });
+    act(() => input('alpha').click())
+    expect(input('alpha').checked).toBe(false)
+    expect(input('beta').checked).toBe(true)
+  })
 
   it('keeps multiple-choice answers in authored option order', () => {
-    const onAnswer = vi.fn();
+    const onAnswer = vi.fn()
     function StatefulQuestionnaire() {
-      const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
+      const [answers, setAnswers] = useState<Record<string, AnswerValue>>({})
       return (
         <QuestionnaireView
           node={questionnaireNode}
           answers={answers}
           onAnswer={(questionId, value) => {
-            onAnswer(questionId, value);
-            setAnswers((previous) => ({ ...previous, [questionId]: value }));
+            onAnswer(questionId, value)
+            setAnswers((previous) => ({ ...previous, [questionId]: value }))
           }}
         />
-      );
+      )
     }
 
-    act(() => root.render(<StatefulQuestionnaire />));
-    act(() => input('first').click());
-    act(() => button('Next question').click());
+    act(() => root.render(<StatefulQuestionnaire />))
+    act(() => input('first').click())
+    act(() => button('Next question').click())
 
     // Toggling beta before alpha must still persist the authored order.
-    act(() => input('beta').click());
-    act(() => input('alpha').click());
-    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, ['alpha', 'beta']);
+    act(() => input('beta').click())
+    act(() => input('alpha').click())
+    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, ['alpha', 'beta'])
 
-    act(() => input('beta').click());
-    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, ['alpha']);
-  });
+    act(() => input('beta').click())
+    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, ['alpha'])
+  })
 
   it('restores saved selections from the page answers', () => {
     act(() =>
@@ -363,33 +362,33 @@ describe('QuestionnaireView persistence', () => {
           node={questionnaireNode}
           answers={{
             [singleChoiceQuestion.id]: 'second',
-            [multipleChoiceQuestion.id]: ['alpha'],
+            [multipleChoiceQuestion.id]: ['alpha']
           }}
           onAnswer={() => {}}
-        />,
-      ),
-    );
+        />
+      )
+    )
 
-    expect(input('second').checked).toBe(true);
-    expect(input('first').checked).toBe(false);
+    expect(input('second').checked).toBe(true)
+    expect(input('first').checked).toBe(false)
 
-    act(() => button('Next question').click());
-    expect(input('alpha').checked).toBe(true);
-    expect(input('beta').checked).toBe(false);
-  });
+    act(() => button('Next question').click())
+    expect(input('alpha').checked).toBe(true)
+    expect(input('beta').checked).toBe(false)
+  })
 
   it('marks the wrapper submitted after a successful final submit', () => {
-    const onSubmitted = vi.fn();
-    act(() => root.render(<ControlledQuestionnaire onSubmitted={onSubmitted} />));
+    const onSubmitted = vi.fn()
+    act(() => root.render(<ControlledQuestionnaire onSubmitted={onSubmitted} />))
 
-    act(() => input('first').click());
-    act(() => button('Next question').click());
-    act(() => input('alpha').click());
-    act(() => button('Submit questionnaire').click());
+    act(() => input('first').click())
+    act(() => button('Next question').click())
+    act(() => input('alpha').click())
+    act(() => button('Submit questionnaire').click())
 
-    expect(onSubmitted).toHaveBeenCalledTimes(1);
-    expect(onSubmitted).toHaveBeenCalledWith(questionnaireNode.id);
-  });
+    expect(onSubmitted).toHaveBeenCalledTimes(1)
+    expect(onSubmitted).toHaveBeenCalledWith(questionnaireNode.id)
+  })
 
   it('renders a submitted questionnaire read-only with every answer visible', () => {
     act(() =>
@@ -398,24 +397,24 @@ describe('QuestionnaireView persistence', () => {
           node={questionnaireNode}
           answers={{
             [singleChoiceQuestion.id]: 'first',
-            [multipleChoiceQuestion.id]: ['alpha', 'beta'],
+            [multipleChoiceQuestion.id]: ['alpha', 'beta']
           }}
           submitted
-        />,
-      ),
-    );
+        />
+      )
+    )
 
     // Both questions are shown at once, with their saved selections checked and
     // disabled; there is no wizard or submit action left.
-    expect(submittedChecked('first')).toBe(true);
-    expect(submittedControl('first').disabled).toBe(true);
-    expect(submittedChecked('second')).toBe(false);
-    expect(submittedChecked('alpha')).toBe(true);
-    expect(submittedChecked('beta')).toBe(true);
-    expect(submittedControl('beta').disabled).toBe(true);
-    expect(container.textContent).not.toContain('Submit questionnaire');
-    expect(container.textContent).not.toContain('Next question');
-  });
+    expect(submittedChecked('first')).toBe(true)
+    expect(submittedControl('first').disabled).toBe(true)
+    expect(submittedChecked('second')).toBe(false)
+    expect(submittedChecked('alpha')).toBe(true)
+    expect(submittedChecked('beta')).toBe(true)
+    expect(submittedControl('beta').disabled).toBe(true)
+    expect(container.textContent).not.toContain('Submit questionnaire')
+    expect(container.textContent).not.toContain('Next question')
+  })
 
   it('renders submitted answers through the shadcn questionnaire parts', () => {
     act(() =>
@@ -424,108 +423,109 @@ describe('QuestionnaireView persistence', () => {
           node={questionnaireNode}
           answers={{
             [singleChoiceQuestion.id]: 'second',
-            [multipleChoiceQuestion.id]: ['alpha'],
+            [multipleChoiceQuestion.id]: ['alpha']
           }}
           submitted
-        />,
-      ),
-    );
+        />
+      )
+    )
 
     // Single-choice is a disabled questionnaire radio; multiple-choice uses
     // disabled questionnaire checkboxes, each an accessible choice part.
-    const single = submittedControl('second');
-    expect(single.type).toBe('radio');
-    expect(single.checked).toBe(true);
-    expect(single.disabled).toBe(true);
-    expect(single.closest('[data-slot="questionnaire-choice"]')).not.toBeNull();
+    const single = submittedControl('second')
+    expect(single.type).toBe('radio')
+    expect(single.checked).toBe(true)
+    expect(single.disabled).toBe(true)
+    expect(single.closest('[data-slot="questionnaire-choice"]')).not.toBeNull()
 
-    const multiple = submittedControl('alpha');
-    expect(multiple.type).toBe('checkbox');
-    expect(multiple.checked).toBe(true);
-    expect(multiple.disabled).toBe(true);
-    expect(submittedControl('beta').checked).toBe(false);
+    const multiple = submittedControl('alpha')
+    expect(multiple.type).toBe('checkbox')
+    expect(multiple.checked).toBe(true)
+    expect(multiple.disabled).toBe(true)
+    expect(submittedControl('beta').checked).toBe(false)
 
     // Every question is its own single-item root, all shown at once.
-    expect(container.querySelectorAll('[data-slot="questionnaire"]')).toHaveLength(2);
-    expect(container.querySelectorAll('[data-slot="questionnaire-title"]')).toHaveLength(2);
-    expect(container.querySelectorAll('[data-slot="questionnaire-choice"]')).toHaveLength(4);
-  });
+    expect(container.querySelectorAll('[data-slot="questionnaire"]')).toHaveLength(2)
+    expect(container.querySelectorAll('[data-slot="questionnaire-title"]')).toHaveLength(2)
+    expect(container.querySelectorAll('[data-slot="questionnaire-choice"]')).toHaveLength(4)
+  })
 
-  it('highlights every correct option green in a submitted questionnaire', () => {
+  it('classifies every correct option as correct in a submitted questionnaire', () => {
     act(() =>
       root.render(
         <QuestionnaireView
           node={questionnaireNode}
           answers={{
             [singleChoiceQuestion.id]: 'second',
-            [multipleChoiceQuestion.id]: ['beta'],
+            [multipleChoiceQuestion.id]: ['beta']
           }}
           submitted
-        />,
-      ),
-    );
+        />
+      )
+    )
 
-    // Correct options are green whether or not the learner selected them.
-    expect(submittedChoiceIsGreen('first')).toBe(true);
-    expect(submittedChoiceIsGreen('alpha')).toBe(true);
-  });
+    // Correct options are classified correct whether or not the learner
+    // selected them.
+    expect(submittedChoiceIsCorrect('first')).toBe(true)
+    expect(submittedChoiceIsCorrect('alpha')).toBe(true)
+  })
 
-  it('keeps a selected correct option green and never red', () => {
+  it('keeps a selected correct option correct and never incorrect', () => {
     act(() =>
       root.render(
         <QuestionnaireView
           node={questionnaireNode}
           answers={{
             [singleChoiceQuestion.id]: 'first',
-            [multipleChoiceQuestion.id]: ['alpha'],
+            [multipleChoiceQuestion.id]: ['alpha']
           }}
           submitted
-        />,
-      ),
-    );
+        />
+      )
+    )
 
-    // A correct option the learner selected is confirmed green and must not
-    // also carry the red "selected wrong" highlight.
-    expect(submittedChecked('first')).toBe(true);
-    expect(submittedChoiceIsGreen('first')).toBe(true);
-    expect(submittedChoiceIsRed('first')).toBe(false);
+    // A correct option the learner selected is confirmed correct and must not
+    // also carry the "selected wrong" classification.
+    expect(submittedChecked('first')).toBe(true)
+    expect(submittedChoiceIsCorrect('first')).toBe(true)
+    expect(submittedChoiceIsIncorrect('first')).toBe(false)
 
-    expect(submittedChecked('alpha')).toBe(true);
-    expect(submittedChoiceIsGreen('alpha')).toBe(true);
-    expect(submittedChoiceIsRed('alpha')).toBe(false);
-  });
+    expect(submittedChecked('alpha')).toBe(true)
+    expect(submittedChoiceIsCorrect('alpha')).toBe(true)
+    expect(submittedChoiceIsIncorrect('alpha')).toBe(false)
+  })
 
-  it('highlights a selected wrong single-choice option red', () => {
+  it('classifies a selected wrong single-choice option as incorrect', () => {
     act(() =>
       root.render(
         <QuestionnaireView
           node={questionnaireNode}
           answers={{ [singleChoiceQuestion.id]: 'second' }}
           submitted
-        />,
-      ),
-    );
+        />
+      )
+    )
 
-    expect(submittedChoiceIsGreen('first')).toBe(true);
-    expect(submittedChoiceIsRed('second')).toBe(true);
-    expect(submittedChecked('second')).toBe(true);
-  });
+    expect(submittedChoiceIsCorrect('first')).toBe(true)
+    expect(submittedChoiceIsIncorrect('second')).toBe(true)
+    expect(submittedChecked('second')).toBe(true)
+  })
 
-  it('highlights selected wrong multiple-choice options red', () => {
+  it('classifies selected wrong multiple-choice options as incorrect', () => {
     act(() =>
       root.render(
         <QuestionnaireView
           node={questionnaireNode}
           answers={{ [multipleChoiceQuestion.id]: ['beta'] }}
           submitted
-        />,
-      ),
-    );
+        />
+      )
+    )
 
-    expect(submittedChoiceIsGreen('alpha')).toBe(true);
-    expect(submittedChoiceIsRed('beta')).toBe(true);
-    expect(submittedChecked('beta')).toBe(true);
-  });
+    expect(submittedChoiceIsCorrect('alpha')).toBe(true)
+    expect(submittedChoiceIsIncorrect('beta')).toBe(true)
+    expect(submittedChecked('beta')).toBe(true)
+  })
 
   it('leaves unselected wrong options neutral', () => {
     act(() =>
@@ -534,19 +534,17 @@ describe('QuestionnaireView persistence', () => {
           node={questionnaireNode}
           answers={{
             [singleChoiceQuestion.id]: 'first',
-            [multipleChoiceQuestion.id]: ['alpha'],
+            [multipleChoiceQuestion.id]: ['alpha']
           }}
           submitted
-        />,
-      ),
-    );
+        />
+      )
+    )
 
-    // The wrong options were not selected, so they carry no result highlight.
-    expect(submittedChoiceIsGreen('second')).toBe(false);
-    expect(submittedChoiceIsRed('second')).toBe(false);
-    expect(submittedChoiceIsGreen('beta')).toBe(false);
-    expect(submittedChoiceIsRed('beta')).toBe(false);
-    expect(submittedChecked('second')).toBe(false);
-    expect(submittedChecked('beta')).toBe(false);
-  });
-});
+    // The wrong options were not selected, so they are classified neutral.
+    expect(submittedChoiceResult('second')).toBe('neutral')
+    expect(submittedChoiceResult('beta')).toBe('neutral')
+    expect(submittedChecked('second')).toBe(false)
+    expect(submittedChecked('beta')).toBe(false)
+  })
+})

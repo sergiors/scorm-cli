@@ -1,12 +1,12 @@
-import { StrictMode } from 'react';
-import { createRoot } from 'react-dom/client';
-import contentPackage from 'virtual:package-data';
-import { PackageApp } from './App';
-import { DevPreviewOverlay } from './components/DevPreviewOverlay';
-import { ScormDevToolsToolbar } from './components/ScormDevToolsToolbar';
-import './styles.css';
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import contentPackage from 'virtual:package-data'
+import { PackageApp } from './App'
+import { DevPreviewOverlay } from './components/DevPreviewOverlay'
+import { ScormDevToolsToolbar } from './components/ScormDevToolsToolbar'
+import './styles.css'
 
-const container = document.getElementById('root');
+const container = document.getElementById('root')
 
 if (container) {
   createRoot(container).render(
@@ -14,8 +14,8 @@ if (container) {
       <PackageApp contentPackage={contentPackage} />
       <DevInspector />
       <DevPreview />
-    </StrictMode>,
-  );
+    </StrictMode>
+  )
 }
 
 /**
@@ -31,9 +31,9 @@ if (container) {
  */
 function DevInspector() {
   if (!import.meta.hot) {
-    return null;
+    return null
   }
-  return <ScormDevToolsToolbar />;
+  return <ScormDevToolsToolbar />
 }
 
 /**
@@ -44,7 +44,7 @@ function DevInspector() {
  */
 function DevPreview() {
   if (!import.meta.hot) {
-    return null;
+    return null
   }
-  return <DevPreviewOverlay />;
+  return <DevPreviewOverlay />
 }

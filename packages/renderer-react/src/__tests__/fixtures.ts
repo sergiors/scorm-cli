@@ -6,8 +6,8 @@ import type {
   PageNode,
   QuestionnaireNode,
   QuestionNode,
-  ScrollNode,
-} from '@scorm-cli/core';
+  ScrollNode
+} from '@scorm-cli/core'
 
 /** A single-choice question as authored inside a questionnaire. */
 export const singleChoiceQuestion: QuestionNode = {
@@ -17,22 +17,22 @@ export const singleChoiceQuestion: QuestionNode = {
   prompt: [
     {
       type: 'paragraph',
-      children: [{ type: 'text', value: 'Which option is correct?' }],
-    },
+      children: [{ type: 'text', value: 'Which option is correct?' }]
+    }
   ],
   options: [
     {
       value: 'first',
       correct: true,
-      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Option A' }] }],
+      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Option A' }] }]
     },
     {
       value: 'second',
       correct: false,
-      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Option B' }] }],
-    },
-  ],
-};
+      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Option B' }] }]
+    }
+  ]
+}
 
 /** A multiple-choice question, so grouping exercises both input types. */
 export const multipleChoiceQuestion: QuestionNode = {
@@ -42,22 +42,22 @@ export const multipleChoiceQuestion: QuestionNode = {
   prompt: [
     {
       type: 'paragraph',
-      children: [{ type: 'text', value: 'Which options apply?' }],
-    },
+      children: [{ type: 'text', value: 'Which options apply?' }]
+    }
   ],
   options: [
     {
       value: 'alpha',
       correct: true,
-      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Alpha' }] }],
+      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Alpha' }] }]
     },
     {
       value: 'beta',
       correct: false,
-      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Beta' }] }],
-    },
-  ],
-};
+      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Beta' }] }]
+    }
+  ]
+}
 
 /**
  * A grouped questionnaire (single- then multiple-choice) with rich prompts and
@@ -66,8 +66,8 @@ export const multipleChoiceQuestion: QuestionNode = {
 export const questionnaireNode: QuestionnaireNode = {
   type: 'questionnaire',
   id: 'questionnaire:intro.mdx:1:1',
-  questions: [singleChoiceQuestion, multipleChoiceQuestion],
-};
+  questions: [singleChoiceQuestion, multipleChoiceQuestion]
+}
 
 /**
  * Rich content exercising every supported block and inline variant. Shared by
@@ -78,7 +78,7 @@ export const richContent: ContentNode[] = [
   {
     type: 'heading',
     depth: 2,
-    children: [{ type: 'text', value: 'Welcome' }],
+    children: [{ type: 'text', value: 'Welcome' }]
   },
   {
     type: 'paragraph',
@@ -93,16 +93,16 @@ export const richContent: ContentNode[] = [
       {
         type: 'link',
         href: 'https://example.com/docs',
-        children: [{ type: 'text', value: 'link' }],
+        children: [{ type: 'text', value: 'link' }]
       },
       { type: 'break' },
       {
         type: 'image',
         src: './assets/inline.svg',
-        alt: 'Inline icon',
+        alt: 'Inline icon'
       },
-      { type: 'text', value: 'after the image.' },
-    ],
+      { type: 'text', value: 'after the image.' }
+    ]
   },
   {
     type: 'list',
@@ -112,15 +112,15 @@ export const richContent: ContentNode[] = [
         children: [
           {
             type: 'paragraph',
-            children: [{ type: 'text', value: 'First point' }],
-          },
-        ],
+            children: [{ type: 'text', value: 'First point' }]
+          }
+        ]
       },
       {
         children: [
           {
             type: 'paragraph',
-            children: [{ type: 'text', value: 'Second point' }],
+            children: [{ type: 'text', value: 'Second point' }]
           },
           {
             type: 'list',
@@ -131,15 +131,15 @@ export const richContent: ContentNode[] = [
                 children: [
                   {
                     type: 'paragraph',
-                    children: [{ type: 'text', value: 'Nested step' }],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ],
+                    children: [{ type: 'text', value: 'Nested step' }]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
   },
   { type: 'code', value: 'const answer = 42;', language: 'ts' },
   {
@@ -150,29 +150,29 @@ export const richContent: ContentNode[] = [
         children: [
           { type: 'text', value: 'Simplicity is the soul of ' },
           { type: 'strong', children: [{ type: 'text', value: 'efficiency' }] },
-          { type: 'text', value: '.' },
-        ],
-      },
-    ],
+          { type: 'text', value: '.' }
+        ]
+      }
+    ]
   },
   {
     type: 'image',
     src: './assets/thumb.svg',
     alt: 'Package thumbnail',
-    caption: 'The package thumbnail',
+    caption: 'The package thumbnail'
   },
   {
     type: 'video',
     src: './assets/lesson.mp4',
     title: 'Lesson video',
     poster: './assets/poster.png',
-    captions: './assets/lesson.vtt',
+    captions: './assets/lesson.vtt'
   },
-  questionnaireNode,
-];
+  questionnaireNode
+]
 
 function paragraph(value: string): ContentNode {
-  return { type: 'paragraph', children: [{ type: 'text', value }] };
+  return { type: 'paragraph', children: [{ type: 'text', value }] }
 }
 
 /**
@@ -183,79 +183,79 @@ function paragraph(value: string): ContentNode {
 export const headingDepths: ContentNode[] = Array.from({ length: 6 }, (_, index) => ({
   type: 'heading',
   depth: index + 1,
-  children: [{ type: 'text', value: `Level ${index + 1}` }],
-}));
+  children: [{ type: 'text', value: `Level ${index + 1}` }]
+}))
 
 export const introPage: PageNode = {
   type: 'page',
   id: 'page:intro.mdx',
   source: 'intro.mdx',
   metadata: { title: 'Introduction' },
-  content: richContent,
-};
+  content: richContent
+}
 
 export const setupPage: PageNode = {
   type: 'page',
   id: 'page:setup.mdx',
   source: 'setup.mdx',
   metadata: { title: 'Setting things up' },
-  content: [paragraph('Setup instructions.')],
-};
+  content: [paragraph('Setup instructions.')]
+}
 
 export const scrollPackage: ContentPackage = {
   metadata: { title: 'Rendering Fundamentals' },
   presentation: {
     type: 'scroll',
-    pages: [introPage, setupPage],
-  } satisfies ScrollNode,
-};
+    pages: [introPage, setupPage]
+  } satisfies ScrollNode
+}
 
 /** Alias kept for the build/dev suites that only need representative content. */
-export const samplePackage: ContentPackage = scrollPackage;
+export const samplePackage: ContentPackage = scrollPackage
 
 export const functionsItem: ItemNode = {
   type: 'item',
   id: 'item:functions.mdx',
   source: 'functions.mdx',
   metadata: { title: 'Functions' },
-  content: [paragraph('Function body.')],
-};
+  content: [paragraph('Function body.')]
+}
 
 export const typesItem: ItemNode = {
   type: 'item',
   id: 'item:types.mdx',
   source: 'types.mdx',
   metadata: { title: 'Types' },
-  content: [paragraph('Type body.')],
-};
+  content: [paragraph('Type body.')]
+}
 
 export const detailsItem: ItemNode = {
   type: 'item',
   id: 'item:details.mdx',
   source: 'details.mdx',
   metadata: { title: 'Extra details' },
-  content: [paragraph('Modal body content.')],
-};
+  content: [paragraph('Modal body content.')]
+}
 
 export const gridPackage: ContentPackage = {
   metadata: { title: 'Grid package' },
   presentation: {
     type: 'grid',
     columns: 2,
-    items: [functionsItem, typesItem, detailsItem],
-  } satisfies GridNode,
-};
+    items: [functionsItem, typesItem, detailsItem]
+  } satisfies GridNode
+}
 
 export function makeEmptyPackage(): ContentPackage {
   return {
     metadata: { title: 'Empty package' },
-    presentation: { type: 'scroll', pages: [] } satisfies ScrollNode,
-  };
+    presentation: { type: 'scroll', pages: [] } satisfies ScrollNode
+  }
 }
 
 export function makeEmptyGridPackage(): ContentPackage {
   return {
     metadata: { title: 'Empty grid package' },
-    presentation: { type: 'grid', items: [] } satisfies GridNode,
-  };
+    presentation: { type: 'grid', items: [] } satisfies GridNode
+  }
 }

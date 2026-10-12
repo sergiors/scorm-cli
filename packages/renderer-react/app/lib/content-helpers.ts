@@ -30,6 +30,11 @@ export function getPresentationNodes(contentPackage: ContentPackage): Array<Page
  * order. Block nesting (lists, quotes, and a question's own prompt or option
  * content) is traversed the same way {@link ContentRenderer} renders it, so
  * callers can reason about exactly the questionnaires the learner can reach.
+ *
+ * The switch below names every block discriminant explicitly and ends in
+ * {@link assertNever}, so adding a new nested block container to `ContentNode`
+ * is a compile-time error here: a new container can never silently omit its
+ * questionnaires from completion or resume traversal.
  */
 export function collectQuestionnaires(nodes: ContentNode[]): QuestionnaireNode[] {
   const found: QuestionnaireNode[] = []
@@ -49,17 +54,34 @@ export function collectQuestionnaires(nodes: ContentNode[]): QuestionnaireNode[]
             for (const option of question.options) visit(option.content)
           }
           break
+        // Leaf blocks hold no nested block content, and an `inlineContent` run
+        // holds inline nodes only, so neither can contain a questionnaire.
+        case 'heading':
+        case 'paragraph':
+        case 'thematicBreak':
+        case 'code':
+        case 'image':
+        case 'video':
+        case 'path':
         case 'inlineContent':
-          // Inline runs cannot hold a questionnaire block; skip them without
-          // dropping the surrounding block traversal.
           break
         default:
-          break
+          assertNever(node)
       }
     }
   }
   visit(nodes)
   return found
+}
+
+/**
+ * Exhaustiveness guard for {@link collectQuestionnaires}. It is unreachable for
+ * well-typed content, so the throw only fires for malformed runtime input that
+ * carries an unknown discriminant — a loud failure instead of a silently
+ * dropped subtree.
+ */
+function assertNever(node: never): never {
+  throw new Error(`Unhandled content node: ${JSON.stringify(node)}`)
 }
 
 /**

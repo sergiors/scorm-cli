@@ -1,9 +1,9 @@
-import type { ContentPackage } from './types';
-import { PackageView } from './components/PackageView';
-import { PlayerI18nProvider } from './lib/player-i18n';
+import type { ContentPackage } from './types'
+import { PackageView } from './components/PackageView'
+import { PlayerI18nProvider } from './lib/player-i18n'
 
 export interface PackageAppProps {
-  contentPackage: ContentPackage;
+  contentPackage: ContentPackage
 }
 
 /**
@@ -20,5 +20,5 @@ export function PackageApp({ contentPackage }: PackageAppProps) {
     <PlayerI18nProvider lang={contentPackage.metadata.lang}>
       <PackageView contentPackage={contentPackage} />
     </PlayerI18nProvider>
-  );
+  )
 }

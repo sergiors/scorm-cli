@@ -1,23 +1,23 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import JSZip from 'jszip';
-import { create } from 'xmlbuilder2';
-import { afterEach, describe, expect, it } from 'vitest';
-import type { ContentPackage } from '@scorm-cli/core';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import JSZip from 'jszip'
+import { create } from 'xmlbuilder2'
+import { afterEach, describe, expect, it } from 'vitest'
+import type { ContentPackage } from '@scorm-cli/core'
 import {
   createContentManifest,
   createManifest,
   decodeSuspendData,
   encodeSuspendData,
   packageScorm,
-  scormDevMock,
-} from '../index';
+  scormDevMock
+} from '../index'
 
-let temp: string;
+let temp: string
 afterEach(async () => {
-  if (temp) await rm(temp, { recursive: true, force: true });
-});
+  if (temp) await rm(temp, { recursive: true, force: true })
+})
 
 const content: ContentPackage = {
   metadata: { title: 'Package title' },
@@ -41,8 +41,8 @@ const content: ContentPackage = {
                 prompt: [
                   {
                     type: 'paragraph',
-                    children: [{ type: 'text', value: 'Do not persist prompt' }],
-                  },
+                    children: [{ type: 'text', value: 'Do not persist prompt' }]
+                  }
                 ],
                 options: [
                   {
@@ -51,9 +51,9 @@ const content: ContentPackage = {
                     content: [
                       {
                         type: 'paragraph',
-                        children: [{ type: 'text', value: 'Known' }],
-                      },
-                    ],
+                        children: [{ type: 'text', value: 'Known' }]
+                      }
+                    ]
                   },
                   {
                     value: 'other-answer',
@@ -61,98 +61,98 @@ const content: ContentPackage = {
                     content: [
                       {
                         type: 'paragraph',
-                        children: [{ type: 'text', value: 'Other' }],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-};
+                        children: [{ type: 'text', value: 'Other' }]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
 
 describe('SCORM 1.2 package', () => {
   it('creates a manifest with metadata and a single SCO resource', () => {
-    const xml = createManifest({ title: 'A <Course>' }, ['index.html', 'index.html']);
-    const root = create(xml).root().node as any;
-    const namespace = 'http://www.imsproject.org/xsd/imscp_rootv1p1p2';
-    const resources = root.getElementsByTagNameNS(namespace, 'resource');
-    expect(resources).toHaveLength(1);
-    expect(resources[0].getAttribute('href')).toBe('index.html');
-    expect(root.getElementsByTagNameNS(namespace, 'title')[0].textContent).toBe('A <Course>');
-  });
+    const xml = createManifest({ title: 'A <Course>' }, ['index.html', 'index.html'])
+    const root = create(xml).root().node as any
+    const namespace = 'http://www.imsproject.org/xsd/imscp_rootv1p1p2'
+    const resources = root.getElementsByTagNameNS(namespace, 'resource')
+    expect(resources).toHaveLength(1)
+    expect(resources[0].getAttribute('href')).toBe('index.html')
+    expect(root.getElementsByTagNameNS(namespace, 'title')[0].textContent).toBe('A <Course>')
+  })
 
   it('writes package language in IEEE LOM metadata, defaulting to English', () => {
-    const namespace = 'http://ltsc.ieee.org/xsd/LOM';
+    const namespace = 'http://ltsc.ieee.org/xsd/LOM'
     for (const [metadata, expected] of [
       [{ title: 'Portuguese package', lang: 'pt-BR' }, 'pt-BR'],
-      [{ title: 'English package' }, 'en'],
+      [{ title: 'English package' }, 'en']
     ] as const) {
-      const root = create(createManifest(metadata, [])).root().node as any;
-      const languages = root.getElementsByTagNameNS(namespace, 'language');
-      expect(languages).toHaveLength(1);
-      expect(languages[0].textContent).toBe(expected);
+      const root = create(createManifest(metadata, [])).root().node as any
+      const languages = root.getElementsByTagNameNS(namespace, 'language')
+      expect(languages).toHaveLength(1)
+      expect(languages[0].textContent).toBe(expected)
     }
-  });
+  })
 
   it('writes the exact content dictionary to the ZIP and references it in imsmanifest', async () => {
-    temp = await mkdtemp(path.join(os.tmpdir(), 'scorm-test-'));
-    const renderDir = path.join(temp, 'render');
-    await mkdir(renderDir);
+    temp = await mkdtemp(path.join(os.tmpdir(), 'scorm-test-'))
+    const renderDir = path.join(temp, 'render')
+    await mkdir(renderDir)
     await writeFile(
       path.join(renderDir, 'index.html'),
-      '<!doctype html><html><head></head><body></body></html>',
-    );
-    await writeFile(path.join(renderDir, 'app.js'), 'window.booted = true;');
-    const contentManifest = createContentManifest(content);
+      '<!doctype html><html><head></head><body></body></html>'
+    )
+    await writeFile(path.join(renderDir, 'app.js'), 'window.booted = true;')
+    const contentManifest = createContentManifest(content)
     const output = await packageScorm({
       metadata: content.metadata,
       contentManifest,
       renderResult: { directory: renderDir, entrypoint: 'index.html' },
-      outputPath: path.join(temp, 'content-package.zip'),
-    });
-    const zip = await JSZip.loadAsync(await readFile(output));
-    expect(Object.keys(zip.files)).toContain('content-manifest.json');
-    expect(Object.keys(zip.files)).toContain('scorm-runtime.js');
-    expect(Object.keys(zip.files)).not.toContain('scorm-dev-mock.js');
+      outputPath: path.join(temp, 'content-package.zip')
+    })
+    const zip = await JSZip.loadAsync(await readFile(output))
+    expect(Object.keys(zip.files)).toContain('content-manifest.json')
+    expect(Object.keys(zip.files)).toContain('scorm-runtime.js')
+    expect(Object.keys(zip.files)).not.toContain('scorm-dev-mock.js')
 
-    const manifestContents = await zip.file('content-manifest.json')!.async('string');
-    expect(JSON.parse(manifestContents)).toEqual(contentManifest);
-    const xml = create(await zip.file('imsmanifest.xml')!.async('string')).root().node as any;
-    const namespace = 'http://www.imsproject.org/xsd/imscp_rootv1p1p2';
-    const files = xml.getElementsByTagNameNS(namespace, 'file');
+    const manifestContents = await zip.file('content-manifest.json')!.async('string')
+    expect(JSON.parse(manifestContents)).toEqual(contentManifest)
+    const xml = create(await zip.file('imsmanifest.xml')!.async('string')).root().node as any
+    const namespace = 'http://www.imsproject.org/xsd/imscp_rootv1p1p2'
+    const files = xml.getElementsByTagNameNS(namespace, 'file')
     expect([...files].map((file: any) => file.getAttribute('href'))).toContain(
-      'content-manifest.json',
-    );
-    const runtime = await zip.file('scorm-runtime.js')!.async('string');
-    expect(runtime).toContain(JSON.stringify(contentManifest));
-    expect(await zip.file('index.html')!.async('string')).toContain('scorm-runtime.js');
+      'content-manifest.json'
+    )
+    const runtime = await zip.file('scorm-runtime.js')!.async('string')
+    expect(runtime).toContain(JSON.stringify(contentManifest))
+    expect(await zip.file('index.html')!.async('string')).toContain('scorm-runtime.js')
 
     // The serialized selection can be restored with precisely the shipped dictionary.
     const state = {
       pages: {
         'item-one': {
           visited: true,
-          answers: { 'question-id': 'known-answer' },
-        },
-      },
-    };
-    const saved = encodeSuspendData(contentManifest, state, 100);
+          answers: { 'question-id': 'known-answer' }
+        }
+      }
+    }
+    const saved = encodeSuspendData(contentManifest, state, 100)
     expect(decodeSuspendData(contentManifest, JSON.stringify(saved))).toEqual({
       pages: {
         'item-one': {
           visited: true,
-          answers: { 'question-id': 'known-answer' },
-        },
-      },
-    });
-  });
+          answers: { 'question-id': 'known-answer' }
+        }
+      }
+    })
+  })
 
   it('keeps the dev mock isolated from production packaging', () => {
-    expect(scormDevMock).toContain('scorm-cli:dev:');
-  });
-});
+    expect(scormDevMock).toContain('scorm-cli:dev:')
+  })
+})

@@ -32,12 +32,12 @@ The root requires `title` frontmatter and exactly one presentation: a `<Scroll>`
 title: My Scroll Package
 ---
 
-import { Scroll, Page } from 'scorm-cli/authoring';
+import { Scroll, Page } from 'scorm-cli/authoring'
 
 <Scroll>
-  <Page src='lessons/intro.mdx' />
-  <Page src='lessons/one.mdx' />
-  <Page src='lessons/two.mdx' />
+  <Page src="lessons/intro.mdx" />
+  <Page src="lessons/one.mdx" />
+  <Page src="lessons/two.mdx" />
 </Scroll>
 ```
 
@@ -48,26 +48,26 @@ Grid packages use the same exact-one-root rule and reference item documents:
 title: Practice Package
 ---
 
-import { Grid, Item } from 'scorm-cli/authoring';
+import { Grid, Item } from 'scorm-cli/authoring'
 
 <Grid columns={2}>
-  <Item src='practice/check.mdx' />
-  <Item src='practice/recall.mdx' />
+  <Item src="practice/check.mdx" />
+  <Item src="practice/recall.mdx" />
 </Grid>
 ```
 
 Every referenced Page or Item document requires title-only frontmatter and can contain Markdown plus supported static components such as `<Image>`, `<Video>`, and `<Questionnaire>`. A Page can also include a `<Path>` whose `<Page ref='...' />` children point at pages already declared in the root `<Scroll>`. MDX JavaScript is not supported.
 
 ```mdx
-import { Questionnaire, Question, Prompt, Option } from 'scorm-cli/authoring';
+import { Questionnaire, Question, Prompt, Option } from 'scorm-cli/authoring'
 
 <Questionnaire>
-  <Question type='single-choice'>
+  <Question type="single-choice">
     <Prompt>What does TypeScript add to JavaScript?</Prompt>
-    <Option value='runtime' correct={false}>
+    <Option value="runtime" correct={false}>
       A separate runtime
     </Option>
-    <Option value='types' correct={true}>
+    <Option value="types" correct={true}>
       Static types and tooling
     </Option>
   </Question>
@@ -77,11 +77,11 @@ import { Questionnaire, Question, Prompt, Option } from 'scorm-cli/authoring';
 Paths reference pages that the root `<Scroll>` already declares:
 
 ```mdx
-import { Path, Page } from 'scorm-cli/authoring';
+import { Path, Page } from 'scorm-cli/authoring'
 
 <Path>
-  <Page ref='lessons/one.mdx' />
-  <Page ref='lessons/two.mdx' />
+  <Page ref="lessons/one.mdx" />
+  <Page ref="lessons/two.mdx" />
 </Path>
 ```
 
@@ -93,6 +93,10 @@ never depends on a workspace package. The private packages are declared as the C
 `devDependencies`, so `pnpm build` (a pnpm recursive, filtered dependency-graph build) builds them
 before the CLI. Authoring markers are exposed publicly only through the `scorm-cli/authoring`
 subpath.
+
+From the workspace root, `pnpm dev <content>` builds the private workspace dependencies before
+starting the preview. For example, `pnpm dev examples/typescript-content --port 0` starts the
+TypeScript course preview on an available port. Content paths are relative to the workspace root.
 
 | Workspace package            | Role                                                               |
 | ---------------------------- | ------------------------------------------------------------------ |
@@ -122,30 +126,13 @@ pnpm build
 
 The examples demonstrate the supported package presentations and content components:
 
-| Package                             | What it demonstrates                                                                                | Build                                                | Preview                                            |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------- |
-| `examples/typescript-content`       | A Scroll course with Markdown, a local image, a video reference, code samples, and questionnaires.  | `pnpm scorm build examples/typescript-content`       | `pnpm scorm dev examples/typescript-content`       |
-| `examples/typescript-grid`          | A two-column Grid of short practice items using Markdown.                                           | `pnpm scorm build examples/typescript-grid`          | `pnpm scorm dev examples/typescript-grid`          |
-| `examples/accessibility-basics`     | A Scroll course with practical accessibility guidance and a knowledge-check questionnaire.          | `pnpm scorm build examples/accessibility-basics`     | `pnpm scorm dev examples/accessibility-basics`     |
-| `examples/nr-01-disposicoes-gerais` | A short Scroll pocket guide to NR-01 with practical risk-prevention guidance and a knowledge check. | `pnpm scorm build examples/nr-01-disposicoes-gerais` | `pnpm scorm dev examples/nr-01-disposicoes-gerais` |
+| Package                         | What it demonstrates                                                                               | Build                                            | Preview                                        |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------- |
+| `examples/typescript-content`   | A Scroll course with Markdown, a local image, a video reference, code samples, and questionnaires. | `pnpm scorm build examples/typescript-content`   | `pnpm scorm dev examples/typescript-content`   |
+| `examples/typescript-grid`      | A two-column Grid of short practice items using Markdown.                                          | `pnpm scorm build examples/typescript-grid`      | `pnpm scorm dev examples/typescript-grid`      |
+| `examples/accessibility-basics` | A Scroll course with practical accessibility guidance and a knowledge-check questionnaire.         | `pnpm scorm build examples/accessibility-basics` | `pnpm scorm dev examples/accessibility-basics` |
 
 Builds write `dist/<content-name>.zip` by default (for example, `dist/accessibility-basics.zip`). Pass `--output <path>` to choose a different ZIP path. `pnpm scorm dev <content>` starts a local preview, watches the content directory, and reports validation errors without stopping the preview. Pass `--port <port>` to choose the preview port.
-
-### Publishing
-
-`packages/cli` is the published package: `pnpm build` runs the CLI's dependency graph (the private
-workspace packages are declared as the CLI's devDependencies, so `pnpm --filter scorm-cli... build`
-builds them first) and writes the bundled CLI, the player app, and the authoring declarations in
-place. `npm publish` then runs directly in that directory — there is no separate staging or manifest
-assembly step. The `version` in `packages/cli/package.json` is the only source of the published
-version; it is never bumped automatically.
-
-Publishing runs in the `Publish` workflow (`.github/workflows/publish.yml`) on every push to `main`.
-It installs, tests, and builds the package, then skips successfully when `scorm-cli@<version>`
-already exists on npm and otherwise publishes through
-[npm trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) — no token is stored in
-the repository. Configure the trusted publisher in the npm UI for package `scorm-cli`, GitHub
-repository `sergiors/scorm-cli`, and workflow file `publish.yml`.
 
 ## License
 

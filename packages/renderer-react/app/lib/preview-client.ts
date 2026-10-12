@@ -1,4 +1,4 @@
-import { PREVIEW_CLEAR_EVENT, PREVIEW_ERROR_EVENT } from '../shared/preview-events';
+import { PREVIEW_CLEAR_EVENT, PREVIEW_ERROR_EVENT } from '../shared/preview-events'
 
 /**
  * The subset of Vite's HMR context the preview client relies on. Declared
@@ -7,26 +7,26 @@ import { PREVIEW_CLEAR_EVENT, PREVIEW_ERROR_EVENT } from '../shared/preview-even
  * tests).
  */
 export interface PreviewHotContext {
-  on(event: string, listener: (data: unknown) => void): void;
-  off(event: string, listener: (data: unknown) => void): void;
+  on(event: string, listener: (data: unknown) => void): void
+  off(event: string, listener: (data: unknown) => void): void
 }
 
 export interface PreviewEventHandlers {
-  onError(message: string): void;
-  onClear(): void;
+  onError(message: string): void
+  onClear(): void
 }
 
-const FALLBACK_MESSAGE = 'The content could not be rendered.';
+const FALLBACK_MESSAGE = 'The content could not be rendered.'
 
 /** Extracts an author-friendly message from a preview-error payload. */
 export function parsePreviewErrorMessage(data: unknown): string {
   if (data && typeof data === 'object' && 'message' in data) {
-    const message = (data as { message?: unknown }).message;
+    const message = (data as { message?: unknown }).message
     if (typeof message === 'string' && message.trim().length > 0) {
-      return message;
+      return message
     }
   }
-  return FALLBACK_MESSAGE;
+  return FALLBACK_MESSAGE
 }
 
 /**
@@ -35,20 +35,20 @@ export function parsePreviewErrorMessage(data: unknown): string {
  */
 export function subscribeToPreviewEvents(
   hot: PreviewHotContext,
-  handlers: PreviewEventHandlers,
+  handlers: PreviewEventHandlers
 ): () => void {
   const onError = (data: unknown) => {
-    handlers.onError(parsePreviewErrorMessage(data));
-  };
+    handlers.onError(parsePreviewErrorMessage(data))
+  }
   const onClear = () => {
-    handlers.onClear();
-  };
+    handlers.onClear()
+  }
 
-  hot.on(PREVIEW_ERROR_EVENT, onError);
-  hot.on(PREVIEW_CLEAR_EVENT, onClear);
+  hot.on(PREVIEW_ERROR_EVENT, onError)
+  hot.on(PREVIEW_CLEAR_EVENT, onClear)
 
   return () => {
-    hot.off(PREVIEW_ERROR_EVENT, onError);
-    hot.off(PREVIEW_CLEAR_EVENT, onClear);
-  };
+    hot.off(PREVIEW_ERROR_EVENT, onError)
+    hot.off(PREVIEW_CLEAR_EVENT, onClear)
+  }
 }

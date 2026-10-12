@@ -1,4 +1,4 @@
-import type { ContentNode, InlineContentNode, InlineNode, ListItemNode } from '@scorm-cli/core';
+import type { ContentNode, InlineContentNode, InlineNode, ListItemNode } from '@scorm-cli/core'
 import type {
   AstNode,
   BlockquoteAstNode,
@@ -11,10 +11,10 @@ import type {
   ListAstNode,
   ParagraphAstNode,
   StrongAstNode,
-  TextAstNode,
-} from './ast';
-import { assetReference } from './io';
-import { sourceLocation } from './shared';
+  TextAstNode
+} from './ast'
+import { assetReference } from './io'
+import { sourceLocation } from './shared'
 
 /**
  * Standard Markdown node dispatch.
@@ -37,36 +37,42 @@ import { sourceLocation } from './shared';
  * hoisted block components).
  */
 export interface MarkdownConversion {
-  sourceFile: string;
-  root: string;
-  convertInline(nodes: AstNode[]): Promise<InlineNode[]>;
-  convertChildren(nodes: AstNode[]): Promise<ContentNode[]>;
-  convertParagraph(nodes: AstNode[]): Promise<ContentNode[]>;
+  sourceFile: string
+  root: string
+  convertInline(nodes: AstNode[]): Promise<InlineNode[]>
+  convertChildren(nodes: AstNode[]): Promise<ContentNode[]>
+  convertParagraph(nodes: AstNode[]): Promise<ContentNode[]>
 }
 
 type MarkdownInlineHandler = (
   node: AstNode,
-  conversion: MarkdownConversion,
-) => Promise<InlineNode> | InlineNode;
+  conversion: MarkdownConversion
+) => Promise<InlineNode> | InlineNode
 
 const markdownInlineHandlers = {
   text: (node: TextAstNode) => ({ type: 'text', value: String(node.value ?? '') }),
   emphasis: async (node: EmphasisAstNode, conversion: MarkdownConversion) => ({
     type: 'emphasis',
-    children: await conversion.convertInline(node.children ?? []),
+    children: await conversion.convertInline(node.children ?? [])
   }),
   strong: async (node: StrongAstNode, conversion: MarkdownConversion) => ({
     type: 'strong',
-    children: await conversion.convertInline(node.children ?? []),
+    children: await conversion.convertInline(node.children ?? [])
   }),
   inlineCode: (node: InlineCodeAstNode) => ({
     type: 'inlineCode',
-    value: String(node.value ?? ''),
+    value: String(node.value ?? '')
   }),
   link: async (node: LinkAstNode, conversion: MarkdownConversion) => ({
     type: 'link',
-    href: node.url ?? '',
-    children: await conversion.convertInline(node.children ?? []),
+    href: await assetReference(
+      node.url ?? '',
+      conversion.sourceFile,
+      conversion.root,
+      conversion.sourceFile,
+      node
+    ),
+    children: await conversion.convertInline(node.children ?? [])
   }),
   image: async (node: ImageAstNode, conversion: MarkdownConversion) => ({
     type: 'image',
@@ -75,22 +81,22 @@ const markdownInlineHandlers = {
       conversion.sourceFile,
       conversion.root,
       conversion.sourceFile,
-      node,
+      node
     ),
-    alt: String(node.alt ?? ''),
+    alt: String(node.alt ?? '')
   }),
-  break: () => ({ type: 'break' }),
-};
+  break: () => ({ type: 'break' })
+}
 
 /** Standard Markdown inline node types, derived from the handler keys. */
-export type MarkdownInlineType = keyof typeof markdownInlineHandlers;
+export type MarkdownInlineType = keyof typeof markdownInlineHandlers
 
-export const markdownInlineTypes = Object.keys(markdownInlineHandlers) as MarkdownInlineType[];
+export const markdownInlineTypes = Object.keys(markdownInlineHandlers) as MarkdownInlineType[]
 
 type MarkdownBlockHandler = (
   node: AstNode,
-  conversion: MarkdownConversion,
-) => Promise<ContentNode | ContentNode[]> | ContentNode | ContentNode[];
+  conversion: MarkdownConversion
+) => Promise<ContentNode | ContentNode[]> | ContentNode | ContentNode[]
 
 /**
  * Normalizes the parsed children of a single list item. Tight list items
@@ -101,22 +107,22 @@ type MarkdownBlockHandler = (
  */
 function normalizeListItemChildren(
   children: ContentNode[],
-  tight: boolean,
+  tight: boolean
 ): Array<ContentNode | InlineContentNode> {
   if (!tight) {
-    return children;
+    return children
   }
 
   return children.map((child) =>
-    child.type === 'paragraph' ? { type: 'inlineContent', children: child.children } : child,
-  );
+    child.type === 'paragraph' ? { type: 'inlineContent', children: child.children } : child
+  )
 }
 
 const markdownBlockHandlers = {
   heading: async (node: HeadingAstNode, conversion: MarkdownConversion) => ({
     type: 'heading',
     depth: node.depth ?? 1,
-    children: await conversion.convertInline(node.children ?? []),
+    children: await conversion.convertInline(node.children ?? [])
   }),
   paragraph: (node: ParagraphAstNode, conversion: MarkdownConversion) =>
     conversion.convertParagraph(node.children ?? []),
@@ -124,7 +130,7 @@ const markdownBlockHandlers = {
   list: async (node: ListAstNode, conversion: MarkdownConversion) => {
     // A tight list's items render inline, so their paragraphs become
     // `inlineContent` runs in the AST; loose items keep their paragraphs.
-    const tight = node.spread === false;
+    const tight = node.spread === false
     return {
       type: 'list',
       ordered: Boolean(node.ordered),
@@ -136,22 +142,22 @@ const markdownBlockHandlers = {
         (node.children ?? []).map(async (item): Promise<ListItemNode> => ({
           children: normalizeListItemChildren(
             await conversion.convertChildren(item.children ?? []),
-            tight,
-          ),
-        })),
-      ),
-    };
+            tight
+          )
+        }))
+      )
+    }
   },
   code: (node: CodeAstNode) => ({
     type: 'code',
     value: String(node.value ?? ''),
-    ...(node.lang ? { language: node.lang } : {}),
+    ...(node.lang ? { language: node.lang } : {})
   }),
   blockquote: async (node: BlockquoteAstNode, conversion: MarkdownConversion) => ({
     type: 'quote',
-    children: await conversion.convertChildren(node.children ?? []),
-  }),
-};
+    children: await conversion.convertChildren(node.children ?? [])
+  })
+}
 
 /**
  * Standard Markdown block node types, derived from the handler keys. A paragraph
@@ -159,20 +165,20 @@ const markdownBlockHandlers = {
  * blocks, so its handler delegates back to the content dispatcher's paragraph
  * converter, preserving inline/block interleaving.
  */
-export type MarkdownBlockType = keyof typeof markdownBlockHandlers;
+export type MarkdownBlockType = keyof typeof markdownBlockHandlers
 
-export const markdownBlockTypes = Object.keys(markdownBlockHandlers) as MarkdownBlockType[];
+export const markdownBlockTypes = Object.keys(markdownBlockHandlers) as MarkdownBlockType[]
 
-export type MarkdownInlineNode = Extract<AstNode, { type: MarkdownInlineType }>;
+export type MarkdownInlineNode = Extract<AstNode, { type: MarkdownInlineType }>
 
-export type MarkdownBlockNode = Extract<AstNode, { type: MarkdownBlockType }>;
+export type MarkdownBlockNode = Extract<AstNode, { type: MarkdownBlockType }>
 
 export function isMarkdownInline(node: AstNode): node is MarkdownInlineNode {
-  return Object.hasOwn(markdownInlineHandlers, node.type);
+  return Object.hasOwn(markdownInlineHandlers, node.type)
 }
 
 export function isMarkdownBlock(node: AstNode): node is MarkdownBlockNode {
-  return Object.hasOwn(markdownBlockHandlers, node.type);
+  return Object.hasOwn(markdownBlockHandlers, node.type)
 }
 
 /**
@@ -183,15 +189,15 @@ export function isMarkdownBlock(node: AstNode): node is MarkdownBlockNode {
  */
 export async function parseMarkdownInline(
   node: AstNode,
-  conversion: MarkdownConversion,
+  conversion: MarkdownConversion
 ): Promise<InlineNode> {
   if (!isMarkdownInline(node)) {
     throw new Error(
-      `${sourceLocation(conversion.sourceFile, node)}: unsupported inline node "${node.type}"`,
-    );
+      `${sourceLocation(conversion.sourceFile, node)}: unsupported inline node "${node.type}"`
+    )
   }
-  const handler = markdownInlineHandlers[node.type] as MarkdownInlineHandler;
-  return handler(node, conversion);
+  const handler = markdownInlineHandlers[node.type] as MarkdownInlineHandler
+  return handler(node, conversion)
 }
 
 /**
@@ -201,14 +207,14 @@ export async function parseMarkdownInline(
  */
 export async function parseMarkdownBlock(
   node: AstNode,
-  conversion: MarkdownConversion,
+  conversion: MarkdownConversion
 ): Promise<ContentNode[]> {
   if (!isMarkdownBlock(node)) {
     throw new Error(
-      `${sourceLocation(conversion.sourceFile, node)}: unsupported content node "${node.type}"`,
-    );
+      `${sourceLocation(conversion.sourceFile, node)}: unsupported content node "${node.type}"`
+    )
   }
-  const handler = markdownBlockHandlers[node.type] as MarkdownBlockHandler;
-  const converted = await handler(node, conversion);
-  return Array.isArray(converted) ? converted : [converted];
+  const handler = markdownBlockHandlers[node.type] as MarkdownBlockHandler
+  const converted = await handler(node, conversion)
+  return Array.isArray(converted) ? converted : [converted]
 }

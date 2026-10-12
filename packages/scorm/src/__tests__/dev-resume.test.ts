@@ -1,23 +1,23 @@
-import vm from 'node:vm';
-import { describe, expect, it } from 'vitest';
-import type { ContentPackage } from '@scorm-cli/core';
-import { createContentManifest } from '../content-manifest';
-import { scormDevMock } from '../mock';
-import { createScormRuntime } from '../runtime';
+import vm from 'node:vm'
+import { describe, expect, it } from 'vitest'
+import type { ContentPackage } from '@scorm-cli/core'
+import { createContentManifest } from '../content-manifest'
+import { scormDevMock } from '../mock'
+import { createScormRuntime } from '../runtime'
 
 class MemoryStorage {
-  private values = new Map<string, string>();
+  private values = new Map<string, string>()
 
   getItem(key: string): string | null {
-    return this.values.get(key) ?? null;
+    return this.values.get(key) ?? null
   }
 
   setItem(key: string, value: string): void {
-    this.values.set(key, String(value));
+    this.values.set(key, String(value))
   }
 
   removeItem(key: string): void {
-    this.values.delete(key);
+    this.values.delete(key)
   }
 }
 
@@ -44,42 +44,42 @@ const content: ContentPackage = {
                 options: [
                   { value: 'string', correct: true, content: [] },
                   { value: 'array', correct: true, content: [] },
-                  { value: 'number', correct: false, content: [] },
-                ],
-              },
-            ],
-          },
-        ],
+                  { value: 'number', correct: false, content: [] }
+                ]
+              }
+            ]
+          }
+        ]
       },
       {
         type: 'item',
         id: 'functions',
         source: 'functions.mdx',
         metadata: { title: 'Functions' },
-        content: [],
-      },
-    ],
-  },
-};
+        content: []
+      }
+    ]
+  }
+}
 
 describe('SCORM dev reload resume', () => {
   it('restores the location and compact player state through the dev mock and generated runtime', () => {
-    const storage = new MemoryStorage();
-    const manifest = createContentManifest(content);
-    const runtime = createScormRuntime(manifest);
+    const storage = new MemoryStorage()
+    const manifest = createContentManifest(content)
+    const runtime = createScormRuntime(manifest)
     const createWindow = () => {
-      const window: Record<string, any> = { localStorage: storage };
-      window.parent = window;
+      const window: Record<string, any> = { localStorage: storage }
+      window.parent = window
 
       // Keep script order in sync with CLI dev: mock first, then manifest runtime.
-      vm.runInNewContext(scormDevMock, { window });
-      vm.runInNewContext(runtime, { window });
-      return window;
-    };
+      vm.runInNewContext(scormDevMock, { window })
+      vm.runInNewContext(runtime, { window })
+      return window
+    }
 
-    const firstWindow = createWindow();
-    expect(firstWindow.scormDevTools.getCmiPersistenceEnabled()).toBe(true);
-    expect(storage.getItem('scorm-cli:dev:persist-cmi')).toBe('true');
+    const firstWindow = createWindow()
+    expect(firstWindow.scormDevTools.getCmiPersistenceEnabled()).toBe(true)
+    expect(storage.getItem('scorm-cli:dev:persist-cmi')).toBe('true')
     expect(
       firstWindow.scormBridge.saveState(
         {
@@ -87,24 +87,24 @@ describe('SCORM dev reload resume', () => {
           pages: {
             types: {
               visited: true,
-              answers: { 'types-question': ['array', 'string'] },
-            },
-          },
+              answers: { 'types-question': ['array', 'string'] }
+            }
+          }
         },
-        50,
-      ),
-    ).toBe(true);
+        50
+      )
+    ).toBe(true)
 
-    const secondWindow = createWindow();
-    expect(secondWindow.scormDevTools.getCmiPersistenceEnabled()).toBe(true);
+    const secondWindow = createWindow()
+    expect(secondWindow.scormDevTools.getCmiPersistenceEnabled()).toBe(true)
     expect(secondWindow.scormBridge.restoreState()).toEqual({
       location: 'page:types',
       pages: {
         types: {
           visited: true,
-          answers: { 'types-question': ['string', 'array'] },
-        },
-      },
-    });
-  });
-});
+          answers: { 'types-question': ['string', 'array'] }
+        }
+      }
+    })
+  })
+})

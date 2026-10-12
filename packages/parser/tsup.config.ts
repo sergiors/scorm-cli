@@ -1,4 +1,4 @@
-import { defineConfig } from 'tsup';
+import { defineConfig } from 'tsup'
 
 export default defineConfig({
   entry: ['src/index.ts'],
@@ -6,10 +6,10 @@ export default defineConfig({
   clean: true,
   dts: {
     compilerOptions: {
-      ignoreDeprecations: '6.0',
-    },
+      ignoreDeprecations: '6.0'
+    }
   },
   splitting: false,
   outDir: 'dist',
-  shims: true,
-});
+  shims: true
+})

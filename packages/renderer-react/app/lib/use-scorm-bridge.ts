@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import type { PlayerState } from '@scorm-cli/core';
+import { useEffect, useRef } from 'react'
+import type { PlayerState } from '@scorm-cli/core'
 
 /**
  * Reads the persisted resume state through the optional bridge. Returns
@@ -9,12 +9,12 @@ import type { PlayerState } from '@scorm-cli/core';
  */
 export function restoreState(): PlayerState | undefined {
   if (typeof window === 'undefined') {
-    return undefined;
+    return undefined
   }
   try {
-    return window.scormBridge?.restoreState?.();
+    return window.scormBridge?.restoreState?.()
   } catch {
-    return undefined;
+    return undefined
   }
 }
 
@@ -27,51 +27,63 @@ export function restoreState(): PlayerState | undefined {
  */
 export function saveState(state: PlayerState, progress: number): boolean {
   if (typeof window === 'undefined') {
-    return false;
+    return false
   }
-  const save = window.scormBridge?.saveState;
+  const save = window.scormBridge?.saveState
   if (typeof save !== 'function') {
-    return false;
+    return false
   }
   try {
-    return save(state, progress) !== false;
+    return save(state, progress) !== false
   } catch {
-    return false;
+    return false
   }
 }
 
 /**
- * Wires the optional `window.scormBridge` completion contract:
- * - calls `markCompleted()` once, after the package is complete (every scroll
- *   page completed, or every grid item visited);
- * - calls `finish()` when the page is being unloaded.
+ * Wires the optional `window.scormBridge` completion contract. Every bridge
+ * method is best-effort so a missing or failing bridge can never break the
+ * player:
+ * - `markCompleted()` is attempted once when the package first becomes
+ *   complete. The attempt is recorded only after it succeeds, so a bridge that
+ *   throws is retried the next time the package becomes complete rather than
+ *   being treated as permanently reported.
+ * - `finish()` is fire-and-forget on every `pagehide`. A page can be unloaded,
+ *   restored from the back/forward cache and unloaded again, so `finish()` is
+ *   intentionally not once-only and the runtime owns making it idempotent.
  *
- * All calls are guarded so the static application keeps working with no bridge
- * present. SCORM API discovery is intentionally out of scope here; the LMS — or
- * the `scorm dev` mock — injects its own runtime script which installs the
- * bridge.
+ * Errors from either call are contained here. SCORM API discovery is
+ * intentionally out of scope; the LMS — or the `scorm dev` mock — injects its
+ * own runtime script which installs the bridge.
  */
 export function useScormBridge(complete: boolean): void {
-  const markedRef = useRef(false);
+  const markCompletedOnce = useRef(false)
 
   useEffect(() => {
-    if (!complete || markedRef.current) {
-      return;
+    if (!complete || markCompletedOnce.current || typeof window === 'undefined') {
+      return
     }
-    markedRef.current = true;
-    if (typeof window !== 'undefined') {
-      window.scormBridge?.markCompleted?.();
+    try {
+      window.scormBridge?.markCompleted?.()
+    } catch {
+      // Best-effort: leave the attempt pending so a later completion retries it.
+      return
     }
-  }, [complete]);
+    markCompletedOnce.current = true
+  }, [complete])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
-      return;
+      return
     }
     const finish = () => {
-      window.scormBridge?.finish?.();
-    };
-    window.addEventListener('pagehide', finish);
-    return () => window.removeEventListener('pagehide', finish);
-  }, []);
+      try {
+        window.scormBridge?.finish?.()
+      } catch {
+        // Best-effort: a throwing bridge must not escape the unload event.
+      }
+    }
+    window.addEventListener('pagehide', finish)
+    return () => window.removeEventListener('pagehide', finish)
+  }, [])
 }

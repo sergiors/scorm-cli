@@ -1,14 +1,14 @@
-import { describe, expect, it } from 'vitest';
-import type { ContentNode, ContentPackage, QuestionOption } from '@scorm-cli/core';
-import { createContentManifest } from '../content-manifest';
+import { describe, expect, it } from 'vitest'
+import type { ContentNode, ContentPackage, QuestionOption } from '@scorm-cli/core'
+import { createContentManifest } from '../content-manifest'
 
 const question = (id: string, prompt: ContentNode[], options: QuestionOption[] = []) => ({
   type: 'question' as const,
   id,
   questionType: 'single-choice' as const,
   prompt,
-  options,
-});
+  options
+})
 
 describe('content manifest', () => {
   it('deterministically indexes pages, nested questionnaires, questions, and authored options', () => {
@@ -25,7 +25,7 @@ describe('content manifest', () => {
             content: [
               {
                 type: 'paragraph',
-                children: [{ type: 'text', value: 'Before' }],
+                children: [{ type: 'text', value: 'Before' }]
               },
               {
                 type: 'quote',
@@ -49,10 +49,10 @@ describe('content manifest', () => {
                                       { type: 'text', value: 'Choose ' },
                                       {
                                         type: 'emphasis',
-                                        children: [{ type: 'text', value: 'one' }],
-                                      },
-                                    ],
-                                  },
+                                        children: [{ type: 'text', value: 'one' }]
+                                      }
+                                    ]
+                                  }
                                 ],
                                 [
                                   {
@@ -61,9 +61,9 @@ describe('content manifest', () => {
                                     content: [
                                       {
                                         type: 'paragraph',
-                                        children: [{ type: 'text', value: 'Alpha' }],
-                                      },
-                                    ],
+                                        children: [{ type: 'text', value: 'Alpha' }]
+                                      }
+                                    ]
                                   },
                                   {
                                     value: 'b',
@@ -74,22 +74,22 @@ describe('content manifest', () => {
                                         children: [
                                           {
                                             type: 'strong',
-                                            children: [{ type: 'text', value: 'Beta' }],
-                                          },
-                                        ],
-                                      },
-                                    ],
-                                  },
-                                ],
+                                            children: [{ type: 'text', value: 'Beta' }]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
                               ),
-                              question('q2', [{ type: 'code', value: 'Second prompt' }], []),
-                            ],
-                          },
-                        ],
-                      },
-                    ],
-                  },
-                ],
+                              question('q2', [{ type: 'code', value: 'Second prompt' }], [])
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               },
               {
                 type: 'questionnaire',
@@ -98,25 +98,25 @@ describe('content manifest', () => {
                   question('q3', [
                     {
                       type: 'paragraph',
-                      children: [{ type: 'text', value: 'Third' }],
-                    },
-                  ]),
-                ],
-              },
-            ],
+                      children: [{ type: 'text', value: 'Third' }]
+                    }
+                  ])
+                ]
+              }
+            ]
           },
           {
             type: 'page',
             id: 'p-b',
             source: 'b.mdx',
             metadata: { title: 'Second' },
-            content: [],
-          },
-        ],
-      },
-    };
-    const first = createContentManifest(content);
-    expect(first).toEqual(createContentManifest(content));
+            content: []
+          }
+        ]
+      }
+    }
+    const first = createContentManifest(content)
+    expect(first).toEqual(createContentManifest(content))
     expect(first).toMatchObject({
       schemaVersion: 1,
       title: 'Course',
@@ -132,32 +132,32 @@ describe('content manifest', () => {
               prompt: 'Choose one',
               options: {
                 '0': { value: 'a', label: 'Alpha' },
-                '1': { value: 'b', label: 'Beta' },
-              },
+                '1': { value: 'b', label: 'Beta' }
+              }
             },
             '1': { id: 'q2', prompt: 'Second prompt', options: {} },
-            '2': { id: 'q3', prompt: 'Third', options: {} },
-          },
+            '2': { id: 'q3', prompt: 'Third', options: {} }
+          }
         },
-        '1': { id: 'p-b', title: 'Second', questions: {} },
-      },
-    });
-    expect(JSON.stringify(first)).not.toMatch(/correct|quiz-a|Before/);
-  });
+        '1': { id: 'p-b', title: 'Second', questions: {} }
+      }
+    })
+    expect(JSON.stringify(first)).not.toMatch(/correct|quiz-a|Before/)
+  })
 
   it('includes the package language and defaults legacy package metadata to English', () => {
     const content: ContentPackage = {
       metadata: { title: 'Localized', lang: 'pt-BR' },
-      presentation: { type: 'scroll', pages: [] },
-    };
-    expect(createContentManifest(content).lang).toBe('pt-BR');
+      presentation: { type: 'scroll', pages: [] }
+    }
+    expect(createContentManifest(content).lang).toBe('pt-BR')
     expect(
       createContentManifest({
         ...content,
-        metadata: { title: 'Legacy' },
-      }).lang,
-    ).toBe('en');
-  });
+        metadata: { title: 'Legacy' }
+      }).lang
+    ).toBe('en')
+  })
 
   it('indexes grid items using stable item and question ids', () => {
     const content: ContentPackage = {
@@ -170,7 +170,7 @@ describe('content manifest', () => {
             id: 'item-1',
             source: '1',
             metadata: { title: 'One' },
-            content: [],
+            content: []
           },
           {
             type: 'item',
@@ -181,21 +181,21 @@ describe('content manifest', () => {
               {
                 type: 'questionnaire',
                 id: 'quiz',
-                questions: [question('stable-question-id', [])],
-              },
-            ],
-          },
-        ],
-      },
-    };
+                questions: [question('stable-question-id', [])]
+              }
+            ]
+          }
+        ]
+      }
+    }
     expect(createContentManifest(content)).toMatchObject({
       presentation: 'grid',
       pages: {
         '0': { id: 'item-1' },
-        '1': { id: 'item-2', questions: { '0': { id: 'stable-question-id' } } },
-      },
-    });
-  });
+        '1': { id: 'item-2', questions: { '0': { id: 'stable-question-id' } } }
+      }
+    })
+  })
 
   it('reads tight list inline runs for question prompt text', () => {
     const content: ContentPackage = {
@@ -228,27 +228,27 @@ describe('content manifest', () => {
                                 {
                                   type: 'image',
                                   src: 'assets/prompt.svg',
-                                  alt: 'Prompt diagram',
-                                },
-                              ],
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                  ]),
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    };
+                                  alt: 'Prompt diagram'
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ])
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
     expect(createContentManifest(content).pages['0']!.questions['0']).toMatchObject({
       id: 'q-tight',
-      prompt: 'See Prompt diagram',
-    });
-  });
+      prompt: 'See Prompt diagram'
+    })
+  })
 
   it('collects a questionnaire that follows a tight inline run', () => {
     const content: ContentPackage = {
@@ -271,7 +271,7 @@ describe('content manifest', () => {
                     children: [
                       {
                         type: 'inlineContent',
-                        children: [{ type: 'text', value: 'Answer:' }],
+                        children: [{ type: 'text', value: 'Answer:' }]
                       },
                       {
                         type: 'questionnaire',
@@ -280,23 +280,23 @@ describe('content manifest', () => {
                           question('q-nested', [
                             {
                               type: 'paragraph',
-                              children: [{ type: 'text', value: 'Nested' }],
-                            },
-                          ]),
-                        ],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    };
+                              children: [{ type: 'text', value: 'Nested' }]
+                            }
+                          ])
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
     expect(createContentManifest(content).pages['0']!.questions['0']).toMatchObject({
       id: 'q-nested',
-      prompt: 'Nested',
-    });
-  });
-});
+      prompt: 'Nested'
+    })
+  })
+})

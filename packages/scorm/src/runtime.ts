@@ -1,17 +1,17 @@
-import type { ContentManifest } from './content-manifest';
-import { browserCodecSource } from './state-codec';
+import type { ContentManifest } from './content-manifest'
+import { browserCodecSource } from './state-codec'
 
 const emptyManifest: ContentManifest = {
   schemaVersion: 1,
   title: '',
   lang: 'en',
   presentation: 'scroll',
-  pages: {},
-};
+  pages: {}
+}
 
 /** Creates the SCO bridge with the same dictionary written into the package. */
 export function createScormRuntime(manifest: ContentManifest): string {
-  const dictionary = JSON.stringify(manifest).replace(/</g, '\\u003c');
+  const dictionary = JSON.stringify(manifest).replace(/</g, '\\u003c')
   return `;(function () {
   var CONTENT_MANIFEST = ${dictionary};
   var api = null;
@@ -181,8 +181,8 @@ ${browserCodecSource()}
   };
 
   if (window.addEventListener) window.addEventListener("beforeunload", finish, false);
-})();`;
+})();`
 }
 
 /** Empty-dictionary compatibility export; packages should call createScormRuntime. */
-export const scormRuntime = createScormRuntime(emptyManifest);
+export const scormRuntime = createScormRuntime(emptyManifest)

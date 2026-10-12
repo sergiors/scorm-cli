@@ -1,40 +1,40 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { parsePackage } from '../index';
+import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import { parsePackage } from '../index'
 
-let temp: string;
+let temp: string
 afterEach(async () => {
-  if (temp) await rm(temp, { recursive: true, force: true });
-});
+  if (temp) await rm(temp, { recursive: true, force: true })
+})
 
 async function makePackage(entry: string): Promise<string> {
-  temp = await mkdtemp(path.join(os.tmpdir(), 'content-package-'));
-  await writeFile(path.join(temp, 'index.mdx'), entry);
-  return temp;
+  temp = await mkdtemp(path.join(os.tmpdir(), 'content-package-'))
+  await writeFile(path.join(temp, 'index.mdx'), entry)
+  return temp
 }
 
 async function makeLesson(content: string): Promise<string> {
   const root = await makePackage(
-    `---\ntitle: Package\n---\n<Scroll><Page src="lesson.mdx" /></Scroll>`,
-  );
-  await writeFile(path.join(root, 'lesson.mdx'), `---\ntitle: Lesson\n---\n${content}`);
-  return root;
+    `---\ntitle: Package\n---\n<Scroll><Page src="lesson.mdx" /></Scroll>`
+  )
+  await writeFile(path.join(root, 'lesson.mdx'), `---\ntitle: Lesson\n---\n${content}`)
+  return root
 }
 
 async function asset(root: string, name: string): Promise<void> {
-  await mkdir(path.dirname(path.join(root, name)), { recursive: true });
-  await writeFile(path.join(root, name), 'asset');
+  await mkdir(path.dirname(path.join(root, name)), { recursive: true })
+  await writeFile(path.join(root, name), 'asset')
 }
 
 async function lessonContent(root: string) {
-  const contentPackage = await parsePackage(root);
+  const contentPackage = await parsePackage(root)
   if (contentPackage.presentation.type !== 'scroll')
-    throw new Error('Expected a scroll presentation');
-  const page = contentPackage.presentation.pages[0];
-  if (!page) throw new Error('Expected a page');
-  return page.content;
+    throw new Error('Expected a scroll presentation')
+  const page = contentPackage.presentation.pages[0]
+  if (!page) throw new Error('Expected a page')
+  return page.content
 }
 
 describe('parsePackage', () => {
@@ -42,40 +42,40 @@ describe('parsePackage', () => {
     for (const [frontmatter, expected] of [
       ['', 'en'],
       ['lang: en\n', 'en'],
-      ['lang: pt-br\n', 'pt-BR'],
+      ['lang: pt-br\n', 'pt-BR']
     ] as const) {
       const root = await makePackage(
-        `---\ntitle: Package\n${frontmatter}---\n<Scroll><Page src="lesson.mdx" /></Scroll>`,
-      );
-      await writeFile(path.join(root, 'lesson.mdx'), '---\ntitle: Lesson\n---');
-      const parsed = await parsePackage(root);
-      expect(parsed.metadata.lang).toBe(expected);
-      await rm(root, { recursive: true, force: true });
-      temp = '';
+        `---\ntitle: Package\n${frontmatter}---\n<Scroll><Page src="lesson.mdx" /></Scroll>`
+      )
+      await writeFile(path.join(root, 'lesson.mdx'), '---\ntitle: Lesson\n---')
+      const parsed = await parsePackage(root)
+      expect(parsed.metadata.lang).toBe(expected)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
     }
-  });
+  })
 
   it('rejects invalid or empty package language tags with a useful error', async () => {
     for (const [language, error] of [
       ['not_a_tag', /"lang" must be a valid BCP-47 language tag/],
-      ['', /"lang" must be a non-empty string/],
+      ['', /"lang" must be a non-empty string/]
     ] as const) {
       const root = await makePackage(
-        `---\ntitle: Package\nlang: "${language}"\n---\n<Scroll><Page src="lesson.mdx" /></Scroll>`,
-      );
-      await writeFile(path.join(root, 'lesson.mdx'), '---\ntitle: Lesson\n---');
-      await expect(parsePackage(root)).rejects.toThrow(error);
-      await rm(root, { recursive: true, force: true });
-      temp = '';
+        `---\ntitle: Package\nlang: "${language}"\n---\n<Scroll><Page src="lesson.mdx" /></Scroll>`
+      )
+      await writeFile(path.join(root, 'lesson.mdx'), '---\ntitle: Lesson\n---')
+      await expect(parsePackage(root)).rejects.toThrow(error)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
     }
-  });
+  })
 
   it('preserves Markdown inline semantics and nested formatting', async () => {
     const root = await makeLesson(
       '# Hello **bold *nested*** and [a *rich* link](https://example.test) with `code`\n\n' +
-        'First  \nsecond, plus ![diagram](assets/diagram.svg).',
-    );
-    await asset(root, 'assets/diagram.svg');
+        'First  \nsecond, plus ![diagram](assets/diagram.svg).'
+    )
+    await asset(root, 'assets/diagram.svg')
     expect(await lessonContent(root)).toEqual([
       {
         type: 'heading',
@@ -88,9 +88,9 @@ describe('parsePackage', () => {
               { type: 'text', value: 'bold ' },
               {
                 type: 'emphasis',
-                children: [{ type: 'text', value: 'nested' }],
-              },
-            ],
+                children: [{ type: 'text', value: 'nested' }]
+              }
+            ]
           },
           { type: 'text', value: ' and ' },
           {
@@ -99,12 +99,12 @@ describe('parsePackage', () => {
             children: [
               { type: 'text', value: 'a ' },
               { type: 'emphasis', children: [{ type: 'text', value: 'rich' }] },
-              { type: 'text', value: ' link' },
-            ],
+              { type: 'text', value: ' link' }
+            ]
           },
           { type: 'text', value: ' with ' },
-          { type: 'inlineCode', value: 'code' },
-        ],
+          { type: 'inlineCode', value: 'code' }
+        ]
       },
       {
         type: 'paragraph',
@@ -113,25 +113,25 @@ describe('parsePackage', () => {
           { type: 'break' },
           { type: 'text', value: 'second, plus ' },
           { type: 'image', src: 'assets/diagram.svg', alt: 'diagram' },
-          { type: 'text', value: '.' },
-        ],
-      },
-    ]);
-  });
+          { type: 'text', value: '.' }
+        ]
+      }
+    ])
+  })
 
   it('parses a thematic break as a canonical block between other blocks', async () => {
-    const root = await makeLesson('Before\n\n---\n\nAfter');
+    const root = await makeLesson('Before\n\n---\n\nAfter')
     expect(await lessonContent(root)).toEqual([
       { type: 'paragraph', children: [{ type: 'text', value: 'Before' }] },
       { type: 'thematicBreak' },
-      { type: 'paragraph', children: [{ type: 'text', value: 'After' }] },
-    ]);
-  });
+      { type: 'paragraph', children: [{ type: 'text', value: 'After' }] }
+    ])
+  })
 
   it('preserves nested lists, blockquotes, ordered starts, and fenced code languages', async () => {
     const root = await makeLesson(
-      '3. First\n   - nested **item**\n4. Second\n\n> A quote\n>\n> - quoted list\n\n```ts\nconst answer: number = 42;\n```',
-    );
+      '3. First\n   - nested **item**\n4. Second\n\n> A quote\n>\n> - quoted list\n\n```ts\nconst answer: number = 42;\n```'
+    )
     expect(await lessonContent(root)).toEqual([
       {
         type: 'list',
@@ -143,7 +143,7 @@ describe('parsePackage', () => {
             children: [
               {
                 type: 'inlineContent',
-                children: [{ type: 'text', value: 'First' }],
+                children: [{ type: 'text', value: 'First' }]
               },
               {
                 type: 'list',
@@ -158,25 +158,25 @@ describe('parsePackage', () => {
                           { type: 'text', value: 'nested ' },
                           {
                             type: 'strong',
-                            children: [{ type: 'text', value: 'item' }],
-                          },
-                        ],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
+                            children: [{ type: 'text', value: 'item' }]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
           },
           {
             children: [
               {
                 type: 'inlineContent',
-                children: [{ type: 'text', value: 'Second' }],
-              },
-            ],
-          },
-        ],
+                children: [{ type: 'text', value: 'Second' }]
+              }
+            ]
+          }
+        ]
       },
       {
         type: 'quote',
@@ -191,20 +191,20 @@ describe('parsePackage', () => {
                 children: [
                   {
                     type: 'inlineContent',
-                    children: [{ type: 'text', value: 'quoted list' }],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
+                    children: [{ type: 'text', value: 'quoted list' }]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
-      { type: 'code', value: 'const answer: number = 42;', language: 'ts' },
-    ]);
-  });
+      { type: 'code', value: 'const answer: number = 42;', language: 'ts' }
+    ])
+  })
 
   it('normalizes tight list items into inlineContent runs, not paragraphs', async () => {
-    const root = await makeLesson('- one\n- two\n- three');
+    const root = await makeLesson('- one\n- two\n- three')
     expect(await lessonContent(root)).toEqual([
       {
         type: 'list',
@@ -215,33 +215,33 @@ describe('parsePackage', () => {
             children: [
               {
                 type: 'inlineContent',
-                children: [{ type: 'text', value: 'one' }],
-              },
-            ],
+                children: [{ type: 'text', value: 'one' }]
+              }
+            ]
           },
           {
             children: [
               {
                 type: 'inlineContent',
-                children: [{ type: 'text', value: 'two' }],
-              },
-            ],
+                children: [{ type: 'text', value: 'two' }]
+              }
+            ]
           },
           {
             children: [
               {
                 type: 'inlineContent',
-                children: [{ type: 'text', value: 'three' }],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-  });
+                children: [{ type: 'text', value: 'three' }]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+  })
 
   it('keeps authored inline formatting and nested blocks in tight items', async () => {
-    const root = await makeLesson('- Use `code` and *emphasis*\n  - nested block');
+    const root = await makeLesson('- Use `code` and *emphasis*\n  - nested block')
     expect(await lessonContent(root)).toEqual([
       {
         type: 'list',
@@ -258,9 +258,9 @@ describe('parsePackage', () => {
                   { type: 'text', value: ' and ' },
                   {
                     type: 'emphasis',
-                    children: [{ type: 'text', value: 'emphasis' }],
-                  },
-                ],
+                    children: [{ type: 'text', value: 'emphasis' }]
+                  }
+                ]
               },
               {
                 type: 'list',
@@ -271,21 +271,21 @@ describe('parsePackage', () => {
                     children: [
                       {
                         type: 'inlineContent',
-                        children: [{ type: 'text', value: 'nested block' }],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-  });
+                        children: [{ type: 'text', value: 'nested block' }]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+  })
 
   it('copies remark list tightness (spread: true) for loose lists', async () => {
-    const root = await makeLesson('1. one\n\n2. two');
+    const root = await makeLesson('1. one\n\n2. two')
     expect(await lessonContent(root)).toEqual([
       {
         type: 'list',
@@ -293,19 +293,19 @@ describe('parsePackage', () => {
         spread: true,
         items: [
           {
-            children: [{ type: 'paragraph', children: [{ type: 'text', value: 'one' }] }],
+            children: [{ type: 'paragraph', children: [{ type: 'text', value: 'one' }] }]
           },
           {
-            children: [{ type: 'paragraph', children: [{ type: 'text', value: 'two' }] }],
-          },
-        ],
-      },
-    ]);
-  });
+            children: [{ type: 'paragraph', children: [{ type: 'text', value: 'two' }] }]
+          }
+        ]
+      }
+    ])
+  })
 
   it('marks a loose list whose item spans multiple blocks', async () => {
-    const root = await makeLesson('- one\n\n  continued\n\n- two');
-    const content = await lessonContent(root);
+    const root = await makeLesson('- one\n\n  continued\n\n- two')
+    const content = await lessonContent(root)
     expect(content).toMatchObject([
       {
         type: 'list',
@@ -317,25 +317,25 @@ describe('parsePackage', () => {
               { type: 'paragraph', children: [{ type: 'text', value: 'one' }] },
               {
                 type: 'paragraph',
-                children: [{ type: 'text', value: 'continued' }],
-              },
-            ],
+                children: [{ type: 'text', value: 'continued' }]
+              }
+            ]
           },
           {
-            children: [{ type: 'paragraph', children: [{ type: 'text', value: 'two' }] }],
-          },
-        ],
-      },
-    ]);
-  });
+            children: [{ type: 'paragraph', children: [{ type: 'text', value: 'two' }] }]
+          }
+        ]
+      }
+    ])
+  })
 
   it('resolves standard reference-style Markdown links and images', async () => {
     const root = await makeLesson(
       '[Read *the guide*][guide] and ![reference image][diagram].\n\n' +
         '[guide]: https://example.test/guide\n' +
-        '[diagram]: assets/diagram.svg',
-    );
-    await asset(root, 'assets/diagram.svg');
+        '[diagram]: assets/diagram.svg'
+    )
+    await asset(root, 'assets/diagram.svg')
     expect(await lessonContent(root)).toEqual([
       {
         type: 'paragraph',
@@ -347,27 +347,82 @@ describe('parsePackage', () => {
               { type: 'text', value: 'Read ' },
               {
                 type: 'emphasis',
-                children: [{ type: 'text', value: 'the guide' }],
-              },
-            ],
+                children: [{ type: 'text', value: 'the guide' }]
+              }
+            ]
           },
           { type: 'text', value: ' and ' },
           { type: 'image', src: 'assets/diagram.svg', alt: 'reference image' },
-          { type: 'text', value: '.' },
-        ],
-      },
-    ]);
-  });
+          { type: 'text', value: '.' }
+        ]
+      }
+    ])
+  })
+
+  it('resolves nested local Markdown file links and preserves query strings and fragments', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'content-package-'))
+    temp = root
+    await mkdir(path.join(root, 'lessons'), { recursive: true })
+    await mkdir(path.join(root, 'files'))
+    await writeFile(
+      path.join(root, 'index.mdx'),
+      '---\ntitle: Package\n---\n<Scroll><Page src="lessons/page.mdx" /></Scroll>'
+    )
+    await writeFile(path.join(root, 'files/guide.pdf'), 'pdf')
+    await writeFile(
+      path.join(root, 'lessons/page.mdx'),
+      '---\ntitle: Lesson\n---\n[Guide](../files/guide.pdf?download=1#page-2) [Mail](mailto:help@example.test) [Section](#details)'
+    )
+
+    expect(await lessonContent(root)).toMatchObject([
+      {
+        type: 'paragraph',
+        children: [
+          { type: 'link', href: 'files/guide.pdf?download=1#page-2' },
+          { type: 'text', value: ' ' },
+          { type: 'link', href: 'mailto:help@example.test' },
+          { type: 'text', value: ' ' },
+          { type: 'link', href: '#details' }
+        ]
+      }
+    ])
+  })
+
+  it('validates local Markdown links and rejects missing or escaping targets', async () => {
+    const parent = await mkdtemp(path.join(os.tmpdir(), 'content-package-'))
+    temp = parent
+    const root = path.join(parent, 'package')
+    await mkdir(path.join(root, 'assets'), { recursive: true })
+    await writeFile(
+      path.join(root, 'index.mdx'),
+      '---\ntitle: Package\n---\n<Scroll><Page src="lesson.mdx" /></Scroll>'
+    )
+    await writeFile(
+      path.join(root, 'lesson.mdx'),
+      '---\ntitle: Lesson\n---\n[Missing](assets/missing.pdf)'
+    )
+    await expect(parsePackage(root)).rejects.toThrow(/asset "assets\/missing\.pdf" does not exist/)
+    const outside = path.join(parent, 'outside.pdf')
+    await writeFile(outside, 'outside')
+    await symlink(outside, path.join(root, 'assets/outside.pdf'))
+    await writeFile(
+      path.join(root, 'lesson.mdx'),
+      '---\ntitle: Lesson\n---\n[Outside](assets/outside.pdf)'
+    )
+    await expect(parsePackage(root)).rejects.toThrow(
+      /resolves outside the content package directory/
+    )
+  })
 
   it('parses standard and semantic images in flow and inline contexts', async () => {
     const root = await makeLesson(
-      '![Markdown](assets/pic.svg)\n\nBefore <Image src="assets/pic.svg" alt="" caption="A caption" /> after.\n\n<Image src="assets/pic.svg" alt="Semantic" />',
-    );
-    await asset(root, 'assets/pic.svg');
+      '![Markdown](assets/pic.svg)\n\nBefore <Image src="assets/pic.svg" alt="" caption="A caption" /> after.\n\n<Image src="assets/pic.svg" alt="Semantic" />'
+    )
+    await asset(root, 'assets/pic.svg')
     expect(await lessonContent(root)).toEqual([
       {
         type: 'paragraph',
-        children: [{ type: 'image', src: 'assets/pic.svg', alt: 'Markdown' }],
+        children: [{ type: 'image', src: 'assets/pic.svg', alt: 'Markdown' }]
       },
       {
         type: 'paragraph',
@@ -377,42 +432,42 @@ describe('parsePackage', () => {
             type: 'image',
             src: 'assets/pic.svg',
             alt: '',
-            caption: 'A caption',
+            caption: 'A caption'
           },
-          { type: 'text', value: ' after.' },
-        ],
+          { type: 'text', value: ' after.' }
+        ]
       },
-      { type: 'image', src: 'assets/pic.svg', alt: 'Semantic' },
-    ]);
-  });
+      { type: 'image', src: 'assets/pic.svg', alt: 'Semantic' }
+    ])
+  })
 
   it('parses semantic video with poster and captions', async () => {
     const root = await makeLesson(
       `<Video src="https://cdn.example.test/lesson.mp4" title="Lesson" poster="assets/poster.svg" captions="assets/captions.vtt" />\n\n` +
-        `## Next steps\n\nUse **types** to model your data.\n\n- Describe each value\n- Let the editor check usage\n\n\`\`\`ts\nconst x: number = 1;\n\`\`\``,
-    );
-    await asset(root, 'assets/poster.svg');
-    await asset(root, 'assets/captions.vtt');
+        `## Next steps\n\nUse **types** to model your data.\n\n- Describe each value\n- Let the editor check usage\n\n\`\`\`ts\nconst x: number = 1;\n\`\`\``
+    )
+    await asset(root, 'assets/poster.svg')
+    await asset(root, 'assets/captions.vtt')
     expect(await lessonContent(root)).toMatchObject([
       {
         type: 'video',
         src: 'https://cdn.example.test/lesson.mp4',
         title: 'Lesson',
         poster: 'assets/poster.svg',
-        captions: 'assets/captions.vtt',
+        captions: 'assets/captions.vtt'
       },
       {
         type: 'heading',
         depth: 2,
-        children: [{ type: 'text', value: 'Next steps' }],
+        children: [{ type: 'text', value: 'Next steps' }]
       },
       {
         type: 'paragraph',
         children: [
           { type: 'text', value: 'Use ' },
           { type: 'strong', children: [{ type: 'text', value: 'types' }] },
-          { type: 'text', value: ' to model your data.' },
-        ],
+          { type: 'text', value: ' to model your data.' }
+        ]
       },
       {
         type: 'list',
@@ -423,23 +478,23 @@ describe('parsePackage', () => {
             children: [
               {
                 type: 'inlineContent',
-                children: [{ type: 'text', value: 'Describe each value' }],
-              },
-            ],
+                children: [{ type: 'text', value: 'Describe each value' }]
+              }
+            ]
           },
           {
             children: [
               {
                 type: 'inlineContent',
-                children: [{ type: 'text', value: 'Let the editor check usage' }],
-              },
-            ],
-          },
-        ],
+                children: [{ type: 'text', value: 'Let the editor check usage' }]
+              }
+            ]
+          }
+        ]
       },
-      { type: 'code', value: 'const x: number = 1;', language: 'ts' },
-    ]);
-  });
+      { type: 'code', value: 'const x: number = 1;', language: 'ts' }
+    ])
+  })
 
   it('parses rich question prompts and options and preserves boolean false', async () => {
     const root = await makeLesson(
@@ -447,8 +502,8 @@ describe('parsePackage', () => {
         `  <Prompt>\nWhat does \`string\` represent?\n\nChoose **one**.\n</Prompt>\n` +
         `  <Option value="number" correct={false}>\nA *numeric* value\n\n\`\`\`\n42\n\`\`\`\n</Option>\n` +
         `  <Option value="text" correct={true}>\nText\n\n\`\`\`\n"hello"\n\`\`\`\n</Option>\n` +
-        `</Question>\n</Questionnaire>`,
-    );
+        `</Question>\n</Questionnaire>`
+    )
     expect(await lessonContent(root)).toEqual([
       {
         type: 'questionnaire',
@@ -464,8 +519,8 @@ describe('parsePackage', () => {
                 children: [
                   { type: 'text', value: 'What does ' },
                   { type: 'inlineCode', value: 'string' },
-                  { type: 'text', value: ' represent?' },
-                ],
+                  { type: 'text', value: ' represent?' }
+                ]
               },
               {
                 type: 'paragraph',
@@ -473,11 +528,11 @@ describe('parsePackage', () => {
                   { type: 'text', value: 'Choose ' },
                   {
                     type: 'strong',
-                    children: [{ type: 'text', value: 'one' }],
+                    children: [{ type: 'text', value: 'one' }]
                   },
-                  { type: 'text', value: '.' },
-                ],
-              },
+                  { type: 'text', value: '.' }
+                ]
+              }
             ],
             options: [
               {
@@ -490,13 +545,13 @@ describe('parsePackage', () => {
                       { type: 'text', value: 'A ' },
                       {
                         type: 'emphasis',
-                        children: [{ type: 'text', value: 'numeric' }],
+                        children: [{ type: 'text', value: 'numeric' }]
                       },
-                      { type: 'text', value: ' value' },
-                    ],
+                      { type: 'text', value: ' value' }
+                    ]
                   },
-                  { type: 'code', value: '42' },
-                ],
+                  { type: 'code', value: '42' }
+                ]
               },
               {
                 value: 'text',
@@ -504,17 +559,17 @@ describe('parsePackage', () => {
                 content: [
                   {
                     type: 'paragraph',
-                    children: [{ type: 'text', value: 'Text' }],
+                    children: [{ type: 'text', value: 'Text' }]
                   },
-                  { type: 'code', value: '"hello"' },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-  });
+                  { type: 'code', value: '"hello"' }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+  })
 
   it('preserves authored Question option order and types for manifest index mapping', async () => {
     const root = await makeLesson(
@@ -527,87 +582,89 @@ describe('parsePackage', () => {
         `<Question type="single-choice">\n<Prompt>Pick one</Prompt>\n` +
         `<Option value="beta" correct={false}>Beta</Option>\n` +
         `<Option value="alpha" correct={true}>Alpha</Option>\n` +
-        `</Question>\n</Questionnaire>`,
-    );
-    const content = await lessonContent(root);
-    const questionnaire = content[0];
-    if (questionnaire?.type !== 'questionnaire') throw new Error('Expected a questionnaire');
+        `</Question>\n</Questionnaire>`
+    )
+    const content = await lessonContent(root)
+    const questionnaire = content[0]
+    if (questionnaire?.type !== 'questionnaire') throw new Error('Expected a questionnaire')
     expect(questionnaire.questions.map((question) => question.questionType)).toEqual([
       'multiple-choice',
-      'single-choice',
-    ]);
+      'single-choice'
+    ])
     const authored = questionnaire.questions.map((question) =>
-      question.options.map((option) => option.value),
-    );
+      question.options.map((option) => option.value)
+    )
     // Authored order is deliberately not alphabetical so the manifest cannot
     // reindex by sorting values; option indexes must follow the source order.
     expect(authored).toEqual([
       ['zebra', 'mango', 'apple'],
-      ['beta', 'alpha'],
-    ]);
-    expect([...authored[0]!].sort()).not.toEqual(authored[0]);
-  });
+      ['beta', 'alpha']
+    ])
+    expect([...authored[0]!].sort()).not.toEqual(authored[0])
+  })
 
   it('validates Prompt counts with a source line and count', async () => {
     for (const [inside, count] of [
       ['<Option value="a"/><Option value="b"/>', 0],
-      ['<Prompt>One</Prompt><Prompt>Two</Prompt><Option value="a"/><Option value="b"/>', 2],
+      ['<Prompt>One</Prompt><Prompt>Two</Prompt><Option value="a"/><Option value="b"/>', 2]
     ] as const) {
       const root = await makeLesson(
-        `<Questionnaire><Question type="single-choice">${inside}</Question></Questionnaire>`,
-      );
+        `<Questionnaire><Question type="single-choice">${inside}</Question></Questionnaire>`
+      )
       await expect(parsePackage(root)).rejects.toThrow(
-        new RegExp(`lesson\\.mdx:\\d+: Question must contain exactly 1 Prompt; found ${count}`),
-      );
-      await rm(root, { recursive: true, force: true });
-      temp = '';
+        new RegExp(
+          `lesson\\.mdx:\\d+(?::\\d+)?: Question must contain exactly 1 Prompt; found ${count}`
+        )
+      )
+      await rm(root, { recursive: true, force: true })
+      temp = ''
     }
-  });
+  })
 
   it('validates unique required option values and answer rules for all question types', async () => {
     const cases = [
       [
         `<Questionnaire><Question type="single-choice"><Prompt>Q</Prompt><Option value="x"/><Option value="y"/></Question></Questionnaire>`,
-        /single-choice Question must have exactly one correct Option/,
+        /single-choice Question must have exactly one correct Option/
       ],
       [
         `<Questionnaire><Question type="single-choice"><Prompt>Q</Prompt><Option value="x" correct/><Option value="x"/></Question></Questionnaire>`,
-        /Option value "x" must be unique/,
+        /Option value "x" must be unique/
       ],
       [
         `<Questionnaire><Question type="multiple-choice"><Prompt>Q</Prompt><Option value="x"/><Option value="y"/></Question></Questionnaire>`,
-        /multiple-choice Question must have at least one correct Option/,
+        /multiple-choice Question must have at least one correct Option/
       ],
       [
         `<Questionnaire><Question type="true-false"><Prompt>Q</Prompt><Option value="t" correct/><Option value="f"/><Option value="m"/></Question></Questionnaire>`,
-        /true-false Question must have exactly 2 Options/,
+        /true-false Question must have exactly 2 Options/
       ],
       [
         `<Questionnaire><Question type="true-false"><Prompt>Q</Prompt><Option value="t"/><Option value="f"/></Question></Questionnaire>`,
-        /true-false Question must have exactly one correct Option/,
+        /true-false Question must have exactly one correct Option/
       ],
       [
         `<Questionnaire><Question type="true-false"><Prompt>Q</Prompt><Option value="t" correct/><Option value="f" correct/></Question></Questionnaire>`,
-        /true-false Question must have exactly one correct Option/,
+        /true-false Question must have exactly one correct Option/
       ],
       [
         `<Questionnaire><Question type="multiple-choice"><Prompt>Q</Prompt><Option/><Option value="y" correct/></Question></Questionnaire>`,
-        /"value" must be a non-empty string/,
-      ],
-    ] as const;
+        /"value" must be a non-empty string/
+      ]
+    ] as const
     for (const [content, error] of cases) {
-      const root = await makeLesson(content);
-      await expect(parsePackage(root)).rejects.toThrow(error);
-      await rm(root, { recursive: true, force: true });
-      temp = '';
+      const root = await makeLesson(content)
+      await expect(parsePackage(root)).rejects.toThrow(error)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
     }
-  });
+  })
 
   it('accepts valid multiple-choice and true-false questions', async () => {
     const root = await makeLesson(
       `<Questionnaire>\n<Question type="multiple-choice"><Prompt>Choose all</Prompt><Option value="a" correct={true}>A</Option><Option value="b" correct={false}>B</Option><Option value="c" correct={true}>C</Option></Question>\n` +
-        `<Question type="true-false"><Prompt>It is true</Prompt><Option value="true" correct={true}>True</Option><Option value="false" correct={false}>False</Option></Question>\n</Questionnaire>`,
-    );
+        `<Question type="true-false"><Prompt>It is true</Prompt><Option value="true" correct={true}>True</Option><Option value="false" correct={false}>False</Option></Question>\n</Questionnaire>`
+    )
     expect(await lessonContent(root)).toMatchObject([
       {
         type: 'questionnaire',
@@ -615,17 +672,17 @@ describe('parsePackage', () => {
           {
             type: 'question',
             questionType: 'multiple-choice',
-            options: [{ correct: true }, { correct: false }, { correct: true }],
+            options: [{ correct: true }, { correct: false }, { correct: true }]
           },
           {
             type: 'question',
             questionType: 'true-false',
-            options: [{ correct: true }, { correct: false }],
-          },
-        ],
-      },
-    ]);
-  });
+            options: [{ correct: true }, { correct: false }]
+          }
+        ]
+      }
+    ])
+  })
 
   it('requires a non-empty questionnaire containing only direct Questions', async () => {
     for (const [content, error] of [
@@ -633,63 +690,105 @@ describe('parsePackage', () => {
       ['<Questionnaire title="Quiz"><Question /></Questionnaire>', /unknown attribute "title"/],
       [
         '<Questionnaire><Video src="missing.mp4" /></Questionnaire>',
-        /Questionnaire may contain only direct <Question> children; found <Video>/,
+        /Questionnaire may contain only direct <Question> children; found <Video>/
       ],
       [
         '<Questionnaire>stray text</Questionnaire>',
-        /Questionnaire may contain only direct <Question> children/,
-      ],
+        /Questionnaire may contain only direct <Question> children/
+      ]
     ] as const) {
-      const root = await makeLesson(content);
-      await expect(parsePackage(root)).rejects.toThrow(error);
-      await rm(root, { recursive: true, force: true });
-      temp = '';
+      const root = await makeLesson(content)
+      await expect(parsePackage(root)).rejects.toThrow(error)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
     }
-  });
+  })
 
   it('rejects standalone Questions with a source-located wrapper hint', async () => {
     for (const content of [
       '<Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question>',
-      'Inline <Question type="single-choice" /> is not supported.',
+      'Inline <Question type="single-choice" /> is not supported.'
     ]) {
-      const root = await makeLesson(content);
+      const root = await makeLesson(content)
       await expect(parsePackage(root)).rejects.toThrow(
-        /lesson\.mdx:\d+: <Question> must be inside <Questionnaire>/,
-      );
-      await rm(root, { recursive: true, force: true });
-      temp = '';
+        /lesson\.mdx:\d+(?::\d+)?: <Question> must be inside <Questionnaire>/
+      )
+      await rm(root, { recursive: true, force: true })
+      temp = ''
     }
-  });
+  })
 
   it('keeps questionnaire and question ids stable across package directories', async () => {
     const source =
-      '<Questionnaire><Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>';
-    const firstRoot = await makeLesson(source);
-    const firstContent = await lessonContent(firstRoot);
-    const firstId = firstContent[0]?.type === 'questionnaire' ? firstContent[0].id : '';
+      '<Questionnaire><Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>'
+    const firstRoot = await makeLesson(source)
+    const firstContent = await lessonContent(firstRoot)
+    const firstId = firstContent[0]?.type === 'questionnaire' ? firstContent[0].id : ''
     const firstQuestionId =
-      firstContent[0]?.type === 'questionnaire' ? firstContent[0].questions[0]?.id : '';
-    await rm(firstRoot, { recursive: true, force: true });
+      firstContent[0]?.type === 'questionnaire' ? firstContent[0].questions[0]?.id : ''
+    await rm(firstRoot, { recursive: true, force: true })
 
-    const secondRoot = await makeLesson(source);
-    const secondContent = await lessonContent(secondRoot);
-    const secondId = secondContent[0]?.type === 'questionnaire' ? secondContent[0].id : '';
+    const secondRoot = await makeLesson(source)
+    const secondContent = await lessonContent(secondRoot)
+    const secondId = secondContent[0]?.type === 'questionnaire' ? secondContent[0].id : ''
     const secondQuestionId =
-      secondContent[0]?.type === 'questionnaire' ? secondContent[0].questions[0]?.id : '';
+      secondContent[0]?.type === 'questionnaire' ? secondContent[0].questions[0]?.id : ''
 
-    expect(firstId).toBe('questionnaire:lesson.mdx:4:1');
-    expect(secondId).toBe(firstId);
-    expect(firstQuestionId).toBe('question:lesson.mdx:4:16');
-    expect(secondQuestionId).toBe(firstQuestionId);
-  });
+    expect(firstId).toBe('questionnaire:lesson.mdx:4:1')
+    expect(secondId).toBe(firstId)
+    expect(firstQuestionId).toBe('question:lesson.mdx:4:16')
+    expect(secondQuestionId).toBe(firstQuestionId)
+  })
+
+  it('assigns stable frontmatter-adjusted IDs to multiple questions in nested documents', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'content-package-'))
+    temp = root
+    await mkdir(path.join(root, 'lessons'), { recursive: true })
+    await writeFile(
+      path.join(root, 'index.mdx'),
+      '---\ntitle: Package\n---\n<Scroll><Page src="lessons/nested.mdx" /></Scroll>'
+    )
+    await writeFile(
+      path.join(root, 'lessons/nested.mdx'),
+      [
+        '---',
+        'title: Nested lesson',
+        'description: Has frontmatter',
+        '---',
+        '',
+        '<Questionnaire>',
+        '  <Question type="single-choice">',
+        '    <Prompt>First?</Prompt>',
+        '    <Option value="yes" correct>Yes</Option>',
+        '    <Option value="no">No</Option>',
+        '  </Question>',
+        '  <Question type="single-choice">',
+        '    <Prompt>Second?</Prompt>',
+        '    <Option value="yes" correct>Yes</Option>',
+        '    <Option value="no">No</Option>',
+        '  </Question>',
+        '</Questionnaire>'
+      ].join('\n')
+    )
+
+    const content = await lessonContent(root)
+    const questionnaire = content[0]
+    if (questionnaire?.type !== 'questionnaire') throw new Error('Expected a questionnaire')
+    expect(questionnaire.id).toBe('questionnaire:lessons/nested.mdx:6:1')
+    expect(questionnaire.questions.map(({ id }) => id)).toEqual([
+      'question:lessons/nested.mdx:7:3',
+      'question:lessons/nested.mdx:12:3'
+    ])
+    expect((await lessonContent(root))[0]).toEqual(questionnaire)
+  })
 
   it('collects assets nested in questionnaire prompts and options', async () => {
     const root = await makeLesson(
-      '<Questionnaire><Question type="single-choice"><Prompt>Pick the diagram <Image src="assets/prompt.svg" alt="Prompt" /></Prompt><Option value="a" correct><Image src="assets/option.svg" alt="Option" /></Option><Option value="b">Text</Option></Question></Questionnaire>',
-    );
-    await asset(root, 'assets/prompt.svg');
-    await asset(root, 'assets/option.svg');
-    const content = await lessonContent(root);
+      '<Questionnaire><Question type="single-choice"><Prompt>Pick the diagram <Image src="assets/prompt.svg" alt="Prompt" /></Prompt><Option value="a" correct><Image src="assets/option.svg" alt="Option" /></Option><Option value="b">Text</Option></Question></Questionnaire>'
+    )
+    await asset(root, 'assets/prompt.svg')
+    await asset(root, 'assets/option.svg')
+    const content = await lessonContent(root)
     expect(content).toMatchObject([
       {
         type: 'questionnaire',
@@ -700,9 +799,9 @@ describe('parsePackage', () => {
                 type: 'paragraph',
                 children: [
                   { type: 'text', value: 'Pick the diagram ' },
-                  { type: 'image', src: 'assets/prompt.svg', alt: 'Prompt' },
-                ],
-              },
+                  { type: 'image', src: 'assets/prompt.svg', alt: 'Prompt' }
+                ]
+              }
             ],
             options: [
               {
@@ -713,26 +812,26 @@ describe('parsePackage', () => {
                       {
                         type: 'image',
                         src: 'assets/option.svg',
-                        alt: 'Option',
-                      },
-                    ],
-                  },
-                ],
+                        alt: 'Option'
+                      }
+                    ]
+                  }
+                ]
               },
               {
                 content: [
                   {
                     type: 'paragraph',
-                    children: [{ type: 'text', value: 'Text' }],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-  });
+                    children: [{ type: 'text', value: 'Text' }]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+  })
 
   it('rejects standalone Prompt, Option, and removed or unknown components', async () => {
     for (const [content, error] of [
@@ -743,14 +842,14 @@ describe('parsePackage', () => {
       ['<Steps><Step>Text</Step></Steps>', /unknown MDX component <Steps>/],
       ['<Step>Text</Step>', /unknown MDX component <Step>/],
       ['<Mystery />', /unknown MDX component <Mystery>/],
-      ['Before <Example>Nope</Example> after.', /unknown MDX component <Example>/],
+      ['Before <Example>Nope</Example> after.', /unknown MDX component <Example>/]
     ] as const) {
-      const root = await makeLesson(content);
-      await expect(parsePackage(root)).rejects.toThrow(error);
-      await rm(root, { recursive: true, force: true });
-      temp = '';
+      const root = await makeLesson(content)
+      await expect(parsePackage(root)).rejects.toThrow(error)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
     }
-  });
+  })
 
   it('rejects unknown attributes, dynamic values, and invalid semantic variants', async () => {
     for (const [content, error] of [
@@ -760,53 +859,53 @@ describe('parsePackage', () => {
       ['<Video title="Missing source" />', /"src" must be a non-empty string/],
       [
         '<Image src="x" alt="" {...props} />',
-        /spread\/dynamic component attributes are not supported/,
+        /spread\/dynamic component attributes are not supported/
       ],
       [
         '<Questionnaire><Question type="unsupported"><Prompt>Q</Prompt><Option value="a"/><Option value="b"/></Question></Questionnaire>',
-        /Question "type" must be/,
-      ],
+        /Question "type" must be/
+      ]
     ] as const) {
-      const root = await makeLesson(content);
-      await expect(parsePackage(root)).rejects.toThrow(error);
-      await rm(root, { recursive: true, force: true });
-      temp = '';
+      const root = await makeLesson(content)
+      await expect(parsePackage(root)).rejects.toThrow(error)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
     }
-  });
+  })
 
   it('resolves all local assets relative to the declaring file and rejects missing assets', async () => {
     const root = await makeLesson(
-      `![missing](assets/missing.svg)\n\n<Video src="media/video.mp4" poster="assets/poster.svg" captions="assets/captions.vtt" />`,
-    );
-    await expect(parsePackage(root)).rejects.toThrow(/asset "assets\/missing\.svg" does not exist/);
-    await asset(root, 'assets/missing.svg');
-    await expect(parsePackage(root)).rejects.toThrow(/asset "media\/video\.mp4" does not exist/);
-  });
+      `![missing](assets/missing.svg)\n\n<Video src="media/video.mp4" poster="assets/poster.svg" captions="assets/captions.vtt" />`
+    )
+    await expect(parsePackage(root)).rejects.toThrow(/asset "assets\/missing\.svg" does not exist/)
+    await asset(root, 'assets/missing.svg')
+    await expect(parsePackage(root)).rejects.toThrow(/asset "media\/video\.mp4" does not exist/)
+  })
 
   it('rejects unsupported Markdown nodes and MDX JavaScript with locations', async () => {
-    const root = await makeLesson('<span>Unsupported raw HTML</span>');
+    const root = await makeLesson('<span>Unsupported raw HTML</span>')
     await expect(parsePackage(root)).rejects.toThrow(
-      /lesson\.mdx:\d+: unknown MDX component <span>/,
-    );
+      /lesson\.mdx:\d+(?::\d+)?: unknown MDX component <span>/
+    )
     await writeFile(
       path.join(root, 'lesson.mdx'),
-      "---\ntitle: Lesson\n---\nexport const runtime = 'edge';",
-    );
-    await expect(parsePackage(root)).rejects.toThrow(/MDX JavaScript is not supported/);
-  });
+      "---\ntitle: Lesson\n---\nexport const runtime = 'edge';"
+    )
+    await expect(parsePackage(root)).rejects.toThrow(/MDX JavaScript is not supported/)
+  })
 
   it('parses Scroll Pages and Grid Items as distinct root modes', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'content-package-'));
-    temp = root;
-    await mkdir(path.join(root, 'lessons'));
+    const root = await mkdtemp(path.join(os.tmpdir(), 'content-package-'))
+    temp = root
+    await mkdir(path.join(root, 'lessons'))
     await writeFile(
       path.join(root, 'index.mdx'),
-      `---\ntitle: TypeScript\n---\n<Scroll>\n  <Page src="lessons/intro.mdx" />\n  <Page src="lessons/quiz.mdx" />\n</Scroll>`,
-    );
-    await writeFile(path.join(root, 'lessons/intro.mdx'), '---\ntitle: Intro\n---\n# Hello');
-    await writeFile(path.join(root, 'lessons/quiz.mdx'), '---\ntitle: Quiz\n---');
-    const parsedScroll = await parsePackage(root);
-    expect(parsedScroll.metadata).toEqual({ title: 'TypeScript', lang: 'en' });
+      `---\ntitle: TypeScript\n---\n<Scroll>\n  <Page src="lessons/intro.mdx" />\n  <Page src="lessons/quiz.mdx" />\n</Scroll>`
+    )
+    await writeFile(path.join(root, 'lessons/intro.mdx'), '---\ntitle: Intro\n---\n# Hello')
+    await writeFile(path.join(root, 'lessons/quiz.mdx'), '---\ntitle: Quiz\n---')
+    const parsedScroll = await parsePackage(root)
+    expect(parsedScroll.metadata).toEqual({ title: 'TypeScript', lang: 'en' })
     expect(parsedScroll.presentation).toMatchObject({
       type: 'scroll',
       pages: [
@@ -814,22 +913,22 @@ describe('parsePackage', () => {
           type: 'page',
           source: 'lessons/intro.mdx',
           id: 'page:lessons/intro.mdx',
-          metadata: { title: 'Intro' },
+          metadata: { title: 'Intro' }
         },
         {
           type: 'page',
           source: 'lessons/quiz.mdx',
           id: 'page:lessons/quiz.mdx',
-          metadata: { title: 'Quiz' },
-        },
-      ],
-    });
+          metadata: { title: 'Quiz' }
+        }
+      ]
+    })
 
     await writeFile(
       path.join(root, 'index.mdx'),
-      `---\ntitle: Practice\n---\n<Grid columns={2}><Item src="lessons/intro.mdx" /><Item src="lessons/quiz.mdx" /></Grid>`,
-    );
-    const parsedGrid = await parsePackage(root);
+      `---\ntitle: Practice\n---\n<Grid columns={2}><Item src="lessons/intro.mdx" /><Item src="lessons/quiz.mdx" /></Grid>`
+    )
+    const parsedGrid = await parsePackage(root)
     expect(parsedGrid.presentation).toMatchObject({
       type: 'grid',
       columns: 2,
@@ -837,55 +936,55 @@ describe('parsePackage', () => {
         {
           type: 'item',
           source: 'lessons/intro.mdx',
-          id: 'item:lessons/intro.mdx',
+          id: 'item:lessons/intro.mdx'
         },
         {
           type: 'item',
           source: 'lessons/quiz.mdx',
-          id: 'item:lessons/quiz.mdx',
-        },
-      ],
-    });
+          id: 'item:lessons/quiz.mdx'
+        }
+      ]
+    })
     await writeFile(
       path.join(root, 'index.mdx'),
-      '---\ntitle: Practice\n---\n<Grid><Item src="lessons/intro.mdx" /></Grid>',
-    );
-    const defaultGrid = (await parsePackage(root)).presentation;
-    expect(defaultGrid.type).toBe('grid');
-    if (defaultGrid.type === 'grid') expect(defaultGrid).not.toHaveProperty('columns');
-  });
+      '---\ntitle: Practice\n---\n<Grid><Item src="lessons/intro.mdx" /></Grid>'
+    )
+    const defaultGrid = (await parsePackage(root)).presentation
+    expect(defaultGrid.type).toBe('grid')
+    if (defaultGrid.type === 'grid') expect(defaultGrid).not.toHaveProperty('columns')
+  })
 
   it('requires exactly one supported root presentation and a root title', async () => {
     for (const [source, error] of [
       ['---\ntitle: Package\n---\n', /exactly one <Scroll> or <Grid> presentation; found 0/],
       [
         '---\ntitle: Package\n---\n<Grid><Item src="a.mdx" /></Grid><Scroll><Page src="a.mdx" /></Scroll>',
-        /exactly one <Scroll> or <Grid> presentation; found 2/,
+        /exactly one <Scroll> or <Grid> presentation; found 2/
       ],
       [
         '---\ntitle: Package\n---\n<Item src="a.mdx" />',
-        /exactly one <Scroll> or <Grid> presentation; found 1 direct node \(<Item>\)/,
+        /exactly one <Scroll> or <Grid> presentation; found 1 direct node \(<Item>\)/
       ],
       [
         '---\ntitle: Package\n---\n<Page src="a.mdx" />',
-        /exactly one <Scroll> or <Grid> presentation; found 1 direct node \(<Page>\)/,
+        /exactly one <Scroll> or <Grid> presentation; found 1 direct node \(<Page>\)/
       ],
       [
         '---\ntitle: Package\n---\nA root paragraph is not allowed.',
-        /exactly one <Scroll> or <Grid> presentation; found 1 direct node \(paragraph\)/,
+        /exactly one <Scroll> or <Grid> presentation; found 1 direct node \(paragraph\)/
       ],
       ['---\n---\n<Scroll><Page src="a.mdx" /></Scroll>', /"title" must be a non-empty string/],
       [
         '---\ntitle: Package\ndescription: Not supported\n---\n<Scroll><Page src="a.mdx" /></Scroll>',
-        /unknown frontmatter field "description"/,
-      ],
+        /unknown frontmatter field "description"/
+      ]
     ] as const) {
-      const root = await makePackage(source);
-      await expect(parsePackage(root)).rejects.toThrow(error);
-      await rm(root, { recursive: true, force: true });
-      temp = '';
+      const root = await makePackage(source)
+      await expect(parsePackage(root)).rejects.toThrow(error)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
     }
-  });
+  })
 
   it('validates presentation children, nesting, attributes, and Grid columns', async () => {
     for (const [rootContent, error] of [
@@ -898,36 +997,36 @@ describe('parsePackage', () => {
       ['<Grid columns="2"><Item src="a.mdx" /></Grid>', /columns.*integer from 1 to 12/],
       [
         '<Scroll><Page src="a.mdx"><Item src="b.mdx" /></Page></Scroll>',
-        /Page> must be self-closing/,
+        /Page> must be self-closing/
       ],
       [
         '<Scroll><Scroll><Page src="a.mdx" /></Scroll></Scroll>',
-        /Scroll> children may only contain direct <Page/,
+        /Scroll> children may only contain direct <Page/
       ],
       ['<Scroll />', /Scroll> must contain at least one <Page>; found 0/],
-      ['<Grid />', /Grid> must contain at least one <Item>; found 0/],
+      ['<Grid />', /Grid> must contain at least one <Item>; found 0/]
     ] as const) {
-      const root = await makePackage(`---\ntitle: Package\n---\n${rootContent}`);
-      await expect(parsePackage(root)).rejects.toThrow(error);
-      await rm(root, { recursive: true, force: true });
-      temp = '';
+      const root = await makePackage(`---\ntitle: Package\n---\n${rootContent}`)
+      await expect(parsePackage(root)).rejects.toThrow(error)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
     }
-  });
+  })
 
   it('resolves references and assets relative to each source file', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'content-package-'));
-    temp = root;
-    await mkdir(path.join(root, 'lessons'), { recursive: true });
-    await asset(root, 'assets/shared.svg');
+    const root = await mkdtemp(path.join(os.tmpdir(), 'content-package-'))
+    temp = root
+    await mkdir(path.join(root, 'lessons'), { recursive: true })
+    await asset(root, 'assets/shared.svg')
     await writeFile(
       path.join(root, 'index.mdx'),
-      '---\ntitle: Package\n---\n<Scroll><Page src="lessons/page.mdx" /></Scroll>',
-    );
+      '---\ntitle: Package\n---\n<Scroll><Page src="lessons/page.mdx" /></Scroll>'
+    )
     await writeFile(
       path.join(root, 'lessons/page.mdx'),
-      '---\ntitle: Page\n---\n![shared](../assets/shared.svg)',
-    );
-    const pagePackage = await parsePackage(root);
+      '---\ntitle: Page\n---\n![shared](../assets/shared.svg)'
+    )
+    const pagePackage = await parsePackage(root)
     expect(pagePackage.presentation).toMatchObject({
       type: 'scroll',
       pages: [
@@ -937,21 +1036,21 @@ describe('parsePackage', () => {
           content: [
             {
               type: 'paragraph',
-              children: [{ type: 'image', src: 'assets/shared.svg' }],
-            },
-          ],
-        },
-      ],
-    });
+              children: [{ type: 'image', src: 'assets/shared.svg' }]
+            }
+          ]
+        }
+      ]
+    })
     await writeFile(
       path.join(root, 'index.mdx'),
-      '---\ntitle: Package\n---\n<Grid><Item src="lessons/page.mdx" /></Grid>',
-    );
+      '---\ntitle: Package\n---\n<Grid><Item src="lessons/page.mdx" /></Grid>'
+    )
     expect((await parsePackage(root)).presentation).toMatchObject({
       type: 'grid',
-      items: [{ id: 'item:lessons/page.mdx', source: 'lessons/page.mdx' }],
-    });
-  });
+      items: [{ id: 'item:lessons/page.mdx', source: 'lessons/page.mdx' }]
+    })
+  })
 
   it('rejects description, thumbnail, and id frontmatter on referenced docs', async () => {
     for (const kind of ['page', 'item'] as const) {
@@ -959,70 +1058,70 @@ describe('parsePackage', () => {
         ...(kind === 'item' ? ['description: Not supported'] : []),
         'lang: pt-BR',
         'thumbnail: cover.svg',
-        'id: custom',
+        'id: custom'
       ]) {
         const reference =
           kind === 'page'
             ? '<Scroll><Page src="lesson.mdx" /></Scroll>'
-            : '<Grid><Item src="lesson.mdx" /></Grid>';
-        const root = await makePackage(`---\ntitle: Package\n---\n${reference}`);
-        await writeFile(path.join(root, 'lesson.mdx'), `---\ntitle: Lesson\n${field}\n---`);
-        await expect(parsePackage(root)).rejects.toThrow(/unknown frontmatter field/);
-        await rm(root, { recursive: true, force: true });
-        temp = '';
+            : '<Grid><Item src="lesson.mdx" /></Grid>'
+        const root = await makePackage(`---\ntitle: Package\n---\n${reference}`)
+        await writeFile(path.join(root, 'lesson.mdx'), `---\ntitle: Lesson\n${field}\n---`)
+        await expect(parsePackage(root)).rejects.toThrow(/unknown frontmatter field/)
+        await rm(root, { recursive: true, force: true })
+        temp = ''
       }
     }
-  });
+  })
 
   it('parses Paths as ordered references to root Scroll page IDs', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'content-package-'));
-    temp = root;
-    await mkdir(path.join(root, 'lessons'));
+    const root = await mkdtemp(path.join(os.tmpdir(), 'content-package-'))
+    temp = root
+    await mkdir(path.join(root, 'lessons'))
     await writeFile(
       path.join(root, 'index.mdx'),
-      '---\ntitle: Package\n---\n<Scroll><Page src="lessons/start.mdx" /><Page src="lessons/types.mdx" /></Scroll>',
-    );
+      '---\ntitle: Package\n---\n<Scroll><Page src="lessons/start.mdx" /><Page src="lessons/types.mdx" /></Scroll>'
+    )
     await writeFile(
       path.join(root, 'lessons/start.mdx'),
-      '---\ntitle: Start\n---\n<Path><Page ref="lessons/types.mdx" /></Path>',
-    );
+      '---\ntitle: Start\n---\n<Path><Page ref="lessons/types.mdx" /></Path>'
+    )
     await writeFile(
       path.join(root, 'lessons/types.mdx'),
-      '---\ntitle: Types\ndescription: Learn about types\n---\n# Types',
-    );
+      '---\ntitle: Types\ndescription: Learn about types\n---\n# Types'
+    )
 
-    const parsed = await parsePackage(root);
+    const parsed = await parsePackage(root)
     expect(parsed.presentation).toMatchObject({
       type: 'scroll',
       pages: [
         {
           id: 'page:lessons/start.mdx',
-          content: [{ type: 'path', pageIds: ['page:lessons/types.mdx'] }],
+          content: [{ type: 'path', pageIds: ['page:lessons/types.mdx'] }]
         },
         {
           id: 'page:lessons/types.mdx',
-          metadata: { title: 'Types', description: 'Learn about types' },
-        },
-      ],
-    });
-    const pages = parsed.presentation.type === 'scroll' ? parsed.presentation.pages : [];
+          metadata: { title: 'Types', description: 'Learn about types' }
+        }
+      ]
+    })
+    const pages = parsed.presentation.type === 'scroll' ? parsed.presentation.pages : []
     expect(pages[0]?.content[0]).toEqual({
       type: 'path',
-      pageIds: ['page:lessons/types.mdx'],
-    });
-    expect(pages[0]?.content[0]).not.toHaveProperty('source');
-  });
+      pageIds: ['page:lessons/types.mdx']
+    })
+    expect(pages[0]?.content[0]).not.toHaveProperty('source')
+  })
 
   it('rejects an empty Path with a useful child requirement', async () => {
     for (const content of ['<Path />', '<Path></Path>']) {
-      const root = await makeLesson(content);
+      const root = await makeLesson(content)
       await expect(parsePackage(root)).rejects.toThrow(
-        /Path requires at least one direct <Page ref="\.\.\." \/> child/,
-      );
-      await rm(root, { recursive: true, force: true });
-      temp = '';
+        /Path requires at least one direct <Page ref="\.\.\." \/> child/
+      )
+      await rm(root, { recursive: true, force: true })
+      temp = ''
     }
-  });
+  })
 
   it('validates Path children, refs, attributes, uniqueness, and root Scroll context', async () => {
     for (const [content, error] of [
@@ -1030,33 +1129,33 @@ describe('parsePackage', () => {
       ['<Path title="Journey"><Page ref="lesson.mdx" /></Path>', /unknown attribute "title"/],
       [
         '<Path><Page ref="lesson.mdx"><Video src="x" /></Page></Path>',
-        /Page> inside <Path> must be self-closing/,
+        /Page> inside <Path> must be self-closing/
       ],
       [
         '<Path><Page ref="lesson.mdx" /><Page ref="./lesson.mdx" /></Path>',
-        /duplicate Path Page ref/,
+        /duplicate Path Page ref/
       ],
       ['<Path><Page ref="missing.mdx" /></Path>', /does not match a root <Page src=/],
-      ['<Path><Video src="x" /></Path>', /Path may contain only direct <Page ref=/],
+      ['<Path><Video src="x" /></Path>', /Path may contain only direct <Page ref=/]
     ] as const) {
-      const root = await makeLesson(content);
-      await expect(parsePackage(root)).rejects.toThrow(error);
-      await rm(root, { recursive: true, force: true });
-      temp = '';
+      const root = await makeLesson(content)
+      await expect(parsePackage(root)).rejects.toThrow(error)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
     }
 
-    const root = await mkdtemp(path.join(os.tmpdir(), 'content-package-'));
-    temp = root;
+    const root = await mkdtemp(path.join(os.tmpdir(), 'content-package-'))
+    temp = root
     await writeFile(
       path.join(root, 'index.mdx'),
-      '---\ntitle: Package\n---\n<Grid><Item src="lesson.mdx" /></Grid>',
-    );
+      '---\ntitle: Package\n---\n<Grid><Item src="lesson.mdx" /></Grid>'
+    )
     await writeFile(
       path.join(root, 'lesson.mdx'),
-      '---\ntitle: Lesson\n---\n<Path><Page ref="lesson.mdx" /></Path>',
-    );
+      '---\ntitle: Lesson\n---\n<Path><Page ref="lesson.mdx" /></Path>'
+    )
     await expect(parsePackage(root)).rejects.toThrow(
-      /only valid for pages declared directly in a root <Scroll>/,
-    );
-  });
-});
+      /only valid for pages declared directly in a root <Scroll>/
+    )
+  })
+})

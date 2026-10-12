@@ -1,57 +1,57 @@
-import type { ContentNode, InlineNode } from '@scorm-cli/core';
-import type { AstNode, ContentSource } from './ast';
-import { isJsx, isText, whitespace } from './ast';
-import { componentName } from './component-name';
+import type { ContentNode, InlineNode } from '@scorm-cli/core'
+import type { AstNode, ContentSource } from './ast'
+import { isJsx, isText, rawComponentName, whitespace } from './ast'
+import { componentName } from './component-name'
 import {
   flowComponentHandlers,
   inlineComponentHandlers,
   isBlockOnlyComponent,
   isFlowComponent,
   isInlineComponent,
-  type ComponentParseContext,
-} from './components';
+  type ComponentParseContext
+} from './components'
 import {
   isMarkdownBlock,
   isMarkdownInline,
   parseMarkdownBlock,
   parseMarkdownInline,
-  type MarkdownConversion,
-} from './markdown';
-import { sourceLocation } from './shared';
+  type MarkdownConversion
+} from './markdown'
+import { sourceLocation } from './shared'
 
 function questionPlacementError(source: ContentSource, node: AstNode): Error {
   return new Error(
-    `${sourceLocation(source.sourceFile, node)}: <Question> must be inside <Questionnaire>`,
-  );
+    `${sourceLocation(source.sourceFile, node)}: <Question> must be inside <Questionnaire>`
+  )
 }
 
 function blockOnlyInlineError(source: ContentSource, node: AstNode): Error {
   return new Error(
-    `${sourceLocation(source.sourceFile, node)}: component <${node.name ?? ''}> is block-only and cannot be used inline`,
-  );
+    `${sourceLocation(source.sourceFile, node)}: component <${rawComponentName(node)}> is block-only and cannot be used inline`
+  )
 }
 
 function unknownComponentError(source: ContentSource, node: AstNode): Error {
   return new Error(
-    `${sourceLocation(source.sourceFile, node)}: unknown MDX component <${node.name ?? ''}>`,
-  );
+    `${sourceLocation(source.sourceFile, node)}: unknown MDX component <${rawComponentName(node)}>`
+  )
 }
 
 function unsupportedNodeError(
   kind: 'inline' | 'content',
   source: ContentSource,
-  node: AstNode,
+  node: AstNode
 ): Error {
   return new Error(
-    `${sourceLocation(source.sourceFile, node)}: unsupported ${kind} node "${node.type}"`,
-  );
+    `${sourceLocation(source.sourceFile, node)}: unsupported ${kind} node "${node.type}"`
+  )
 }
 
 function componentParseContext(source: ContentSource): ComponentParseContext {
   return {
     source,
-    convertChildren: (nodes) => convertSiblingNodes(nodes, source, 'content'),
-  };
+    convertChildren: (nodes) => convertSiblingNodes(nodes, source, 'content')
+  }
 }
 
 function markdownConversion(source: ContentSource): MarkdownConversion {
@@ -60,8 +60,8 @@ function markdownConversion(source: ContentSource): MarkdownConversion {
     root: source.root,
     convertInline: (nodes) => convertInlineNodes(nodes, source),
     convertChildren: (nodes) => convertSiblingNodes(nodes, source, 'content'),
-    convertParagraph: (nodes) => convertSiblingNodes(nodes, source, 'inline'),
-  };
+    convertParagraph: (nodes) => convertSiblingNodes(nodes, source, 'inline')
+  }
 }
 
 /**
@@ -73,7 +73,7 @@ function isInlineFlowNode(node: AstNode): boolean {
   return (
     isMarkdownInline(node) ||
     (node.type === 'mdxJsxTextElement' && isInlineComponent(componentName(node)))
-  );
+  )
 }
 
 /**
@@ -83,49 +83,67 @@ function isInlineFlowNode(node: AstNode): boolean {
  * stays in the inline run so it is reported as an inline failure.
  */
 function isHoistableBlock(node: AstNode): boolean {
-  if (node.type === 'mdxJsxFlowElement') return true;
-  if (node.type !== 'mdxJsxTextElement') return false;
-  const name = componentName(node);
-  return isBlockOnlyComponent(name) || name === 'Question';
+  if (node.type === 'mdxJsxFlowElement') {
+    return true
+  }
+
+  if (node.type !== 'mdxJsxTextElement') {
+    return false
+  }
+
+  const name = componentName(node)
+  return isBlockOnlyComponent(name) || name === 'Question'
 }
 
 async function convertInlineNodes(nodes: AstNode[], source: ContentSource): Promise<InlineNode[]> {
-  const conversion = markdownConversion(source);
-  const context = componentParseContext(source);
-  const output: InlineNode[] = [];
+  const conversion = markdownConversion(source)
+  const context = componentParseContext(source)
+  const output: InlineNode[] = []
   for (const node of nodes) {
     if (isMarkdownInline(node)) {
-      output.push(await parseMarkdownInline(node, conversion));
+      output.push(await parseMarkdownInline(node, conversion))
     } else if (node.type === 'mdxJsxTextElement') {
-      const name = componentName(node);
+      const name = componentName(node)
       if (isInlineComponent(name)) {
-        output.push(await inlineComponentHandlers[name](node, context));
+        output.push(await inlineComponentHandlers[name](node, context))
       } else if (name === 'Question') {
-        throw questionPlacementError(source, node);
+        throw questionPlacementError(source, node)
       } else if (isBlockOnlyComponent(name)) {
-        throw blockOnlyInlineError(source, node);
+        throw blockOnlyInlineError(source, node)
       } else {
-        throw unknownComponentError(source, node);
+        throw unknownComponentError(source, node)
       }
     } else {
-      throw unsupportedNodeError('inline', source, node);
+      throw unsupportedNodeError('inline', source, node)
     }
   }
-  return output;
+  return output
 }
 
 async function convertComponent(node: AstNode, source: ContentSource): Promise<ContentNode> {
-  const name = componentName(node);
-  if (name === 'Question') throw questionPlacementError(source, node);
-  if (isFlowComponent(name))
-    return flowComponentHandlers[name](node, componentParseContext(source));
-  throw unknownComponentError(source, node);
+  const name = componentName(node)
+
+  if (name === 'Question') {
+    throw questionPlacementError(source, node)
+  }
+
+  if (isFlowComponent(name)) {
+    return flowComponentHandlers[name](node, componentParseContext(source))
+  }
+
+  throw unknownComponentError(source, node)
 }
 
 async function convertBlock(node: AstNode, source: ContentSource): Promise<ContentNode[]> {
-  if (isMarkdownBlock(node)) return parseMarkdownBlock(node, markdownConversion(source));
-  if (isJsx(node)) return [await convertComponent(node, source)];
-  throw unsupportedNodeError('content', source, node);
+  if (isMarkdownBlock(node)) {
+    return parseMarkdownBlock(node, markdownConversion(source))
+  }
+
+  if (isJsx(node)) {
+    return [await convertComponent(node, source)]
+  }
+
+  throw unsupportedNodeError('content', source, node)
 }
 
 /**
@@ -134,7 +152,7 @@ async function convertBlock(node: AstNode, source: ContentSource): Promise<Conte
  * (`content`, inside list items, quotes and referenced documents) treat
  * whitespace-only text as block separation.
  */
-type SiblingPosition = 'content' | 'inline';
+type SiblingPosition = 'content' | 'inline'
 
 /**
  * Converts sibling nodes into ordered content. Inline syntax and inline
@@ -145,56 +163,54 @@ type SiblingPosition = 'content' | 'inline';
 async function convertSiblingNodes(
   nodes: AstNode[],
   source: ContentSource,
-  position: SiblingPosition,
+  position: SiblingPosition
 ): Promise<ContentNode[]> {
-  const output: ContentNode[] = [];
-  let inline: AstNode[] = [];
+  const output: ContentNode[] = []
+  let inline: AstNode[] = []
   const flush = async () => {
-    if (!inline.length) return;
-    const children = await convertInlineNodes(inline, source);
+    if (!inline.length) return
+    const children = await convertInlineNodes(inline, source)
     if (children.some((child) => child.type !== 'text' || child.value.trim() !== ''))
-      output.push({ type: 'paragraph', children });
-    inline = [];
-  };
+      output.push({ type: 'paragraph', children })
+    inline = []
+  }
 
   for (let index = 0; index < nodes.length; index += 1) {
-    const node = nodes[index]!;
+    const node = nodes[index]!
     if (position === 'content' && whitespace(node)) {
       // Between content blocks, whitespace only matters while an inline run is
       // open: a space joins the run, while a line break closes it.
       if (isText(node) && inline.length && !/[\r\n]/.test(String(node.value ?? '')))
-        inline.push(node);
-      else await flush();
-      continue;
+        inline.push(node)
+      else await flush()
+      continue
     }
     if (position === 'content' && node.type === 'mdxjsEsm')
-      throw new Error(
-        `${sourceLocation(source.sourceFile, node)}: MDX JavaScript is not supported`,
-      );
+      throw new Error(`${sourceLocation(source.sourceFile, node)}: MDX JavaScript is not supported`)
     if (position === 'content' ? isInlineFlowNode(node) : !isHoistableBlock(node)) {
-      inline.push(node);
-      continue;
+      inline.push(node)
+      continue
     }
     if (
       position === 'inline' &&
       (node.type === 'mdxJsxFlowElement' || node.type === 'mdxJsxTextElement')
     ) {
-      const name = componentName(node);
+      const name = componentName(node)
       // Placement checks run before the pending inline run flushes, matching
       // the paragraph grammar's error precedence.
-      if (name === 'Question') throw questionPlacementError(source, node);
+      if (name === 'Question') throw questionPlacementError(source, node)
       if (node.type === 'mdxJsxTextElement' && isBlockOnlyComponent(name)) {
-        const previous = nodes[index - 1];
-        const next = nodes[index + 1];
+        const previous = nodes[index - 1]
+        const next = nodes[index + 1]
         if ((previous && !whitespace(previous)) || (next && !whitespace(next)))
-          throw blockOnlyInlineError(source, node);
+          throw blockOnlyInlineError(source, node)
       }
     }
-    await flush();
-    output.push(...(await convertBlock(node, source)));
+    await flush()
+    output.push(...(await convertBlock(node, source)))
   }
-  await flush();
-  return output;
+  await flush()
+  return output
 }
 
 /**
@@ -207,16 +223,17 @@ export async function parseContentNodes(
   sourceFile: string,
   root: string,
   rootPageSources?: Set<string>,
+  sourceLineOffset = 0
 ): Promise<ContentNode[]> {
-  const source: ContentSource = { sourceFile, root, rootPageSources };
+  const source: ContentSource = { sourceFile, root, rootPageSources, sourceLineOffset }
 
   if (isMarkdownInline(node)) {
-    return [{ type: 'paragraph', children: await convertInlineNodes([node], source) }];
+    return [{ type: 'paragraph', children: await convertInlineNodes([node], source) }]
   }
 
   if (node.type === 'mdxJsxTextElement') {
-    return [await convertComponent(node, source)];
+    return [await convertComponent(node, source)]
   }
 
-  return convertBlock(node, source);
+  return convertBlock(node, source)
 }

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { subscribeToPreviewEvents } from './preview-client';
+import { useEffect, useState } from 'react'
+import { subscribeToPreviewEvents } from './preview-client'
 
 /**
  * Listens for `scorm dev` preview errors over Vite's HMR channel and returns
@@ -10,18 +10,18 @@ import { subscribeToPreviewEvents } from './preview-client';
  * preview overlay never ships to learners.
  */
 export function usePreviewError(): string | undefined {
-  const [message, setMessage] = useState<string | undefined>(undefined);
+  const [message, setMessage] = useState<string | undefined>(undefined)
 
   useEffect(() => {
-    const hot = import.meta.hot;
+    const hot = import.meta.hot
     if (!hot) {
-      return;
+      return
     }
     return subscribeToPreviewEvents(hot, {
       onError: setMessage,
-      onClear: () => setMessage(undefined),
-    });
-  }, []);
+      onClear: () => setMessage(undefined)
+    })
+  }, [])
 
-  return message;
+  return message
 }

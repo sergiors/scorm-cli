@@ -5,4 +5,4 @@
  * package; this module is the only place the public package re-exports it, and
  * the CLI bundles it here so consumers never resolve a workspace package.
  */
-export * from '@scorm-cli/authoring';
+export * from '@scorm-cli/authoring'

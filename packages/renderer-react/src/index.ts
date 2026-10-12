@@ -1,9 +1,9 @@
-import type { Renderer } from '@scorm-cli/core';
-import { renderReactPackage } from './build';
-import { renderReactDevServer } from './dev';
+import type { Renderer } from '@scorm-cli/core'
+import { renderReactPackage } from './build'
+import { renderReactDevServer } from './dev'
 
-export { renderReactPackage } from './build';
-export { renderReactDevServer } from './dev';
+export { renderReactPackage } from './build'
+export { renderReactDevServer } from './dev'
 
 /**
  * Production build plus live `scorm dev` preview behind the shared renderer
@@ -12,8 +12,8 @@ export { renderReactDevServer } from './dev';
  */
 export const reactRenderer: Renderer = {
   build: renderReactPackage,
-  dev: renderReactDevServer,
-};
+  dev: renderReactDevServer
+}
 
 export type {
   RenderAsset,
@@ -21,5 +21,5 @@ export type {
   RendererDevOptions,
   RendererDevServer,
   RenderOptions,
-  RenderResult,
-} from './types';
+  RenderResult
+} from './types'

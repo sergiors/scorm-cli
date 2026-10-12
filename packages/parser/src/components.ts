@@ -1,8 +1,8 @@
-import type { ContentNode, ImageNode, InlineNode } from '@scorm-cli/core';
-import type { AstNode, ContentSource } from './ast';
-import { parseImageComponent, parseVideo } from './media';
-import { parsePath } from './path';
-import { parseQuestionnaire } from './question';
+import type { ContentNode, ImageNode, InlineNode } from '@scorm-cli/core'
+import type { AstNode, ContentSource } from './ast'
+import { parseImageComponent, parseVideo } from './media'
+import { parsePath } from './path'
+import { parseQuestionnaire } from './question'
 
 /**
  * The single source of truth for the authoring component vocabulary: each
@@ -33,7 +33,7 @@ export type ComponentContext =
   /** A direct child of `<Questionnaire>`. */
   | 'questionnaire'
   /** A direct child of `<Question>`. */
-  | 'question';
+  | 'question'
 
 /**
  * Canonical component names and their placement, in the same order as the
@@ -51,22 +51,22 @@ const componentRegistry = {
   Questionnaire: { contexts: ['flow'] },
   Question: { contexts: ['questionnaire'] },
   Prompt: { contexts: ['question'] },
-  Option: { contexts: ['question'] },
-} as const satisfies Record<string, { contexts: readonly ComponentContext[] }>;
+  Option: { contexts: ['question'] }
+} as const satisfies Record<string, { contexts: readonly ComponentContext[] }>
 
-type ComponentRegistry = typeof componentRegistry;
+type ComponentRegistry = typeof componentRegistry
 
-export type AuthoringComponentName = keyof ComponentRegistry;
+export type AuthoringComponentName = keyof ComponentRegistry
 
-export const authoringComponentNames = Object.keys(componentRegistry) as AuthoringComponentName[];
+export const authoringComponentNames = Object.keys(componentRegistry) as AuthoringComponentName[]
 
 type ComponentNamesIn<C extends ComponentContext> = {
-  [K in AuthoringComponentName]: C extends ComponentRegistry[K]['contexts'][number] ? K : never;
-}[AuthoringComponentName];
+  [K in AuthoringComponentName]: C extends ComponentRegistry[K]['contexts'][number] ? K : never
+}[AuthoringComponentName]
 
-export type FlowComponentName = ComponentNamesIn<'flow'>;
+export type FlowComponentName = ComponentNamesIn<'flow'>
 
-export type InlineComponentName = ComponentNamesIn<'inline'>;
+export type InlineComponentName = ComponentNamesIn<'inline'>
 
 /**
  * The source context and callbacks a component parser needs. Only the
@@ -74,19 +74,19 @@ export type InlineComponentName = ComponentNamesIn<'inline'>;
  * block content through the shared sibling converter.
  */
 export interface ComponentParseContext {
-  source: ContentSource;
-  convertChildren(nodes: AstNode[]): Promise<ContentNode[]>;
+  source: ContentSource
+  convertChildren(nodes: AstNode[]): Promise<ContentNode[]>
 }
 
 export type FlowComponentParser = (
   node: AstNode,
-  context: ComponentParseContext,
-) => Promise<ContentNode>;
+  context: ComponentParseContext
+) => Promise<ContentNode>
 
 export type InlineComponentParser = (
   node: AstNode,
-  context: ComponentParseContext,
-) => Promise<InlineNode>;
+  context: ComponentParseContext
+) => Promise<InlineNode>
 
 /**
  * `<Image>` is the only component authored both inline and as a block, so its
@@ -94,7 +94,7 @@ export type InlineComponentParser = (
  * the content and inline handler contracts.
  */
 const imageComponent = (node: AstNode, context: ComponentParseContext): Promise<ImageNode> =>
-  parseImageComponent(node, context.source.sourceFile, context.source.root);
+  parseImageComponent(node, context.source.sourceFile, context.source.root)
 
 /**
  * Parsers for every component accepted as a top-level content block. The record
@@ -110,9 +110,10 @@ export const flowComponentHandlers = {
       context.source.sourceFile,
       context.source.root,
       context.convertChildren,
+      context.source.sourceLineOffset
     ),
-  Path: (node, context) => parsePath(node, context.source),
-} satisfies Record<FlowComponentName, FlowComponentParser>;
+  Path: (node, context) => parsePath(node, context.source)
+} satisfies Record<FlowComponentName, FlowComponentParser>
 
 /**
  * Parsers for every component accepted inside a paragraph. The record is
@@ -120,48 +121,48 @@ export const flowComponentHandlers = {
  * cannot bypass the dispatch by being handled ad hoc in the content converter.
  */
 export const inlineComponentHandlers = {
-  Image: imageComponent,
-} satisfies Record<InlineComponentName, InlineComponentParser>;
+  Image: imageComponent
+} satisfies Record<InlineComponentName, InlineComponentParser>
 
-const authoringComponentSet: ReadonlySet<string> = new Set(authoringComponentNames);
+const authoringComponentSet: ReadonlySet<string> = new Set(authoringComponentNames)
 
 export function isAuthoringComponent(name: string): name is AuthoringComponentName {
-  return authoringComponentSet.has(name);
+  return authoringComponentSet.has(name)
 }
 
 export function hasComponentContext(name: string, context: ComponentContext): boolean {
   return (
     isAuthoringComponent(name) &&
     componentRegistry[name].contexts.some((candidate) => candidate === context)
-  );
+  )
 }
 
 const flowComponentSet: ReadonlySet<string> = new Set(
-  authoringComponentNames.filter((name) => hasComponentContext(name, 'flow')),
-);
+  authoringComponentNames.filter((name) => hasComponentContext(name, 'flow'))
+)
 
 export function isFlowComponent(name: string): name is FlowComponentName {
-  return flowComponentSet.has(name);
+  return flowComponentSet.has(name)
 }
 
 const inlineComponentSet: ReadonlySet<string> = new Set(
-  authoringComponentNames.filter((name) => hasComponentContext(name, 'inline')),
-);
+  authoringComponentNames.filter((name) => hasComponentContext(name, 'inline'))
+)
 
 export function isInlineComponent(name: string): name is InlineComponentName {
-  return inlineComponentSet.has(name);
+  return inlineComponentSet.has(name)
 }
 
 const blockOnlyComponentSet: ReadonlySet<string> = new Set(
   authoringComponentNames.filter(
-    (name) => hasComponentContext(name, 'flow') && !hasComponentContext(name, 'inline'),
-  ),
-);
+    (name) => hasComponentContext(name, 'flow') && !hasComponentContext(name, 'inline')
+  )
+)
 
 /**
  * Whether a component is accepted as a block but never inline. Such components
  * are hoisted out of paragraphs and reported when written inline.
  */
 export function isBlockOnlyComponent(name: string): boolean {
-  return blockOnlyComponentSet.has(name);
+  return blockOnlyComponentSet.has(name)
 }

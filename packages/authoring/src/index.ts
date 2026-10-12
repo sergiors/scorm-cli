@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode } from 'react'
 
 /**
  * Authoring-only MDX markers for the SCORM CLI.
@@ -25,34 +25,34 @@ export type AuthoringComponentName =
   | 'Questionnaire'
   | 'Question'
   | 'Prompt'
-  | 'Option';
+  | 'Option'
 
 /** Question kinds accepted by `<Question type="...">`. */
-export type QuestionType = 'single-choice' | 'multiple-choice' | 'true-false';
+export type QuestionType = 'single-choice' | 'multiple-choice' | 'true-false'
 
 /** Props shared by markers that wrap authored children. */
 export interface ContainerProps {
   /** Authored child components and Markdown content. */
-  children?: ReactNode;
+  children?: ReactNode
 }
 
 /**
  * Props for the root `<Scroll>` presentation, which contains direct
  * `<Page src="..." />` children.
  */
-export type ScrollProps = ContainerProps;
+export type ScrollProps = ContainerProps
 
 /** Props for the root `<Grid>` presentation, which contains direct `<Item>`. */
 export interface GridProps extends ContainerProps {
   /** Number of columns, an integer from 1 to 12. */
-  columns?: number;
+  columns?: number
 }
 
 /** Props for a root `<Page src="..." />` declared directly in `<Scroll>`. */
 export interface PageSourceProps {
   /** Path to the referenced page document, relative to the declaring file. */
-  src: string;
-  ref?: never;
+  src: string
+  ref?: never
 }
 
 /**
@@ -61,125 +61,125 @@ export interface PageSourceProps {
  */
 export interface PageReferenceProps {
   /** Root Scroll page reference, relative to the content package root. */
-  ref: string;
-  src?: never;
+  ref: string
+  src?: never
 }
 
 /** Props for `<Page>`, which is `src`-based in a Scroll and `ref`-based in a Path. */
-export type PageProps = PageSourceProps | PageReferenceProps;
+export type PageProps = PageSourceProps | PageReferenceProps
 
 /** Props for `<Item src="..." />` in a root `<Grid>` presentation. */
 export interface ItemProps {
   /** Path to the referenced item document, relative to the declaring file. */
-  src: string;
+  src: string
 }
 
 /**
  * Props for `<Path>`, an ordered navigation path through pages already declared
  * in the root `<Scroll>`.
  */
-export type PathProps = ContainerProps;
+export type PathProps = ContainerProps
 
 /** Props for `<Image src="..." alt="..." />`, which requires alt text. */
 export interface ImageProps {
   /** Path to the image, relative to the declaring file. */
-  src: string;
+  src: string
   /** Alternative text describing the image's purpose; may be empty. */
-  alt: string;
+  alt: string
   /** Optional visible caption. */
-  caption?: string;
+  caption?: string
 }
 
 /** Props for `<Video src="..." />` and its optional media references. */
 export interface VideoProps {
   /** Path to the video, relative to the declaring file. */
-  src: string;
+  src: string
   /** Optional visible title. */
-  title?: string;
+  title?: string
   /** Optional poster image shown before playback. */
-  poster?: string;
+  poster?: string
   /** Optional captions track. */
-  captions?: string;
+  captions?: string
 }
 
 /** Props for `<Questionnaire>`, which contains one or more `<Question>`. */
-export type QuestionnaireProps = ContainerProps;
+export type QuestionnaireProps = ContainerProps
 
 /** Props for `<Question type="..." />`, which contains a Prompt and Options. */
 export interface QuestionProps extends ContainerProps {
   /** Question kind, which determines the correct-option rules. */
-  type: QuestionType;
+  type: QuestionType
 }
 
 /** Props for `<Prompt>`, the question text. */
-export type PromptProps = ContainerProps;
+export type PromptProps = ContainerProps
 
 /** Props for `<Option value="..." />`, an answer choice. */
 export interface OptionProps extends ContainerProps {
   /** Unique value identifying this option within its question. */
-  value: string;
+  value: string
   /** Whether this option is part of the correct answer. */
-  correct?: boolean;
+  correct?: boolean
 }
 
 function authoringStub(component: AuthoringComponentName): never {
   throw new Error(
     `<${component}> is an authoring marker from "scorm-cli/authoring" and cannot be executed. ` +
-      'SCORM CLI parses MDX content as data and never runs author code.',
-  );
+      'SCORM CLI parses MDX content as data and never runs author code.'
+  )
 }
 
 /** Root `<Scroll>` presentation. See {@link ScrollProps}. */
 export function Scroll(_props: ScrollProps): never {
-  return authoringStub('Scroll');
+  return authoringStub('Scroll')
 }
 
 /** Root `<Grid>` presentation. See {@link GridProps}. */
 export function Grid(_props: GridProps): never {
-  return authoringStub('Grid');
+  return authoringStub('Grid')
 }
 
 /** Page reference. See {@link PageProps}. */
 export function Page(_props: PageProps): never {
-  return authoringStub('Page');
+  return authoringStub('Page')
 }
 
 /** Grid item reference. See {@link ItemProps}. */
 export function Item(_props: ItemProps): never {
-  return authoringStub('Item');
+  return authoringStub('Item')
 }
 
 /** Ordered path through root Scroll pages. See {@link PathProps}. */
 export function Path(_props: PathProps): never {
-  return authoringStub('Path');
+  return authoringStub('Path')
 }
 
 /** Image with required alternative text. See {@link ImageProps}. */
 export function Image(_props: ImageProps): never {
-  return authoringStub('Image');
+  return authoringStub('Image')
 }
 
 /** Video with optional poster and captions. See {@link VideoProps}. */
 export function Video(_props: VideoProps): never {
-  return authoringStub('Video');
+  return authoringStub('Video')
 }
 
 /** Questionnaire wrapper. See {@link QuestionnaireProps}. */
 export function Questionnaire(_props: QuestionnaireProps): never {
-  return authoringStub('Questionnaire');
+  return authoringStub('Questionnaire')
 }
 
 /** Single question. See {@link QuestionProps}. */
 export function Question(_props: QuestionProps): never {
-  return authoringStub('Question');
+  return authoringStub('Question')
 }
 
 /** Question prompt. See {@link PromptProps}. */
 export function Prompt(_props: PromptProps): never {
-  return authoringStub('Prompt');
+  return authoringStub('Prompt')
 }
 
 /** Answer option. See {@link OptionProps}. */
 export function Option(_props: OptionProps): never {
-  return authoringStub('Option');
+  return authoringStub('Option')
 }

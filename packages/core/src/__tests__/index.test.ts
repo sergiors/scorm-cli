@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest'
 import {
   collectAssetReferences,
   getPackageProgress,
   isPackageComplete,
-  type ContentPackage,
-} from '../index';
+  type ContentPackage
+} from '../index'
 
 const contentPackage: ContentPackage = {
   metadata: { title: 'Package' },
@@ -19,33 +19,33 @@ const contentPackage: ContentPackage = {
         metadata: { title: 'A' },
         content: [
           { type: 'image', src: 'images/z.png', alt: 'Z' },
-          { type: 'video', src: 'https://example.test/v.mp4' },
-        ],
+          { type: 'video', src: 'https://example.test/v.mp4' }
+        ]
       },
       {
         type: 'item',
         id: 'b',
         source: 'b.mdx',
         metadata: { title: 'B' },
-        content: [],
-      },
-    ],
-  },
-};
+        content: []
+      }
+    ]
+  }
+}
 
 describe('core package helpers', () => {
   it('defines completion as all items visited', () => {
-    expect(isPackageComplete(contentPackage, ['a'])).toBe(false);
-    expect(isPackageComplete(contentPackage, ['a', 'b'])).toBe(true);
+    expect(isPackageComplete(contentPackage, ['a'])).toBe(false)
+    expect(isPackageComplete(contentPackage, ['a', 'b'])).toBe(true)
     expect(
       isPackageComplete(
         {
           metadata: { title: 'Empty' },
-          presentation: { type: 'scroll', pages: [] },
+          presentation: { type: 'scroll', pages: [] }
         },
-        [],
-      ),
-    ).toBe(false);
+        []
+      )
+    ).toBe(false)
     expect(
       isPackageComplete(
         {
@@ -58,22 +58,22 @@ describe('core package helpers', () => {
                 id: 'page:a',
                 source: 'a.mdx',
                 metadata: { title: 'A' },
-                content: [],
-              },
-            ],
-          },
+                content: []
+              }
+            ]
+          }
         },
-        ['page:a'],
-      ),
-    ).toBe(true);
-  });
+        ['page:a']
+      )
+    ).toBe(true)
+  })
 
   it('collects sorted unique local asset references', () => {
-    expect(collectAssetReferences(contentPackage)).toEqual(['images/z.png']);
-  });
+    expect(collectAssetReferences(contentPackage)).toEqual(['images/z.png'])
+  })
 
   it('calculates integer progress from completed scroll pages and visited grid items', () => {
-    expect(getPackageProgress(contentPackage, { pages: { a: { visited: true } } })).toBe(50);
+    expect(getPackageProgress(contentPackage, { pages: { a: { visited: true } } })).toBe(50)
     const scroll: ContentPackage = {
       metadata: { title: 'Scroll' },
       presentation: {
@@ -83,13 +83,13 @@ describe('core package helpers', () => {
           id,
           source: id,
           metadata: { title: id },
-          content: [],
-        })),
-      },
-    };
-    expect(getPackageProgress(scroll, { pages: { one: { completed: true } } })).toBe(33);
-    expect(getPackageProgress(scroll, { pages: { one: { visited: true } } })).toBe(0);
-  });
+          content: []
+        }))
+      }
+    }
+    expect(getPackageProgress(scroll, { pages: { one: { completed: true } } })).toBe(33)
+    expect(getPackageProgress(scroll, { pages: { one: { visited: true } } })).toBe(0)
+  })
 
   it('collects assets from tight list inline runs and their sibling blocks', () => {
     const tight: ContentPackage = {
@@ -117,22 +117,22 @@ describe('core package helpers', () => {
                           {
                             type: 'image',
                             src: 'inline/tight.svg',
-                            alt: 'tight',
-                          },
-                        ],
+                            alt: 'tight'
+                          }
+                        ]
                       },
-                      { type: 'image', src: 'block/tight.svg', alt: 'block' },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    };
-    expect(collectAssetReferences(tight)).toEqual(['block/tight.svg', 'inline/tight.svg']);
-  });
+                      { type: 'image', src: 'block/tight.svg', alt: 'block' }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+    expect(collectAssetReferences(tight)).toEqual(['block/tight.svg', 'inline/tight.svg'])
+  })
 
   it('ignores thematic breaks when collecting assets', () => {
     const withBreak: ContentPackage = {
@@ -148,14 +148,14 @@ describe('core package helpers', () => {
             content: [
               { type: 'paragraph', children: [{ type: 'text', value: 'a' }] },
               { type: 'thematicBreak' },
-              { type: 'image', src: 'images/b.svg', alt: 'B' },
-            ],
-          },
-        ],
-      },
-    };
-    expect(collectAssetReferences(withBreak)).toEqual(['images/b.svg']);
-  });
+              { type: 'image', src: 'images/b.svg', alt: 'B' }
+            ]
+          }
+        ]
+      }
+    }
+    expect(collectAssetReferences(withBreak)).toEqual(['images/b.svg'])
+  })
 
   it('collects local media references recursively throughout the content AST', () => {
     const nested: ContentPackage = {
@@ -187,15 +187,21 @@ describe('core package helpers', () => {
                               {
                                 type: 'image',
                                 src: 'inline/heading.svg',
-                                alt: 'heading',
-                              },
-                            ],
-                          },
-                        ],
-                      },
-                    ],
+                                alt: 'heading'
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
                   },
-                ],
+                  {
+                    type: 'link',
+                    href: 'docs/guide.pdf?download=1#page-2',
+                    children: [{ type: 'text', value: 'guide' }]
+                  },
+                  { type: 'link', href: 'mailto:help@example.test', children: [] }
+                ]
               },
               {
                 type: 'list',
@@ -209,9 +215,9 @@ describe('core package helpers', () => {
                           {
                             type: 'image',
                             src: 'inline/list.svg',
-                            alt: 'list',
-                          },
-                        ],
+                            alt: 'list'
+                          }
+                        ]
                       },
                       {
                         type: 'quote',
@@ -222,15 +228,15 @@ describe('core package helpers', () => {
                               {
                                 type: 'image',
                                 src: 'inline/quote.svg',
-                                alt: 'quote',
-                              },
-                            ],
-                          },
-                        ],
-                      },
-                    ],
-                  },
-                ],
+                                alt: 'quote'
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               },
               {
                 type: 'quote',
@@ -238,9 +244,9 @@ describe('core package helpers', () => {
                   {
                     type: 'image',
                     src: 'inline/quote-nested.svg',
-                    alt: 'quote',
-                  },
-                ],
+                    alt: 'quote'
+                  }
+                ]
               },
               {
                 type: 'list',
@@ -251,11 +257,11 @@ describe('core package helpers', () => {
                       {
                         type: 'image',
                         src: 'inline/list-nested.svg',
-                        alt: 'list',
-                      },
-                    ],
-                  },
-                ],
+                        alt: 'list'
+                      }
+                    ]
+                  }
+                ]
               },
               {
                 type: 'questionnaire',
@@ -269,8 +275,8 @@ describe('core package helpers', () => {
                       {
                         type: 'image',
                         src: 'inline/prompt.svg',
-                        alt: 'prompt',
-                      },
+                        alt: 'prompt'
+                      }
                     ],
                     options: [
                       {
@@ -280,9 +286,9 @@ describe('core package helpers', () => {
                           {
                             type: 'image',
                             src: 'inline/option.svg',
-                            alt: 'option',
-                          },
-                        ],
+                            alt: 'option'
+                          }
+                        ]
                       },
                       {
                         value: 'remote',
@@ -291,26 +297,27 @@ describe('core package helpers', () => {
                           {
                             type: 'video',
                             src: 'https://example.test/remote.mp4',
-                            poster: 'inline/remote-poster.svg',
-                          },
-                        ],
-                      },
-                    ],
-                  },
-                ],
+                            poster: 'inline/remote-poster.svg'
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               },
               {
                 type: 'video',
                 src: 'media/lesson.mp4',
                 poster: 'media/lesson-poster.svg',
-                captions: 'media/lesson-captions.vtt',
-              },
-            ],
-          },
-        ],
-      },
-    };
+                captions: 'media/lesson-captions.vtt'
+              }
+            ]
+          }
+        ]
+      }
+    }
     expect(collectAssetReferences(nested)).toEqual([
+      'docs/guide.pdf',
       'inline/heading.svg',
       'inline/list-nested.svg',
       'inline/list.svg',
@@ -321,7 +328,7 @@ describe('core package helpers', () => {
       'inline/remote-poster.svg',
       'media/lesson-captions.vtt',
       'media/lesson-poster.svg',
-      'media/lesson.mp4',
-    ]);
-  });
-});
+      'media/lesson.mp4'
+    ])
+  })
+})

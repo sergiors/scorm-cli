@@ -1,8 +1,8 @@
-import { useCallback, useRef, useState } from 'react';
-import type { AnswerValue, ContentPackage, PlayerState } from '../types';
-import { getPackageProgress, getPresentationNodes, isPackageComplete } from './content-helpers';
-import { sanitizePlayerState, sameAnswer, updatePageState, withLocation } from './player-state';
-import { restoreState, saveState, useScormBridge } from './use-scorm-bridge';
+import { useCallback, useRef, useState } from 'react'
+import type { AnswerValue, ContentPackage, PlayerState } from '../types'
+import { getPackageProgress, getPresentationNodes, isPackageComplete } from './content-helpers'
+import { sanitizePlayerState, sameAnswer, updatePageState, withLocation } from './player-state'
+import { restoreState, saveState, useScormBridge } from './use-scorm-bridge'
 
 /**
  * The learner's owned progress plus the transitions that mutate it, as returned
@@ -11,15 +11,15 @@ import { restoreState, saveState, useScormBridge } from './use-scorm-bridge';
  */
 export interface PlayerSession {
   /** The in-memory resume state (lesson location plus per-node progress). */
-  state: PlayerState;
+  state: PlayerState
   /** Stores a node as the current location and marks it visited in one write. */
-  markSeen(id: string): void;
+  markSeen(id: string): void
   /** Marks a node completed (scroll completion is gated on this). */
-  markCompleted(id: string): void;
+  markCompleted(id: string): void
   /** Persists a question answer for a node. */
-  setAnswer(pageId: string, questionId: string, value: AnswerValue): void;
+  setAnswer(pageId: string, questionId: string, value: AnswerValue): void
   /** Marks a questionnaire on a node as submitted. */
-  markQuestionnaireSubmitted(pageId: string, questionnaireId: string): void;
+  markQuestionnaireSubmitted(pageId: string, questionnaireId: string): void
 }
 
 /**
@@ -49,15 +49,15 @@ export interface PlayerSession {
  *   reopens that item's dialog on mount.
  */
 export function usePlayerSession(contentPackage: ContentPackage): PlayerSession {
-  const { presentation } = contentPackage;
+  const { presentation } = contentPackage
 
   // Validate the saved state once, on first mount. Reading the bridge is a pure
   // lookup and sanitizing is pure, so StrictMode's doubled initializer yields
   // the same value.
   const [state, setState] = useState<PlayerState>(() =>
-    sanitizePlayerState(presentation, restoreState()),
-  );
-  const stateRef = useRef(state);
+    sanitizePlayerState(presentation, restoreState())
+  )
+  const stateRef = useRef(state)
 
   // Applies a pure update to the owned state and persists the result. The ref
   // is updated synchronously so back-to-back interactions compose, and the
@@ -66,17 +66,17 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
   // owns encoding both, so the renderer never serializes suspend data.
   const applyState = useCallback(
     (updater: (previous: PlayerState) => PlayerState) => {
-      const previous = stateRef.current;
-      const next = updater(previous);
+      const previous = stateRef.current
+      const next = updater(previous)
       if (next === previous) {
-        return;
+        return
       }
-      stateRef.current = next;
-      setState(next);
-      saveState(next, getPackageProgress(contentPackage, next));
+      stateRef.current = next
+      setState(next)
+      saveState(next, getPackageProgress(contentPackage, next))
     },
-    [contentPackage],
-  );
+    [contentPackage]
+  )
 
   // Marks a page/item as seen and stores it as the current location in one
   // write, so a display never produces two bridge calls.
@@ -84,56 +84,56 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
     (id: string) => {
       applyState((previous) => {
         const visited = updatePageState(previous, id, (page) =>
-          page.visited ? page : { ...page, visited: true },
-        );
-        return withLocation(visited, id);
-      });
+          page.visited ? page : { ...page, visited: true }
+        )
+        return withLocation(visited, id)
+      })
     },
-    [applyState],
-  );
+    [applyState]
+  )
 
   const markCompleted = useCallback(
     (id: string) => {
       applyState((previous) =>
         updatePageState(previous, id, (page) =>
-          page.completed ? page : { ...page, completed: true },
-        ),
-      );
+          page.completed ? page : { ...page, completed: true }
+        )
+      )
     },
-    [applyState],
-  );
+    [applyState]
+  )
 
   const setAnswer = useCallback(
     (pageId: string, questionId: string, value: AnswerValue) => {
       applyState((previous) =>
         updatePageState(previous, pageId, (page) => {
           if (sameAnswer(page.answers?.[questionId], value)) {
-            return page;
+            return page
           }
-          return { ...page, answers: { ...page.answers, [questionId]: value } };
-        }),
-      );
+          return { ...page, answers: { ...page.answers, [questionId]: value } }
+        })
+      )
     },
-    [applyState],
-  );
+    [applyState]
+  )
 
   const markQuestionnaireSubmitted = useCallback(
     (pageId: string, questionnaireId: string) => {
       applyState((previous) =>
         updatePageState(previous, pageId, (page) => {
-          const submitted = page.submittedQuestionnaires ?? [];
+          const submitted = page.submittedQuestionnaires ?? []
           if (submitted.includes(questionnaireId)) {
-            return page;
+            return page
           }
           return {
             ...page,
-            submittedQuestionnaires: [...submitted, questionnaireId],
-          };
-        }),
-      );
+            submittedQuestionnaires: [...submitted, questionnaireId]
+          }
+        })
+      )
     },
-    [applyState],
-  );
+    [applyState]
+  )
 
   // Scroll completion requires every page to be *completed*; grid completion
   // requires every item to be *visited*. Reusing the canonical helper keeps
@@ -142,10 +142,10 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
     .filter((node) =>
       presentation.type === 'scroll'
         ? state.pages[node.id]?.completed
-        : state.pages[node.id]?.visited,
+        : state.pages[node.id]?.visited
     )
-    .map((node) => node.id);
-  useScormBridge(isPackageComplete(contentPackage, doneNodeIds));
+    .map((node) => node.id)
+  useScormBridge(isPackageComplete(contentPackage, doneNodeIds))
 
-  return { state, markSeen, markCompleted, setAnswer, markQuestionnaireSubmitted };
+  return { state, markSeen, markCompleted, setAnswer, markQuestionnaireSubmitted }
 }

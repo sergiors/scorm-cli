@@ -1,85 +1,85 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { renderReactPackage, reactRenderer } from '..';
-import type { RenderResult } from '..';
-import { samplePackage } from './fixtures';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { renderReactPackage, reactRenderer } from '..'
+import type { RenderResult } from '..'
+import { samplePackage } from './fixtures'
 
-const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>`;
+const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>`
 
-let workDir: string;
-let outputDirectory: string;
-let entrypoint: RenderResult;
-let indexHtml: string;
-let appJs: string;
-let bundleJs: string;
+let workDir: string
+let outputDirectory: string
+let entrypoint: RenderResult
+let indexHtml: string
+let appJs: string
+let bundleJs: string
 
 beforeAll(async () => {
-  workDir = await mkdtemp(path.join(os.tmpdir(), 'renderer-react-'));
-  outputDirectory = path.join(workDir, 'out');
-  await mkdir(outputDirectory, { recursive: true });
-  await writeFile(path.join(outputDirectory, 'stale.txt'), 'should be removed');
-  await writeFile(path.join(workDir, 'thumb.svg'), SVG);
+  workDir = await mkdtemp(path.join(os.tmpdir(), 'renderer-react-'))
+  outputDirectory = path.join(workDir, 'out')
+  await mkdir(outputDirectory, { recursive: true })
+  await writeFile(path.join(outputDirectory, 'stale.txt'), 'should be removed')
+  await writeFile(path.join(workDir, 'thumb.svg'), SVG)
 
   entrypoint = await renderReactPackage(samplePackage, {
     outputDirectory,
     assets: [
       {
         sourcePath: path.join(workDir, 'thumb.svg'),
-        targetPath: 'assets/thumb.svg',
-      },
-    ],
-  });
+        targetPath: 'assets/thumb.svg'
+      }
+    ]
+  })
 
-  indexHtml = await readFile(path.join(outputDirectory, 'index.html'), 'utf-8');
-  appJs = await readFile(path.join(outputDirectory, 'assets', 'app.js'), 'utf-8');
+  indexHtml = await readFile(path.join(outputDirectory, 'index.html'), 'utf-8')
+  appJs = await readFile(path.join(outputDirectory, 'assets', 'app.js'), 'utf-8')
 
   // Concatenate every emitted script (not just the entry) so the exclusion
   // checks below cover lazily split dev-only chunks too.
-  const assetFiles = await readdir(path.join(outputDirectory, 'assets'));
-  const jsFiles = assetFiles.filter((name) => name.endsWith('.js'));
+  const assetFiles = await readdir(path.join(outputDirectory, 'assets'))
+  const jsFiles = assetFiles.filter((name) => name.endsWith('.js'))
   bundleJs = (
     await Promise.all(
-      jsFiles.map((name) => readFile(path.join(outputDirectory, 'assets', name), 'utf-8')),
+      jsFiles.map((name) => readFile(path.join(outputDirectory, 'assets', name), 'utf-8'))
     )
-  ).join('\n');
-}, 120_000);
+  ).join('\n')
+}, 120_000)
 
 afterAll(async () => {
   if (workDir) {
-    await rm(workDir, { recursive: true, force: true });
+    await rm(workDir, { recursive: true, force: true })
   }
-});
+})
 
 describe('renderReactPackage', () => {
   it('returns the output directory and index.html entrypoint', () => {
-    expect(entrypoint.directory).toBe(path.resolve(outputDirectory));
-    expect(entrypoint.entrypoint).toBe('index.html');
-  });
+    expect(entrypoint.directory).toBe(path.resolve(outputDirectory))
+    expect(entrypoint.entrypoint).toBe('index.html')
+  })
 
   it('generates a self-contained index.html', () => {
-    expect(indexHtml).toContain('<div id="root">');
-    expect(indexHtml).toContain('./assets/app.js');
-    expect(indexHtml).toContain('rel="stylesheet"');
-    expect(indexHtml).toContain('href="./assets/');
-    expect(indexHtml).toContain('<title>Rendering Fundamentals</title>');
+    expect(indexHtml).toContain('<div id="root">')
+    expect(indexHtml).toContain('./assets/app.js')
+    expect(indexHtml).toContain('rel="stylesheet"')
+    expect(indexHtml).toContain('href="./assets/')
+    expect(indexHtml).toContain('<title>Rendering Fundamentals</title>')
     // No authored language means the parser default, English.
-    expect(indexHtml).toContain('<html lang="en">');
+    expect(indexHtml).toContain('<html lang="en">')
     // Relative base so the output works from the file system or any subpath.
-    expect(indexHtml).not.toContain('src="/assets');
-  });
+    expect(indexHtml).not.toContain('src="/assets')
+  })
 
   it('clears stale files from the output directory', async () => {
-    await expect(readFile(path.join(outputDirectory, 'stale.txt'), 'utf-8')).rejects.toThrow();
-  });
+    await expect(readFile(path.join(outputDirectory, 'stale.txt'), 'utf-8')).rejects.toThrow()
+  })
 
   it('embeds deterministic package data in the bundle', () => {
-    expect(appJs).toContain('Introduction');
-    expect(appJs).toContain('Rendering Fundamentals');
+    expect(appJs).toContain('Introduction')
+    expect(appJs).toContain('Rendering Fundamentals')
     // No runtime JSON fetch is used to load the package.
-    expect(appJs).not.toContain('virtual:package-data');
-  });
+    expect(appJs).not.toContain('virtual:package-data')
+  })
 
   it('does not ship the dev-only preview error channel or overlay', () => {
     // The preview error/clear events and the author-facing overlay are wired
@@ -92,11 +92,11 @@ describe('renderReactPackage', () => {
       'PreviewErrorOverlay',
       'DevPreviewOverlay',
       'Fix the content and save. The preview reloads automatically once the content is valid',
-      'import.meta.hot',
+      'import.meta.hot'
     ]) {
-      expect(bundleJs).not.toContain(marker);
+      expect(bundleJs).not.toContain(marker)
     }
-  });
+  })
 
   it('does not ship the SCORM dev-tools toolbar or its controls', () => {
     for (const marker of [
@@ -108,29 +108,29 @@ describe('renderReactPackage', () => {
       'LMS persistence',
       'Persist CMI data',
       // The dev-only shadcn Popover must not leak into the packaged app.
-      'popover-content',
+      'popover-content'
     ]) {
-      expect(bundleJs).not.toContain(marker);
+      expect(bundleJs).not.toContain(marker)
     }
-    expect(bundleJs).not.toContain('import.meta.hot');
-  });
+    expect(bundleJs).not.toContain('import.meta.hot')
+  })
 
   it('emits a compiled stylesheet', async () => {
-    const assets = await readdir(path.join(outputDirectory, 'assets'));
-    const cssFile = assets.find((name) => name.endsWith('.css'));
-    expect(cssFile).toBeDefined();
-    const css = await readFile(path.join(outputDirectory, 'assets', cssFile as string), 'utf-8');
-    expect(css.length).toBeGreaterThan(0);
+    const assets = await readdir(path.join(outputDirectory, 'assets'))
+    const cssFile = assets.find((name) => name.endsWith('.css'))
+    expect(cssFile).toBeDefined()
+    const css = await readFile(path.join(outputDirectory, 'assets', cssFile as string), 'utf-8')
+    expect(css.length).toBeGreaterThan(0)
     // The Typography plugin is registered and `prose` is applied by the
     // presentations, so the compiled stylesheet must carry its rules.
-    expect(css).toContain('.prose');
-    expect(css).toContain('--tw-prose-body');
-  });
+    expect(css).toContain('.prose')
+    expect(css).toContain('--tw-prose-body')
+  })
 
   it('copies provided assets to their target paths', async () => {
-    const copied = await readFile(path.join(outputDirectory, 'assets', 'thumb.svg'), 'utf-8');
-    expect(copied).toBe(SVG);
-  });
+    const copied = await readFile(path.join(outputDirectory, 'assets', 'thumb.svg'), 'utf-8')
+    expect(copied).toBe(SVG)
+  })
 
   it('rejects an asset target that escapes the output directory', async () => {
     await expect(
@@ -139,22 +139,22 @@ describe('renderReactPackage', () => {
         assets: [
           {
             sourcePath: path.join(workDir, 'thumb.svg'),
-            targetPath: '../evil',
-          },
-        ],
-      }),
-    ).rejects.toThrow(/escapes the output directory/);
-  });
+            targetPath: '../evil'
+          }
+        ]
+      })
+    ).rejects.toThrow(/escapes the output directory/)
+  })
 
   it('requires an output directory', async () => {
     await expect(renderReactPackage(samplePackage, { outputDirectory: '' })).rejects.toThrow(
-      /outputDirectory/,
-    );
-  });
-});
+      /outputDirectory/
+    )
+  })
+})
 
 describe('reactRenderer', () => {
   it('exposes renderReactPackage through the renderer contract', () => {
-    expect(reactRenderer.build).toBe(renderReactPackage);
-  });
-});
+    expect(reactRenderer.build).toBe(renderReactPackage)
+  })
+})

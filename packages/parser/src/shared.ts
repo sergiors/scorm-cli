@@ -1,44 +1,45 @@
-import path from 'node:path';
-import type { AstNode } from './ast';
+import path from 'node:path'
+import { isJsx, type AstNode } from './ast'
 
 export function sourceLocation(file: string, node?: AstNode): string {
-  const line = node?.position?.start?.line;
-  return `${file}${line ? `:${line}` : ''}`;
+  const line = node?.position?.start?.line
+  const column = node?.position?.start?.column
+  return `${file}${line ? `:${line}${column ? `:${column}` : ''}` : ''}`
 }
 
-type AttributeValue = string | number | boolean;
+type AttributeValue = string | number | boolean
 
-type Attributes = Record<string, AttributeValue>;
+type Attributes = Record<string, AttributeValue>
 
 export function attrs(node: AstNode, file: string): Attributes {
-  const entries = (node.attributes ?? []).map((attribute) => {
+  const entries = (isJsx(node) ? (node.attributes ?? []) : []).map((attribute) => {
     if (attribute.type !== 'mdxJsxAttribute' || !attribute.name) {
       throw new Error(
-        `${sourceLocation(file, node)}: ` + 'spread/dynamic component attributes are not supported',
-      );
+        `${sourceLocation(file, node)}: ` + 'spread/dynamic component attributes are not supported'
+      )
     }
 
     return [
       attribute.name,
-      parseStaticAttributeValue(attribute.name, attribute.value, file, node),
-    ] as const;
-  });
+      parseStaticAttributeValue(attribute.name, attribute.value, file, node)
+    ] as const
+  })
 
-  return Object.fromEntries(entries);
+  return Object.fromEntries(entries)
 }
 
 function parseStaticAttributeValue(
   name: string,
   value: unknown,
   file: string,
-  node: AstNode,
+  node: AstNode
 ): AttributeValue {
   if (value === null) {
-    return true;
+    return true
   }
 
   if (typeof value === 'string') {
-    return value;
+    return value
   }
 
   if (
@@ -48,59 +49,59 @@ function parseStaticAttributeValue(
     typeof value.value !== 'string'
   ) {
     throw new Error(
-      `${sourceLocation(file, node)}: ` + `dynamic value for attribute "${name}" is not supported`,
-    );
+      `${sourceLocation(file, node)}: ` + `dynamic value for attribute "${name}" is not supported`
+    )
   }
 
   if (value.value === 'true') {
-    return true;
+    return true
   }
 
   if (value.value === 'false') {
-    return false;
+    return false
   }
 
   if (/^\d+$/.test(value.value)) {
-    return Number(value.value);
+    return Number(value.value)
   }
 
   throw new Error(
-    `${sourceLocation(file, node)}: ` + `dynamic value for attribute "${name}" is not supported`,
-  );
+    `${sourceLocation(file, node)}: ` + `dynamic value for attribute "${name}" is not supported`
+  )
 }
 
 export function requiredString(value: unknown, name: string, file: string, node: AstNode): string {
   if (typeof value !== 'string' || !value.trim()) {
-    throw new Error(`${sourceLocation(file, node)}: "${name}" must be a non-empty string`);
+    throw new Error(`${sourceLocation(file, node)}: "${name}" must be a non-empty string`)
   }
 
-  return value.trim();
+  return value.trim()
 }
 
 export function optionalString(
   value: unknown,
   name: string,
   file: string,
-  node: AstNode,
+  node: AstNode
 ): string | undefined {
   if (value === undefined) {
-    return undefined;
+    return undefined
   }
 
-  return requiredString(value, name, file, node);
+  return requiredString(value, name, file, node)
 }
 
 export function canonicalLanguage(value: string | undefined, file: string): string {
   if (value === undefined) {
-    return 'en';
+    return 'en'
   }
 
   try {
-    return Intl.getCanonicalLocales(value)[0]!;
+    return Intl.getCanonicalLocales(value)[0]!
   } catch {
     throw new Error(
-      `${file}: "lang" must be a valid BCP-47 language tag (for example, "en" or "pt-BR"); received "${value}"`,
-    );
+      `${file}: "lang" must be a valid BCP-47 language tag (for example, "en" or "pt-BR"); received "${value}"`
+    )
   }
 }
 
@@ -108,21 +109,21 @@ export function assertAttributes(
   values: Record<string, unknown>,
   allowed: string[],
   file: string,
-  node: AstNode,
+  node: AstNode
 ) {
   for (const key of Object.keys(values))
     if (!allowed.includes(key))
-      throw new Error(`${sourceLocation(file, node)}: unknown attribute "${key}"`);
+      throw new Error(`${sourceLocation(file, node)}: unknown attribute "${key}"`)
 }
 
 export function assertFrontmatterKeys(
   data: Record<string, unknown>,
   allowed: string[],
-  file: string,
+  file: string
 ): void {
   for (const key of Object.keys(data)) {
     if (!allowed.includes(key)) {
-      throw new Error(`${sourceLocation(file)}: unknown frontmatter field "${key}"`);
+      throw new Error(`${sourceLocation(file)}: unknown frontmatter field "${key}"`)
     }
   }
 }
@@ -132,20 +133,20 @@ export function normalizedRelative(
   absolute: string,
   file: string,
   node: AstNode,
-  label: string,
+  label: string
 ): string {
-  const rel = path.relative(root, absolute);
+  const rel = path.relative(root, absolute)
   if (!rel || rel === '.') {
     throw new Error(
-      `${sourceLocation(file, node)}: ${label} must refer to a file inside the content package directory`,
-    );
+      `${sourceLocation(file, node)}: ${label} must refer to a file inside the content package directory`
+    )
   }
 
   if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
     throw new Error(
-      `${sourceLocation(file, node)}: ${label} resolves outside the content package directory`,
-    );
+      `${sourceLocation(file, node)}: ${label} resolves outside the content package directory`
+    )
   }
 
-  return rel.split(path.sep).join('/');
+  return rel.split(path.sep).join('/')
 }

@@ -1,11 +1,11 @@
-import { Fragment } from 'react';
-import type { ComponentType, ReactNode } from 'react';
-import type { AnswerValue, ContentNode, PageNode, PlayerPageState } from '../types';
-import { useIntl } from 'react-intl';
-import { cn } from '../lib/utils';
-import { InlineContent } from './InlineContent';
-import { PathView } from './PathView';
-import { QuestionnaireView } from './QuestionnaireView';
+import { Fragment } from 'react'
+import type { ComponentType, ReactNode } from 'react'
+import type { AnswerValue, ContentNode, PageNode, PlayerPageState } from '../types'
+import { useIntl } from 'react-intl'
+import { cn } from '../lib/utils'
+import { InlineContent } from './InlineContent'
+import { PathView } from './PathView'
+import { QuestionnaireView } from './QuestionnaireView'
 
 const HEADING_TAGS = {
   1: 'h1',
@@ -13,8 +13,8 @@ const HEADING_TAGS = {
   3: 'h3',
   4: 'h4',
   5: 'h5',
-  6: 'h6',
-} as const;
+  6: 'h6'
+} as const
 
 /**
  * Maps an authored Markdown heading depth straight to its HTML level: depth 1
@@ -22,52 +22,52 @@ const HEADING_TAGS = {
  * the valid 1-6 range so a bad AST can never emit an invalid tag.
  */
 function clampHeading(depth: number): keyof typeof HEADING_TAGS {
-  const level = Math.min(6, Math.max(1, Math.trunc(depth)));
-  return level as keyof typeof HEADING_TAGS;
+  const level = Math.min(6, Math.max(1, Math.trunc(depth)))
+  return level as keyof typeof HEADING_TAGS
 }
 
 export interface ContentRendererProps {
-  nodes: ContentNode[];
+  nodes: ContentNode[]
   /**
    * Invoked once when a questionnaire in this subtree is submitted. Threaded
    * recursively through nested lists, quotes and questionnaire content so the
    * owning presentation sees every submission, however deeply it is authored.
    */
-  onQuestionnaireSubmitted?: (id: string) => void;
+  onQuestionnaireSubmitted?: (id: string) => void
   /**
    * Saved answers for the owning page/item, keyed by question id. Threaded to
    * every questionnaire in the subtree so restored selections render.
    */
-  answers?: Record<string, AnswerValue>;
+  answers?: Record<string, AnswerValue>
   /**
    * Wrapper ids of the questionnaires already submitted on the owning
    * page/item. Submitted questionnaires render read-only.
    */
-  submittedQuestionnaires?: readonly string[];
+  submittedQuestionnaires?: readonly string[]
   /**
    * Persists a single question answer for the owning page/item. Threaded to
    * every questionnaire so nested answers are saved under the same namespace.
    */
-  onAnswer?: (questionId: string, value: AnswerValue) => void;
+  onAnswer?: (questionId: string, value: AnswerValue) => void
   /**
    * The root presentation's pages, so a Path node can resolve its referenced
    * ids to display metadata. Threaded unchanged through nested blocks; only a
    * scroll presentation supplies it.
    */
-  pathPages?: readonly PageNode[];
+  pathPages?: readonly PageNode[]
   /**
    * Persisted state per root page id, so Path entries can read which referenced
    * pages are already visited. Path reuses this state and persists none of its
    * own.
    */
-  pageStates?: Record<string, PlayerPageState>;
+  pageStates?: Record<string, PlayerPageState>
   /**
    * Opens a referenced root page through the presentation's existing page
    * switching, without mounting a second copy of the page. Absent when the
    * surrounding presentation cannot switch pages, in which case Path entries
    * render inert.
    */
-  onNavigatePathPage?: (pageId: string) => void;
+  onNavigatePathPage?: (pageId: string) => void
 }
 
 /**
@@ -75,20 +75,20 @@ export interface ContentRendererProps {
  * props minus `nodes`, so the same object can be spread straight back into a
  * recursive {@link ContentRenderer}.
  */
-type ContentNodeRenderContext = Omit<ContentRendererProps, 'nodes'>;
+type ContentNodeRenderContext = Omit<ContentRendererProps, 'nodes'>
 
-type ContentNodeType = ContentNode['type'];
+type ContentNodeType = ContentNode['type']
 
 /** The exact node interface behind a block discriminant, e.g. `ImageNode`. */
-type ContentNodeOf<T extends ContentNodeType> = Extract<ContentNode, { type: T }>;
+type ContentNodeOf<T extends ContentNodeType> = Extract<ContentNode, { type: T }>
 
 /**
  * Props shared by every block view: the exact node interface behind its
  * discriminant plus the threaded render context.
  */
 interface ContentNodeViewProps<T extends ContentNodeType> {
-  node: ContentNodeOf<T>;
-  context: ContentNodeRenderContext;
+  node: ContentNodeOf<T>
+  context: ContentNodeRenderContext
 }
 
 /**
@@ -97,16 +97,16 @@ interface ContentNodeViewProps<T extends ContentNodeType> {
  * view is a compile-time error.
  */
 type ContentNodeRenderers = {
-  [T in ContentNodeType]: ComponentType<ContentNodeViewProps<T>>;
-};
+  [T in ContentNodeType]: ComponentType<ContentNodeViewProps<T>>
+}
 
 function HeadingView({ node }: ContentNodeViewProps<'heading'>) {
-  const Tag = HEADING_TAGS[clampHeading(node.depth)];
+  const Tag = HEADING_TAGS[clampHeading(node.depth)]
   return (
-    <Tag className='scroll-mt-24'>
+    <Tag className="scroll-mt-24">
       <InlineContent nodes={node.children} />
     </Tag>
-  );
+  )
 }
 
 function ParagraphView({ node }: ContentNodeViewProps<'paragraph'>) {
@@ -114,11 +114,11 @@ function ParagraphView({ node }: ContentNodeViewProps<'paragraph'>) {
     <p>
       <InlineContent nodes={node.children} />
     </p>
-  );
+  )
 }
 
 function ThematicBreakView() {
-  return <hr />;
+  return <hr />
 }
 
 /**
@@ -129,10 +129,10 @@ function ThematicBreakView() {
  */
 function ListItemView({
   item,
-  context,
+  context
 }: {
-  item: ContentNodeOf<'list'>['items'][number];
-  context: ContentNodeRenderContext;
+  item: ContentNodeOf<'list'>['items'][number]
+  context: ContentNodeRenderContext
 }) {
   return (
     <li>
@@ -141,14 +141,14 @@ function ListItemView({
           <InlineContent key={`inlineContent-${index}`} nodes={child.children} />
         ) : (
           <Fragment key={`${child.type}-${index}`}>{renderContentNode(child, context)}</Fragment>
-        ),
+        )
       )}
     </li>
-  );
+  )
 }
 
 function ListView({ node, context }: ContentNodeViewProps<'list'>) {
-  const ListTag = node.ordered ? 'ol' : 'ul';
+  const ListTag = node.ordered ? 'ol' : 'ul'
   return (
     <ListTag
       start={node.ordered ? node.start : undefined}
@@ -158,23 +158,23 @@ function ListView({ node, context }: ContentNodeViewProps<'list'>) {
         <ListItemView key={index} item={item} context={context} />
       ))}
     </ListTag>
-  );
+  )
 }
 
 function CodeView({ node }: ContentNodeViewProps<'code'>) {
   return (
-    <pre className='text-sm font-mono not-prose overflow-x-auto rounded-2xl border border-border bg-secondary p-6'>
+    <pre className="text-sm font-mono not-prose overflow-x-auto rounded-2xl border border-border bg-secondary p-6">
       <code className={node.language ? `language-${node.language}` : undefined}>{node.value}</code>
     </pre>
-  );
+  )
 }
 
 function QuoteView({ node, context }: ContentNodeViewProps<'quote'>) {
   return (
-    <blockquote className='border-l-4 border-primary/50 bg-secondary/50 px-4 py-3 italic text-foreground/90'>
+    <blockquote className="border-l-4 border-primary/50 bg-secondary/50 px-4 py-3 italic text-foreground/90">
       <ContentRenderer nodes={node.children} {...context} />
     </blockquote>
-  );
+  )
 }
 
 function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
@@ -182,40 +182,40 @@ function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
     <img
       src={node.src}
       alt={node.alt}
-      loading='lazy'
+      loading="lazy"
       className={cn('h-auto max-w-full rounded-2xl overflow-hidden', node.caption ? undefined : '')}
     />
-  );
+  )
   if (!node.caption) {
-    return image;
+    return image
   }
   return (
-    <figure className='space-y-2'>
+    <figure className="space-y-2">
       {image}
-      <figcaption className='text-sm text-muted-foreground'>{node.caption}</figcaption>
+      <figcaption className="text-sm text-muted-foreground">{node.caption}</figcaption>
     </figure>
-  );
+  )
 }
 
 function VideoView({ node }: ContentNodeViewProps<'video'>) {
-  const intl = useIntl();
+  const intl = useIntl()
   return (
     <figure>
       <video
         controls
-        preload='metadata'
+        preload="metadata"
         poster={node.poster}
         aria-label={node.title ?? intl.formatMessage({ id: 'video.label' })}
-        className='w-full rounded-2xl'
+        className="w-full rounded-2xl"
       >
         <source src={node.src} />
         {node.captions ? (
           // BCP 47 tag for an undetermined language: the AST only carries a
           // caption track path, so we must not invent a specific locale.
           <track
-            kind='captions'
+            kind="captions"
             src={node.captions}
-            srcLang='und'
+            srcLang="und"
             label={intl.formatMessage({ id: 'video.captions' })}
             default
           />
@@ -224,7 +224,7 @@ function VideoView({ node }: ContentNodeViewProps<'video'>) {
 
       {node.title ? <figcaption>{node.title}</figcaption> : null}
     </figure>
-  );
+  )
 }
 
 /**
@@ -245,7 +245,7 @@ function QuestionnaireBlockView({ node, context }: ContentNodeViewProps<'questio
       pageStates={context.pageStates}
       onNavigatePathPage={context.onNavigatePathPage}
     />
-  );
+  )
 }
 
 /**
@@ -261,7 +261,7 @@ function PathBlockView({ node, context }: ContentNodeViewProps<'path'>) {
       pageStates={context.pageStates}
       onNavigatePathPage={context.onNavigatePathPage}
     />
-  );
+  )
 }
 
 /**
@@ -278,8 +278,8 @@ const contentNodeRenderers = {
   image: BlockImageView,
   video: VideoView,
   questionnaire: QuestionnaireBlockView,
-  path: PathBlockView,
-} satisfies ContentNodeRenderers;
+  path: PathBlockView
+} satisfies ContentNodeRenderers
 
 export function ContentRenderer({ nodes, ...context }: ContentRendererProps) {
   return (
@@ -288,7 +288,7 @@ export function ContentRenderer({ nodes, ...context }: ContentRendererProps) {
         <Fragment key={`${node.type}-${index}`}>{renderContentNode(node, context)}</Fragment>
       ))}
     </>
-  );
+  )
 }
 
 /**
@@ -300,12 +300,12 @@ export function ContentRenderer({ nodes, ...context }: ContentRendererProps) {
 function renderContentNode(node: ContentNode, context: ContentNodeRenderContext): ReactNode {
   if (!Object.hasOwn(contentNodeRenderers, node.type)) {
     // Runtime guard for malformed content: never silently drop a node.
-    throw new Error(`Unsupported content node type: ${String(node.type ?? 'unknown')}`);
+    throw new Error(`Unsupported content node type: ${String(node.type ?? 'unknown')}`)
   }
 
   const View = contentNodeRenderers[node.type] as ComponentType<{
-    node: ContentNode;
-    context: ContentNodeRenderContext;
-  }>;
-  return <View node={node} context={context} />;
+    node: ContentNode
+    context: ContentNodeRenderContext
+  }>
+  return <View node={node} context={context} />
 }

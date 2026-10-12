@@ -381,13 +381,17 @@ function SubmittedQuestion({
         <QuestionnaireChoices>
           {question.options.map((option) => {
             const selected = isOptionSelected(question, value, option.value)
+            const result = submittedOptionResult(option, selected)
             return (
               <QuestionnaireChoice
                 key={option.value}
                 value={option.value}
                 disabled
                 checked={selected}
-                className={resultClassName(submittedOptionResult(option, selected))}
+                // Result is exposed semantically (and used by the result styling
+                // below) so behavior and tests do not depend on color classes.
+                data-result={result}
+                className={resultClassName(result)}
               >
                 <ContentRenderer nodes={option.content} {...pathContext} />
               </QuestionnaireChoice>

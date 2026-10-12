@@ -33,11 +33,11 @@ Content packages declare their structure and components with typed markers impor
 title: My Scroll Package
 ---
 
-import { Scroll, Page } from 'scorm-cli/authoring';
+import { Scroll, Page } from 'scorm-cli/authoring'
 
 <Scroll>
-  <Page src='lessons/intro.mdx' />
-  <Page src='lessons/one.mdx' />
+  <Page src="lessons/intro.mdx" />
+  <Page src="lessons/one.mdx" />
 </Scroll>
 ```
 
