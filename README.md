@@ -89,8 +89,10 @@ import { Path, Page } from 'scorm-cli/authoring';
 
 This repository is a pnpm workspace that produces a single published package, `scorm-cli`. Every
 other package is private and bundled into that executable at build time, so the published artifact
-never depends on a workspace package. Authoring markers are exposed publicly only through the
-`scorm-cli/authoring` subpath.
+never depends on a workspace package. The private packages are declared as the CLI's
+`devDependencies`, so `pnpm build` (a pnpm recursive, filtered dependency-graph build) builds them
+before the CLI. Authoring markers are exposed publicly only through the `scorm-cli/authoring`
+subpath.
 
 | Workspace package            | Role                                                               |
 | ---------------------------- | ------------------------------------------------------------------ |
@@ -131,16 +133,19 @@ Builds write `dist/<content-name>.zip` by default (for example, `dist/accessibil
 
 ### Publishing
 
-`packages/cli` is the published package: `pnpm build` writes the bundled CLI, the player app, and
-the authoring declarations in place, so `npm publish` runs directly in that directory — there is no
-separate staging or manifest assembly step. The `version` in `packages/cli/package.json` is the only
-source of the published version; it is never bumped automatically.
+`packages/cli` is the published package: `pnpm build` runs the CLI's dependency graph (the private
+workspace packages are declared as the CLI's devDependencies, so `pnpm --filter scorm-cli... build`
+builds them first) and writes the bundled CLI, the player app, and the authoring declarations in
+place. `npm publish` then runs directly in that directory — there is no separate staging or manifest
+assembly step. The `version` in `packages/cli/package.json` is the only source of the published
+version; it is never bumped automatically.
 
 Publishing runs in the `Publish` workflow (`.github/workflows/publish.yml`) on every push to `main`.
-It builds the package, skips successfully when `scorm-cli@<version>` already exists on npm, and
-otherwise publishes through [npm trusted publishing](https://docs.npmjs.com/trusted-publishers)
-(OIDC) — no token is stored in the repository. Configure the trusted publisher in the npm UI for
-package `scorm-cli`, GitHub repository `sergiors/scorm-cli`, and workflow file `publish.yml`.
+It installs, tests, and builds the package, then skips successfully when `scorm-cli@<version>`
+already exists on npm and otherwise publishes through
+[npm trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) — no token is stored in
+the repository. Configure the trusted publisher in the npm UI for package `scorm-cli`, GitHub
+repository `sergiors/scorm-cli`, and workflow file `publish.yml`.
 
 ## License
 

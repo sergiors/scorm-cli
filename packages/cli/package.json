@@ -5,7 +5,7 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "bin": {
-    "scorm-cli": "./dist/index.js"
+    "scorm-cli": "dist/index.js"
   },
   "exports": {
     "./authoring": {
@@ -53,17 +53,13 @@
     "clsx": "^2.1.1",
     "cn": "^0.4.0",
     "gray-matter": "^4.0.3",
-    "jszip": "^3.10.1",
     "lucide-react": "^0.454.0",
     "radix-ui": "^1.7.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-intl": "^12.1.4",
-    "remark-mdx": "^3.1.1",
-    "remark-parse": "^11.0.0",
     "tailwind-merge": "^2.5.0",
     "tailwindcss": "^4.0.0",
-    "unified": "^11.0.5",
     "vite": "^6.0.0",
     "xmlbuilder2": "^3.1.1"
   },
@@ -71,9 +67,15 @@
     "@types/react": "^19.0.0"
   },
   "devDependencies": {
+    "@scorm-cli/authoring": "workspace:*",
+    "@scorm-cli/core": "workspace:*",
+    "@scorm-cli/parser": "workspace:*",
+    "@scorm-cli/renderer-react": "workspace:*",
+    "@scorm-cli/scorm": "workspace:*",
     "@types/node": "^25.6.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "jszip": "^3.10.1",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",

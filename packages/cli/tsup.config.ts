@@ -7,36 +7,44 @@ const cliRoot = fileURLToPath(new URL('.', import.meta.url));
 const repoRoot = path.resolve(cliRoot, '..', '..');
 const distDir = path.join(cliRoot, 'dist');
 // The player app source is owned by the private `@scorm-cli/renderer-react`
-// package; the published CLI ships a copy next to its executable.
+// package; the published CLI ships an ordinary build copy next to its
+// executable so the bundled renderer can find it at runtime.
 const rendererApp = path.join(repoRoot, 'packages', 'renderer-react', 'app');
-
-/** Built output of a private workspace package, resolved at bundle time. */
-const workspace = (name: string): string =>
-  path.join(repoRoot, 'packages', name, 'dist', 'index.js');
 
 /**
  * Third-party packages the shipped CLI resolves from the consumer's
  * `node_modules` at runtime stay external and are declared as real dependencies.
  *
- * The parser/SCORM third-party packages (`gray-matter`, the `unified`/`remark`
- * MDX stack, `jszip`, `xmlbuilder2`) are listed here too: they are pulled in by
- * the bundled private workspace packages, but their CommonJS dependency trees
- * (for example `@oozcitak/url` inside `xmlbuilder2`) issue dynamic `require`
- * calls that cannot be bundled into an ES module, so they must remain external.
+ * `gray-matter` and `xmlbuilder2` are only referenced by the bundled private
+ * workspace packages, but their CommonJS dependency trees issue dynamic
+ * `require` calls (for example `require('fs')` in `gray-matter` and
+ * `require('url')` in `@oozcitak/url` under `xmlbuilder2`) that esbuild cannot
+ * convert into ES module imports. Bundling them makes the emitted ESM throw
+ * `Dynamic require of "…" is not supported` at startup, so they must remain
+ * external and declared.
+ *
+ * The other parser/SCORM third-party packages (`unified`/`remark` stack,
+ * `jszip`) build cleanly and are explicitly bundled by this config through
+ * `noExternal` instead, so the CLI does not duplicate the private workspace
+ * packages' dependencies.
  */
 const externalRuntime = [
   'cac',
   'chokidar',
   'gray-matter',
-  'remark-mdx',
-  'remark-parse',
-  'unified',
-  'jszip',
   'xmlbuilder2',
   'vite',
   '@vitejs/plugin-react',
   '@tailwindcss/vite',
 ];
+
+/**
+ * Third-party dependencies of the bundled private workspace packages that are
+ * safe to inline. Inlining them keeps the CLI from re-declaring dependencies
+ * the private manifests already own. The list is explicit so a future re-add to
+ * `dependencies` cannot silently externalize them again.
+ */
+const explicitlyBundledDeps = ['remark-mdx', 'remark-parse', 'unified', 'jszip'];
 
 export default defineConfig({
   entry: {
@@ -58,17 +66,14 @@ export default defineConfig({
   // declaration-only files, so the declaration build's own cleanup (which also
   // removes `**/*.d.{ts,mts,cts}`) never races with the copied app.
   clean: true,
-  // The workspace packages are not declared as dependencies, so resolve them
-  // directly to their built output and bundle them in.
-  alias: {
-    '@scorm-cli/authoring': workspace('authoring'),
-    '@scorm-cli/core': workspace('core'),
-    '@scorm-cli/parser': workspace('parser'),
-    '@scorm-cli/renderer-react': workspace('renderer-react'),
-    '@scorm-cli/scorm': workspace('scorm'),
-  },
-  noExternal: [/^@scorm-cli\//],
+  // The private `@scorm-cli/*` packages are declared as devDependencies, so
+  // tsup's default rule bundles them (only `dependencies`/`peerDependencies`
+  // stay external). No alias is needed: resolution goes through the workspace
+  // symlinks pnpm installs from the declared graph.
   external: externalRuntime,
+  // Their safe third-party dependencies are bundled explicitly, so the CLI
+  // carries that code instead of re-declaring it.
+  noExternal: explicitlyBundledDeps,
   dts: {
     // Only the authoring surface is public; the executable exports no types.
     entry: { authoring: 'src/authoring.ts' },
@@ -80,8 +85,11 @@ export default defineConfig({
   // Copying the app into `dist/app` here is an ordinary output of the normal
   // build, not publish-time assembly: it runs on every `pnpm build`, after the
   // output folder is cleaned, so the shipped app is always the current source.
-  // Declaration-only files are excluded: the app is consumed as source, never
-  // typed, and this keeps the copy clear of the declaration build's cleanup.
+  // The copy exists because the app is Vite-compiled at runtime from source and
+  // must travel inside the published CLI tarball; the source stays owned by
+  // `@scorm-cli/renderer-react`. Declaration-only files are excluded: the app is
+  // consumed as source, never typed, and this keeps the copy clear of the
+  // declaration build's cleanup.
   onSuccess: async () => {
     await cp(rendererApp, path.join(distDir, 'app'), {
       recursive: true,
