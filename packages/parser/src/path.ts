@@ -21,6 +21,7 @@ export async function parsePath(node: AstNode, source: ContentSource): Promise<P
   const { sourceFile: file, root, rootPageSources } = source;
   const values = attrs(node, file);
   assertAttributes(values, [], file, node);
+
   const children = (node.children ?? [])
     .flatMap((child) => {
       if (
@@ -31,17 +32,20 @@ export async function parsePath(node: AstNode, source: ContentSource): Promise<P
       ) {
         return child.children ?? [];
       }
+
       return [child];
     })
     .filter((child) => !whitespace(child));
 
-  if (children.length === 0)
+  if (children.length === 0) {
     throw new Error(
       `${sourceLocation(file, node)}: Path requires at least one direct <Page ref="..." /> child`,
     );
+  }
 
   const pageIds: string[] = [];
   const seen = new Set<string>();
+
   for (const child of children) {
     if (child.type !== 'mdxJsxFlowElement' || componentName(child) !== 'Page') {
       const found = child.name ? `<${child.name}>` : child.type;
@@ -49,26 +53,35 @@ export async function parsePath(node: AstNode, source: ContentSource): Promise<P
         `${sourceLocation(file, child)}: Path may contain only direct <Page ref="..." /> children; found ${found}`,
       );
     }
-    if (meaningfulChildren(child.children ?? []).length > 0)
+
+    if (meaningfulChildren(child.children ?? []).length > 0) {
       throw new Error(
         `${sourceLocation(file, child)}: <Page> inside <Path> must be self-closing and cannot contain children`,
       );
+    }
+
     const pageValues = attrs(child, file);
     assertAttributes(pageValues, ['ref'], file, child);
     const ref = requiredString(pageValues.ref, 'ref', file, child);
-    if (!rootPageSources)
+    if (!rootPageSources) {
       throw new Error(
         `${sourceLocation(file, child)}: Path references are only valid for pages declared directly in a root <Scroll> presentation`,
       );
+    }
+
     const source = normalizedRelative(root, path.resolve(root, ref), file, child, 'Path Page ref');
-    if (!rootPageSources.has(source))
+    if (!rootPageSources.has(source)) {
       throw new Error(
         `${sourceLocation(file, child)}: Path Page ref "${ref}" does not match a root <Page src="..." /> in the root <Scroll> presentation`,
       );
-    if (seen.has(source))
+    }
+
+    if (seen.has(source)) {
       throw new Error(`${sourceLocation(file, child)}: duplicate Path Page ref "${ref}"`);
+    }
     seen.add(source);
     pageIds.push(`page:${source}`);
   }
+
   return { type: 'path', pageIds };
 }

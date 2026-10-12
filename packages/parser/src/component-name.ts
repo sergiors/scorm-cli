@@ -13,12 +13,10 @@ import type { AstNode } from './ast';
  */
 const resolvedComponentNames = new WeakMap<AstNode, string>();
 
-/** Records the canonical name a JSX node resolves to after import resolution. */
 export function setComponentName(node: AstNode, name: string): void {
   resolvedComponentNames.set(node, name);
 }
 
-/** The canonical name a JSX node refers to after resolving authoring imports. */
 export function componentName(node: AstNode): string {
   return resolvedComponentNames.get(node) ?? node.name ?? '';
 }

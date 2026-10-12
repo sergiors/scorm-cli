@@ -1,5 +1,4 @@
 import path from 'node:path';
-import type { QuestionType } from '@scorm-cli/core';
 import type { AstNode } from './ast';
 
 export function sourceLocation(file: string, node?: AstNode): string {
@@ -7,42 +6,75 @@ export function sourceLocation(file: string, node?: AstNode): string {
   return `${file}${line ? `:${line}` : ''}`;
 }
 
-export function attrs(node: AstNode, file: string): Record<string, unknown> {
-  const output: Record<string, unknown> = {};
-  for (const attr of node.attributes ?? []) {
-    if (attr.type !== 'mdxJsxAttribute' || !attr.name) {
+type AttributeValue = string | number | boolean;
+
+type Attributes = Record<string, AttributeValue>;
+
+export function attrs(node: AstNode, file: string): Attributes {
+  const entries = (node.attributes ?? []).map((attribute) => {
+    if (attribute.type !== 'mdxJsxAttribute' || !attribute.name) {
       throw new Error(
-        `${sourceLocation(file, node)}: spread/dynamic component attributes are not supported`,
+        `${sourceLocation(file, node)}: ` + 'spread/dynamic component attributes are not supported',
       );
     }
-    const raw = attr.value;
-    if (raw === null) output[attr.name] = true;
-    else if (typeof raw === 'string') output[attr.name] = raw;
-    else if (raw && typeof raw === 'object' && 'value' in raw) {
-      const value = raw.value;
-      if (typeof value === 'string' && /^(?:true|false)$/.test(value))
-        output[attr.name] = value === 'true';
-      else if (typeof value === 'string' && /^\d+$/.test(value)) output[attr.name] = Number(value);
-      else
-        throw new Error(
-          `${sourceLocation(file, node)}: dynamic value for attribute "${attr.name}" is not supported`,
-        );
-    } else
-      throw new Error(
-        `${sourceLocation(file, node)}: dynamic value for attribute "${attr.name}" is not supported`,
-      );
+
+    return [
+      attribute.name,
+      parseStaticAttributeValue(attribute.name, attribute.value, file, node),
+    ] as const;
+  });
+
+  return Object.fromEntries(entries);
+}
+
+function parseStaticAttributeValue(
+  name: string,
+  value: unknown,
+  file: string,
+  node: AstNode,
+): AttributeValue {
+  if (value === null) {
+    return true;
   }
-  return output;
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (
+    typeof value !== 'object' ||
+    !value ||
+    !('value' in value) ||
+    typeof value.value !== 'string'
+  ) {
+    throw new Error(
+      `${sourceLocation(file, node)}: ` + `dynamic value for attribute "${name}" is not supported`,
+    );
+  }
+
+  if (value.value === 'true') {
+    return true;
+  }
+
+  if (value.value === 'false') {
+    return false;
+  }
+
+  if (/^\d+$/.test(value.value)) {
+    return Number(value.value);
+  }
+
+  throw new Error(
+    `${sourceLocation(file, node)}: ` + `dynamic value for attribute "${name}" is not supported`,
+  );
 }
 
 export function requiredString(value: unknown, name: string, file: string, node: AstNode): string {
-  if (typeof value !== 'string' || !value.trim())
+  if (typeof value !== 'string' || !value.trim()) {
     throw new Error(`${sourceLocation(file, node)}: "${name}" must be a non-empty string`);
-  return value.trim();
-}
+  }
 
-export function isQuestionType(value: unknown): value is QuestionType {
-  return value === 'single-choice' || value === 'multiple-choice' || value === 'true-false';
+  return value.trim();
 }
 
 export function optionalString(
@@ -51,12 +83,18 @@ export function optionalString(
   file: string,
   node: AstNode,
 ): string | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
+
   return requiredString(value, name, file, node);
 }
 
 export function canonicalLanguage(value: string | undefined, file: string): string {
-  if (value === undefined) return 'en';
+  if (value === undefined) {
+    return 'en';
+  }
+
   try {
     return Intl.getCanonicalLocales(value)[0]!;
   } catch {
@@ -82,9 +120,11 @@ export function assertFrontmatterKeys(
   allowed: string[],
   file: string,
 ): void {
-  for (const key of Object.keys(data))
-    if (!allowed.includes(key))
+  for (const key of Object.keys(data)) {
+    if (!allowed.includes(key)) {
       throw new Error(`${sourceLocation(file)}: unknown frontmatter field "${key}"`);
+    }
+  }
 }
 
 export function normalizedRelative(
@@ -95,14 +135,17 @@ export function normalizedRelative(
   label: string,
 ): string {
   const rel = path.relative(root, absolute);
-  if (!rel || rel === '.')
+  if (!rel || rel === '.') {
     throw new Error(
       `${sourceLocation(file, node)}: ${label} must refer to a file inside the content package directory`,
     );
+  }
+
   if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
     throw new Error(
       `${sourceLocation(file, node)}: ${label} resolves outside the content package directory`,
     );
   }
+
   return rel.split(path.sep).join('/');
 }

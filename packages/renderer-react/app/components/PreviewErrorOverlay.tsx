@@ -30,7 +30,7 @@ export function PreviewErrorOverlay({ message }: PreviewErrorOverlayProps) {
         <TriangleAlert aria-hidden='true' className='mt-0.5 size-5 shrink-0 text-destructive' />
         <div className='min-w-0 flex-1 space-y-1'>
           <p className='font-medium'>Content error</p>
-          <p className='break-words text-sm text-muted-foreground'>{message}</p>
+          <p className='wrap-break-word text-sm text-muted-foreground'>{message}</p>
           <p className='text-xs text-muted-foreground'>
             Fix the content and save. The preview reloads automatically once the content is valid
             again.

@@ -9,7 +9,7 @@ import { sourceNodeId } from './io';
 import { componentName } from './component-name';
 import type { AstNode } from './ast';
 import { isJsx, whitespace } from './ast';
-import { assertAttributes, attrs, isQuestionType, requiredString, sourceLocation } from './shared';
+import { assertAttributes, attrs, requiredString, sourceLocation } from './shared';
 
 export type ParseQuestionContentChildren = (nodes: AstNode[]) => Promise<ContentNode[]>;
 
@@ -103,17 +103,24 @@ function questionParts(node: AstNode, file: string): { prompt: AstNode; options:
       );
     }
   }
+
   if (prompts.length !== 1) {
     throw new Error(
       `${sourceLocation(file, node)}: Question must contain exactly 1 Prompt; found ${prompts.length}`,
     );
   }
+
   if (options.length < 2) {
     throw new Error(
       `${sourceLocation(file, node)}: Question must contain at least 2 Options; found ${options.length}`,
     );
   }
+
   return { prompt: prompts[0]!, options };
+}
+
+function isQuestionType(value: unknown): value is QuestionType {
+  return value === 'single-choice' || value === 'multiple-choice' || value === 'true-false';
 }
 
 async function parseOptions(

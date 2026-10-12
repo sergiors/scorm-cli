@@ -96,9 +96,7 @@ export function PathView({
   onNavigatePathPage,
 }: PathViewProps) {
   const intl = useIntl();
-
   const pagesById = new Map(pathPages.map((page) => [page.id, page]));
-
   const visited = node.pageIds.map((id) => pageStates[id]?.visited === true);
 
   return (
@@ -141,7 +139,6 @@ function PathEntry({
 }) {
   const Icon = STATUS_ICONS[status];
   const intl = useIntl();
-
   const label = intl.formatMessage({ id: STATUS_MESSAGES[status] });
 
   return (

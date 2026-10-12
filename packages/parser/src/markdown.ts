@@ -109,7 +109,10 @@ function normalizeListItemChildren(
   children: ContentNode[],
   tight: boolean,
 ): Array<ContentNode | InlineContentNode> {
-  if (!tight) return children;
+  if (!tight) {
+    return children;
+  }
+
   return children.map((child) =>
     child.type === 'paragraph' ? { type: 'inlineContent', children: child.children } : child,
   );
@@ -172,12 +175,10 @@ export type MarkdownInlineNode = Extract<AstNode, { type: MarkdownInlineType }>;
 /** The block variants of {@link AstNode}, behind a membership check. */
 export type MarkdownBlockNode = Extract<AstNode, { type: MarkdownBlockType }>;
 
-/** Whether a node is standard Markdown inline syntax. */
 export function isMarkdownInline(node: AstNode): node is MarkdownInlineNode {
   return Object.hasOwn(markdownInlineHandlers, node.type);
 }
 
-/** Whether a node is a standard Markdown block. */
 export function isMarkdownBlock(node: AstNode): node is MarkdownBlockNode {
   return Object.hasOwn(markdownBlockHandlers, node.type);
 }

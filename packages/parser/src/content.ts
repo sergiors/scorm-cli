@@ -47,7 +47,6 @@ function unsupportedNodeError(
   );
 }
 
-/** The component parsers' view of the current source context. */
 function componentParseContext(source: ContentSource): ComponentParseContext {
   return {
     source,
@@ -55,7 +54,6 @@ function componentParseContext(source: ContentSource): ComponentParseContext {
   };
 }
 
-/** The Markdown converters' view of the current source context. */
 function markdownConversion(source: ContentSource): MarkdownConversion {
   return {
     sourceFile: source.sourceFile,
@@ -211,11 +209,14 @@ export async function parseContentNodes(
   rootPageSources?: Set<string>,
 ): Promise<ContentNode[]> {
   const source: ContentSource = { sourceFile, root, rootPageSources };
+
   if (isMarkdownInline(node)) {
     return [{ type: 'paragraph', children: await convertInlineNodes([node], source) }];
   }
+
   if (node.type === 'mdxJsxTextElement') {
     return [await convertComponent(node, source)];
   }
+
   return convertBlock(node, source);
 }

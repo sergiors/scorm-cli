@@ -117,9 +117,8 @@ function ParagraphView({ node }: ContentNodeViewProps<'paragraph'>) {
   );
 }
 
-/** A thematic break renders as a horizontal rule separating blocks. */
 function ThematicBreakView() {
-  return <hr className='border-border' />;
+  return <hr />;
 }
 
 /**
@@ -201,7 +200,7 @@ function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
 function VideoView({ node }: ContentNodeViewProps<'video'>) {
   const intl = useIntl();
   return (
-    <figure className='space-y-2'>
+    <figure>
       <video
         controls
         preload='metadata'
@@ -223,9 +222,7 @@ function VideoView({ node }: ContentNodeViewProps<'video'>) {
         ) : null}
       </video>
 
-      {node.title ? (
-        <figcaption className='text-sm text-muted-foreground'>{node.title}</figcaption>
-      ) : null}
+      {node.title ? <figcaption>{node.title}</figcaption> : null}
     </figure>
   );
 }
@@ -305,6 +302,7 @@ function renderContentNode(node: ContentNode, context: ContentNodeRenderContext)
     // Runtime guard for malformed content: never silently drop a node.
     throw new Error(`Unsupported content node type: ${String(node.type ?? 'unknown')}`);
   }
+
   const View = contentNodeRenderers[node.type] as ComponentType<{
     node: ContentNode;
     context: ContentNodeRenderContext;

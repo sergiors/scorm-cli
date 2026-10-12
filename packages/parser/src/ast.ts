@@ -10,7 +10,6 @@
  * silently dropping them.
  */
 
-/** Source position used for diagnostics. */
 export interface AstPosition {
   start?: { line?: number; column?: number };
 }
@@ -24,13 +23,11 @@ interface AstNodeBase {
   position?: AstPosition;
   /** Raw JSX element name; canonical resolution lives in `component-name`. */
   name?: string | null;
-  /** Child nodes of block, inline and JSX container nodes. */
   children?: AstNode[];
   /** Raw JSX attributes; decoded and validated by `attrs`. */
   attributes?: AstAttribute[];
 }
 
-/** A JSX attribute with a name and an optional literal or expression value. */
 export interface AstJsxAttribute {
   type: 'mdxJsxAttribute';
   name?: string;
@@ -57,7 +54,6 @@ export interface AstEstreeStatement {
   }>;
 }
 
-/** The ESTree data attached to an MDX ESM node. */
 export interface AstEstreeData {
   estree?: { body?: AstEstreeStatement[] };
 }
@@ -202,7 +198,6 @@ export function isMdxjsEsm(node: AstNode): node is MdxjsEsmAstNode {
   return node.type === 'mdxjsEsm';
 }
 
-/** Whether a node is a Markdown text run. */
 export function isText(node: AstNode): node is TextAstNode {
   return node.type === 'text';
 }
@@ -212,7 +207,6 @@ export function isLinkReference(node: AstNode): node is LinkReferenceAstNode {
   return node.type === 'linkReference';
 }
 
-/** Whether a node is a Markdown reference-style link or image. */
 export function isReference(node: AstNode): node is LinkReferenceAstNode | ImageReferenceAstNode {
   return node.type === 'linkReference' || node.type === 'imageReference';
 }
@@ -227,7 +221,6 @@ export function whitespace(node: AstNode): boolean {
   return isText(node) && !String(node.value ?? '').trim();
 }
 
-/** The direct children with whitespace-only text removed. */
 export function meaningfulChildren(nodes: AstNode[]): AstNode[] {
   return nodes.filter((node) => !whitespace(node));
 }

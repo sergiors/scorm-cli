@@ -129,12 +129,10 @@ export const inlineComponentHandlers = {
 
 const authoringComponentSet: ReadonlySet<string> = new Set(authoringComponentNames);
 
-/** Whether a JSX name is a canonical authoring component. */
 export function isAuthoringComponent(name: string): name is AuthoringComponentName {
   return authoringComponentSet.has(name);
 }
 
-/** Whether a canonical component is accepted in a context. */
 export function hasComponentContext(name: string, context: ComponentContext): boolean {
   return (
     isAuthoringComponent(name) &&
@@ -146,7 +144,6 @@ const flowComponentSet: ReadonlySet<string> = new Set(
   authoringComponentNames.filter((name) => hasComponentContext(name, 'flow')),
 );
 
-/** Whether a canonical component is accepted as a top-level content block. */
 export function isFlowComponent(name: string): name is FlowComponentName {
   return flowComponentSet.has(name);
 }
@@ -155,7 +152,6 @@ const inlineComponentSet: ReadonlySet<string> = new Set(
   authoringComponentNames.filter((name) => hasComponentContext(name, 'inline')),
 );
 
-/** Whether a canonical component is accepted inside a paragraph. */
 export function isInlineComponent(name: string): name is InlineComponentName {
   return inlineComponentSet.has(name);
 }

@@ -17,10 +17,13 @@ export async function parseImageComponent(
   const values = attrs(node, sourceFile);
   assertAttributes(values, ['src', 'alt', 'caption'], sourceFile, node);
   const src = requiredString(values.src, 'src', sourceFile, node);
-  if (typeof values.alt !== 'string')
+
+  if (typeof values.alt !== 'string') {
     throw new Error(
       `${sourceLocation(sourceFile, node)}: Image requires an explicit string "alt" attribute`,
     );
+  }
+
   const caption = optionalString(values.caption, 'caption', sourceFile, node);
   return {
     type: 'image',
@@ -41,6 +44,7 @@ export async function parseVideo(
   const title = optionalString(values.title, 'title', sourceFile, node);
   const poster = optionalString(values.poster, 'poster', sourceFile, node);
   const captions = optionalString(values.captions, 'captions', sourceFile, node);
+
   return {
     type: 'video',
     src: await assetReference(src, sourceFile, root, sourceFile, node),

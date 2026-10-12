@@ -94,7 +94,6 @@ function isImportOnlyEsm(node: MdxjsEsmAstNode): boolean {
   );
 }
 
-/** Resolves a JSX name to its canonical authoring component name. */
 function resolveComponentName(
   name: string,
   bindings: ImportBindings,
@@ -121,7 +120,6 @@ function resolveComponentName(
   return name;
 }
 
-/** Records the canonical name of every JSX node in a parsed tree. */
 function resolveComponentNames(nodes: AstNode[], bindings: ImportBindings, file: string): void {
   for (const node of nodes) {
     if (isJsx(node) && typeof node.name === 'string') {
@@ -158,10 +156,12 @@ export function parseMdx(source: string, file: string): { children: AstNode[] } 
   // keeps its literal discriminants.
   const resolveReference = (node: LinkReferenceAstNode | ImageReferenceAstNode): AstNode => {
     const url = definitions.get((node.identifier ?? '').toLowerCase());
-    if (!url)
+    if (!url) {
       throw new Error(
         `${sourceLocation(file, node)}: undefined Markdown reference "${node.identifier ?? ''}"`,
       );
+    }
+
     return isLinkReference(node)
       ? { type: 'link', url, children: node.children, position: node.position }
       : { type: 'image', url, alt: node.alt, position: node.position };

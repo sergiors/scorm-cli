@@ -254,7 +254,10 @@ export function getPackageProgress(
   playerState: PlayerState,
 ): number {
   const nodes = presentationNodes(contentPackage);
-  if (nodes.length === 0) return 0;
+  if (nodes.length === 0) {
+    return 0;
+  }
+
   const count = nodes.reduce((total, node) => {
     const state = playerState.pages[node.id];
     const done =
@@ -263,6 +266,7 @@ export function getPackageProgress(
         : state?.visited === true;
     return total + (done ? 1 : 0);
   }, 0);
+
   return Math.max(0, Math.min(100, Math.round((count / nodes.length) * 100)));
 }
 
@@ -270,24 +274,28 @@ export function getPackageProgress(
 export function collectAssetReferences(contentPackage: ContentPackage): string[] {
   const refs = new Set<string>();
   const nodes = presentationNodes(contentPackage);
+
   const addLocal = (value: string | undefined) => {
-    if (value && !isRemoteReference(value)) refs.add(value);
+    if (value && !isRemoteReference(value)) {
+      refs.add(value);
+    }
   };
+
   const visitInline = (nodes: InlineNode[]) => {
     for (const node of nodes) {
-      if (node.type === 'image') addLocal(node.src);
-      else if (node.type === 'emphasis' || node.type === 'strong' || node.type === 'link') {
+      if (node.type === 'image') {
+        addLocal(node.src);
+      } else if (node.type === 'emphasis' || node.type === 'strong' || node.type === 'link') {
         visitInline(node.children);
       }
     }
   };
+
   const visitContent = (nodes: Array<ContentNode | InlineContentNode>) => {
     for (const node of nodes) {
       switch (node.type) {
         case 'heading':
         case 'paragraph':
-          visitInline(node.children);
-          break;
         case 'inlineContent':
           visitInline(node.children);
           break;
@@ -300,7 +308,9 @@ export function collectAssetReferences(contentPackage: ContentPackage): string[]
           addLocal(node.captions);
           break;
         case 'list':
-          for (const item of node.items) visitContent(item.children);
+          for (const item of node.items) {
+            visitContent(item.children);
+          }
           break;
         case 'quote':
           visitContent(node.children);
@@ -308,7 +318,10 @@ export function collectAssetReferences(contentPackage: ContentPackage): string[]
         case 'questionnaire':
           for (const question of node.questions) {
             visitContent(question.prompt);
-            for (const option of question.options) visitContent(option.content);
+
+            for (const option of question.options) {
+              visitContent(option.content);
+            }
           }
           break;
         case 'path':
@@ -318,7 +331,11 @@ export function collectAssetReferences(contentPackage: ContentPackage): string[]
       }
     }
   };
-  for (const node of nodes) visitContent(node.content);
+
+  for (const node of nodes) {
+    visitContent(node.content);
+  }
+
   return [...refs].sort();
 }
 

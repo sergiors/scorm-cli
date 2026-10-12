@@ -141,6 +141,7 @@ function renderInlineNode(node: InlineNode): ReactNode {
     // Runtime guard for malformed content: never silently drop a node.
     throw new Error(`Unsupported inline node type: ${String(node.type ?? 'unknown')}`);
   }
+
   const View = inlineNodeRenderers[node.type] as ComponentType<{
     node: InlineNode;
   }>;

@@ -27,10 +27,12 @@ export function PackageView({ contentPackage }: PackageViewProps) {
     if (presentation.pages.length === 0) {
       return <EmptyPackage />;
     }
+
     const initialIndex = Math.max(
       0,
       presentation.pages.findIndex((page) => page.id === state.location),
     );
+
     return (
       <ScrollPresentation
         pages={presentation.pages}
@@ -44,9 +46,11 @@ export function PackageView({ contentPackage }: PackageViewProps) {
     );
   }
 
-  return presentation.items.length === 0 ? (
-    <EmptyPackage />
-  ) : (
+  if (presentation.items.length === 0) {
+    return <EmptyPackage />;
+  }
+
+  return (
     <GridPresentation
       items={presentation.items}
       columns={presentation.columns}
