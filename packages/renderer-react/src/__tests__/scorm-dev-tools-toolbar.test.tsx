@@ -4,6 +4,10 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ScormDevToolsToolbar } from '../../app/components/ScormDevToolsToolbar'
 
+// jsdom does not implement `Element.scrollIntoView`, which Radix Select calls to
+// reveal the highlighted option. Stub it so the combobox can be exercised here.
+Element.prototype.scrollIntoView = () => {}
+
 let container: HTMLDivElement
 let root: Root
 
@@ -22,23 +26,100 @@ afterEach(() => {
 })
 
 /**
- * Installs a mock `window.scormDevTools` whose persisted flag can be read and
- * written. Returns the spies so tests can assert on calls.
+ * Installs a mock `window.scormDevTools` whose persisted flag and SCORM version
+ * can be read and written. Returns the spies so tests can assert on calls.
  */
-function installBridge(initialEnabled: boolean): {
+function installBridge(
+  initialEnabled: boolean,
+  options: { version?: '1.2' | '2004' } = {}
+): {
   getCmiPersistenceEnabled: ReturnType<typeof vi.fn>
   setCmiPersistenceEnabled: ReturnType<typeof vi.fn>
+  getScormVersion: ReturnType<typeof vi.fn>
+  getApiName: ReturnType<typeof vi.fn>
+  setScormVersion: ReturnType<typeof vi.fn>
 } {
-  const bridge = { enabled: initialEnabled }
+  const bridge = { enabled: initialEnabled, version: options.version ?? ('1.2' as const) }
   const getCmiPersistenceEnabled = vi.fn(() => bridge.enabled)
   const setCmiPersistenceEnabled = vi.fn((enabled: boolean) => {
     bridge.enabled = enabled
   })
+  const getScormVersion = vi.fn(() => bridge.version)
+  const getApiName = vi.fn(() => (bridge.version === '2004' ? 'API_1484_11' : 'API'))
+  const setScormVersion = vi.fn((version: '1.2' | '2004') => {
+    bridge.version = version
+  })
   window.scormDevTools = {
     getCmiPersistenceEnabled,
-    setCmiPersistenceEnabled
+    setCmiPersistenceEnabled,
+    getScormVersion,
+    getApiName,
+    setScormVersion
   }
-  return { getCmiPersistenceEnabled, setCmiPersistenceEnabled }
+  return {
+    getCmiPersistenceEnabled,
+    setCmiPersistenceEnabled,
+    getScormVersion,
+    getApiName,
+    setScormVersion
+  }
+}
+
+/** The shadcn/Radix Select trigger, rendered as a `combobox` button. */
+function versionTrigger(): HTMLButtonElement {
+  const trigger = document.querySelector<HTMLButtonElement>('[data-slot="select-trigger"]')
+  if (!trigger) {
+    throw new Error('SCORM version select trigger not found')
+  }
+  return trigger
+}
+
+/** The Radix Select content portals into `document.body` only while open. */
+function versionSelectContent(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('[data-slot="select-content"]')
+}
+
+/** Locates a portaled `role="option"` menu item by its visible label. */
+function versionOption(label: string): HTMLElement {
+  const option = Array.from(
+    document.querySelectorAll<HTMLElement>('[data-slot="select-item"]')
+  ).find((candidate) => candidate.textContent?.trim() === label)
+  if (!option) {
+    throw new Error(`SCORM version option "${label}" not found`)
+  }
+  return option
+}
+
+/** Opens the version combobox by clicking its trigger. */
+function openVersionSelect(): void {
+  act(() => versionTrigger().click())
+}
+
+/** Finds a shadcn field label by its visible text. */
+function fieldLabelWithText(text: string): HTMLLabelElement {
+  const label = Array.from(
+    document.querySelectorAll<HTMLLabelElement>('[data-slot="field-label"]')
+  ).find((candidate) => candidate.textContent?.trim() === text)
+  if (!label) {
+    throw new Error(`Field label "${text}" not found`)
+  }
+  return label
+}
+
+/** Finds a shadcn field description containing the given text. */
+function fieldDescriptionContaining(text: string): HTMLElement {
+  const description = Array.from(
+    document.querySelectorAll<HTMLElement>('[data-slot="field-description"]')
+  ).find((candidate) => candidate.textContent?.includes(text))
+  if (!description) {
+    throw new Error(`Field description containing "${text}" not found`)
+  }
+  return description
+}
+
+/** Reads the text of the field description that shows the active API name. */
+function activeApiText(): string {
+  return fieldDescriptionContaining('Active API').textContent ?? ''
 }
 
 /** The shadcn Popover portals its content into `document.body`. */
@@ -273,5 +354,93 @@ describe('ScormDevToolsToolbar', () => {
     expect(document.body.textContent).toContain('quota exceeded')
     expect(persistenceCheckbox().disabled).toBe(false)
     expect(persistenceCheckboxChecked()).toBe(false)
+  })
+
+  it('shows the active SCORM version and installed API from the dev bridge', () => {
+    const bridge = installBridge(true, { version: '2004' })
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+    togglePopover()
+
+    expect(bridge.getScormVersion).toHaveBeenCalled()
+    expect(bridge.getApiName).toHaveBeenCalled()
+    expect(versionTrigger().textContent).toContain('SCORM 2004')
+    expect(activeApiText()).toContain('API_1484_11')
+  })
+
+  it('renders the version control as an accessible combobox wired to its label', () => {
+    installBridge(true)
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+    togglePopover()
+
+    const trigger = versionTrigger()
+    expect(trigger.getAttribute('role')).toBe('combobox')
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    expect(trigger.disabled).toBe(false)
+
+    const label = fieldLabelWithText('SCORM version')
+    expect(label.getAttribute('for')).toBe(trigger.id)
+    expect(trigger.getAttribute('aria-describedby')).toBe(
+      fieldDescriptionContaining('Active API').id
+    )
+  })
+
+  it('switches the preview version through the dev bridge and reflects the new API', () => {
+    const bridge = installBridge(true)
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+    togglePopover()
+
+    expect(versionTrigger().textContent).toContain('SCORM 1.2')
+    expect(activeApiText()).toContain('API')
+
+    // The combobox is closed until its trigger is activated.
+    expect(versionSelectContent()).toBeNull()
+    openVersionSelect()
+    expect(versionTrigger().getAttribute('aria-expanded')).toBe('true')
+    expect(versionSelectContent()).not.toBeNull()
+
+    // Choosing a version through the portaled menu drives the dev bridge.
+    act(() => versionOption('SCORM 2004').click())
+
+    expect(bridge.setScormVersion).toHaveBeenCalledWith('2004')
+    expect(versionTrigger().textContent).toContain('SCORM 2004')
+    expect(activeApiText()).toContain('API_1484_11')
+    // Selecting a version dismisses the menu.
+    expect(versionSelectContent()).toBeNull()
+    expect(versionTrigger().getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('disables the version combobox when the bridge cannot switch versions', () => {
+    window.scormDevTools = {
+      getCmiPersistenceEnabled: () => true,
+      setCmiPersistenceEnabled: () => {},
+      getScormVersion: () => '1.2',
+      getApiName: () => 'API'
+    }
+
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+    togglePopover()
+
+    const trigger = versionTrigger()
+    expect(trigger.disabled).toBe(true)
+    expect(trigger.textContent).toContain('SCORM 1.2')
+
+    // A disabled combobox never opens its menu.
+    openVersionSelect()
+    expect(versionSelectContent()).toBeNull()
+  })
+
+  it('hides the version selector when the dev bridge has no version contract', () => {
+    window.scormDevTools = {
+      getCmiPersistenceEnabled: () => true,
+      setCmiPersistenceEnabled: () => {}
+    }
+
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+    togglePopover()
+
+    expect(document.querySelector('[data-slot="select-trigger"]')).toBeNull()
+    expect(document.body.textContent).not.toContain('SCORM version')
+    // The persistence control still renders on its own.
+    expect(persistenceCheckboxChecked()).toBe(true)
   })
 })

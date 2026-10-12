@@ -208,7 +208,7 @@ describe('SCORM 1.2 package', () => {
   })
 
   it('keeps the dev mock isolated from production packaging', () => {
-    expect(scormDevMock).toContain('scorm-cli:dev:')
+    expect(scormDevMock).toContain('scorm-cli:preview:')
   })
 })
 

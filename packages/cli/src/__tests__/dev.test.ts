@@ -1,5 +1,5 @@
 import type { ContentPackage, Renderer, RendererDevOptions } from '@scorm-cli/core'
-import { createContentManifest, createScormRuntime, scormDevMock } from '@scorm-cli/scorm'
+import { createContentManifest, createScormPreviewRuntime, scormDevMock } from '@scorm-cli/scorm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { LoadedPackage } from '../content'
 import { startDevPackage } from '../dev'
@@ -50,7 +50,7 @@ describe('CLI dev orchestration', () => {
           { id: 'scorm-dev-mock', source: scormDevMock },
           {
             id: 'scorm-runtime',
-            source: createScormRuntime(createContentManifest(loaded('Initial').content))
+            source: createScormPreviewRuntime(createContentManifest(loaded('Initial').content))
           }
         ],
         port: 4173
@@ -99,7 +99,7 @@ describe('CLI dev orchestration', () => {
     await Promise.resolve()
     expect(updates.map(({ content: next }) => next.metadata.title)).toEqual(['Initial'])
     expect(updates[0]?.scripts?.[1]?.source).toBe(
-      createScormRuntime(createContentManifest(loaded('Initial').content))
+      createScormPreviewRuntime(createContentManifest(loaded('Initial').content))
     )
 
     loadMode = 'invalid'
@@ -115,7 +115,7 @@ describe('CLI dev orchestration', () => {
     await Promise.resolve()
     expect(updates).toHaveLength(2)
     expect(updates[1]?.scripts?.[1]?.source).toBe(
-      createScormRuntime(createContentManifest(loaded('Updated').content))
+      createScormPreviewRuntime(createContentManifest(loaded('Updated').content))
     )
 
     await session.close()

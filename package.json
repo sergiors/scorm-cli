@@ -6,7 +6,7 @@
   "description": "Monorepo for the public scorm-cli package and its private workspace packages.",
   "scripts": {
     "build": "pnpm --filter scorm-cli... run build",
-    "dev": "pnpm --filter scorm-cli... run build && pnpm scorm preview",
+    "preview": "pnpm --filter scorm-cli... run build && pnpm scorm preview",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm build && pnpm -r --if-present run test",

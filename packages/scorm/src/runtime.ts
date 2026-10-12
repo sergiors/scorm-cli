@@ -19,7 +19,12 @@ interface RuntimeApiMapping {
   exit: 'cmi.core.exit' | 'cmi.exit'
 }
 
-const runtimeApiMappings: Record<ScormVersion, RuntimeApiMapping> = {
+/**
+ * Single source of truth for every version-specific API method and CMI element
+ * name. The fixed-version production runtime and the preview mock both derive
+ * from it, so a version's method names can never drift between them.
+ */
+export const runtimeApiMappings: Record<ScormVersion, RuntimeApiMapping> = {
   '1.2': {
     discoveryProperty: 'API',
     initialize: 'LMSInitialize',
@@ -62,16 +67,17 @@ const emptyManifest: ContentManifest = {
   pages: {}
 }
 
-/** Creates the SCO bridge with the same dictionary written into the package. */
-export function createScormRuntime(
-  manifest: ContentManifest,
-  version: ScormVersion = '1.2'
-): string {
+/**
+ * Builds the SCO bridge source shared by the fixed-version production runtime
+ * and the version-aware preview runtime. `apiMappingDeclaration` is the only
+ * point of variation: production pins one mapping, preview resolves the mapping
+ * the mock selected at startup.
+ */
+function buildRuntimeSource(manifest: ContentManifest, apiMappingDeclaration: string): string {
   const dictionary = JSON.stringify(manifest).replace(/</g, '\\u003c')
-  const apiMapping = JSON.stringify(runtimeApiMappings[version])
   return `;(function () {
   var CONTENT_MANIFEST = ${dictionary};
-  var API_MAPPING = ${apiMapping};
+  ${apiMappingDeclaration}
   var api = null;
   var finished = false;
   var initialized = false;
@@ -240,6 +246,32 @@ ${browserCodecSource()}
 
   if (window.addEventListener) window.addEventListener("beforeunload", finish, false);
 })();`
+}
+
+/** Creates a fixed-version SCO bridge with the dictionary written into the package. */
+export function createScormRuntime(
+  manifest: ContentManifest,
+  version: ScormVersion = '1.2'
+): string {
+  return buildRuntimeSource(
+    manifest,
+    `var API_MAPPING = ${JSON.stringify(runtimeApiMappings[version])};`
+  )
+}
+
+/**
+ * Creates the version-aware runtime injected by `scorm preview`. The dev mock
+ * runs first and records the selected version on the page, so this source binds
+ * to the matching API mapping at startup. It reuses the exact production
+ * template and `runtimeApiMappings`; packages never emit it.
+ */
+export function createScormPreviewRuntime(manifest: ContentManifest): string {
+  return buildRuntimeSource(
+    manifest,
+    `var PREVIEW_RUNTIME_MAPPINGS = ${JSON.stringify(runtimeApiMappings)};
+  var PREVIEW_SCORM_VERSION = window.__SCORM_PREVIEW_VERSION__ === "2004" ? "2004" : "1.2";
+  var API_MAPPING = PREVIEW_RUNTIME_MAPPINGS[PREVIEW_SCORM_VERSION];`
+  )
 }
 
 /** Empty-dictionary compatibility export; packages should call createScormRuntime. */

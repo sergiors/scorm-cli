@@ -4,6 +4,14 @@ import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Field, FieldDescription, FieldLabel } from './ui/field'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from './ui/select'
 
 export interface ScormDevToolsToolbarProps {
   /**
@@ -20,8 +28,9 @@ export interface ScormDevToolsToolbarProps {
  *
  * It is deliberately not an event log. Every SCORM runtime event is written
  * straight to the browser console by the injected mock/runtime, so this toolbar
- * only hosts the mock-persistence control: toggling whether the mock LMS saves
- * `cmi.*` values in localStorage.
+ * only hosts the mock controls: the active SCORM version (with the learner API
+ * global it installed) and whether the mock persists `cmi.*` values in
+ * localStorage.
  *
  * Mounted only in Vite dev mode (see `main.tsx`), collapsed by default and
  * pinned out of the way in the top-right corner so it never competes with the
@@ -49,11 +58,91 @@ export function ScormDevToolsToolbar({
             Dev tools
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="end" aria-label="Dev tools" className="w-80">
+        <PopoverContent align="end" aria-label="Dev tools" className="w-80 p-6">
           <CmiPersistenceControl />
+          <ScormVersionControl />
         </PopoverContent>
       </Popover>
     </div>
+  )
+}
+
+type ScormPreviewVersion = '1.2' | '2004'
+
+interface ScormVersionState {
+  /** Whether the injected mock exposes the version contract at all. */
+  supported: boolean
+  version: ScormPreviewVersion
+  apiName: string
+  message?: string
+}
+
+/**
+ * Dev-only control that shows the SCORM version the preview simulates and the
+ * learner API global the mock installed, and lets the preview switch between
+ * SCORM 1.2 and SCORM 2004.
+ *
+ * The version and its API name are read from `window.scormDevTools` rather than
+ * derived here, so no version-to-API mapping lives in React. The whole control
+ * is hidden when the bridge does not expose the version contract (for example
+ * an older injected mock), keeping the optional bridge genuinely optional.
+ */
+function ScormVersionControl() {
+  const [state, setState] = useState<ScormVersionState>(() => readScormVersionState())
+  const selectId = useId()
+  const descriptionId = useId()
+
+  // Hooks run unconditionally, then the whole section is omitted when unsupported
+  // so the persistence control keeps its place (and its status region) alone.
+  if (!state.supported) {
+    return null
+  }
+
+  const canSwitch = typeof getScormDevTools()?.setScormVersion === 'function'
+
+  function handleChange(value: string) {
+    const version: ScormPreviewVersion = value === '2004' ? '2004' : '1.2'
+    const bridge = getScormDevTools()
+    if (!bridge || typeof bridge.setScormVersion !== 'function') {
+      setState((previous) => ({
+        ...previous,
+        message: 'Version switching is not available in this preview.'
+      }))
+      return
+    }
+    try {
+      bridge.setScormVersion(version)
+      // The mock typically reloads the page, but read the resulting state back
+      // so the control stays correct when the reload is a no-op or deferred.
+      setState(readScormVersionState())
+    } catch (error) {
+      setState((previous) => ({ ...previous, message: describeDevToolsError(error) }))
+    }
+  }
+
+  return (
+    <>
+      <Field className="items-start gap-2.5">
+        <FieldLabel htmlFor={selectId}>SCORM version</FieldLabel>
+        <Select value={state.version} onValueChange={handleChange} disabled={!canSwitch}>
+          <SelectTrigger id={selectId} aria-describedby={descriptionId} size="sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem value="1.2">SCORM 1.2</SelectItem>
+              <SelectItem value="2004">SCORM 2004</SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </Field>
+
+      {state.message ? (
+        <p role="status" className="text-xs text-destructive">
+          {state.message}
+        </p>
+      ) : null}
+    </>
   )
 }
 
@@ -98,13 +187,13 @@ function CmiPersistenceControl() {
       setState((previous) => ({
         ...previous,
         status: 'error',
-        message: describePersistenceError(error)
+        message: describeDevToolsError(error)
       }))
     }
   }
 
   return (
-    <div className="flex flex-col gap-3 px-3 py-3">
+    <>
       <Field
         orientation="horizontal"
         data-disabled={disabled ? true : undefined}
@@ -136,7 +225,7 @@ function CmiPersistenceControl() {
             : `CMI persistence is unavailable: ${state.message ?? ''}`}
         </p>
       )}
-    </div>
+    </>
   )
 }
 
@@ -145,6 +234,25 @@ function getScormDevTools(): ScormDevTools | undefined {
     return undefined
   }
   return window.scormDevTools
+}
+
+function readScormVersionState(): ScormVersionState {
+  const bridge = getScormDevTools()
+  if (!bridge || typeof bridge.getScormVersion !== 'function') {
+    return { supported: false, version: '1.2', apiName: '' }
+  }
+  try {
+    const version = bridge.getScormVersion() === '2004' ? '2004' : '1.2'
+    const apiName = typeof bridge.getApiName === 'function' ? bridge.getApiName() : ''
+    return { supported: true, version, apiName }
+  } catch (error) {
+    return {
+      supported: true,
+      version: '1.2',
+      apiName: '',
+      message: describeDevToolsError(error)
+    }
+  }
 }
 
 function readCmiPersistenceState(): CmiPersistenceState {
@@ -161,14 +269,14 @@ function readCmiPersistenceState(): CmiPersistenceState {
     return {
       enabled: false,
       status: 'error',
-      message: describePersistenceError(error)
+      message: describeDevToolsError(error)
     }
   }
 }
 
-function describePersistenceError(error: unknown): string {
+function describeDevToolsError(error: unknown): string {
   if (error instanceof Error && error.message) {
     return error.message
   }
-  return 'Local storage is unavailable.'
+  return 'The dev tools are unavailable.'
 }

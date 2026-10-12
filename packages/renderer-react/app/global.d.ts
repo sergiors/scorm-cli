@@ -48,6 +48,24 @@ declare global {
      * CMI state; enabling immediately writes the current state.
      */
     setCmiPersistenceEnabled: (enabled: boolean) => void
+    /**
+     * The SCORM version the preview currently simulates (`'1.2'` by default).
+     * Optional so the toolbar degrades gracefully against an older injected
+     * mock; the SCORM package owns the value and its version-specific behavior.
+     */
+    getScormVersion?: () => '1.2' | '2004'
+    /**
+     * Name of the single learner API global the mock installed (`'API'` for
+     * SCORM 1.2, `'API_1484_11'` for SCORM 2004). Read from the bridge rather
+     * than derived here so no version-to-API mapping is duplicated in React.
+     */
+    getApiName?: () => string
+    /**
+     * Switches the simulated version. Selecting the active version is a no-op;
+     * otherwise the mock clears the saved CMI state, replaces the API global and
+     * reloads the preview so the runtime rebinds against the matching API.
+     */
+    setScormVersion?: (version: '1.2' | '2004') => void
   }
 
   interface Window {

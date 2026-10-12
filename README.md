@@ -99,8 +99,8 @@ never depends on a workspace package. The private packages are declared as the C
 before the CLI. Authoring markers are exposed publicly only through the `scorm-cli/authoring`
 subpath.
 
-From the workspace root, `pnpm dev <content>` builds the private workspace dependencies before
-starting `pnpm scorm preview`. For example, `pnpm dev examples/typescript-content --port 0` starts
+From the workspace root, `pnpm preview <content>` builds the private workspace dependencies before
+starting `pnpm scorm preview`. For example, `pnpm preview examples/typescript-content --port 0` starts
 the TypeScript course preview on an available port. Content paths are relative to the workspace root.
 
 | Workspace package            | Role                                                               |

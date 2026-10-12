@@ -2,8 +2,8 @@ import vm from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import { scormDevMock } from '../mock'
 
-const preferenceKey = 'scorm-cli:dev:persist-cmi'
-const stateKey = 'scorm-cli:dev:cmi-state'
+const preferenceKey = 'scorm-cli:preview:persist-cmi'
+const stateKey = 'scorm-cli:preview:cmi-state'
 
 class MemoryStorage {
   private values = new Map<string, string>()

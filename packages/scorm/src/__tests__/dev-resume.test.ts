@@ -79,7 +79,7 @@ describe('SCORM dev reload resume', () => {
 
     const firstWindow = createWindow()
     expect(firstWindow.scormDevTools.getCmiPersistenceEnabled()).toBe(true)
-    expect(storage.getItem('scorm-cli:dev:persist-cmi')).toBe('true')
+    expect(storage.getItem('scorm-cli:preview:persist-cmi')).toBe('true')
     expect(
       firstWindow.scormBridge.saveState(
         {
