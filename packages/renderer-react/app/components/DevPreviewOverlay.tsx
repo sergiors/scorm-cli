@@ -2,7 +2,7 @@ import { PreviewErrorOverlay } from './PreviewErrorOverlay'
 import { usePreviewError } from '../lib/use-preview-error'
 
 /**
- * Dev-only preview surface: subscribes to `scorm dev` content errors and shows
+ * Dev-only preview surface: subscribes to `scorm preview` content errors and shows
  * the author-facing overlay.
  *
  * It is mounted only behind the `import.meta.hot` guard in `main.tsx`, so both

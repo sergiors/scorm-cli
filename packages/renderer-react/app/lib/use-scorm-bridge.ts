@@ -53,7 +53,7 @@ export function saveState(state: PlayerState, progress: number): boolean {
  *   intentionally not once-only and the runtime owns making it idempotent.
  *
  * Errors from either call are contained here. SCORM API discovery is
- * intentionally out of scope; the LMS — or the `scorm dev` mock — injects its
+ * intentionally out of scope; the LMS — or the `scorm preview` mock — injects its
  * own runtime script which installs the bridge.
  */
 export function useScormBridge(complete: boolean): void {

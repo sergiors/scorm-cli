@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { subscribeToPreviewEvents } from './preview-client'
 
 /**
- * Listens for `scorm dev` preview errors over Vite's HMR channel and returns
+ * Listens for `scorm preview` errors over Vite's HMR channel and returns
  * the latest author-facing message.
  *
  * The subscription only exists in Vite dev mode: `import.meta.hot` is undefined

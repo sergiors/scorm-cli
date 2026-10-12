@@ -34,7 +34,7 @@ declare global {
   }
 
   /**
-   * Dev-only controls exposed by the mock LMS injected during `scorm dev`
+   * Dev-only controls exposed by the mock LMS injected during `scorm preview`
    * (see the SCORM package's dev mock). It is never present in a production
    * SCORM archive, so the renderer must treat both the object and its calls as
    * optional: a missing bridge or a call that throws (e.g. storage blocked by

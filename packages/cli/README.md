@@ -15,12 +15,12 @@ npx scorm-cli build ./content
 # Choose the output path
 npx scorm-cli build ./content --output ./build/course.zip
 
-# Preview with a live-reloading dev server
-npx scorm-cli dev ./content --port 5173
+# Preview with a live-reloading local server
+npx scorm-cli preview ./content --port 5173
 ```
 
 `build` parses the content package, renders the static player, and writes a SCORM 1.2 ZIP.
-`dev` serves the same player with a mock LMS API and reloads as the content changes, reporting
+`preview` serves the same player with a mock LMS API and reloads as the content changes, reporting
 validation errors without stopping the preview.
 
 ## Authoring

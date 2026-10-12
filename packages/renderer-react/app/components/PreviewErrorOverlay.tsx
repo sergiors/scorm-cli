@@ -5,13 +5,13 @@ export interface PreviewErrorOverlayProps {
 }
 
 /**
- * Author-facing overlay shown when `scorm dev` reports a content error.
+ * Author-facing overlay shown when `scorm preview` reports a content error.
  *
  * It is intentionally non-blocking (a bottom banner rather than a full-screen
  * modal) so the last valid preview stays inspectable while the author fixes the
  * content. The dev server clears it and reloads on the next successful update.
  *
- * It only ever appears in `scorm dev` — the error is delivered over Vite's HMR
+ * It only ever appears in `scorm preview` — the error is delivered over Vite's HMR
  * channel — and it is mounted behind the `import.meta.hot` guard in `main.tsx`,
  * so its code is tree-shaken from the production bundle and never renders for
  * learners.

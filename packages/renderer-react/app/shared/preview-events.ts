@@ -1,5 +1,5 @@
 /**
- * Custom Vite HMR event names exchanged between the `scorm dev` preview server
+ * Custom Vite HMR event names exchanged between the `scorm preview` server
  * (`src/dev.ts`) and the preview client that runs inside the app.
  *
  * These names are the one thing both sides must agree on, so they live in this

@@ -10,7 +10,7 @@ export interface PackageAppProps {
  * The learner-facing player shell: provides the localized catalog and renders
  * the authored package.
  *
- * Dev-only preview surfaces — the `scorm dev` error overlay and the SCORM
+ * Dev-only preview surfaces — the `scorm preview` error overlay and the SCORM
  * dev-tools toolbar — are mounted separately in `main.tsx` behind
  * `import.meta.hot`, so this component stays free of any dev dependency and
  * neither surface can ship to learners.

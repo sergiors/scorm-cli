@@ -32,7 +32,7 @@ const DEFAULT_HOST = 'localhost'
  * authoring failures are broadcast as a custom HMR event the app renders as an
  * overlay.
  *
- * `options.scripts` (the `scorm dev` mock LMS API and the SCORM runtime) are
+ * `options.scripts` (the `scorm preview` mock LMS API and the SCORM runtime) are
  * injected as inline `<script>` tags at the start of `<head>`, so they run
  * before the app module and can install `window.API`/`window.scormBridge`.
  */
@@ -86,7 +86,7 @@ export async function renderReactDevServer(
     server: {
       host,
       port,
-      // Prefer the requested port but fall back to a free one so `scorm dev`
+      // Prefer the requested port but fall back to a free one so `scorm preview`
       // never fails on a busy port.
       strictPort: false,
       fs: {

@@ -13,12 +13,12 @@ npx scorm-cli build ./content
 # Choose the output path
 npx scorm-cli build ./content --output ./build/course.zip
 
-# Preview with a live-reloading dev server
-npx scorm-cli dev ./content --port 5173
+# Preview with a live-reloading local server
+npx scorm-cli preview ./content --port 5173
 ```
 
 `scorm-cli build` parses the content package, renders the static player, and writes a SCORM 1.2 ZIP.
-`scorm-cli dev` serves the same player with a mock LMS API, reloads as the content changes, and
+`scorm-cli preview` serves the same player with a mock LMS API, reloads as the content changes, and
 reports validation errors without stopping the preview.
 
 ## Author a content package
@@ -95,8 +95,8 @@ before the CLI. Authoring markers are exposed publicly only through the `scorm-c
 subpath.
 
 From the workspace root, `pnpm dev <content>` builds the private workspace dependencies before
-starting the preview. For example, `pnpm dev examples/typescript-content --port 0` starts the
-TypeScript course preview on an available port. Content paths are relative to the workspace root.
+starting `pnpm scorm preview`. For example, `pnpm dev examples/typescript-content --port 0` starts
+the TypeScript course preview on an available port. Content paths are relative to the workspace root.
 
 | Workspace package            | Role                                                               |
 | ---------------------------- | ------------------------------------------------------------------ |
@@ -126,13 +126,13 @@ pnpm build
 
 The examples demonstrate the supported package presentations and content components:
 
-| Package                         | What it demonstrates                                                                               | Build                                            | Preview                                        |
-| ------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------- |
-| `examples/typescript-content`   | A Scroll course with Markdown, a local image, a video reference, code samples, and questionnaires. | `pnpm scorm build examples/typescript-content`   | `pnpm scorm dev examples/typescript-content`   |
-| `examples/typescript-grid`      | A two-column Grid of short practice items using Markdown.                                          | `pnpm scorm build examples/typescript-grid`      | `pnpm scorm dev examples/typescript-grid`      |
-| `examples/accessibility-basics` | A Scroll course with practical accessibility guidance and a knowledge-check questionnaire.         | `pnpm scorm build examples/accessibility-basics` | `pnpm scorm dev examples/accessibility-basics` |
+| Package                         | What it demonstrates                                                                               | Build                                            | Preview                                            |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------- |
+| `examples/typescript-content`   | A Scroll course with Markdown, a local image, a video reference, code samples, and questionnaires. | `pnpm scorm build examples/typescript-content`   | `pnpm scorm preview examples/typescript-content`   |
+| `examples/typescript-grid`      | A two-column Grid of short practice items using Markdown.                                          | `pnpm scorm build examples/typescript-grid`      | `pnpm scorm preview examples/typescript-grid`      |
+| `examples/accessibility-basics` | A Scroll course with practical accessibility guidance and a knowledge-check questionnaire.         | `pnpm scorm build examples/accessibility-basics` | `pnpm scorm preview examples/accessibility-basics` |
 
-Builds write `dist/<content-name>.zip` by default (for example, `dist/accessibility-basics.zip`). Pass `--output <path>` to choose a different ZIP path. `pnpm scorm dev <content>` starts a local preview, watches the content directory, and reports validation errors without stopping the preview. Pass `--port <port>` to choose the preview port.
+Builds write `dist/<content-name>.zip` by default (for example, `dist/accessibility-basics.zip`). Pass `--output <path>` to choose a different ZIP path. `pnpm scorm preview <content>` starts a local preview, watches the content directory, and reports validation errors without stopping the preview. Pass `--port <port>` to choose the preview port.
 
 ## License
 

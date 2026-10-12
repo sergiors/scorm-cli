@@ -62,7 +62,7 @@ export function resolveAppRoot(moduleUrl: string): string {
  * The shipped app is compiled by Vite in a consumer where the private
  * `@scorm-cli/core` specifier does not exist, so the app's runtime import is
  * aliased to this built artifact. When the renderer runs from its own workspace
- * (tests and `scorm dev` against the workspace package) the copy does not exist,
+ * (tests and `scorm preview` against the workspace package) the copy does not exist,
  * so the app's `@scorm-cli/core` import resolves to the workspace package
  * normally and no alias is needed.
  */

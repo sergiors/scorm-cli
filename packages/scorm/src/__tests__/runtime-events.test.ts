@@ -64,7 +64,7 @@ interface CreateWindowOptions {
 
 /**
  * Runs the generated runtime inside a vm sandbox with a mock LMS API and a
- * console spy, mirroring how `scorm dev` injects it into the page.
+ * console spy, mirroring how `scorm preview` injects it into the page.
  */
 function createWindow(options: CreateWindowOptions = {}) {
   const logs: unknown[][] = []

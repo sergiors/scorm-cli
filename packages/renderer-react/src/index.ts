@@ -6,7 +6,7 @@ export { renderReactPackage } from './build'
 export { renderReactDevServer } from './dev'
 
 /**
- * Production build plus live `scorm dev` preview behind the shared renderer
+ * Production build plus the live `scorm preview` server behind the shared renderer
  * contract. `renderReactPackage` remains available as a named export for
  * callers that only need a static build.
  */

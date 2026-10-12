@@ -21,9 +21,9 @@ cli
   })
 
 cli
-  .command('dev <content>', 'Preview authored content and watch for changes')
+  .command('preview <content>', 'Preview authored content and watch for changes')
   .option('-p, --port <port>', 'Port for the local preview server')
-  .example('scorm dev examples/typescript-content')
+  .example('scorm preview examples/typescript-content')
   .action(async (content: string, options: { port?: string | number }) => {
     try {
       const port = options.port === undefined ? undefined : Number(options.port)
@@ -32,7 +32,7 @@ cli
       }
       const session = await startDevPackage(content, { port })
       console.log(`Entry: ${session.entrypoint}`)
-      console.log(`Dev server: ${session.url}`)
+      console.log(`Preview server: ${session.url}`)
 
       const stop = (signal: NodeJS.Signals) => {
         process.off('SIGINT', onSigint)
@@ -41,7 +41,7 @@ cli
           .close()
           .catch((error) => {
             const message = error instanceof Error ? error.message : String(error)
-            console.error(`Error closing dev server: ${message}`)
+            console.error(`Error closing preview server: ${message}`)
           })
           .finally(() => {
             process.exitCode = signal === 'SIGINT' ? 130 : 143

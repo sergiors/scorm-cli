@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 export interface ScormDevToolsToolbarProps {
   /**
    * Overrides dev-client detection. Defaults to whether Vite's HMR client is
-   * present, so the toolbar only renders in `scorm dev`. Tests pass `true`
+   * present, so the toolbar only renders in `scorm preview`. Tests pass `true`
    * explicitly since `import.meta.hot` is undefined under Vitest.
    */
   enabled?: boolean
@@ -16,7 +16,7 @@ export interface ScormDevToolsToolbarProps {
 
 /**
  * Compact, collapsible dev-only toolbar for the mock LMS injected during
- * `scorm dev`.
+ * `scorm preview`.
  *
  * It is deliberately not an event log. Every SCORM runtime event is written
  * straight to the browser console by the injected mock/runtime, so this toolbar
@@ -34,7 +34,7 @@ export interface ScormDevToolsToolbarProps {
 export function ScormDevToolsToolbar({
   enabled = Boolean(import.meta.hot)
 }: ScormDevToolsToolbarProps) {
-  // The toolbar has no meaning outside `scorm dev`; keeping it inert also lets
+  // The toolbar has no meaning outside `scorm preview`; keeping it inert also lets
   // the production bundle tree-shake the whole module away.
   if (!enabled) {
     return null
