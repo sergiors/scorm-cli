@@ -94,6 +94,7 @@ async function parseRootPresentation(
       `${sourceLocation(entry, directNodes[0])}: root must contain exactly one <Scroll> or <Grid> presentation; found ${directNodes.length}`,
     );
   }
+
   const node = directNodes[0]!;
   if (
     node.type !== 'mdxJsxFlowElement' ||

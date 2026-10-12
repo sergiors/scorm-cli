@@ -198,6 +198,19 @@ describe('compact suspend-data codec', () => {
     });
   });
 
+  it('rounds finite progress and safely handles non-finite progress', () => {
+    expect(encodeSuspendData(manifest, { pages: {} }, 49.6).p).toBe(50);
+    expect(encodeSuspendData(manifest, { pages: {} }, Number.NaN).p).toBe(0);
+    expect(encodeSuspendData(manifest, { pages: {} }, Number.POSITIVE_INFINITY).p).toBe(0);
+
+    expect(decodeSuspendData(manifest, { v: 1, p: 24, x: '00' })).toEqual({ pages: {} });
+    expect(decodeSuspendData(manifest, { v: 1, p: 25, x: '00' })).toEqual({
+      pages: {
+        'page-one': { visited: true, completed: true },
+      },
+    });
+  });
+
   it('returns a fresh state for malformed data and unsupported versions', () => {
     for (const raw of [
       'no json',

@@ -6,8 +6,13 @@ import type {
   PlayerPageState,
   QuestionnaireNode,
   QuestionNode,
-  QuestionOption,
 } from '../types';
+import {
+  answerAfterChange,
+  isOptionSelected,
+  submittedOptionResult,
+  type SubmittedOptionResult,
+} from '../lib/questionnaire';
 import { ContentRenderer } from './ContentRenderer';
 import {
   Questionnaire,
@@ -224,17 +229,6 @@ export function QuestionnaireView({
   );
 }
 
-function isSelected(
-  question: QuestionNode,
-  value: AnswerValue | undefined,
-  optionValue: string,
-): boolean {
-  if (question.questionType === 'multiple-choice') {
-    return Array.isArray(value) && value.includes(optionValue);
-  }
-  return value === optionValue;
-}
-
 /**
  * Result styling for a single submitted option: every correct option is tinted
  * green, a wrong option is tinted red only when the learner selected it, and a
@@ -243,11 +237,11 @@ function isSelected(
  * wins for a checked option. Only the submitted view applies this, so
  * correctness is never revealed before results.
  */
-function resultClassName(option: QuestionOption, selected: boolean): string | undefined {
-  if (option.correct) {
+function resultClassName(result: SubmittedOptionResult): string | undefined {
+  if (result === 'correct') {
     return 'border-emerald-600/60 bg-emerald-500/10 data-checked:border-emerald-600 data-checked:bg-emerald-500/15 dark:border-emerald-500/60 dark:bg-emerald-500/15 dark:data-checked:border-emerald-500 dark:data-checked:bg-emerald-500/20';
   }
-  if (selected) {
+  if (result === 'incorrect') {
     return 'border-destructive/60 bg-destructive/10 data-checked:border-destructive data-checked:bg-destructive/15 dark:border-destructive/60 dark:bg-destructive/15 dark:data-checked:border-destructive dark:data-checked:bg-destructive/20';
   }
   return undefined;
@@ -276,17 +270,9 @@ function QuestionnaireQuestion({
     if (!onAnswer) {
       return;
     }
-    if (multiple) {
-      // Keep the persisted array in authored option order so the value is
-      // deterministic regardless of the order options were toggled.
-      const current = Array.isArray(value) ? value : [];
-      const next = node.options
-        .map((option) => option.value)
-        .filter((candidate) => (candidate === optionValue ? checked : current.includes(candidate)));
-      onAnswer(node.id, next);
-      return;
-    }
-    onAnswer(node.id, optionValue);
+    // The derivation keeps multiple-choice answers in authored option order so
+    // the persisted value is deterministic regardless of the toggle order.
+    onAnswer(node.id, answerAfterChange(node, value, optionValue, checked));
   };
 
   return (
@@ -310,7 +296,7 @@ function QuestionnaireQuestion({
           <QuestionnaireChoice
             key={option.value}
             value={option.value}
-            checked={controlled ? isSelected(node, value, option.value) : undefined}
+            checked={controlled ? isOptionSelected(node, value, option.value) : undefined}
             onChange={
               controlled ? (event) => handleChange(option.value, event.target.checked) : undefined
             }
@@ -394,14 +380,14 @@ function SubmittedQuestion({
 
         <QuestionnaireChoices>
           {question.options.map((option) => {
-            const selected = isSelected(question, value, option.value);
+            const selected = isOptionSelected(question, value, option.value);
             return (
               <QuestionnaireChoice
                 key={option.value}
                 value={option.value}
                 disabled
                 checked={selected}
-                className={resultClassName(option, selected)}
+                className={resultClassName(submittedOptionResult(option, selected))}
               >
                 <ContentRenderer nodes={option.content} {...pathContext} />
               </QuestionnaireChoice>

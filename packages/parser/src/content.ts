@@ -6,10 +6,6 @@ import type {
   InlineNode,
   ListItemNode,
   PathNode,
-  QuestionNode,
-  QuestionOption,
-  QuestionType,
-  QuestionnaireNode,
   VideoNode,
 } from '@scorm-cli/core';
 import {
@@ -18,7 +14,6 @@ import {
   attrs,
   sourceLocation,
   isJsx,
-  isQuestionType,
   meaningfulChildren,
   normalizedRelative,
   optionalString,
@@ -26,7 +21,8 @@ import {
   whitespace,
 } from './shared';
 import { componentName, flowComponents } from './mdx';
-import { assetReference, sourceNodeId } from './io';
+import { assetReference } from './io';
+import { parseQuestionnaire } from './question';
 
 async function parseInlineNodes(
   nodes: AstNode[],
@@ -69,14 +65,16 @@ async function parseInlineNodes(
         break;
       case 'mdxJsxTextElement':
         if (componentName(node) !== 'Image') {
-          if (componentName(node) === 'Question')
+          if (componentName(node) === 'Question') {
             throw new Error(
               `${sourceLocation(sourceFile, node)}: <Question> must be inside <Questionnaire>`,
             );
-          if (flowComponents.has(componentName(node)))
+          }
+          if (flowComponents.has(componentName(node))) {
             throw new Error(
               `${sourceLocation(sourceFile, node)}: component <${node.name ?? ''}> is block-only and cannot be used inline`,
             );
+          }
           throw new Error(
             `${sourceLocation(sourceFile, node)}: unknown MDX component <${node.name ?? ''}>`,
           );
@@ -225,10 +223,11 @@ export async function parseContentNodes(
       child.type === 'mdxJsxFlowElement' ||
       (child.type === 'mdxJsxTextElement' && flowComponents.has(componentName(child)))
     ) {
-      if (componentName(child) === 'Question')
+      if (componentName(child) === 'Question') {
         throw new Error(
           `${sourceLocation(sourceFile, child)}: <Question> must be inside <Questionnaire>`,
         );
+      }
       const index = (node.children ?? []).indexOf(child);
       const previous = node.children?.[index - 1];
       const next = node.children?.[index + 1];
@@ -258,10 +257,17 @@ async function parseContentComponent(
 ): Promise<ContentNode> {
   const name = componentName(node);
   const file = sourceFile;
-  if (name === 'Question')
+  if (name === 'Question') {
     throw new Error(`${sourceLocation(file, node)}: <Question> must be inside <Questionnaire>`);
-  if (name === 'Questionnaire') return parseQuestionnaire(node, sourceFile, root, rootPageSources);
-  if (name === 'Path') return parsePath(node, sourceFile, root, rootPageSources);
+  }
+  if (name === 'Questionnaire') {
+    return parseQuestionnaire(node, sourceFile, root, (children) =>
+      contentChildren(children, sourceFile, root, rootPageSources),
+    );
+  }
+  if (name === 'Path') {
+    return parsePath(node, sourceFile, root, rootPageSources);
+  }
   const values = attrs(node, file);
   if (name === 'Image') {
     return parseImageComponent(node, sourceFile, root);
@@ -413,147 +419,4 @@ async function parsePath(
     pageIds.push(`page:${source}`);
   }
   return { type: 'path', pageIds };
-}
-
-async function parseQuestion(
-  node: AstNode,
-  file: string,
-  root: string,
-  rootPageSources?: Set<string>,
-): Promise<QuestionNode> {
-  const values = attrs(node, file);
-  assertAttributes(values, ['type'], file, node);
-  const rawType = values.type;
-  if (!isQuestionType(rawType))
-    throw new Error(
-      `${sourceLocation(file, node)}: Question "type" must be "single-choice", "multiple-choice", or "true-false"`,
-    );
-  const children = (node.children ?? [])
-    .flatMap((child) => {
-      if (
-        child.type === 'paragraph' &&
-        (child.children ?? []).every(
-          (nested) =>
-            whitespace(nested) ||
-            (isJsx(nested) &&
-              (componentName(nested) === 'Prompt' || componentName(nested) === 'Option')),
-        )
-      ) {
-        return child.children ?? [];
-      }
-      return [child];
-    })
-    .filter((child) => !whitespace(child));
-  const prompts: AstNode[] = [];
-  const options: AstNode[] = [];
-  for (const child of children) {
-    if (!isJsx(child))
-      throw new Error(
-        `${sourceLocation(file, child)}: Question may contain only <Prompt> and <Option> components`,
-      );
-    if (componentName(child) === 'Prompt') prompts.push(child);
-    else if (componentName(child) === 'Option') options.push(child);
-    else
-      throw new Error(
-        `${sourceLocation(file, child)}: unknown Question child <${child.name ?? ''}>`,
-      );
-  }
-  if (prompts.length !== 1)
-    throw new Error(
-      `${sourceLocation(file, node)}: Question must contain exactly 1 Prompt; found ${prompts.length}`,
-    );
-  if (options.length < 2)
-    throw new Error(
-      `${sourceLocation(file, node)}: Question must contain at least 2 Options; found ${options.length}`,
-    );
-  const promptNode = prompts[0]!;
-  const promptAttrs = attrs(promptNode, file);
-  assertAttributes(promptAttrs, [], file, promptNode);
-  const prompt = await contentChildren(promptNode.children ?? [], file, root, rootPageSources);
-  const seenValues = new Set<string>();
-  const parsedOptions: QuestionOption[] = [];
-  for (const option of options) {
-    const optionAttrs = attrs(option, file);
-    assertAttributes(optionAttrs, ['value', 'correct'], file, option);
-    const value = requiredString(optionAttrs.value, 'value', file, option);
-    if (seenValues.has(value))
-      throw new Error(`${sourceLocation(file, option)}: Option value "${value}" must be unique`);
-    seenValues.add(value);
-    if (optionAttrs.correct !== undefined && typeof optionAttrs.correct !== 'boolean')
-      throw new Error(`${sourceLocation(file, option)}: Option "correct" must be a boolean`);
-    parsedOptions.push({
-      value,
-      correct: optionAttrs.correct === true,
-      content: await contentChildren(option.children ?? [], file, root, rootPageSources),
-    });
-  }
-  const correctCount = parsedOptions.filter((option) => option.correct).length;
-  if (rawType === 'single-choice' && correctCount !== 1)
-    throw new Error(
-      `${sourceLocation(file, node)}: single-choice Question must have exactly one correct Option`,
-    );
-  if (rawType === 'multiple-choice' && correctCount < 1)
-    throw new Error(
-      `${sourceLocation(file, node)}: multiple-choice Question must have at least one correct Option`,
-    );
-  if (rawType === 'true-false' && parsedOptions.length !== 2)
-    throw new Error(
-      `${sourceLocation(file, node)}: true-false Question must have exactly 2 Options`,
-    );
-  if (rawType === 'true-false' && correctCount !== 1)
-    throw new Error(
-      `${sourceLocation(file, node)}: true-false Question must have exactly one correct Option`,
-    );
-  return {
-    type: 'question',
-    id: await sourceNodeId('question', node, file, root),
-    questionType: rawType,
-    prompt,
-    options: parsedOptions,
-  };
-}
-
-async function parseQuestionnaire(
-  node: AstNode,
-  file: string,
-  root: string,
-  rootPageSources?: Set<string>,
-): Promise<QuestionnaireNode> {
-  const values = attrs(node, file);
-  assertAttributes(values, [], file, node);
-
-  const children = (node.children ?? [])
-    .flatMap((child) => {
-      if (
-        child.type === 'paragraph' &&
-        (child.children ?? []).every(
-          (nested) => whitespace(nested) || (isJsx(nested) && componentName(nested) === 'Question'),
-        )
-      ) {
-        return child.children ?? [];
-      }
-      return [child];
-    })
-    .filter((child) => !whitespace(child));
-  if (!children.length)
-    throw new Error(
-      `${sourceLocation(file, node)}: Questionnaire must contain at least one direct <Question>`,
-    );
-
-  const questions: QuestionNode[] = [];
-  for (const child of children) {
-    if (!isJsx(child) || componentName(child) !== 'Question') {
-      const found = child.name ? `<${child.name}>` : child.type;
-      throw new Error(
-        `${sourceLocation(file, child)}: Questionnaire may contain only direct <Question> children; found ${found}`,
-      );
-    }
-    questions.push(await parseQuestion(child, file, root, rootPageSources));
-  }
-
-  return {
-    type: 'questionnaire',
-    id: await sourceNodeId('questionnaire', node, file, root),
-    questions,
-  };
 }
