@@ -62,5 +62,42 @@ describe('CLI build orchestration', () => {
     expect(await zip.file('scorm-runtime.js')!.async('string')).toContain(
       JSON.stringify(contentManifest)
     )
+    expect(await zip.file('imsmanifest.xml')!.async('string')).toContain(
+      '<schemaversion>1.2</schemaversion>'
+    )
+    expect(await zip.file('scorm-runtime.js')!.async('string')).toContain('LMSInitialize')
+  })
+
+  it('builds a SCORM 2004 package when requested', async () => {
+    temp = await mkdtemp(path.join(os.tmpdir(), 'scorm-cli-test-'))
+    const contentDir = path.join(temp, 'content')
+    await mkdir(contentDir)
+    await writeFile(
+      path.join(contentDir, 'index.mdx'),
+      '---\ntitle: Demo\n---\n<Grid><Item src="lesson.mdx" /></Grid>'
+    )
+    await writeFile(path.join(contentDir, 'lesson.mdx'), '---\ntitle: Lesson\n---\nHello')
+    const output = path.join(temp, 'out-2004.zip')
+    const zipPath = await buildPackage(
+      contentDir,
+      output,
+      async (_contentPackage, options) => {
+        await mkdir(options.outputDirectory, { recursive: true })
+        await writeFile(
+          path.join(options.outputDirectory, 'index.html'),
+          '<html><head></head></html>'
+        )
+        return { directory: options.outputDirectory, entrypoint: 'index.html' }
+      },
+      '2004'
+    )
+
+    const zip = await JSZip.loadAsync(await readFile(zipPath))
+    const manifest = await zip.file('imsmanifest.xml')!.async('string')
+    const runtime = await zip.file('scorm-runtime.js')!.async('string')
+    expect(manifest).toContain('http://www.imsglobal.org/xsd/imscp_v1p1')
+    expect(manifest).toContain('<schemaversion>2004 4th Edition</schemaversion>')
+    expect(runtime).toContain('API_1484_11')
+    expect(runtime).toContain('Initialize')
   })
 })

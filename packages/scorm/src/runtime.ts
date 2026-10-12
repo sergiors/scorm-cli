@@ -1,5 +1,58 @@
 import type { ContentManifest } from './content-manifest'
 import { browserCodecSource } from './state-codec'
+import type { ScormVersion } from './scorm-version'
+
+interface RuntimeApiMapping {
+  discoveryProperty: 'API' | 'API_1484_11'
+  initialize: 'LMSInitialize' | 'Initialize'
+  getValue: 'LMSGetValue' | 'GetValue'
+  setValue: 'LMSSetValue' | 'SetValue'
+  commit: 'LMSCommit' | 'Commit'
+  terminate: 'LMSFinish' | 'Terminate'
+  location: 'cmi.core.lesson_location' | 'cmi.location'
+  suspendDataLimit: 4096 | 64000
+  completion: {
+    element: 'cmi.core.lesson_status' | 'cmi.completion_status'
+    incomplete: 'incomplete'
+    completed: 'completed'
+  }
+  exit: 'cmi.core.exit' | 'cmi.exit'
+}
+
+const runtimeApiMappings: Record<ScormVersion, RuntimeApiMapping> = {
+  '1.2': {
+    discoveryProperty: 'API',
+    initialize: 'LMSInitialize',
+    getValue: 'LMSGetValue',
+    setValue: 'LMSSetValue',
+    commit: 'LMSCommit',
+    terminate: 'LMSFinish',
+    location: 'cmi.core.lesson_location',
+    suspendDataLimit: 4096,
+    completion: {
+      element: 'cmi.core.lesson_status',
+      incomplete: 'incomplete',
+      completed: 'completed'
+    },
+    exit: 'cmi.core.exit'
+  },
+  '2004': {
+    discoveryProperty: 'API_1484_11',
+    initialize: 'Initialize',
+    getValue: 'GetValue',
+    setValue: 'SetValue',
+    commit: 'Commit',
+    terminate: 'Terminate',
+    location: 'cmi.location',
+    suspendDataLimit: 64000,
+    completion: {
+      element: 'cmi.completion_status',
+      incomplete: 'incomplete',
+      completed: 'completed'
+    },
+    exit: 'cmi.exit'
+  }
+}
 
 const emptyManifest: ContentManifest = {
   schemaVersion: 1,
@@ -10,10 +63,15 @@ const emptyManifest: ContentManifest = {
 }
 
 /** Creates the SCO bridge with the same dictionary written into the package. */
-export function createScormRuntime(manifest: ContentManifest): string {
+export function createScormRuntime(
+  manifest: ContentManifest,
+  version: ScormVersion = '1.2'
+): string {
   const dictionary = JSON.stringify(manifest).replace(/</g, '\\u003c')
+  const apiMapping = JSON.stringify(runtimeApiMappings[version])
   return `;(function () {
   var CONTENT_MANIFEST = ${dictionary};
+  var API_MAPPING = ${apiMapping};
   var api = null;
   var finished = false;
   var initialized = false;
@@ -53,7 +111,8 @@ ${browserCodecSource()}
     var current = start;
     for (var i = 0; current && i < 8; i++) {
       try {
-        if (current.API && typeof current.API === "object") return current.API;
+        var candidate = current[API_MAPPING.discoveryProperty];
+        if (candidate && typeof candidate === "object") return candidate;
         if (!current.parent || current.parent === current) break;
         current = current.parent;
       } catch (_) { break; }
@@ -112,27 +171,27 @@ ${browserCodecSource()}
     }
   }
 
-  initialized = call("LMSInitialize", "lms.initialize", undefined, "") === "true";
+  initialized = call(API_MAPPING.initialize, "lms.initialize", undefined, "") === "true";
   if (initialized) {
-    var status = call("LMSGetValue", "lms.get-value", "cmi.core.lesson_status", "cmi.core.lesson_status");
-    alreadyComplete = status === "completed" || status === "passed";
-    currentLocation = call("LMSGetValue", "lms.get-value", "cmi.core.lesson_location", "cmi.core.lesson_location");
-    resumeState = compactDecode(CONTENT_MANIFEST, call("LMSGetValue", "lms.get-value", "cmi.suspend_data", "cmi.suspend_data"));
+    var status = call(API_MAPPING.getValue, "lms.get-value", API_MAPPING.completion.element, API_MAPPING.completion.element);
+    alreadyComplete = status === "completed" || (API_MAPPING.discoveryProperty === "API" && status === "passed");
+    currentLocation = call(API_MAPPING.getValue, "lms.get-value", API_MAPPING.location, API_MAPPING.location);
+    resumeState = compactDecode(CONTENT_MANIFEST, call(API_MAPPING.getValue, "lms.get-value", "cmi.suspend_data", "cmi.suspend_data"));
     resumeState.location = currentLocation;
-    if (!alreadyComplete) call("LMSSetValue", "lms.set-value", "cmi.core.lesson_status", "cmi.core.lesson_status", "incomplete");
-    call("LMSCommit", "lms.commit", undefined, "");
+    if (!alreadyComplete) call(API_MAPPING.setValue, "lms.set-value", API_MAPPING.completion.element, API_MAPPING.completion.element, API_MAPPING.completion.incomplete);
+    call(API_MAPPING.commit, "lms.commit", undefined, "");
   }
 
   function finish() {
     if (finished) return;
     finished = true;
     if (!initialized) {
-      if (window.__SCORM_DEVTOOLS__ === true) emit("lms.finish", { method: "LMSFinish", reason: api ? "not-initialized" : "api-not-found" });
+      if (window.__SCORM_DEVTOOLS__ === true) emit("lms.finish", { method: API_MAPPING.terminate, reason: api ? "not-initialized" : "api-not-found" });
       return;
     }
-    if (!alreadyComplete) call("LMSSetValue", "lms.set-value", "cmi.core.exit", "cmi.core.exit", "suspend");
-    call("LMSCommit", "lms.commit", undefined, "");
-    call("LMSFinish", "lms.finish", undefined, "");
+    if (!alreadyComplete) call(API_MAPPING.setValue, "lms.set-value", API_MAPPING.exit, API_MAPPING.exit, "suspend");
+    call(API_MAPPING.commit, "lms.commit", undefined, "");
+    call(API_MAPPING.terminate, "lms.finish", undefined, "");
   }
 
   function restoreState() {
@@ -157,23 +216,22 @@ ${browserCodecSource()}
       if (state && typeof state.location === "string") {
         currentLocation = state.location;
         normalized.location = currentLocation;
-        if (call("LMSSetValue", "lms.set-value", "cmi.core.lesson_location", "cmi.core.lesson_location", currentLocation) !== "true") saved = false;
+        if (call(API_MAPPING.setValue, "lms.set-value", API_MAPPING.location, API_MAPPING.location, currentLocation) !== "true") saved = false;
       }
-      // SCORM 1.2 recommends a 4096-character limit for cmi.suspend_data.
-      if (serialized.length > 4096) {
-        emit("lms.suspend-data-too-large", { length: serialized.length, limit: 4096 });
+      if (serialized.length > API_MAPPING.suspendDataLimit) {
+        emit("lms.suspend-data-too-large", { length: serialized.length, limit: API_MAPPING.suspendDataLimit });
         saved = false;
-      } else if (call("LMSSetValue", "lms.set-value", "cmi.suspend_data", "cmi.suspend_data", serialized) !== "true") {
+      } else if (call(API_MAPPING.setValue, "lms.set-value", "cmi.suspend_data", "cmi.suspend_data", serialized) !== "true") {
         saved = false;
       }
       resumeState = normalized;
-      if (call("LMSCommit", "lms.commit", undefined, "") !== "true") saved = false;
+      if (call(API_MAPPING.commit, "lms.commit", undefined, "") !== "true") saved = false;
       return saved;
     },
     markCompleted: function () {
       if (!api || !initialized || alreadyComplete) return;
-      if (call("LMSSetValue", "lms.set-value", "cmi.core.lesson_status", "cmi.core.lesson_status", "completed") === "true") {
-        call("LMSCommit", "lms.commit", undefined, "");
+      if (call(API_MAPPING.setValue, "lms.set-value", API_MAPPING.completion.element, API_MAPPING.completion.element, API_MAPPING.completion.completed) === "true") {
+        call(API_MAPPING.commit, "lms.commit", undefined, "");
         alreadyComplete = true;
       }
     },

@@ -1,23 +1,28 @@
 # SCORM CLI
 
-Build SCORM 1.2 packages from authored MDX content, with a local preview server.
+Build SCORM 1.2 or SCORM 2004 packages from authored MDX content, with a local
+preview server.
 
 ## Install and use
 
 The published package is `scorm-cli`. It requires Node.js `>=20.19.0`.
 
 ```sh
-# Build a SCORM 1.2 ZIP (writes dist/<content-name>.zip by default)
+# Build a SCORM 1.2 ZIP (the default; writes dist/<content-name>.zip by default)
 npx scorm-cli build ./content
 
 # Choose the output path
-npx scorm-cli build ./content --output ./build/course.zip
+npx scorm-cli build ./content --output ./build/package.zip
+
+# Build a SCORM 2004 ZIP
+npx scorm-cli build ./content --scorm 2004
 
 # Preview with a live-reloading local server
 npx scorm-cli preview ./content --port 5173
 ```
 
-`scorm-cli build` parses the content package, renders the static player, and writes a SCORM 1.2 ZIP.
+`scorm-cli build` parses the content package, renders the static player, and writes a SCORM 1.2 ZIP
+by default. Pass `--scorm 2004` to build a SCORM 2004 package.
 `scorm-cli preview` serves the same player with a mock LMS API, reloads as the content changes, and
 reports validation errors without stopping the preview.
 
@@ -104,7 +109,7 @@ the TypeScript course preview on an available port. Content paths are relative t
 | `@scorm-cli/core`            | Shared content package model and renderer contracts.               |
 | `@scorm-cli/parser`          | Validates and parses authored content into that model.             |
 | `@scorm-cli/renderer-react`  | Renders the model as a static content player.                      |
-| `@scorm-cli/scorm`           | Packages rendered output as SCORM 1.2.                             |
+| `@scorm-cli/scorm`           | Packages rendered output as SCORM 1.2 or SCORM 2004.               |
 | `@scorm-cli/authoring`       | Authoring marker vocabulary, re-exported as `scorm-cli/authoring`. |
 
 Authored MDX flows through the parser into the renderer-independent canonical model. The React

@@ -1,7 +1,7 @@
 {
   "name": "scorm-cli",
   "version": "0.1.0",
-  "description": "Build SCORM 1.2 packages from authored MDX content, with a local preview server.",
+  "description": "Build SCORM 1.2 and SCORM 2004 packages from authored MDX content, with a local preview server.",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "bin": {
@@ -32,6 +32,7 @@
   "keywords": [
     "scorm",
     "scorm-1.2",
+    "scorm-2004",
     "elearning",
     "mdx",
     "cli"

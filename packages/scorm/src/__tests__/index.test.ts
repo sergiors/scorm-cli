@@ -211,3 +211,51 @@ describe('SCORM 1.2 package', () => {
     expect(scormDevMock).toContain('scorm-cli:dev:')
   })
 })
+
+describe('SCORM 2004 4th Edition package', () => {
+  it('packages rendered output with a 2004 runtime and manifest', async () => {
+    temp = await mkdtemp(path.join(os.tmpdir(), 'scorm-2004-test-'))
+    const renderDir = path.join(temp, 'render')
+    await mkdir(renderDir)
+    await writeFile(
+      path.join(renderDir, 'index.html'),
+      '<!doctype html><html><head></head><body></body></html>'
+    )
+    await writeFile(path.join(renderDir, 'app.js'), 'window.booted = true;')
+
+    const output = await packageScorm({
+      metadata: { title: '2004 content package', lang: 'en-GB' },
+      contentManifest: createContentManifest(content),
+      renderResult: { directory: renderDir, entrypoint: 'index.html' },
+      outputPath: path.join(temp, 'scorm-2004.zip'),
+      version: '2004'
+    })
+    const zip = await JSZip.loadAsync(await readFile(output))
+    expect(Object.keys(zip.files)).toContain('index.html')
+    expect(Object.keys(zip.files)).toContain('app.js')
+
+    const runtime = await zip.file('scorm-runtime.js')!.async('string')
+    expect(runtime).toContain('API_1484_11')
+    expect(runtime).toContain('cmi.completion_status')
+    expect(runtime).not.toContain('cmi.success_status')
+    expect(await zip.file('index.html')!.async('string')).toContain('scorm-runtime.js')
+
+    const xml = await zip.file('imsmanifest.xml')!.async('string')
+    const root = create(xml).root().node as any
+    const imsNamespace = 'http://www.imsglobal.org/xsd/imscp_v1p1'
+    const resources = root.getElementsByTagNameNS(imsNamespace, 'resource')
+    const organizations = root.getElementsByTagNameNS(imsNamespace, 'organization')
+    const items = root.getElementsByTagNameNS(imsNamespace, 'item')
+    expect(organizations).toHaveLength(1)
+    expect(items).toHaveLength(1)
+    expect(resources).toHaveLength(1)
+    expect(resources[0].getAttribute('adlcp:scormType')).toBe('sco')
+    expect(resources[0].getAttribute('href')).toBe('index.html')
+    expect(xml).toContain('http://www.adlnet.org/xsd/adlcp_v1p3')
+    expect(xml).toContain('adlcp_v1p3.xsd')
+    expect(xml).toContain('ADL SCORM')
+    expect(xml).toContain('2004 4th Edition')
+    expect(xml).toContain('en-GB')
+    expect(xml).not.toContain('sequencing')
+  })
+})

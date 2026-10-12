@@ -272,3 +272,111 @@ describe('SCORM runtime dev event logging', () => {
     expect(readEvent?.details).not.toHaveProperty('length')
   })
 })
+
+describe('SCORM 2004 runtime', () => {
+  it('discovers API_1484_11 and maps lifecycle, location, suspend data, and completion', () => {
+    const calls: Array<[string, ...string[]]> = []
+    const values: Record<string, string> = {
+      'cmi.completion_status': 'incomplete',
+      'cmi.location': 'resume-here',
+      'cmi.suspend_data': JSON.stringify({ v: 1, p: 0, x: '0' })
+    }
+    const api = {
+      Initialize: (value: string) => (calls.push(['Initialize', value]), 'true'),
+      GetValue: (key: string) => (calls.push(['GetValue', key]), values[key] ?? ''),
+      SetValue: (key: string, value: string) => {
+        calls.push(['SetValue', key, value])
+        values[key] = value
+        return 'true'
+      },
+      Commit: (value: string) => (calls.push(['Commit', value]), 'true'),
+      Terminate: (value: string) => (calls.push(['Terminate', value]), 'true')
+    }
+    const parent: Record<string, unknown> = { API_1484_11: api }
+    const window: any = {
+      __SCORM_DEVTOOLS__: true,
+      parent,
+      console: { log: () => undefined },
+      addEventListener: () => undefined
+    }
+
+    vm.runInNewContext(createScormRuntime(manifest, '2004'), { window })
+    expect(window.scormBridge.getLocation()).toBe('resume-here')
+    expect(window.scormBridge.restoreState()).toEqual({ location: 'resume-here', pages: {} })
+
+    const saved = window.scormBridge.saveState({
+      location: 'next-location',
+      pages: { 'page-one': { visited: true, completed: true } }
+    })
+    expect(saved).toBe(true)
+    expect(values['cmi.location']).toBe('next-location')
+    expect(JSON.parse(values['cmi.suspend_data']!)).toEqual({ v: 1, p: 100, x: '1' })
+    expect(window.scormBridge.restoreState()).toEqual({
+      location: 'next-location',
+      pages: { 'page-one': { visited: true, completed: true } }
+    })
+
+    const longLocation = 'x'.repeat(5000)
+    expect(
+      window.scormBridge.saveState({
+        location: longLocation,
+        pages: { 'page-one': { visited: true } }
+      })
+    ).toBe(true)
+    expect(values['cmi.location']).toBe(longLocation)
+
+    window.scormBridge.markCompleted()
+    window.scormBridge.finish()
+
+    expect(values['cmi.completion_status']).toBe('completed')
+    expect(calls).toContainEqual(['Initialize', ''])
+    expect(calls).toContainEqual(['GetValue', 'cmi.completion_status'])
+    expect(calls).toContainEqual(['GetValue', 'cmi.location'])
+    expect(calls).toContainEqual(['GetValue', 'cmi.suspend_data'])
+    expect(calls).toContainEqual(['SetValue', 'cmi.completion_status', 'incomplete'])
+    expect(calls).toContainEqual(['SetValue', 'cmi.location', 'next-location'])
+    expect(calls).toContainEqual(['SetValue', 'cmi.suspend_data', values['cmi.suspend_data']!])
+    expect(calls).toContainEqual(['SetValue', 'cmi.completion_status', 'completed'])
+    expect(calls).toContainEqual(['Commit', ''])
+    expect(calls).toContainEqual(['Terminate', ''])
+    expect(
+      calls.some(
+        ([, key]) =>
+          typeof key === 'string' && (key === 'cmi.success_status' || key.startsWith('cmi.score'))
+      )
+    ).toBe(false)
+    expect(values).not.toHaveProperty('cmi.success_status')
+    expect(values).not.toHaveProperty('cmi.score.raw')
+  })
+
+  it('uses SCORM 2004 API method names in semantic event details', () => {
+    const logs: unknown[][] = []
+    const calls: Array<[string, ...string[]]> = []
+    const api = {
+      Initialize: (value: string) => (calls.push(['Initialize', value]), 'true'),
+      GetValue: (key: string) => (calls.push(['GetValue', key]), ''),
+      SetValue: (key: string, value: string) => (calls.push(['SetValue', key, value]), 'true'),
+      Commit: (value: string) => (calls.push(['Commit', value]), 'true'),
+      Terminate: (value: string) => (calls.push(['Terminate', value]), 'true')
+    }
+    const window: any = {
+      __SCORM_DEVTOOLS__: true,
+      API_1484_11: api,
+      parent: null,
+      console: { log: (...args: unknown[]) => logs.push(args) },
+      addEventListener: () => undefined
+    }
+    window.parent = window
+    vm.runInNewContext(createScormRuntime(manifest, '2004'), { window })
+    window.scormBridge.finish()
+
+    const methods = logs.map((args) => (args[1] as { details: { method?: string } }).details.method)
+    expect(methods).toContain('Initialize')
+    expect(methods).toContain('GetValue')
+    expect(methods).toContain('SetValue')
+    expect(methods).toContain('Commit')
+    expect(methods).toContain('Terminate')
+    expect(methods).not.toContain('LMSInitialize')
+    expect(calls).toContainEqual(['SetValue', 'cmi.exit', 'suspend'])
+  })
+})

@@ -1,6 +1,6 @@
 # scorm-cli
 
-Build SCORM 1.2 packages from authored MDX content, with a local preview server.
+Build SCORM 1.2 or SCORM 2004 packages from authored MDX content, with a local preview server.
 
 ## Requirements
 
@@ -13,15 +13,20 @@ Build SCORM 1.2 packages from authored MDX content, with a local preview server.
 npx scorm-cli build ./content
 
 # Choose the output path
-npx scorm-cli build ./content --output ./build/course.zip
+npx scorm-cli build ./content --output ./build/package.zip
+
+# Build a SCORM 2004 package (SCORM 1.2 is the default)
+npx scorm-cli build ./content --scorm 2004
 
 # Preview with a live-reloading local server
 npx scorm-cli preview ./content --port 5173
 ```
 
-`build` parses the content package, renders the static player, and writes a SCORM 1.2 ZIP.
+`build` parses the content package, renders the static player, and writes a SCORM 1.2 ZIP by default.
+Use `--scorm 2004` to create a SCORM 2004 ZIP.
 `preview` serves the same player with a mock LMS API and reloads as the content changes, reporting
 validation errors without stopping the preview.
+Preview uses the existing SCORM 1.2 development bridge; it does not emulate a SCORM 2004 LMS.
 
 ## Authoring
 

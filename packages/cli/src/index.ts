@@ -3,16 +3,19 @@ import { cac } from 'cac'
 import { buildPackage } from './build'
 import { startDevPackage } from './dev'
 import { errorMessage } from './errors'
+import { parseScormVersion } from './scorm-version'
 
 const cli = cac('scorm-cli')
 
 cli
-  .command('build <content>', 'Build a SCORM 1.2 package from authored content')
+  .command('build <content>', 'Build a SCORM package from authored content')
   .option('-o, --output <path>', 'Output ZIP path (default: dist/<content-name>.zip)')
+  .option('--scorm <version>', 'SCORM version: 1.2 (default) or 2004')
   .example('scorm build examples/typescript-content')
-  .action(async (content: string, options: { output?: string }) => {
+  .action(async (content: string, options: { output?: string; scorm?: string | number }) => {
     try {
-      const output = await buildPackage(content, options.output)
+      const scormVersion = parseScormVersion(options.scorm)
+      const output = await buildPackage(content, options.output, undefined, scormVersion)
       console.log(`SCORM package written to ${output}`)
     } catch (error) {
       console.error(`Error: ${errorMessage(error)}`)

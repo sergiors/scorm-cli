@@ -5,14 +5,16 @@ import JSZip from 'jszip'
 import type { PackageMetadata, RenderResult } from '@scorm-cli/core'
 import { createScormRuntime } from './runtime'
 import type { ContentManifest } from './content-manifest'
-import { createManifest } from './ims-manifest'
+import { createManifest, createManifest2004 } from './ims-manifest'
 import { resolveRendererEntrypoint } from './package-paths'
+import type { ScormVersion } from './scorm-version'
 
 export interface PackageScormOptions {
   metadata: PackageMetadata
   renderResult: RenderResult
   outputPath: string
   contentManifest: ContentManifest
+  version?: ScormVersion
 }
 
 async function listFiles(directory: string, current = directory): Promise<string[]> {
@@ -51,7 +53,8 @@ async function injectRuntime(entrypoint: string): Promise<void> {
 async function stageRendererOutput(
   stage: string,
   options: PackageScormOptions,
-  relativeEntrypoint: string
+  relativeEntrypoint: string,
+  version: ScormVersion
 ): Promise<string[]> {
   const sourceDirectory = path.resolve(options.renderResult.directory)
   await fs.cp(sourceDirectory, stage, { recursive: true })
@@ -67,7 +70,7 @@ async function stageRendererOutput(
 
   await fs.writeFile(
     path.join(stage, 'scorm-runtime.js'),
-    createScormRuntime(options.contentManifest),
+    createScormRuntime(options.contentManifest, version),
     'utf8'
   )
   await fs.writeFile(
@@ -83,9 +86,12 @@ async function writeScormArchive(
   stage: string,
   outputPath: string,
   metadata: PackageMetadata,
-  files: string[]
+  files: string[],
+  version: ScormVersion
 ): Promise<void> {
-  await fs.writeFile(path.join(stage, 'imsmanifest.xml'), createManifest(metadata, files), 'utf8')
+  const manifest =
+    version === '2004' ? createManifest2004(metadata, files) : createManifest(metadata, files)
+  await fs.writeFile(path.join(stage, 'imsmanifest.xml'), manifest, 'utf8')
   const zip = new JSZip()
   for (const file of [...files, 'imsmanifest.xml'].sort()) {
     zip.file(file, await fs.readFile(path.join(stage, file)), {
@@ -102,8 +108,9 @@ async function writeScormArchive(
   await fs.writeFile(outputPath, data)
 }
 
-/** Stage a rendered web app as a single SCORM 1.2 SCO and write a ZIP archive. */
+/** Stage a rendered web app as one SCO and write a versioned SCORM ZIP archive. */
 export async function packageScorm(options: PackageScormOptions): Promise<string> {
+  const version = options.version ?? '1.2'
   const relativeEntrypoint = resolveRendererEntrypoint(options.renderResult)
 
   const out = path.resolve(options.outputPath)
@@ -114,8 +121,8 @@ export async function packageScorm(options: PackageScormOptions): Promise<string
 
   // Keep stage lifetime and cleanup owned by this orchestrator across every phase.
   try {
-    const files = await stageRendererOutput(stage, options, relativeEntrypoint)
-    await writeScormArchive(stage, out, options.metadata, files)
+    const files = await stageRendererOutput(stage, options, relativeEntrypoint, version)
+    await writeScormArchive(stage, out, options.metadata, files, version)
     return out
   } finally {
     await fs.rm(stage, { recursive: true, force: true })
