@@ -16,7 +16,7 @@ import {
   AstNode,
   assertAttributes,
   attrs,
-  fail,
+  sourceLocation,
   isJsx,
   isQuestionType,
   meaningfulChildren,
@@ -70,19 +70,23 @@ async function parseInlineNodes(
       case 'mdxJsxTextElement':
         if (componentName(node) !== 'Image') {
           if (componentName(node) === 'Question')
-            fail(sourceFile, '<Question> must be inside <Questionnaire>', node);
-          if (flowComponents.has(componentName(node)))
-            fail(
-              sourceFile,
-              `component <${node.name ?? ''}> is block-only and cannot be used inline`,
-              node,
+            throw new Error(
+              `${sourceLocation(sourceFile, node)}: <Question> must be inside <Questionnaire>`,
             );
-          fail(sourceFile, `unknown MDX component <${node.name ?? ''}>`, node);
+          if (flowComponents.has(componentName(node)))
+            throw new Error(
+              `${sourceLocation(sourceFile, node)}: component <${node.name ?? ''}> is block-only and cannot be used inline`,
+            );
+          throw new Error(
+            `${sourceLocation(sourceFile, node)}: unknown MDX component <${node.name ?? ''}>`,
+          );
         }
         output.push(await parseImageComponent(node, sourceFile, root));
         break;
       default:
-        fail(sourceFile, `unsupported inline node "${node.type}"`, node);
+        throw new Error(
+          `${sourceLocation(sourceFile, node)}: unsupported inline node "${node.type}"`,
+        );
     }
   }
   return output;
@@ -175,10 +179,15 @@ async function parseContentNode(
       if (componentName(node) !== 'Image')
         if (flowComponents.has(componentName(node)))
           return parseContentComponent(node, sourceFile, root, rootPageSources);
-        else fail(sourceFile, `unknown MDX component <${node.name ?? ''}>`, node);
+        else
+          throw new Error(
+            `${sourceLocation(sourceFile, node)}: unknown MDX component <${node.name ?? ''}>`,
+          );
       return parseImageComponent(node, sourceFile, root);
     default:
-      fail(sourceFile, `unsupported content node "${node.type}"`, node);
+      throw new Error(
+        `${sourceLocation(sourceFile, node)}: unsupported content node "${node.type}"`,
+      );
   }
 }
 
@@ -217,7 +226,9 @@ export async function parseContentNodes(
       (child.type === 'mdxJsxTextElement' && flowComponents.has(componentName(child)))
     ) {
       if (componentName(child) === 'Question')
-        fail(sourceFile, '<Question> must be inside <Questionnaire>', child);
+        throw new Error(
+          `${sourceLocation(sourceFile, child)}: <Question> must be inside <Questionnaire>`,
+        );
       const index = (node.children ?? []).indexOf(child);
       const previous = node.children?.[index - 1];
       const next = node.children?.[index + 1];
@@ -225,10 +236,8 @@ export async function parseContentNodes(
         child.type === 'mdxJsxTextElement' &&
         ((previous && !whitespace(previous)) || (next && !whitespace(next)))
       ) {
-        fail(
-          sourceFile,
-          `component <${child.name ?? ''}> is block-only and cannot be used inline`,
-          child,
+        throw new Error(
+          `${sourceLocation(sourceFile, child)}: component <${child.name ?? ''}> is block-only and cannot be used inline`,
         );
       }
       await flushInline();
@@ -249,7 +258,8 @@ async function parseContentComponent(
 ): Promise<ContentNode> {
   const name = componentName(node);
   const file = sourceFile;
-  if (name === 'Question') fail(file, '<Question> must be inside <Questionnaire>', node);
+  if (name === 'Question')
+    throw new Error(`${sourceLocation(file, node)}: <Question> must be inside <Questionnaire>`);
   if (name === 'Questionnaire') return parseQuestionnaire(node, sourceFile, root, rootPageSources);
   if (name === 'Path') return parsePath(node, sourceFile, root, rootPageSources);
   const values = attrs(node, file);
@@ -275,7 +285,7 @@ async function parseContentComponent(
     };
     return video;
   }
-  fail(file, `unknown MDX component <${node.name ?? ''}>`, node);
+  throw new Error(`${sourceLocation(file, node)}: unknown MDX component <${node.name ?? ''}>`);
 }
 
 async function parseImageComponent(
@@ -287,7 +297,9 @@ async function parseImageComponent(
   assertAttributes(values, ['src', 'alt', 'caption'], sourceFile, node);
   const src = requiredString(values.src, 'src', sourceFile, node);
   if (typeof values.alt !== 'string')
-    fail(sourceFile, 'Image requires an explicit string "alt" attribute', node);
+    throw new Error(
+      `${sourceLocation(sourceFile, node)}: Image requires an explicit string "alt" attribute`,
+    );
   const caption = optionalString(values.caption, 'caption', sourceFile, node);
   return {
     type: 'image',
@@ -321,7 +333,8 @@ async function contentChildren(
       }
       continue;
     }
-    if (child.type === 'mdxjsEsm') fail(sourceFile, 'MDX JavaScript is not supported', child);
+    if (child.type === 'mdxjsEsm')
+      throw new Error(`${sourceLocation(sourceFile, child)}: MDX JavaScript is not supported`);
     const inlineType = [
       'text',
       'emphasis',
@@ -365,34 +378,37 @@ async function parsePath(
     .filter((child) => !whitespace(child));
 
   if (children.length === 0)
-    fail(file, 'Path requires at least one direct <Page ref="..." /> child', node);
+    throw new Error(
+      `${sourceLocation(file, node)}: Path requires at least one direct <Page ref="..." /> child`,
+    );
 
   const pageIds: string[] = [];
   const seen = new Set<string>();
   for (const child of children) {
     if (child.type !== 'mdxJsxFlowElement' || componentName(child) !== 'Page') {
       const found = child.name ? `<${child.name}>` : child.type;
-      fail(file, `Path may contain only direct <Page ref="..." /> children; found ${found}`, child);
+      throw new Error(
+        `${sourceLocation(file, child)}: Path may contain only direct <Page ref="..." /> children; found ${found}`,
+      );
     }
     if (meaningfulChildren(child.children ?? []).length > 0)
-      fail(file, '<Page> inside <Path> must be self-closing and cannot contain children', child);
+      throw new Error(
+        `${sourceLocation(file, child)}: <Page> inside <Path> must be self-closing and cannot contain children`,
+      );
     const pageValues = attrs(child, file);
     assertAttributes(pageValues, ['ref'], file, child);
     const ref = requiredString(pageValues.ref, 'ref', file, child);
     if (!rootPageSources)
-      fail(
-        file,
-        'Path references are only valid for pages declared directly in a root <Scroll> presentation',
-        child,
+      throw new Error(
+        `${sourceLocation(file, child)}: Path references are only valid for pages declared directly in a root <Scroll> presentation`,
       );
     const source = normalizedRelative(root, path.resolve(root, ref), file, child, 'Path Page ref');
     if (!rootPageSources.has(source))
-      fail(
-        file,
-        `Path Page ref "${ref}" does not match a root <Page src="..." /> in the root <Scroll> presentation`,
-        child,
+      throw new Error(
+        `${sourceLocation(file, child)}: Path Page ref "${ref}" does not match a root <Page src="..." /> in the root <Scroll> presentation`,
       );
-    if (seen.has(source)) fail(file, `duplicate Path Page ref "${ref}"`, child);
+    if (seen.has(source))
+      throw new Error(`${sourceLocation(file, child)}: duplicate Path Page ref "${ref}"`);
     seen.add(source);
     pageIds.push(`page:${source}`);
   }
@@ -409,7 +425,9 @@ async function parseQuestion(
   assertAttributes(values, ['type'], file, node);
   const rawType = values.type;
   if (!isQuestionType(rawType))
-    fail(file, 'Question "type" must be "single-choice", "multiple-choice", or "true-false"', node);
+    throw new Error(
+      `${sourceLocation(file, node)}: Question "type" must be "single-choice", "multiple-choice", or "true-false"`,
+    );
   const children = (node.children ?? [])
     .flatMap((child) => {
       if (
@@ -430,15 +448,24 @@ async function parseQuestion(
   const options: AstNode[] = [];
   for (const child of children) {
     if (!isJsx(child))
-      fail(file, 'Question may contain only <Prompt> and <Option> components', child);
+      throw new Error(
+        `${sourceLocation(file, child)}: Question may contain only <Prompt> and <Option> components`,
+      );
     if (componentName(child) === 'Prompt') prompts.push(child);
     else if (componentName(child) === 'Option') options.push(child);
-    else fail(file, `unknown Question child <${child.name ?? ''}>`, child);
+    else
+      throw new Error(
+        `${sourceLocation(file, child)}: unknown Question child <${child.name ?? ''}>`,
+      );
   }
   if (prompts.length !== 1)
-    fail(file, `Question must contain exactly 1 Prompt; found ${prompts.length}`, node);
+    throw new Error(
+      `${sourceLocation(file, node)}: Question must contain exactly 1 Prompt; found ${prompts.length}`,
+    );
   if (options.length < 2)
-    fail(file, `Question must contain at least 2 Options; found ${options.length}`, node);
+    throw new Error(
+      `${sourceLocation(file, node)}: Question must contain at least 2 Options; found ${options.length}`,
+    );
   const promptNode = prompts[0]!;
   const promptAttrs = attrs(promptNode, file);
   assertAttributes(promptAttrs, [], file, promptNode);
@@ -449,10 +476,11 @@ async function parseQuestion(
     const optionAttrs = attrs(option, file);
     assertAttributes(optionAttrs, ['value', 'correct'], file, option);
     const value = requiredString(optionAttrs.value, 'value', file, option);
-    if (seenValues.has(value)) fail(file, `Option value "${value}" must be unique`, option);
+    if (seenValues.has(value))
+      throw new Error(`${sourceLocation(file, option)}: Option value "${value}" must be unique`);
     seenValues.add(value);
     if (optionAttrs.correct !== undefined && typeof optionAttrs.correct !== 'boolean')
-      fail(file, 'Option "correct" must be a boolean', option);
+      throw new Error(`${sourceLocation(file, option)}: Option "correct" must be a boolean`);
     parsedOptions.push({
       value,
       correct: optionAttrs.correct === true,
@@ -461,13 +489,21 @@ async function parseQuestion(
   }
   const correctCount = parsedOptions.filter((option) => option.correct).length;
   if (rawType === 'single-choice' && correctCount !== 1)
-    fail(file, 'single-choice Question must have exactly one correct Option', node);
+    throw new Error(
+      `${sourceLocation(file, node)}: single-choice Question must have exactly one correct Option`,
+    );
   if (rawType === 'multiple-choice' && correctCount < 1)
-    fail(file, 'multiple-choice Question must have at least one correct Option', node);
+    throw new Error(
+      `${sourceLocation(file, node)}: multiple-choice Question must have at least one correct Option`,
+    );
   if (rawType === 'true-false' && parsedOptions.length !== 2)
-    fail(file, 'true-false Question must have exactly 2 Options', node);
+    throw new Error(
+      `${sourceLocation(file, node)}: true-false Question must have exactly 2 Options`,
+    );
   if (rawType === 'true-false' && correctCount !== 1)
-    fail(file, 'true-false Question must have exactly one correct Option', node);
+    throw new Error(
+      `${sourceLocation(file, node)}: true-false Question must have exactly one correct Option`,
+    );
   return {
     type: 'question',
     id: await sourceNodeId('question', node, file, root),
@@ -500,16 +536,16 @@ async function parseQuestionnaire(
     })
     .filter((child) => !whitespace(child));
   if (!children.length)
-    fail(file, 'Questionnaire must contain at least one direct <Question>', node);
+    throw new Error(
+      `${sourceLocation(file, node)}: Questionnaire must contain at least one direct <Question>`,
+    );
 
   const questions: QuestionNode[] = [];
   for (const child of children) {
     if (!isJsx(child) || componentName(child) !== 'Question') {
       const found = child.name ? `<${child.name}>` : child.type;
-      fail(
-        file,
-        `Questionnaire may contain only direct <Question> children; found ${found}`,
-        child,
+      throw new Error(
+        `${sourceLocation(file, child)}: Questionnaire may contain only direct <Question> children; found ${found}`,
       );
     }
     questions.push(await parseQuestion(child, file, root, rootPageSources));

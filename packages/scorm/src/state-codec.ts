@@ -12,7 +12,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 const safeKey = (value: string) =>
   value.length > 0 && value !== '__proto__' && value !== 'prototype' && value !== 'constructor';
-const hasOwn = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
 
 /**
  * Encodes only manifest-indexed progress and answer selections. `p` is limited
@@ -31,7 +30,9 @@ export function encodeSuspendData(
     p: Number.isFinite(progress) ? Math.max(0, Math.min(100, Math.round(progress))) : 0,
     x: pageEntries
       .map(([, page]) =>
-        safeKey(page.id) && hasOwn(state.pages, page.id) && state.pages[page.id]?.visited === true
+        safeKey(page.id) &&
+        Object.prototype.hasOwnProperty.call(state.pages, page.id) &&
+        state.pages[page.id]?.visited === true
           ? '1'
           : '0',
       )
@@ -41,7 +42,7 @@ export function encodeSuspendData(
 
   pageEntries.forEach(([pageIndex, page]) => {
     if (!safeKey(page.id)) return;
-    if (!hasOwn(state.pages, page.id)) return;
+    if (!Object.prototype.hasOwnProperty.call(state.pages, page.id)) return;
     const pageState = state.pages[page.id];
     if (!pageState || !isRecord(pageState.answers)) return;
     const answers: Record<string, number | number[]> = {};

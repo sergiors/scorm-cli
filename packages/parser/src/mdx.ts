@@ -1,7 +1,7 @@
 import remarkMdx from 'remark-mdx';
 import remarkParse from 'remark-parse';
 import { unified } from 'unified';
-import { AstNode, fail } from './shared';
+import { AstNode, sourceLocation } from './shared';
 
 const processor = unified().use(remarkParse).use(remarkMdx);
 export const flowComponents = new Set(['Video', 'Question', 'Questionnaire', 'Path']);
@@ -91,27 +91,21 @@ function collectImportBindings(nodes: AstNode[], file: string): ImportBindings {
           continue;
         }
         if (specifier.type === 'ImportDefaultSpecifier')
-          fail(
-            file,
-            `"${authoringSource}" provides named exports only; import "Page", "Scroll", and friends by name`,
-            node,
+          throw new Error(
+            `${sourceLocation(file, node)}: "${authoringSource}" provides named exports only; import "Page", "Scroll", and friends by name`,
           );
         if (specifier.type !== 'ImportSpecifier') continue;
         const imported =
           typeof specifier.imported?.name === 'string' ? specifier.imported.name : undefined;
         if (!imported) continue;
         if (!authoringComponents.has(imported))
-          fail(
-            file,
-            `"${imported}" is not an authoring component exported by "${authoringSource}"`,
-            node,
+          throw new Error(
+            `${sourceLocation(file, node)}: "${imported}" is not an authoring component exported by "${authoringSource}"`,
           );
         const existing = aliases.get(local);
         if (existing && existing !== imported)
-          fail(
-            file,
-            `import binding "${local}" is declared more than once for different authoring components`,
-            node,
+          throw new Error(
+            `${sourceLocation(file, node)}: import binding "${local}" is declared more than once for different authoring components`,
           );
         aliases.set(local, imported);
       }
@@ -143,10 +137,8 @@ function resolveComponentName(
     const member = name.slice(dot + 1);
     if (bindings.namespaces.has(namespace)) {
       if (!authoringComponents.has(member))
-        fail(
-          file,
-          `"${member}" is not an authoring component exported by "${authoringSource}"`,
-          node,
+        throw new Error(
+          `${sourceLocation(file, node)}: "${member}" is not an authoring component exported by "${authoringSource}"`,
         );
       return member;
     }
@@ -201,7 +193,10 @@ export function parseMdx(source: string, file: string): { children: AstNode[] } 
     for (const node of nodes) {
       if (node.type === 'linkReference' || node.type === 'imageReference') {
         const url = definitions.get(node.identifier?.toLowerCase() ?? '');
-        if (!url) fail(file, `undefined Markdown reference "${node.identifier ?? ''}"`, node);
+        if (!url)
+          throw new Error(
+            `${sourceLocation(file, node)}: undefined Markdown reference "${node.identifier ?? ''}"`,
+          );
         node.type = node.type === 'linkReference' ? 'link' : 'image';
         node.url = url;
       }

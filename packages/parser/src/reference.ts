@@ -5,7 +5,7 @@ import type { ContentNode, ItemNode, PageNode } from '@scorm-cli/core';
 import {
   assertFrontmatterKeys,
   AstNode,
-  fail,
+  sourceLocation,
   normalizedRelative,
   optionalString,
   requiredString,
@@ -34,7 +34,9 @@ export async function parseReference<T extends PageNode | ItemNode>(
   try {
     raw = await fs.readFile(sourcePath, 'utf8');
   } catch {
-    fail(declaredIn, `${kind === 'page' ? 'Page' : 'Item'} source "${src}" does not exist`, node);
+    throw new Error(
+      `${sourceLocation(declaredIn, node)}: ${kind === 'page' ? 'Page' : 'Item'} source "${src}" does not exist`,
+    );
   }
   const realRoot = await fs.realpath(root);
   const realSource = await fs.realpath(sourcePath);
@@ -44,10 +46,8 @@ export async function parseReference<T extends PageNode | ItemNode>(
     realSourceRelative.startsWith(`..${path.sep}`) ||
     path.isAbsolute(realSourceRelative)
   ) {
-    fail(
-      declaredIn,
-      `${kind === 'page' ? 'Page' : 'Item'} source "${src}" resolves outside the content package directory`,
-      node,
+    throw new Error(
+      `${sourceLocation(declaredIn, node)}: ${kind === 'page' ? 'Page' : 'Item'} source "${src}" resolves outside the content package directory`,
     );
   }
   const parsed = matter(raw!);
@@ -59,9 +59,13 @@ export async function parseReference<T extends PageNode | ItemNode>(
   const title = requiredString(parsed.data.title, 'title', sourcePath, {
     type: 'frontmatter',
   });
+
   const id = `${kind}:${source}`;
-  if (ids.has(id)) fail(sourcePath, `duplicate package node id "${id}"`, node);
+  if (ids.has(id)) {
+    throw new Error(`${sourceLocation(sourcePath, node)}: duplicate package node id "${id}"`);
+  }
   ids.add(id);
+
   const description =
     kind === 'page'
       ? optionalString(parsed.data.description, 'description', sourcePath, {
@@ -73,8 +77,9 @@ export async function parseReference<T extends PageNode | ItemNode>(
   const content: ContentNode[] = [];
   for (const child of tree.children) {
     if (child.type === 'mdxjsEsm') {
-      fail(sourcePath, 'MDX JavaScript is not supported', child);
+      throw new Error(`${sourceLocation(sourcePath, child)}: MDX JavaScript is not supported`);
     }
+
     content.push(
       ...(await parseContentNodes(
         child,
@@ -84,6 +89,7 @@ export async function parseReference<T extends PageNode | ItemNode>(
       )),
     );
   }
+
   return {
     type: kind,
     id,

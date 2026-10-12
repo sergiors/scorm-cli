@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import matter from 'gray-matter';
 import { isRemoteReference } from '@scorm-cli/core';
-import { AstNode, fail, normalizedRelative } from './shared';
+import { AstNode, sourceLocation, normalizedRelative } from './shared';
 
 export async function assetReference(
   value: string,
@@ -16,7 +16,9 @@ export async function assetReference(
   try {
     decoded = decodeURIComponent(value.split(/[?#]/, 1)[0]);
   } catch {
-    fail(file, `asset reference "${value}" has invalid URL encoding`, node);
+    throw new Error(
+      `${sourceLocation(file, node)}: asset reference "${value}" has invalid URL encoding`,
+    );
   }
   const absolute = path.resolve(path.dirname(sourceFile), decoded);
   const relative = normalizedRelative(root, absolute, file, node, 'asset reference');
@@ -24,9 +26,13 @@ export async function assetReference(
   try {
     stat = await fs.stat(absolute);
   } catch {
-    fail(file, `asset "${value}" does not exist`, node);
+    throw new Error(`${sourceLocation(file, node)}: asset "${value}" does not exist`);
   }
-  if (!stat.isFile()) fail(file, `asset "${value}" is not a file`, node);
+
+  if (!stat.isFile()) {
+    throw new Error(`${sourceLocation(file, node)}: asset "${value}" is not a file`);
+  }
+
   const realRoot = await fs.realpath(root);
   const realAsset = await fs.realpath(absolute);
   const realRelative = path.relative(realRoot, realAsset);
@@ -35,8 +41,11 @@ export async function assetReference(
     realRelative.startsWith(`..${path.sep}`) ||
     path.isAbsolute(realRelative)
   ) {
-    fail(file, `asset "${value}" resolves outside the content package directory`, node);
+    throw new Error(
+      `${sourceLocation(file, node)}: asset "${value}" resolves outside the content package directory`,
+    );
   }
+
   return relative;
 }
 

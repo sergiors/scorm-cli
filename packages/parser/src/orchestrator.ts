@@ -15,7 +15,7 @@ import {
   assertFrontmatterKeys,
   attrs,
   canonicalLanguage,
-  fail,
+  sourceLocation,
   meaningfulChildren,
   normalizedRelative,
   optionalString,
@@ -35,17 +35,18 @@ async function parsePresentationChildren<T extends PageNode | ItemNode>(
   const output: T[] = [];
   const expected = kind === 'page' ? 'Page' : 'Item';
   for (const node of meaningfulChildren(nodes)) {
-    if (node.type === 'mdxjsEsm') fail(declaredIn, 'MDX JavaScript is not supported', node);
+    if (node.type === 'mdxjsEsm')
+      throw new Error(`${sourceLocation(declaredIn, node)}: MDX JavaScript is not supported`);
     if (node.type !== 'mdxJsxFlowElement' || componentName(node) !== expected) {
       const found = node.name ? `<${node.name}>` : node.type;
-      fail(
-        declaredIn,
-        `${kind === 'page' ? '<Scroll>' : '<Grid>'} children may only contain direct <${expected} src="..." /> components; found ${found}`,
-        node,
+      throw new Error(
+        `${sourceLocation(declaredIn, node)}: ${kind === 'page' ? '<Scroll>' : '<Grid>'} children may only contain direct <${expected} src="..." /> components; found ${found}`,
       );
     }
     if (meaningfulChildren(node.children ?? []).length > 0)
-      fail(declaredIn, `<${expected}> must be self-closing and cannot contain children`, node);
+      throw new Error(
+        `${sourceLocation(declaredIn, node)}: <${expected}> must be self-closing and cannot contain children`,
+      );
     const values = attrs(node, declaredIn);
     assertAttributes(values, ['src'], declaredIn, node);
     const src = requiredString(values.src, 'src', declaredIn, node);
@@ -89,10 +90,8 @@ async function parseRootPresentation(
 ): Promise<RootPresentation> {
   const directNodes = meaningfulChildren(nodes);
   if (directNodes.length !== 1) {
-    fail(
-      entry,
-      `root must contain exactly one <Scroll> or <Grid> presentation; found ${directNodes.length}`,
-      directNodes[0],
+    throw new Error(
+      `${sourceLocation(entry, directNodes[0])}: root must contain exactly one <Scroll> or <Grid> presentation; found ${directNodes.length}`,
     );
   }
   const node = directNodes[0]!;
@@ -101,10 +100,8 @@ async function parseRootPresentation(
     (componentName(node) !== 'Scroll' && componentName(node) !== 'Grid')
   ) {
     const found = node.name ? `<${node.name}>` : node.type;
-    fail(
-      entry,
-      `root must contain exactly one <Scroll> or <Grid> presentation; found 1 direct node (${found})`,
-      node,
+    throw new Error(
+      `${sourceLocation(entry, node)}: root must contain exactly one <Scroll> or <Grid> presentation; found 1 direct node (${found})`,
     );
   }
 
@@ -120,7 +117,12 @@ async function parseRootPresentation(
       ids,
       declaredRootPageSources(node.children ?? [], entry, root),
     );
-    if (!pages.length) fail(entry, '<Scroll> must contain at least one <Page>; found 0', node);
+    if (!pages.length) {
+      throw new Error(
+        `${sourceLocation(entry, node)}: <Scroll> must contain at least one <Page>; found 0`,
+      );
+    }
+
     return { type: 'scroll', pages } satisfies ScrollNode;
   }
 
@@ -130,7 +132,9 @@ async function parseRootPresentation(
     columns !== undefined &&
     (!Number.isInteger(columns) || Number(columns) < 1 || Number(columns) > 12)
   ) {
-    fail(entry, '<Grid> "columns" must be an integer from 1 to 12', node);
+    throw new Error(
+      `${sourceLocation(entry, node)}: <Grid> "columns" must be an integer from 1 to 12`,
+    );
   }
   const items = await parsePresentationChildren<ItemNode>(
     node.children ?? [],
@@ -139,7 +143,13 @@ async function parseRootPresentation(
     root,
     ids,
   );
-  if (!items.length) fail(entry, '<Grid> must contain at least one <Item>; found 0', node);
+
+  if (!items.length) {
+    throw new Error(
+      `${sourceLocation(entry, node)}: <Grid> must contain at least one <Item>; found 0`,
+    );
+  }
+
   return {
     type: 'grid',
     ...(columns !== undefined ? { columns: Number(columns) } : {}),
