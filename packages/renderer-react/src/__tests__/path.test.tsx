@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
-import { act, type ComponentProps } from 'react'
+import { act, useMemo, type ComponentProps } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ContentRenderer as ContentRendererBase } from '../../app/components/ContentRenderer'
 import { PackageView as PackageViewBase } from '../../app/components/PackageView'
 import { QuestionnaireView as QuestionnaireViewBase } from '../../app/components/QuestionnaireView'
+import type { ContentProvider } from '../../app/lib/content-loader'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
 import type {
   ContentNode,
@@ -16,6 +17,7 @@ import type {
   PlayerState,
   QuestionnaireNode
 } from '../../app/types'
+import { inlineContentProvider } from './fixtures'
 
 /**
  * Wraps a player component in the i18n provider, matching how `PackageApp`
@@ -38,10 +40,24 @@ function QuestionnaireView(props: ComponentProps<typeof QuestionnaireViewBase>) 
   )
 }
 
-function PackageView(props: ComponentProps<typeof PackageViewBase>) {
+/**
+ * Wraps the player in the i18n provider and supplies the inline content
+ * provider the build wires through `virtual:package-data`. Call sites that pass
+ * their own provider (a lazy one) keep it.
+ */
+function PackageView({
+  contentProvider,
+  ...props
+}: Omit<ComponentProps<typeof PackageViewBase>, 'contentProvider'> & {
+  contentProvider?: ContentProvider
+}) {
+  const provider = useMemo(
+    () => contentProvider ?? inlineContentProvider(props.contentPackage),
+    [contentProvider, props.contentPackage]
+  )
   return (
     <PlayerI18nProvider lang={props.contentPackage.metadata.lang}>
-      <PackageViewBase {...props} />
+      <PackageViewBase {...props} contentProvider={provider} />
     </PlayerI18nProvider>
   )
 }

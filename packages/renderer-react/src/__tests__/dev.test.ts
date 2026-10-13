@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { reactRenderer } from '..'
 import type { RendererDevServer } from '..'
-import { samplePackage } from './fixtures'
+import { samplePackage, slidesPackage, tilesPackage } from './fixtures'
 
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>'
 
@@ -153,6 +153,78 @@ describe('reactRenderer.dev', () => {
     const code = await response.text()
     expect(code).toContain('Rendering Fundamentals')
     expect(code).toContain('Introduction')
+  })
+
+  it('keeps only the semantic summary in the manifest and serves page content separately', async () => {
+    const code = await fetch(`${server.url}@id/__x00__virtual:package-data`).then((response) =>
+      response.text()
+    )
+
+    // The manifest exposes the lazy content provider and the minimal semantic
+    // summary the session layer needs — questionnaire and question ids, option
+    // values and correctness — while dropping the presentation-only page body.
+    expect(code).toContain('contentProvider')
+    expect(code).toContain('questionnaire:intro.mdx:1:1')
+    expect(code).toContain('"value":"first"')
+    expect(code).toContain('"correct":true')
+    expect(code).not.toContain('Which option is correct?')
+    expect(code).not.toContain('Welcome')
+
+    // The full page AST is served by the page's own lazily loaded module.
+    const pageCode = await fetch(
+      `${server.url}@id/__x00__virtual:package-node/page%3Aintro.mdx`
+    ).then((response) => response.text())
+    expect(pageCode).toContain('Which option is correct?')
+    expect(pageCode).toContain('Welcome')
+  })
+
+  it('rejects an unknown content id instead of resolving to blank content', async () => {
+    const code = await fetch(`${server.url}@id/__x00__virtual:package-data`).then((response) =>
+      response.text()
+    )
+
+    // An id with no server-rendered module is a manifest or build mismatch, not
+    // an empty node: the provider rejects with the id rather than resolving to
+    // `[]`, which would render a blank page as if the load had succeeded.
+    expect(code).not.toContain('Promise.resolve([])')
+    expect(code).toContain('No content module for node id')
+  })
+
+  it('fails the node content module for an unknown id instead of serving blank content', async () => {
+    const response = await fetch(
+      `${server.url}@id/__x00__virtual:package-node/page%3Amissing.mdx`
+    )
+
+    // A node id with no authored page/item must fail the module load so the app
+    // renders a visible load error, never a blank page from `export default []`.
+    expect(response.status).not.toBe(200)
+    expect(await response.text()).toContain('No content module for node id: page:missing.mdx')
+  })
+
+  it('serves Slides pages and Tiles items as independent lazily loaded modules', async () => {
+    // Slides: the manifest carries the page metadata and summary, while each
+    // page's body is served by its own module.
+    await server.update(slidesPackage)
+    const slidesManifest = await fetch(`${server.url}@id/__x00__virtual:package-data`).then(
+      (response) => response.text()
+    )
+    expect(slidesManifest).toContain('contentProvider')
+    expect(slidesManifest).not.toContain('Setup instructions.')
+    const slideModule = await fetch(
+      `${server.url}@id/__x00__virtual:package-node/page%3Asetup.mdx`
+    ).then((response) => response.text())
+    expect(slideModule).toContain('Setup instructions.')
+
+    // Tiles: the item body is served by its own module too.
+    await server.update(tilesPackage)
+    const tilesManifest = await fetch(`${server.url}@id/__x00__virtual:package-data`).then(
+      (response) => response.text()
+    )
+    expect(tilesManifest).not.toContain('Function body.')
+    const itemModule = await fetch(
+      `${server.url}@id/__x00__virtual:package-node/item%3Afunctions.mdx`
+    ).then((response) => response.text())
+    expect(itemModule).toContain('Function body.')
   })
 
   it('replaces the virtual package data on update', async () => {

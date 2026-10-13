@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { renderReactPackage, reactRenderer } from '..'
 import type { RenderResult } from '..'
-import { samplePackage } from './fixtures'
+import { samplePackage, slidesPackage, tilesPackage } from './fixtures'
 
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>`
 
@@ -41,6 +41,64 @@ let entrypoint: RenderResult
 let indexHtml: string
 let appJs: string
 let bundleJs: string
+let jsFileNames: string[]
+let chunkContents: Map<string, string>
+let slidesBundle: BuiltBundle
+let tilesBundle: BuiltBundle
+
+/** The entry chunk plus the whole emitted bundle, for one built package. */
+interface BuiltBundle {
+  appJs: string
+  bundleJs: string
+  jsFileNames: string[]
+  chunkContents: Map<string, string>
+}
+
+/** Reads every emitted chunk of a build directory into the entry and bundle views. */
+async function readBundle(directory: string): Promise<BuiltBundle> {
+  const assetFiles = await readdir(path.join(directory, 'assets'))
+  const names = assetFiles.filter((name) => name.endsWith('.js'))
+  const chunks = new Map(
+    await Promise.all(
+      names.map(
+        async (name) =>
+          [name, await readFile(path.join(directory, 'assets', name), 'utf-8')] as const
+      )
+    )
+  )
+  return {
+    appJs: chunks.get('app.js') ?? '',
+    bundleJs: [...chunks.values()].join('\n'),
+    jsFileNames: names,
+    chunkContents: chunks
+  }
+}
+
+/**
+ * Asserts that a built package keeps its node metadata in the entry chunk while
+ * shipping every node body in a separate, relatively imported chunk. A locked or
+ * unopened node therefore never contributes its AST to the initial bundle.
+ */
+function expectLazySplit(bundle: BuiltBundle, titles: string[], bodies: string[]): void {
+  for (const title of titles) {
+    expect(bundle.appJs).toContain(title)
+  }
+  for (const body of bodies) {
+    expect(bundle.appJs).not.toContain(body)
+    expect(bundle.bundleJs).toContain(body)
+  }
+
+  // Each node body travels in its own chunk, referenced from the entry with a
+  // path relative to the output, so the package works from the file system or
+  // any subpath.
+  const contentChunks = bundle.jsFileNames.filter((name) =>
+    bodies.some((body) => bundle.chunkContents.get(name)?.includes(body))
+  )
+  expect(contentChunks.length).toBeGreaterThan(0)
+  for (const name of contentChunks) {
+    expect(bundle.appJs).toContain(`./${name}`)
+  }
+}
 
 beforeAll(async () => {
   workDir = await mkdtemp(path.join(os.tmpdir(), 'renderer-react-'))
@@ -64,14 +122,21 @@ beforeAll(async () => {
 
   // Concatenate every emitted script (not just the entry) so the exclusion
   // checks below cover lazily split dev-only chunks too.
-  const assetFiles = await readdir(path.join(outputDirectory, 'assets'))
-  const jsFiles = assetFiles.filter((name) => name.endsWith('.js'))
-  bundleJs = (
-    await Promise.all(
-      jsFiles.map((name) => readFile(path.join(outputDirectory, 'assets', name), 'utf-8'))
-    )
-  ).join('\n')
-}, 120_000)
+  const scrollBundle = await readBundle(outputDirectory)
+  jsFileNames = scrollBundle.jsFileNames
+  chunkContents = scrollBundle.chunkContents
+  bundleJs = scrollBundle.bundleJs
+
+  // The other two root presentations are built too, so the split is proven for
+  // each boundary: Slides → Page and Tiles → Item.
+  const slidesDirectory = path.join(workDir, 'slides')
+  await renderReactPackage(slidesPackage, { outputDirectory: slidesDirectory })
+  slidesBundle = await readBundle(slidesDirectory)
+
+  const tilesDirectory = path.join(workDir, 'tiles')
+  await renderReactPackage(tilesPackage, { outputDirectory: tilesDirectory })
+  tilesBundle = await readBundle(tilesDirectory)
+}, 240_000)
 
 afterAll(async () => {
   if (workDir) {
@@ -106,6 +171,26 @@ describe('renderReactPackage', () => {
     expect(appJs).toContain('Rendering Fundamentals')
     // No runtime JSON fetch is used to load the package.
     expect(appJs).not.toContain('virtual:package-data')
+  })
+
+  it('splits each Scroll page into an independent lazily loaded chunk', () => {
+    expectLazySplit(
+      { appJs, bundleJs, jsFileNames, chunkContents },
+      ['Introduction'],
+      ['Welcome', 'Setup instructions.']
+    )
+  })
+
+  it('splits each Slides page into an independent lazily loaded chunk', () => {
+    expectLazySplit(slidesBundle, ['Introduction'], ['Welcome', 'Setup instructions.'])
+  })
+
+  it('splits each Tiles item into an independent lazily loaded chunk', () => {
+    expectLazySplit(
+      tilesBundle,
+      ['Functions', 'Types', 'Extra details'],
+      ['Function body.', 'Type body.', 'Modal body content.']
+    )
   })
 
   it('does not ship the dev-only preview error channel or overlay', () => {
@@ -154,9 +239,9 @@ describe('renderReactPackage', () => {
     expect(css).toContain('--tw-prose-body')
     // The Scroll presentation's page sizing and active-page emphasis must be
     // compiled as well, so a page reserves a small viewport and its subtle,
-    // reduced-motion-aware emphasis survives into the packaged player.
+    // reduced-motion-aware opacity emphasis survives into the packaged player.
     expect(css).toContain('.min-h-svh')
-    expect(css).toContain('.translate-y-1')
+    expect(css).toContain('.transition-opacity')
     expect(css).toContain('.opacity-90')
     // The emphasis drops its transition under reduced motion. The compiled
     // `motion-reduce:transition-none` rule must sit *inside* a

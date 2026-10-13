@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import contentPackage from 'virtual:package-data'
+import contentPackage, { contentProvider } from 'virtual:package-data'
 import { PackageApp } from './App'
 import { DevPreviewOverlay } from './components/DevPreviewOverlay'
 import { ScormDevToolsToolbar } from './components/ScormDevToolsToolbar'
@@ -11,7 +11,7 @@ const container = document.getElementById('root')
 if (container) {
   createRoot(container).render(
     <StrictMode>
-      <PackageApp contentPackage={contentPackage} />
+      <PackageApp contentPackage={contentPackage} contentProvider={contentProvider} />
       <DevInspector />
       <DevPreview />
     </StrictMode>

@@ -6,6 +6,7 @@ import { PlayerI18nProvider } from '../../app/lib/player-i18n'
 import type { ContentPackage } from '../../app/types'
 import {
   headingDepths,
+  inlineContentProvider,
   makeEmptyPackage,
   makeEmptyTilesPackage,
   scrollPackage,
@@ -31,7 +32,10 @@ const headingScrollPackage: ContentPackage = {
 function renderView(contentPackage: ContentPackage) {
   return renderToStaticMarkup(
     <PlayerI18nProvider lang={contentPackage.metadata.lang}>
-      <PackageView contentPackage={contentPackage} />
+      <PackageView
+        contentPackage={contentPackage}
+        contentProvider={inlineContentProvider(contentPackage)}
+      />
     </PlayerI18nProvider>
   )
 }
@@ -153,12 +157,22 @@ describe('PackageView shared', () => {
 
 describe('PackageApp', () => {
   it('renders the authored scroll view for the provided content package', () => {
-    const html = renderToStaticMarkup(<PackageApp contentPackage={scrollPackage} />)
+    const html = renderToStaticMarkup(
+      <PackageApp
+        contentPackage={scrollPackage}
+        contentProvider={inlineContentProvider(scrollPackage)}
+      />
+    )
     expect(html).toContain('Welcome')
   })
 
   it('renders the authored tiles view for the provided content package', () => {
-    const html = renderToStaticMarkup(<PackageApp contentPackage={tilesPackage} />)
+    const html = renderToStaticMarkup(
+      <PackageApp
+        contentPackage={tilesPackage}
+        contentProvider={inlineContentProvider(tilesPackage)}
+      />
+    )
     expect(html).toContain('Functions')
   })
 })

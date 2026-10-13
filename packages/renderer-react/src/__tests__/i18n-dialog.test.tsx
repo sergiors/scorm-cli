@@ -7,7 +7,7 @@ import { PackageView } from '../../app/components/PackageView'
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from '../../app/components/ui/dialog'
 import type { ContentPackage } from '../../app/types'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
-import { tilesPackage } from './fixtures'
+import { tilesPackage, inlineContentProvider } from './fixtures'
 
 declare global {
   // eslint-disable-next-line no-var
@@ -66,7 +66,10 @@ describe('i18n: tiles dialog', () => {
     act(() =>
       root.render(
         <PlayerI18nProvider lang="pt-BR">
-          <PackageView contentPackage={ptTilesPackage} />
+          <PackageView
+            contentPackage={ptTilesPackage}
+            contentProvider={inlineContentProvider(ptTilesPackage)}
+          />
         </PlayerI18nProvider>
       )
     )

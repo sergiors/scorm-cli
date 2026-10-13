@@ -1,7 +1,13 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { ContentPackage } from '@scorm-cli/core'
+import type {
+  ContentNode,
+  ContentPackage,
+  InlineContentNode,
+  ItemNode,
+  PageNode
+} from '@scorm-cli/core'
 import type { Plugin } from 'vite'
 import {
   declaredDocumentLanguage,
@@ -21,6 +27,183 @@ export const PACKAGE_DATA_ID = 'virtual:package-data'
  * invalidate the virtual module when the authored content changes.
  */
 export const RESOLVED_PACKAGE_DATA_ID = `\0${PACKAGE_DATA_ID}`
+
+/**
+ * Public prefix of the per-node content virtual modules. Each authored page
+ * (Scroll and Slides) and each authored item (Tiles) is emitted as its own
+ * module so Rollup can split it into an independent, lazily loaded chunk; the
+ * node id is URL-encoded after the prefix so any authored id (which may itself
+ * contain `:` or `/`) stays a valid import specifier.
+ */
+export const PACKAGE_NODE_ID_PREFIX = 'virtual:package-node/'
+
+/** Resolved id prefix Vite stores in its module graph for page/item content modules. */
+export const RESOLVED_PACKAGE_NODE_ID_PREFIX = `\0${PACKAGE_NODE_ID_PREFIX}`
+
+/** Whether a resolved module id belongs to a lazily loaded Page/Item content module. */
+export function isPackageNodeModuleId(id: string | null | undefined): boolean {
+  return typeof id === 'string' && id.startsWith(RESOLVED_PACKAGE_NODE_ID_PREFIX)
+}
+
+/** The ordered leaf nodes of a package, a page (Scroll/Slides) or an item (Tiles). */
+function presentationNodes(contentPackage: ContentPackage): Array<PageNode | ItemNode> {
+  const { presentation } = contentPackage
+  return presentation.type === 'tiles' ? presentation.items : presentation.pages
+}
+
+/**
+ * Reduces one authored node's content to the minimal, semantic AST the session
+ * layer needs. The player's scoring, resume sanitisation and completion gating
+ * only ever inspect questionnaires (ids, question types, option values and
+ * correctness) and video ids; everything else is presentation and travels with
+ * the node's lazily loaded module. Keeping this summary in the initial package
+ * means no page or item body lands in the entry chunk, while the shared core
+ * helpers keep operating on ordinary content nodes.
+ *
+ * Nested questionnaires and videos — traversed by the core helpers even though
+ * the authoring parser forbids them inside prompts and options — are flattened
+ * into the summary in document order, so the traversal results are unchanged.
+ */
+function semanticNodeContent(content: readonly ContentNode[]): ContentNode[] {
+  const summary: ContentNode[] = []
+  const visit = (nodes: ReadonlyArray<ContentNode | InlineContentNode>) => {
+    for (const node of nodes) {
+      switch (node.type) {
+        case 'questionnaire':
+          summary.push({
+            type: 'questionnaire',
+            id: node.id,
+            contributesToScore: node.contributesToScore,
+            questions: node.questions.map((question) => ({
+              type: 'question',
+              id: question.id,
+              questionType: question.questionType,
+              prompt: [],
+              options: question.options.map((option) => ({
+                value: option.value,
+                correct: option.correct,
+                content: []
+              }))
+            }))
+          })
+          for (const question of node.questions) {
+            visit(question.prompt)
+            for (const option of question.options) {
+              visit(option.content)
+            }
+          }
+          break
+        case 'video':
+          summary.push({ type: 'video', id: node.id, provider: node.provider, src: node.src })
+          break
+        case 'list':
+          for (const item of node.items) {
+            visit(item.children)
+          }
+          break
+        case 'quote':
+          visit(node.children)
+          break
+        default:
+          break
+      }
+    }
+  }
+  visit(content)
+  return summary
+}
+
+/**
+ * The virtual `virtual:package-data` module body. Every presentation keeps each
+ * authored node's metadata and source, but replaces its content with
+ * {@link semanticNodeContent}; the full content is served by a per-node module
+ * the exported `contentProvider` imports dynamically, at most once per node.
+ *
+ * The provider never embeds a node id in the runtime state it returns: the ids
+ * are the canonical semantic page/item ids, and chunk and loading state stay out
+ * of the learner's resume state.
+ *
+ * An id with no server-rendered module is a real inconsistency — a build or
+ * manifest mismatch — not an empty node, so `load` rejects with the id rather
+ * than resolving to `[]`, which would render a blank page as if it succeeded.
+ */
+function buildPackageDataModule(contentPackage: ContentPackage): string {
+  const { presentation } = contentPackage
+  const manifest: ContentPackage =
+    presentation.type === 'tiles'
+      ? {
+          metadata: contentPackage.metadata,
+          presentation: {
+            type: 'tiles',
+            ...(presentation.columns === undefined ? {} : { columns: presentation.columns }),
+            items: presentation.items.map((item) => ({
+              ...item,
+              content: semanticNodeContent(item.content)
+            }))
+          }
+        }
+      : {
+          metadata: contentPackage.metadata,
+          presentation: {
+            type: presentation.type,
+            pages: presentation.pages.map((page) => ({
+              ...page,
+              content: semanticNodeContent(page.content)
+            }))
+          }
+        }
+
+  const cases = presentationNodes(contentPackage)
+    .map((node) => {
+      const specifier = `${PACKAGE_NODE_ID_PREFIX}${encodeURIComponent(node.id)}`
+      return `      case ${JSON.stringify(node.id)}: return import(${JSON.stringify(specifier)}).then((module) => { const content = module.default; contentCache.set(id, content); return content; })`
+    })
+    .join('\n')
+
+  return `const contentCache = new Map();
+const contentPackage = ${JSON.stringify(manifest)};
+export default contentPackage;
+export const contentProvider = {
+  get(id) {
+    return contentCache.get(id);
+  },
+  load(id) {
+    const cached = contentCache.get(id);
+    if (cached !== undefined) {
+      return Promise.resolve(cached);
+    }
+    switch (id) {
+${cases}${cases ? '\n' : ''}      default: return Promise.reject(new Error('No content module for node id: ' + id));
+    }
+  }
+};
+`
+}
+
+/**
+ * The virtual content module body, holding exactly one authored node's AST.
+ *
+ * A node id with no matching authored page/item is a build or manifest mismatch,
+ * not an empty node, so this throws instead of emitting `export default []` — the
+ * dev server surfaces the failure as a load error, which the app renders as a
+ * visible load error with retry rather than a blank page.
+ */
+function buildNodeContentModule(contentPackage: ContentPackage, encodedId: string): string {
+  let nodeId: string
+  try {
+    nodeId = decodeURIComponent(encodedId)
+  } catch {
+    throw new Error(`Invalid encoded content node id: ${encodedId}`)
+  }
+
+  const content = presentationNodes(contentPackage).find((node) => node.id === nodeId)?.content
+  if (content === undefined) {
+    throw new Error(`No content module for node id: ${nodeId}`)
+  }
+
+  return `export default ${JSON.stringify(content)};
+`
+}
 
 function findPackageRoot(startDirectory: string): string {
   let directory = startDirectory
@@ -102,13 +285,25 @@ export function createPackageDataPlugin(handle: PackageDataHandle): Plugin {
   return {
     name: 'scorm-cli:package-data',
     resolveId(id) {
-      return id === PACKAGE_DATA_ID ? RESOLVED_PACKAGE_DATA_ID : null
+      if (id === PACKAGE_DATA_ID) {
+        return RESOLVED_PACKAGE_DATA_ID
+      }
+      if (id.startsWith(PACKAGE_NODE_ID_PREFIX)) {
+        return `\0${id}`
+      }
+      return null
     },
     load(id) {
-      if (id !== RESOLVED_PACKAGE_DATA_ID) {
-        return null
+      if (id === RESOLVED_PACKAGE_DATA_ID) {
+        return buildPackageDataModule(handle.current)
       }
-      return `export default ${JSON.stringify(handle.current)};`
+      if (id.startsWith(RESOLVED_PACKAGE_NODE_ID_PREFIX)) {
+        return buildNodeContentModule(
+          handle.current,
+          id.slice(RESOLVED_PACKAGE_NODE_ID_PREFIX.length)
+        )
+      }
+      return null
     },
     transformIndexHtml(html) {
       const { metadata } = handle.current

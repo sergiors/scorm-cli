@@ -14,6 +14,7 @@ import { PREVIEW_CLEAR_EVENT, PREVIEW_ERROR_EVENT } from '../app/shared/preview-
 import { escapeInlineScript } from './html'
 import {
   createPackageDataPlugin,
+  isPackageNodeModuleId,
   resolveAppRoot,
   resolveCoreEntry,
   RESOLVED_PACKAGE_DATA_ID
@@ -175,13 +176,17 @@ function createDevScriptsPlugin(handle: DevScriptsHandle): Plugin {
 }
 
 /**
- * Drops the cached transform for the virtual package-data module so the next
- * request (after the reload) re-runs `load` with the replaced package.
+ * Drops the cached transforms for the virtual package modules — the shared
+ * package-data manifest and every lazily loaded Page/Item content module — so
+ * the next request (after the reload) re-runs `load` with the replaced package.
+ * Content modules are keyed by stable ids, so an updated node's content would
+ * otherwise be served from the module graph's cached transform.
  */
 function invalidatePackageData(server: ViteDevServer): void {
-  const module = server.moduleGraph.getModuleById(RESOLVED_PACKAGE_DATA_ID)
-  if (module) {
-    server.moduleGraph.invalidateModule(module)
+  for (const module of server.moduleGraph.idToModuleMap.values()) {
+    if (module.id === RESOLVED_PACKAGE_DATA_ID || isPackageNodeModuleId(module.id)) {
+      server.moduleGraph.invalidateModule(module)
+    }
   }
 }
 

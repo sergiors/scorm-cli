@@ -1,5 +1,6 @@
 import { FormattedMessage } from 'react-intl'
 import type { ContentPackage } from '../types'
+import type { ContentProvider } from '../lib/content-loader'
 import { usePlayerSession } from '../lib/use-player-session'
 import { ScrollPresentation } from './ScrollPresentation'
 import { SlidesPresentation } from './SlidesPresentation'
@@ -7,6 +8,12 @@ import { TilesPresentation } from './TilesPresentation'
 
 export interface PackageViewProps {
   contentPackage: ContentPackage
+  /**
+   * The single runtime source of each page/item's authored content, supplied by
+   * the Vite package-data module. Every generated package lazily loads its page
+   * and item bodies through it, so no content is embedded in the initial bundle.
+   */
+  contentProvider: ContentProvider
 }
 
 /**
@@ -20,7 +27,7 @@ export interface PackageViewProps {
  * may be accessed is decided by the shared sequential progression policy; each
  * presentation decides how it exposes that decision.
  */
-export function PackageView({ contentPackage }: PackageViewProps) {
+export function PackageView({ contentPackage, contentProvider }: PackageViewProps) {
   const { presentation } = contentPackage
   const {
     state,
@@ -39,6 +46,7 @@ export function PackageView({ contentPackage }: PackageViewProps) {
     return (
       <TilesPresentation
         items={presentation.items}
+        contentProvider={contentProvider}
         columns={presentation.columns}
         pageStates={state.pages}
         initialItemId={state.location}
@@ -63,6 +71,7 @@ export function PackageView({ contentPackage }: PackageViewProps) {
     return (
       <SlidesPresentation
         pages={presentation.pages}
+        contentProvider={contentProvider}
         initialIndex={initialIndex}
         pageStates={state.pages}
         onPageSeen={markSeen}
@@ -77,6 +86,7 @@ export function PackageView({ contentPackage }: PackageViewProps) {
   return (
     <ScrollPresentation
       pages={presentation.pages}
+      contentProvider={contentProvider}
       initialIndex={initialIndex}
       pageStates={state.pages}
       onPageSeen={markSeen}

@@ -1,13 +1,16 @@
-import { useState, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { Lock } from 'lucide-react'
 import { useIntl } from 'react-intl'
 import type { AnswerValue, PlayerPageState, ItemNode } from '../types'
 import { getSequentialAccess } from '../lib/content-helpers'
+import { useContentLoader, type ContentProvider } from '../lib/content-loader'
 import { cn } from '../lib/utils'
 import { ContentRenderer } from './ContentRenderer'
+import { ContentLoadError } from './ContentLoadError'
 import { Button } from './ui/button'
 import { Card, CardHeader, CardTitle } from './ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog'
+import { Skeleton } from './ui/skeleton'
 
 /**
  * Column counts are authored (1-12), so the count travels as a CSS custom
@@ -38,6 +41,12 @@ function tileStatuses(
 
 export interface TilesPresentationProps {
   items: ItemNode[]
+  /**
+   * The single runtime source of each item's authored content. An item's module
+   * is loaded only when the item is opened (or restored as the saved location);
+   * a locked item is never requested.
+   */
+  contentProvider: ContentProvider
   /** Authored column count; a layout intent, not a hard constraint. */
   columns?: number
   /** Persisted state per item id, for restoring answers and submitted state. */
@@ -64,9 +73,16 @@ export interface TilesPresentationProps {
  * are behaviorally inaccessible (not clickable and not focusable). Selecting an
  * accessible tile opens its content in a dialog — there is no inline tile
  * content and, as with the other presentations, no package chrome.
+ *
+ * The card titles and statuses render from the package manifest, so the grid is
+ * complete without any item body. An item's own module is loaded only once the
+ * item is opened (or reopened from the saved location); while it resolves the
+ * dialog keeps its shell and shows a stable skeleton, and a failed load offers a
+ * retry rather than an empty dialog.
  */
 export function TilesPresentation({
   items,
+  contentProvider,
   columns,
   pageStates,
   initialItemId,
@@ -85,8 +101,18 @@ export function TilesPresentation({
   )
   const [open, setOpen] = useState(initiallyOpened)
   const intl = useIntl()
+  const { content, isLoaded, hasError, request, retry } = useContentLoader(contentProvider)
 
   const selected = items.find((item) => item.id === selectedId)
+
+  // Load the selected item's body on demand — when a card is opened, or on mount
+  // for a restored dialog. A locked tile can never become `selectedId`, so its
+  // module is never requested.
+  useEffect(() => {
+    if (selectedId !== undefined) {
+      request(selectedId)
+    }
+  }, [selectedId, request])
 
   const openTile = (item: ItemNode) => {
     setSelectedId(item.id)
@@ -128,23 +154,56 @@ export function TilesPresentation({
             ) : null}
           </DialogHeader>
           {selected ? (
-            <div className="prose">
-              <ContentRenderer
-                nodes={selected.content}
-                answers={pageState?.answers}
-                submittedQuestionnaires={pageState?.submittedQuestionnaires}
-                onAnswer={(questionId, value) => onAnswer(selected.id, questionId, value)}
-                onQuestionnaireSubmitted={(id) => onQuestionnaireSubmitted(selected.id, id)}
-                videoPositions={pageState?.videos}
-                onVideoPosition={(videoId, seconds) =>
-                  onVideoPosition?.(selected.id, videoId, seconds)
-                }
-              />
-            </div>
+            isLoaded(selected.id) ? (
+              <div className="prose">
+                <ContentRenderer
+                  nodes={content(selected.id) ?? []}
+                  answers={pageState?.answers}
+                  submittedQuestionnaires={pageState?.submittedQuestionnaires}
+                  onAnswer={(questionId, value) => onAnswer(selected.id, questionId, value)}
+                  onQuestionnaireSubmitted={(id) => onQuestionnaireSubmitted(selected.id, id)}
+                  videoPositions={pageState?.videos}
+                  onVideoPosition={(videoId, seconds) =>
+                    onVideoPosition?.(selected.id, videoId, seconds)
+                  }
+                />
+              </div>
+            ) : hasError(selected.id) ? (
+              <ItemLoadError onRetry={() => retry(selected.id)} />
+            ) : (
+              <ItemSkeleton />
+            )
           ) : null}
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+/**
+ * The stable placeholder shown inside the dialog while an item's module
+ * resolves. It is inert (`aria-hidden`) so the loading state is never announced
+ * as content, and it keeps the dialog shell and its title unchanged.
+ */
+function ItemSkeleton() {
+  return (
+    <div data-item-loading aria-hidden="true" className="space-y-3">
+      <Skeleton className="h-4 w-full" />
+      <Skeleton className="h-4 w-5/6" />
+      <Skeleton className="h-4 w-4/6" />
+    </div>
+  )
+}
+
+/**
+ * An item whose module failed to load. The dialog keeps its shell and offers a
+ * single retry action rather than presenting a silently empty body.
+ */
+function ItemLoadError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div data-item-error className="flex flex-col items-start gap-3">
+      <ContentLoadError onRetry={onRetry} />
+    </div>
   )
 }
 

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { FormattedMessage } from 'react-intl'
 import {
   ArrowDown,
   ArrowLeft,
@@ -9,14 +8,17 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react'
-import type { AnswerValue, PageNode, PlayerPageState } from '../types'
+import type { AnswerValue, ContentNode, PageNode, PlayerPageState } from '../types'
 import {
   areQuestionnairesSubmitted,
   collectQuestionnaireIds,
   getSequentialAccess
 } from '../lib/content-helpers'
+import { useContentLoader, type ContentProvider } from '../lib/content-loader'
 import { clampPageIndex } from '../lib/sequence'
 import { Button } from './ui/button'
+import { Skeleton } from './ui/skeleton'
+import { ContentLoadError } from './ContentLoadError'
 import { ContentRenderer } from './ContentRenderer'
 
 /** The nodes already opened or done, which the shared access policy treats as reached. */
@@ -47,6 +49,12 @@ function donePageIds(
 export interface SlidesPresentationProps {
   pages: PageNode[]
   /**
+   * The single runtime source of each page's authored content. Only the current
+   * page's module is loaded, plus the next page's once it is accessible — a
+   * locked page's module is never requested.
+   */
+  contentProvider: ContentProvider
+  /**
    * Page to open on first mount, so a saved lesson location can resume on the
    * bookmarked page instead of the first one. Clamped to the accessible pages.
    */
@@ -72,15 +80,24 @@ export interface SlidesPresentationProps {
 }
 
 /**
- * Shows exactly one page at a time, in order. Only the active page is rendered,
- * so neighbouring pages are never exposed. Advancing is gated by the shared
- * sequential progression policy: the next control appears only once the active
- * page is complete — every questionnaire on it submitted — and stepping back is
- * always available while a previous page exists. A Path can only jump to a page
- * the policy reports as accessible.
+ * Shows exactly one page at a time, in order. Only the current page's content
+ * is loaded and rendered, so neighbouring pages are never exposed. Advancing is
+ * gated by the shared sequential progression policy: the next control appears
+ * only once the active page is complete — every questionnaire on it submitted —
+ * and stepping back is always available while a previous page exists. A Path can
+ * only jump to a page the policy reports as accessible.
+ *
+ * The current page's module is loaded on display; while it resolves a stable,
+ * full-height skeleton stands in, so the slide never flashes an empty or wrong
+ * page. The next page's module is preloaded only once the progression reports it
+ * accessible, and a locked page's module is never requested. The page is stored
+ * as the location and reported complete only after its content exists, so a
+ * navigation never transiently moves the location to a page that is not yet
+ * shown.
  */
 export function SlidesPresentation({
   pages,
+  contentProvider,
   initialIndex = 0,
   pageStates,
   onPageSeen,
@@ -95,6 +112,7 @@ export function SlidesPresentation({
     donePageIds(pages, pageStates),
     reachedPageIds(pages, pageStates)
   )
+  const { content, isLoaded, hasError, request, retry } = useContentLoader(contentProvider)
 
   const [currentIndex, setCurrentIndex] = useState(() => {
     const requested = clampPageIndex(initialIndex, pages.length)
@@ -103,6 +121,22 @@ export function SlidesPresentation({
   })
 
   const currentPage = pages[currentIndex]
+
+  // The next page's id once the shared progression reports it accessible, so the
+  // prefetch below can depend on a stable primitive instead of the access set.
+  const nextPage = pages[currentIndex + 1]
+  const prefetchId = nextPage !== undefined && accessible.has(nextPage.id) ? nextPage.id : null
+
+  // Load the current page, and preload the next one only when it is accessible.
+  // A locked page never reaches `request`, so its module is never fetched.
+  useEffect(() => {
+    if (currentPage !== undefined) {
+      request(currentPage.id)
+    }
+    if (prefetchId !== null) {
+      request(prefetchId)
+    }
+  }, [currentPage?.id, prefetchId, request])
 
   // Every page opens at its top; the reset runs before paint so a previous
   // page's offset never leaks into the next one.
@@ -136,6 +170,7 @@ export function SlidesPresentation({
     return null
   }
 
+  const loaded = isLoaded(currentPage.id)
   const pageState = pageStates[currentPage.id]
   const questionnaireIds = collectQuestionnaireIds(currentPage.content)
   const pageComplete = areQuestionnairesSubmitted(
@@ -149,28 +184,47 @@ export function SlidesPresentation({
     <>
       {hasPrevious ? <PreviousControl onClick={() => goToPage(currentIndex - 1)} /> : null}
 
-      <PageScene
-        key={currentPage.id}
-        page={currentPage}
-        index={currentIndex}
-        pathPages={pages}
-        pageStates={pageStates}
-        onNavigatePathPage={navigateToPageId}
-        pageState={pageState}
-        onAnswer={onAnswer}
-        onQuestionnaireSubmitted={onQuestionnaireSubmitted}
-        onVideoPosition={onVideoPosition}
-      />
+      {!loaded ? (
+        hasError(currentPage.id) ? (
+          <SlideLoadError onRetry={() => retry(currentPage.id)} />
+        ) : (
+          <SlideSkeleton />
+        )
+      ) : (
+        <PageScene
+          key={currentPage.id}
+          page={currentPage}
+          index={currentIndex}
+          nodes={content(currentPage.id) ?? []}
+          pathPages={pages}
+          pageStates={pageStates}
+          onNavigatePathPage={navigateToPageId}
+          pageState={pageState}
+          onAnswer={onAnswer}
+          onQuestionnaireSubmitted={onQuestionnaireSubmitted}
+          onVideoPosition={onVideoPosition}
+        />
+      )}
 
-      <PageSeenReporter pageId={currentPage.id} onPageSeen={onPageSeen} />
+      {/*
+        The displayed page is only stored as the location (and reported complete)
+        once its content exists, so a slide whose module is still resolving is
+        never shown as seen and the location never lands on an unseen page.
+      */}
+      {loaded ? (
+        <>
+          <PageSeenReporter pageId={currentPage.id} onPageSeen={onPageSeen} />
+          <PageCompletionReporter
+            pageId={currentPage.id}
+            complete={pageComplete}
+            onPageCompleted={onPageCompleted}
+          />
+        </>
+      ) : null}
 
-      <PageCompletionReporter
-        pageId={currentPage.id}
-        complete={pageComplete}
-        onPageCompleted={onPageCompleted}
-      />
-
-      {hasNext && pageComplete ? <NextControl onClick={() => goToPage(currentIndex + 1)} /> : null}
+      {hasNext && pageComplete && loaded ? (
+        <NextControl onClick={() => goToPage(currentIndex + 1)} />
+      ) : null}
     </>
   )
 }
@@ -227,6 +281,8 @@ function PageCompletionReporter({
 interface PageSceneProps {
   page: PageNode
   index: number
+  /** The slide's resolved content nodes (lazily loaded). */
+  nodes: ContentNode[]
   /** Root pages, so a Path on this page can resolve its references. */
   pathPages: readonly PageNode[]
   /** Persisted state per root page id, for Path visited status. */
@@ -243,6 +299,7 @@ interface PageSceneProps {
 function PageScene({
   page,
   index,
+  nodes,
   pathPages,
   pageStates,
   onNavigatePathPage,
@@ -259,7 +316,7 @@ function PageScene({
     >
       <section className="prose prose-stone max-w-none! dark:prose-invert">
         <ContentRenderer
-          nodes={page.content}
+          nodes={nodes}
           pathPages={pathPages}
           pageStates={pageStates}
           onNavigatePathPage={onNavigatePathPage}
@@ -271,6 +328,45 @@ function PageScene({
           onVideoPosition={(videoId, seconds) => onVideoPosition?.(page.id, videoId, seconds)}
         />
       </section>
+    </div>
+  )
+}
+
+/**
+ * The stable slot shown while the current slide's module resolves. It mirrors
+ * the slide's full-height, centred layout so swapping in the real page does not
+ * shift anything, and is inert (`aria-hidden`) so assistive technology never
+ * announces the placeholder.
+ */
+function SlideSkeleton() {
+  return (
+    <div
+      data-slide-loading
+      aria-hidden="true"
+      className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col justify-center px-6 py-18"
+    >
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-2/3" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-5/6" />
+        <Skeleton className="h-4 w-4/6" />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The current slide whose module failed to load. It keeps the slide's
+ * full-height layout and offers a single retry action rather than silently
+ * showing an empty slide.
+ */
+function SlideLoadError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div
+      data-slide-error
+      className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col items-start justify-center gap-3 px-6 py-18"
+    >
+      <ContentLoadError onRetry={onRetry} />
     </div>
   )
 }

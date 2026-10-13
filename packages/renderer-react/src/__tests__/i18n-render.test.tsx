@@ -17,10 +17,23 @@ import {
 } from '../../app/components/ui/questionnaire'
 import type { ContentPackage, PageNode, PathNode } from '../../app/types'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
-import { questionnaireNode } from './fixtures'
+import { questionnaireNode, inlineContentProvider } from './fixtures'
 
 function render(lang: string | undefined, ui: ReactNode): string {
   return renderToStaticMarkup(<PlayerI18nProvider lang={lang}>{ui}</PlayerI18nProvider>)
+}
+
+/**
+ * Renders `PackageApp` with the inline test content provider, mirroring the
+ * provider the build supplies through `virtual:package-data`.
+ */
+function renderApp(contentPackage: ContentPackage): string {
+  return renderToStaticMarkup(
+    <PackageApp
+      contentPackage={contentPackage}
+      contentProvider={inlineContentProvider(contentPackage)}
+    />
+  )
 }
 
 const videoNode = {
@@ -139,7 +152,7 @@ describe('player i18n: English', () => {
   })
 
   it('renders the empty package message', () => {
-    const html = renderToStaticMarkup(<PackageApp contentPackage={emptyPackage()} />)
+    const html = renderApp(emptyPackage())
     expect(html).toContain('This package does not contain any content.')
   })
 
@@ -214,7 +227,7 @@ describe('player i18n: Brazilian Portuguese', () => {
   })
 
   it('renders the empty package message', () => {
-    const html = renderToStaticMarkup(<PackageApp contentPackage={emptyPackage('pt-BR')} />)
+    const html = renderApp(emptyPackage('pt-BR'))
     expect(html).toContain('Este pacote não contém nenhum conteúdo.')
   })
 })
@@ -227,7 +240,7 @@ describe('player i18n: unsupported languages fall back to English', () => {
   })
 
   it('renders the English empty package message', () => {
-    const html = renderToStaticMarkup(<PackageApp contentPackage={emptyPackage('fr')} />)
+    const html = renderApp(emptyPackage('fr'))
     expect(html).toContain('This package does not contain any content.')
     expect(html).not.toContain('Este pacote')
   })
@@ -235,7 +248,7 @@ describe('player i18n: unsupported languages fall back to English', () => {
 
 describe('player i18n: authored content is never translated', () => {
   it('keeps authored titles, descriptions and body text verbatim', () => {
-    const html = renderToStaticMarkup(<PackageApp contentPackage={authoredPackage('pt-BR')} />)
+    const html = renderApp(authoredPackage('pt-BR'))
     expect(html).toContain('Introdução')
     expect(html).toContain('Texto autoral')
   })

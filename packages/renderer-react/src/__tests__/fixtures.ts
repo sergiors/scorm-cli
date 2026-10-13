@@ -1,3 +1,4 @@
+import { getPresentationNodes } from '@scorm-cli/core'
 import type {
   ContentPackage,
   ContentNode,
@@ -8,6 +9,7 @@ import type {
   ItemNode,
   TilesNode
 } from '@scorm-cli/core'
+import type { ContentProvider } from '../../app/lib/content-loader'
 
 /** A single-choice question as authored inside a questionnaire. */
 export const singleChoiceQuestion: QuestionNode = {
@@ -269,5 +271,30 @@ export function makeEmptyTilesPackage(): ContentPackage {
   return {
     metadata: { title: 'Empty tiles package' },
     presentation: { type: 'tiles', items: [] } satisfies TilesNode
+  }
+}
+
+/**
+ * The test implementation of the runtime {@link ContentProvider}: `get` answers
+ * every node from the content already held inline in `contentPackage`, so a
+ * package whose bodies are present needs no load and renders synchronously (the
+ * static-markup suites depend on this). Production packages embed no bodies and
+ * answer `load` from an independent dynamic import; both go through the same
+ * abstraction, so the presentations have a single code path.
+ */
+export function inlineContentProvider(contentPackage: ContentPackage): ContentProvider {
+  const byId = new Map(getPresentationNodes(contentPackage).map((node) => [node.id, node.content]))
+  return {
+    get(nodeId) {
+      return byId.get(nodeId)
+    },
+    load(nodeId) {
+      const content = byId.get(nodeId)
+      // Mirror the generated provider: an id with no module is a real
+      // inconsistency, so it rejects rather than resolving to a blank node.
+      return content === undefined
+        ? Promise.reject(new Error(`No content module for node id: ${nodeId}`))
+        : Promise.resolve(content)
+    }
   }
 }
