@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest'
 import {
   collectAssetReferences,
   collectVideoNodes,
+  getAccessibleNodeIds,
   getAggregateQuestionnaireScore,
   getDoneNodeIds,
   getPackageProgress,
+  getSequentialAccess,
+  isNodeAccessible,
   isPackageComplete,
   type ContentPackage,
+  type PlayerState,
   type QuestionNode,
   type QuestionnaireNode
 } from '../index'
@@ -14,7 +18,7 @@ import {
 const contentPackage: ContentPackage = {
   metadata: { title: 'Package' },
   presentation: {
-    type: 'grid',
+    type: 'tiles',
     columns: 2,
     items: [
       {
@@ -67,7 +71,7 @@ function questionnaire(
 }
 
 describe('core package helpers', () => {
-  it('defines completion as all items visited', () => {
+  it('defines completion as every presentation node done', () => {
     expect(isPackageComplete(contentPackage, ['a'])).toBe(false)
     expect(isPackageComplete(contentPackage, ['a', 'b'])).toBe(true)
     expect(
@@ -105,7 +109,7 @@ describe('core package helpers', () => {
     expect(collectAssetReferences(contentPackage)).toEqual(['images/z.png'])
   })
 
-  it('calculates integer progress from completed scroll pages and visited grid items', () => {
+  it('calculates integer progress from completed pages and visited tiles', () => {
     expect(getPackageProgress(contentPackage, { pages: { a: { visited: true } } })).toBe(50)
     const scroll: ContentPackage = {
       metadata: { title: 'Scroll' },
@@ -148,7 +152,7 @@ describe('core package helpers', () => {
 
     const empty: ContentPackage = {
       metadata: { title: 'Empty' },
-      presentation: { type: 'grid', items: [] }
+      presentation: { type: 'tiles', items: [] }
     }
     expect(getDoneNodeIds(empty, { pages: {} })).toEqual([])
     expect(getPackageProgress(empty, { pages: {} })).toBe(0)
@@ -603,11 +607,11 @@ describe('aggregate questionnaire score', () => {
     expect(score).toEqual({ earned: 3, possible: 7 })
   })
 
-  it('aggregates grid items and returns undefined when there are no eligible questions', () => {
+  it('aggregates tiles and returns undefined when there are no eligible questions', () => {
     const content: ContentPackage = {
-      metadata: { title: 'Grid score' },
+      metadata: { title: 'Tiles score' },
       presentation: {
-        type: 'grid',
+        type: 'tiles',
         items: [
           {
             type: 'item',
@@ -671,5 +675,77 @@ describe('aggregate questionnaire score', () => {
       }
     }
     expect(getAggregateQuestionnaireScore(noEligibleQuestions, { pages: {} })).toBeUndefined()
+  })
+})
+
+describe('shared sequential progression policy', () => {
+  function pages(ids: string[]): ContentPackage {
+    return {
+      metadata: { title: 'Sequential' },
+      presentation: {
+        type: 'scroll',
+        pages: ids.map((id) => ({
+          type: 'page',
+          id,
+          source: `${id}.mdx`,
+          metadata: { title: id },
+          content: []
+        }))
+      }
+    }
+  }
+
+  it('unlocks only the first node until its predecessors are done', () => {
+    const { accessible, locked } = getSequentialAccess(['a', 'b', 'c'], new Set())
+    expect([...accessible]).toEqual(['a'])
+    expect([...locked]).toEqual(['b', 'c'])
+  })
+
+  it('grows the accessible prefix one node at a time', () => {
+    const { accessible } = getSequentialAccess(['a', 'b', 'c'], new Set(['a']))
+    expect([...accessible]).toEqual(['a', 'b'])
+  })
+
+  it('keeps already-done nodes accessible even after a gap', () => {
+    const { accessible, locked } = getSequentialAccess(['a', 'b', 'c'], new Set(['a', 'c']))
+    expect([...accessible]).toEqual(['a', 'b', 'c'])
+    expect([...locked]).toEqual([])
+  })
+
+  it('treats each presentation node as reached once visited or done', () => {
+    const content = pages(['a', 'b', 'c'])
+    // Nothing reached: only the first page is accessible.
+    expect(getAccessibleNodeIds(content, { pages: {} })).toEqual(['a'])
+
+    // A completed first page unlocks the second.
+    const afterFirst: PlayerState = { pages: { a: { completed: true } } }
+    expect(getAccessibleNodeIds(content, afterFirst)).toEqual(['a', 'b'])
+    expect(isNodeAccessible(content, afterFirst, 'b')).toBe(true)
+    expect(isNodeAccessible(content, afterFirst, 'c')).toBe(false)
+
+    // A visited-but-not-completed page stays reachable for resume, while the
+    // next page stays locked until the current one is done.
+    const resumed: PlayerState = { pages: { a: { visited: true } } }
+    expect(isNodeAccessible(content, resumed, 'a')).toBe(true)
+    expect(isNodeAccessible(content, resumed, 'b')).toBe(false)
+    expect(isNodeAccessible(content, resumed, 'c')).toBe(false)
+  })
+
+  it('applies the same policy to tiles, where opening a tile is what counts', () => {
+    const tiles: ContentPackage = {
+      metadata: { title: 'Tiles' },
+      presentation: {
+        type: 'tiles',
+        items: ['x', 'y'].map((id) => ({
+          type: 'item',
+          id,
+          source: `${id}.mdx`,
+          metadata: { title: id },
+          content: []
+        }))
+      }
+    }
+    expect(isNodeAccessible(tiles, { pages: {} }, 'y')).toBe(false)
+    expect(isNodeAccessible(tiles, { pages: { x: { visited: true } } }, 'y')).toBe(true)
   })
 })

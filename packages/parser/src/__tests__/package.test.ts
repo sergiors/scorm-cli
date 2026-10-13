@@ -428,7 +428,7 @@ describe('parsePackage', () => {
         path.join(root, 'index.mdx'),
         kind === 'Page'
           ? '---\ntitle: Package\n---\n<Scroll><Page src="linked.mdx" /></Scroll>'
-          : '---\ntitle: Package\n---\n<Grid><Item src="linked.mdx" /></Grid>'
+          : '---\ntitle: Package\n---\n<Tiles><Item src="linked.mdx" /></Tiles>'
       )
 
       await expect(parsePackage(root)).rejects.toThrow(
@@ -1010,7 +1010,7 @@ describe('parsePackage', () => {
     await expect(parsePackage(root)).rejects.toThrow(/MDX JavaScript is not supported/)
   })
 
-  it('parses Scroll Pages and Grid Items as distinct root modes', async () => {
+  it('parses Scroll, Slides, and Tiles as distinct root modes', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'content-package-'))
     temp = root
     await mkdir(path.join(root, 'lessons'))
@@ -1042,11 +1042,23 @@ describe('parsePackage', () => {
 
     await writeFile(
       path.join(root, 'index.mdx'),
-      `---\ntitle: Practice\n---\n<Grid columns={2}><Item src="lessons/intro.mdx" /><Item src="lessons/quiz.mdx" /></Grid>`
+      `---\ntitle: Deck\n---\n<Slides>\n  <Page src="lessons/intro.mdx" />\n  <Page src="lessons/quiz.mdx" />\n</Slides>`
     )
-    const parsedGrid = await parsePackage(root)
-    expect(parsedGrid.presentation).toMatchObject({
-      type: 'grid',
+    expect((await parsePackage(root)).presentation).toMatchObject({
+      type: 'slides',
+      pages: [
+        { type: 'page', id: 'page:lessons/intro.mdx' },
+        { type: 'page', id: 'page:lessons/quiz.mdx' }
+      ]
+    })
+
+    await writeFile(
+      path.join(root, 'index.mdx'),
+      `---\ntitle: Practice\n---\n<Tiles columns={2}><Item src="lessons/intro.mdx" /><Item src="lessons/quiz.mdx" /></Tiles>`
+    )
+    const parsedTiles = await parsePackage(root)
+    expect(parsedTiles.presentation).toMatchObject({
+      type: 'tiles',
       columns: 2,
       items: [
         {
@@ -1063,31 +1075,38 @@ describe('parsePackage', () => {
     })
     await writeFile(
       path.join(root, 'index.mdx'),
-      '---\ntitle: Practice\n---\n<Grid><Item src="lessons/intro.mdx" /></Grid>'
+      '---\ntitle: Practice\n---\n<Tiles><Item src="lessons/intro.mdx" /></Tiles>'
     )
-    const defaultGrid = (await parsePackage(root)).presentation
-    expect(defaultGrid.type).toBe('grid')
-    if (defaultGrid.type === 'grid') expect(defaultGrid).not.toHaveProperty('columns')
+    const defaultTiles = (await parsePackage(root)).presentation
+    expect(defaultTiles.type).toBe('tiles')
+    if (defaultTiles.type === 'tiles') expect(defaultTiles).not.toHaveProperty('columns')
   })
 
   it('requires exactly one supported root presentation and a root title', async () => {
     for (const [source, error] of [
-      ['---\ntitle: Package\n---\n', /exactly one <Scroll> or <Grid> presentation; found 0/],
       [
-        '---\ntitle: Package\n---\n<Grid><Item src="a.mdx" /></Grid><Scroll><Page src="a.mdx" /></Scroll>',
-        /exactly one <Scroll> or <Grid> presentation; found 2/
+        '---\ntitle: Package\n---\n',
+        /exactly one <Scroll>, <Slides> or <Tiles> presentation; found 0/
+      ],
+      [
+        '---\ntitle: Package\n---\n<Tiles><Item src="a.mdx" /></Tiles><Scroll><Page src="a.mdx" /></Scroll>',
+        /exactly one <Scroll>, <Slides> or <Tiles> presentation; found 2/
       ],
       [
         '---\ntitle: Package\n---\n<Item src="a.mdx" />',
-        /exactly one <Scroll> or <Grid> presentation; found 1 direct node \(<Item>\)/
+        /exactly one <Scroll>, <Slides> or <Tiles> presentation; found 1 direct node \(<Item>\)/
       ],
       [
         '---\ntitle: Package\n---\n<Page src="a.mdx" />',
-        /exactly one <Scroll> or <Grid> presentation; found 1 direct node \(<Page>\)/
+        /exactly one <Scroll>, <Slides> or <Tiles> presentation; found 1 direct node \(<Page>\)/
+      ],
+      [
+        '---\ntitle: Package\n---\n<Grid><Item src="a.mdx" /></Grid>',
+        /exactly one <Scroll>, <Slides> or <Tiles> presentation; found 1 direct node \(<Grid>\)/
       ],
       [
         '---\ntitle: Package\n---\nA root paragraph is not allowed.',
-        /exactly one <Scroll> or <Grid> presentation; found 1 direct node \(paragraph\)/
+        /exactly one <Scroll>, <Slides> or <Tiles> presentation; found 1 direct node \(paragraph\)/
       ],
       ['---\n---\n<Scroll><Page src="a.mdx" /></Scroll>', /"title" must be a non-empty string/],
       [
@@ -1102,15 +1121,20 @@ describe('parsePackage', () => {
     }
   })
 
-  it('validates presentation children, nesting, attributes, and Grid columns', async () => {
+  it('validates presentation children, nesting, attributes, and Tiles columns', async () => {
     for (const [rootContent, error] of [
       ['<Scroll><Item src="a.mdx" /></Scroll>', /Scroll> children may only contain direct <Page/],
-      ['<Grid><Page src="a.mdx" /></Grid>', /Grid> children may only contain direct <Item/],
+      ['<Slides><Item src="a.mdx" /></Slides>', /Slides> children may only contain direct <Page/],
+      ['<Tiles><Page src="a.mdx" /></Tiles>', /Tiles> children may only contain direct <Item/],
+      [
+        '<Tiles><Tile src="a.mdx" /></Tiles>',
+        /Tiles> children may only contain direct <Item .*found <Tile>/
+      ],
       ['<Scroll title="bad"><Page src="a.mdx" /></Scroll>', /unknown attribute "title"/],
-      ['<Grid rows={2}><Item src="a.mdx" /></Grid>', /unknown attribute "rows"/],
-      ['<Grid columns={0}><Item src="a.mdx" /></Grid>', /columns.*integer from 1 to 12/],
-      ['<Grid columns={13}><Item src="a.mdx" /></Grid>', /columns.*integer from 1 to 12/],
-      ['<Grid columns="2"><Item src="a.mdx" /></Grid>', /columns.*integer from 1 to 12/],
+      ['<Tiles rows={2}><Item src="a.mdx" /></Tiles>', /unknown attribute "rows"/],
+      ['<Tiles columns={0}><Item src="a.mdx" /></Tiles>', /columns.*integer from 1 to 12/],
+      ['<Tiles columns={13}><Item src="a.mdx" /></Tiles>', /columns.*integer from 1 to 12/],
+      ['<Tiles columns="2"><Item src="a.mdx" /></Tiles>', /columns.*integer from 1 to 12/],
       [
         '<Scroll><Page src="a.mdx"><Item src="b.mdx" /></Page></Scroll>',
         /Page> must be self-closing/
@@ -1120,7 +1144,8 @@ describe('parsePackage', () => {
         /Scroll> children may only contain direct <Page/
       ],
       ['<Scroll />', /Scroll> must contain at least one <Page>; found 0/],
-      ['<Grid />', /Grid> must contain at least one <Item>; found 0/]
+      ['<Slides />', /Slides> must contain at least one <Page>; found 0/],
+      ['<Tiles />', /Tiles> must contain at least one <Item>; found 0/]
     ] as const) {
       const root = await makePackage(`---\ntitle: Package\n---\n${rootContent}`)
       await expect(parsePackage(root)).rejects.toThrow(error)
@@ -1184,10 +1209,10 @@ describe('parsePackage', () => {
     })
     await writeFile(
       path.join(root, 'index.mdx'),
-      '---\ntitle: Package\n---\n<Grid><Item src="lessons/page.mdx" /></Grid>'
+      '---\ntitle: Package\n---\n<Tiles><Item src="lessons/page.mdx" /></Tiles>'
     )
     expect((await parsePackage(root)).presentation).toMatchObject({
-      type: 'grid',
+      type: 'tiles',
       items: [{ id: 'item:lessons/page.mdx', source: 'lessons/page.mdx' }]
     })
   })
@@ -1203,7 +1228,7 @@ describe('parsePackage', () => {
         const reference =
           kind === 'page'
             ? '<Scroll><Page src="lesson.mdx" /></Scroll>'
-            : '<Grid><Item src="lesson.mdx" /></Grid>'
+            : '<Tiles><Item src="lesson.mdx" /></Tiles>'
         const root = await makePackage(`---\ntitle: Package\n---\n${reference}`)
         await writeFile(path.join(root, 'lesson.mdx'), `---\ntitle: Lesson\n${field}\n---`)
         await expect(parsePackage(root)).rejects.toThrow(/unknown frontmatter field/)
@@ -1288,14 +1313,14 @@ describe('parsePackage', () => {
     temp = root
     await writeFile(
       path.join(root, 'index.mdx'),
-      '---\ntitle: Package\n---\n<Grid><Item src="lesson.mdx" /></Grid>'
+      '---\ntitle: Package\n---\n<Tiles><Item src="lesson.mdx" /></Tiles>'
     )
     await writeFile(
       path.join(root, 'lesson.mdx'),
       '---\ntitle: Lesson\n---\n<Path><Page ref="lesson.mdx" /></Path>'
     )
     await expect(parsePackage(root)).rejects.toThrow(
-      /only valid for pages declared directly in a root <Scroll>/
+      /only valid for pages declared directly in a root <Scroll> or <Slides>/
     )
     await writeFile(path.join(root, 'lesson.mdx'), '---\ntitle: Lesson\n---\n<Path><Page /></Path>')
     await expect(parsePackage(root)).rejects.toThrow(/"ref" must be a non-empty string/)

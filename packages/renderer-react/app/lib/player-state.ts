@@ -1,11 +1,11 @@
 import type {
   AnswerValue,
   ContentPackage,
-  ItemNode,
   PageNode,
   PlayerPageState,
   PlayerState,
-  QuestionNode
+  QuestionNode,
+  ItemNode
 } from '../types'
 import { collectQuestionnaires, collectVideoNodes } from './content-helpers'
 
@@ -91,10 +91,11 @@ function sanitizePageState(
     if (Object.keys(videos).length > 0) page.videos = videos
   }
 
-  // Normalise submissions against the questionnaires this page actually owns.
-  // A completed scroll page implies every questionnaire on it was submitted, so
-  // resume stays read-only and gated even when only the completion flag was
-  // persisted (the compact codec derives completion from progress).
+  // Normalise submissions against the questionnaires this node actually owns.
+  // A completed sequential page implies every questionnaire on it was
+  // submitted, so resume stays read-only and gated even when only the
+  // completion flag was persisted (the compact codec derives completion from
+  // progress).
   const provided = new Set(
     Array.isArray(raw.submittedQuestionnaires)
       ? raw.submittedQuestionnaires.filter((id): id is string => typeof id === 'string')
@@ -120,16 +121,16 @@ function sanitizePageState(
  * submission ids that no longer name a reachable questionnaire, and video
  * positions whose id no longer names a video authored on that page/item (or
  * whose value is not a finite, non-negative number). Video positions are scoped
- * to the page that owns the video, so a video moved to another page never
- * retains a position under its old page. A completed scroll page is normalized
- * to have all of its questionnaires submitted, so a resume that only persisted
- * completion stays read-only and gated. The result is always a plain in-memory
- * state — never the raw persisted object — so the renderer can mutate it without
- * touching whatever the bridge returned.
+ * to the page/item that owns the video, so a video moved to another node never
+ * retains a position under its old node. A completed sequential page is
+ * normalized to have all of its questionnaires submitted, so a resume that only
+ * persisted completion stays read-only and gated. The result is always a plain
+ * in-memory state — never the raw persisted object — so the renderer can mutate
+ * it without touching whatever the bridge returned.
  */
 export function sanitizePlayerState(contentPackage: ContentPackage, raw: unknown): PlayerState {
   const { presentation } = contentPackage
-  const nodes = presentation.type === 'scroll' ? presentation.pages : presentation.items
+  const nodes = presentation.type === 'tiles' ? presentation.items : presentation.pages
   const byId = new Map(nodes.map((node) => [node.id, node]))
   const state: PlayerState = { pages: {} }
 
@@ -148,12 +149,7 @@ export function sanitizePlayerState(contentPackage: ContentPackage, raw: unknown
   for (const [pageId, pageRaw] of Object.entries(raw.pages)) {
     const node = byId.get(pageId)
     if (!node || !isRecord(pageRaw)) continue
-    const page = sanitizePageState(
-      node,
-      pageRaw,
-      presentation.type === 'scroll',
-      nodeVideoIds(node)
-    )
+    const page = sanitizePageState(node, pageRaw, presentation.type !== 'tiles', nodeVideoIds(node))
     if (page) state.pages[pageId] = page
   }
 

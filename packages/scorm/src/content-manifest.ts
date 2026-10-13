@@ -12,7 +12,7 @@ export interface ContentManifest {
   schemaVersion: 1
   title: string
   lang: string
-  presentation: 'scroll' | 'grid'
+  presentation: 'scroll' | 'slides' | 'tiles'
   pages: Record<
     string,
     {
@@ -125,9 +125,9 @@ function collectQuestions(
 /** Creates the stable static dictionary, including authored question correctness, shared by packaging and runtime. */
 export function createContentManifest(contentPackage: ContentPackage): ContentManifest {
   const nodes =
-    contentPackage.presentation.type === 'scroll'
-      ? contentPackage.presentation.pages
-      : contentPackage.presentation.items
+    contentPackage.presentation.type === 'tiles'
+      ? contentPackage.presentation.items
+      : contentPackage.presentation.pages
   const pages: ContentManifest['pages'] = {}
   nodes.forEach((node, pageIndex) => {
     const sourceQuestions: QuestionNode[] = []

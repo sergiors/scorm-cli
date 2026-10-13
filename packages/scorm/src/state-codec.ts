@@ -221,10 +221,14 @@ function createSuspendDataCodec() {
       // oversized for the current page list.
       const pageIndexed = x.length <= entries.length
       if (pageIndexed) {
-        const completedCount =
-          manifest.presentation === 'scroll'
-            ? Math.max(0, Math.min(entries.length, Math.round((p * entries.length) / 100)))
-            : 0
+        // Sequential page presentations persist completion as progress and
+        // reconstruct it here so a resume that only kept `p` stays gated. A
+        // tiled presentation's items are done once opened, which the visited
+        // bitmap already records, so it derives no completion from progress.
+        const sequential = manifest.presentation === 'scroll' || manifest.presentation === 'slides'
+        const completedCount = sequential
+          ? Math.max(0, Math.min(entries.length, Math.round((p * entries.length) / 100)))
+          : 0
         entries.forEach(([, page], order) => {
           if (!safeKey(page.id)) {
             return

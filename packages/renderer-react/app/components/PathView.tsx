@@ -2,49 +2,17 @@ import { Check, Circle, Lock, type LucideIcon } from 'lucide-react'
 import { useIntl } from 'react-intl'
 import type { PageNode, PathNode, PlayerPageState } from '../types'
 import type { MessageId } from '../lib/messages'
+import { getSequentialAccess } from '../lib/content-helpers'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from './ui/item'
 
 /**
- * The state of a single Path entry, derived from the visited flags of the
- * referenced pages in Path order. A Path uses contiguous-prefix progression:
- * any visited entry stays open, and exactly the first entry after the longest
- * run of visited entries from the start is available. Everything beyond that
- * next entry is locked, so a learner can revisit or advance one step, but never
- * skip ahead — and a gap in the visited prefix gates the rest of the Path.
+ * The state of a single Path entry, derived from the shared sequential access
+ * policy applied to the root page order. A visited entry is `visited`, the
+ * first not-done entry after the done prefix is `available`, and everything
+ * beyond it is `locked`, so a learner can revisit or advance one step but never
+ * skip ahead.
  */
 export type PathPageStatus = 'visited' | 'available' | 'locked'
-
-/**
- * Whether the Path entry at `index` may be opened, given the `visited` flags of
- * the referenced pages in Path order. The policy is contiguous-prefix
- * progression: every visited entry stays open, and the only unvisited entry
- * that opens is the first one after the longest visited run from the start
- * (which makes the first entry available on a fresh package). A gap in that
- * prefix locks everything after it.
- *
- * It is a pure lookup: callers supply the flags already resolved from
- * `PlayerPageState.visited`, so the decision reuses the existing per-page state
- * without adding any of its own.
- */
-export function canOpenPathPage(index: number, visited: readonly boolean[]): boolean {
-  if (visited[index]) {
-    return true
-  }
-
-  let prefix = 0
-  while (visited[prefix]) {
-    prefix += 1
-  }
-  return index === prefix
-}
-
-function pathPageStatus(index: number, visited: readonly boolean[]): PathPageStatus {
-  if (visited[index]) {
-    return 'visited'
-  }
-
-  return canOpenPathPage(index, visited) ? 'available' : 'locked'
-}
 
 /**
  * The icon and localized message id for each entry status. Kept as a single
@@ -96,7 +64,23 @@ export function PathView({
 }: PathViewProps) {
   const intl = useIntl()
   const pagesById = new Map(pathPages.map((page) => [page.id, page]))
-  const visited = node.pageIds.map((id) => pageStates[id]?.visited === true)
+
+  // Status is derived from the shared sequential access policy over the root
+  // page order, so a Path entry is only available once the presentation itself
+  // would allow reaching it.
+  const pageIds = pathPages.map((page) => page.id)
+  const done = new Set(pageIds.filter((id) => pageStates[id]?.completed === true))
+  const reached = new Set(
+    pageIds.filter((id) => pageStates[id]?.completed === true || pageStates[id]?.visited === true)
+  )
+  const { accessible } = getSequentialAccess(pageIds, done, reached)
+
+  const statusOf = (id: string): PathPageStatus => {
+    if (pageStates[id]?.visited === true) {
+      return 'visited'
+    }
+    return accessible.has(id) ? 'available' : 'locked'
+  }
 
   return (
     <nav
@@ -104,9 +88,9 @@ export function PathView({
       data-slot="path"
       className="not-prose space-y-2.5"
     >
-      {node.pageIds.map((id, index) => {
+      {node.pageIds.map((id) => {
         const page = pagesById.get(id)
-        const status = pathPageStatus(index, visited)
+        const status = statusOf(id)
 
         return (
           <PathEntry

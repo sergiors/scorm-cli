@@ -58,14 +58,19 @@ export interface PlayerSession {
  * effects cannot double write.
  *
  * Completion semantics differ by presentation:
- * - Scroll pages are visited as soon as they are displayed and complete only
- *   once their end boundary is reached and every questionnaire on the page has
- *   been submitted. The page being viewed is stored as the lesson location, so
- *   a refresh resumes on that page even when it is not complete. The package is
- *   complete once every page is completed.
- * - Grid items are visited (and stored as the location) as they are opened; the
- *   package is complete once every item has been opened. A saved location
+ * - Scroll and Slides pages are visited as soon as they are displayed. A page
+ *   completes once its own completion rule is met (for Scroll, its end boundary
+ *   was reached; for Slides, it is simply displayed) and every questionnaire on
+ *   the page has been submitted. The page being viewed is stored as the lesson
+ *   location, so a refresh resumes on that page even when it is not complete.
+ *   The package is complete once every page is completed.
+ * - Tiles items are visited (and stored as the location) as they are opened;
+ *   the package is complete once every item has been opened. A saved location
  *   reopens that item's dialog on mount.
+ *
+ * All three presentations share one sequential progression policy from the core
+ * model: a node is accessible only while it is done or every preceding node is
+ * done, so locks are contiguous and no node can be skipped.
  */
 export function usePlayerSession(contentPackage: ContentPackage): PlayerSession {
   // Validate the saved state once, on first mount. Reading the bridge is a pure
@@ -176,9 +181,8 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
     [applyState]
   )
 
-  // Scroll completion requires every page to be *completed*; grid completion
-  // requires every item to be *visited*. Reusing the canonical helper keeps
-  // both presentations (and the CLI) in agreement.
+  // Package completion reuses the canonical helper: done nodes count toward
+  // it for every presentation, so the player and the CLI stay in agreement.
   useScormBridge(isPackageComplete(contentPackage, getDoneNodeIds(contentPackage, state)))
 
   // The score is derived from the authored AST and the owned state on every

@@ -168,12 +168,12 @@ describe('MDX authoring imports', () => {
 
   it('gives imported aliases precedence over canonical names', async () => {
     const root = await makePackage(
-      `---\ntitle: Package\n---\nimport { Grid as Scroll } from 'scorm-cli/authoring';\n\n<Scroll>\n  <Item src='lesson.mdx' />\n</Scroll>`
+      `---\ntitle: Package\n---\nimport { Tiles as Scroll } from 'scorm-cli/authoring';\n\n<Scroll>\n  <Item src='lesson.mdx' />\n</Scroll>`
     )
     await writeFile(path.join(root, 'lesson.mdx'), '---\ntitle: Lesson\n---')
     const parsed = await parsePackage(root)
     expect(parsed.presentation).toMatchObject({
-      type: 'grid',
+      type: 'tiles',
       items: [{ id: 'item:lesson.mdx' }]
     })
   })
@@ -183,7 +183,7 @@ describe('MDX authoring imports', () => {
       `import { Scroll } from './my-components';\n\n<Scroll>\n  <Page src='lesson.mdx' />\n</Scroll>`
     )
     await expect(parsePackage(shadowedScroll)).rejects.toThrow(
-      /root must contain exactly one <Scroll> or <Grid> presentation/
+      /root must contain exactly one <Scroll>, <Slides> or <Tiles> presentation/
     )
 
     const shadowedPage = await scrollPackage(
@@ -199,14 +199,14 @@ describe('MDX authoring imports', () => {
       `import Scroll from './my-components';\n\n<Scroll>\n  <Page src='lesson.mdx' />\n</Scroll>`
     )
     await expect(parsePackage(defaultScroll)).rejects.toThrow(
-      /root must contain exactly one <Scroll> or <Grid> presentation/
+      /root must contain exactly one <Scroll>, <Slides> or <Tiles> presentation/
     )
 
     const namespaceScroll = await scrollPackage(
       `import * as Scroll from './my-components';\n\n<Scroll>\n  <Page src='lesson.mdx' />\n</Scroll>`
     )
     await expect(parsePackage(namespaceScroll)).rejects.toThrow(
-      /root must contain exactly one <Scroll> or <Grid> presentation/
+      /root must contain exactly one <Scroll>, <Slides> or <Tiles> presentation/
     )
   })
 

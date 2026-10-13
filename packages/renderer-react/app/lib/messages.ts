@@ -12,8 +12,10 @@ import type { PlayerLocale } from '../i18n/locale'
  * locale is checked against it at compile time.
  */
 export const en = {
-  'scroll.previousPage': 'Previous page',
-  'scroll.continueNextPage': 'Continue to next page',
+  'slides.previousPage': 'Previous page',
+  'slides.continueNextPage': 'Continue to next page',
+  'scroll.locked': 'Finish this page to unlock the rest.',
+  'tiles.locked': 'Locked',
   'path.label': 'Path',
   'path.visited': 'Visited',
   'path.available': 'Available',
@@ -40,8 +42,10 @@ export type MessageId = keyof typeof en
  * exactly the same set.
  */
 export const ptBR: Record<MessageId, string> = {
-  'scroll.previousPage': 'Página anterior',
-  'scroll.continueNextPage': 'Continuar para a próxima página',
+  'slides.previousPage': 'Página anterior',
+  'slides.continueNextPage': 'Continuar para a próxima página',
+  'scroll.locked': 'Conclua esta página para desbloquear o restante.',
+  'tiles.locked': 'Bloqueado',
   'path.label': 'Trilha',
   'path.visited': 'Visitada',
   'path.available': 'Disponível',

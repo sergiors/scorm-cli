@@ -16,7 +16,8 @@ import type { ReactNode } from 'react'
 /** Keeps the exported marker names in one place for tooling and tests. */
 export type AuthoringComponentName =
   | 'Scroll'
-  | 'Grid'
+  | 'Slides'
+  | 'Tiles'
   | 'Page'
   | 'Item'
   | 'Path'
@@ -42,13 +43,16 @@ export interface ContainerProps {
  */
 export type ScrollProps = ContainerProps
 
-/** Props for the root `<Grid>` presentation, which contains direct `<Item>`. */
-export interface GridProps extends ContainerProps {
+/** Props for the root `<Slides>` presentation, which contains direct `<Page>`. */
+export type SlidesProps = ContainerProps
+
+/** Props for the root `<Tiles>` presentation, which contains direct `<Item>`. */
+export interface TilesProps extends ContainerProps {
   /** Number of columns, an integer from 1 to 12. */
   columns?: number
 }
 
-/** Props for a root `<Page src="..." />` declared directly in `<Scroll>`. */
+/** Props for a root `<Page src="..." />` declared in `<Scroll>` or `<Slides>`. */
 export interface PageSourceProps {
   /** Path to the referenced page document, relative to the declaring file. */
   src: string
@@ -68,7 +72,7 @@ export interface PageReferenceProps {
 /** Props for `<Page>`, which is `src`-based in a Scroll and `ref`-based in a Path. */
 export type PageProps = PageSourceProps | PageReferenceProps
 
-/** Props for `<Item src="..." />` in a root `<Grid>` presentation. */
+/** Props for `<Item src="..." />` in a root `<Tiles>` presentation. */
 export interface ItemProps {
   /** Path to the referenced item document, relative to the declaring file. */
   src: string
@@ -137,9 +141,14 @@ export function Scroll(_props: ScrollProps): never {
   return authoringStub('Scroll')
 }
 
-/** Root `<Grid>` presentation. See {@link GridProps}. */
-export function Grid(_props: GridProps): never {
-  return authoringStub('Grid')
+/** Root `<Slides>` presentation. See {@link SlidesProps}. */
+export function Slides(_props: SlidesProps): never {
+  return authoringStub('Slides')
+}
+
+/** Root `<Tiles>` presentation. See {@link TilesProps}. */
+export function Tiles(_props: TilesProps): never {
+  return authoringStub('Tiles')
 }
 
 /** Page reference. See {@link PageProps}. */
@@ -147,7 +156,7 @@ export function Page(_props: PageProps): never {
   return authoringStub('Page')
 }
 
-/** Grid item reference. See {@link ItemProps}. */
+/** Item reference. See {@link ItemProps}. */
 export function Item(_props: ItemProps): never {
   return authoringStub('Item')
 }

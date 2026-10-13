@@ -1,96 +1,373 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Ref } from 'react'
 import { FormattedMessage } from 'react-intl'
-import { ArrowDown, ArrowUp } from 'lucide-react'
+import { Lock } from 'lucide-react'
 import type { AnswerValue, PageNode, PlayerPageState } from '../types'
-import { areQuestionnairesSubmitted, collectQuestionnaireIds } from '../lib/content-helpers'
-import { Button } from './ui/button'
+import {
+  areQuestionnairesSubmitted,
+  collectQuestionnaireIds,
+  getSequentialAccess
+} from '../lib/content-helpers'
+import { clampPageIndex } from '../lib/sequence'
 import { ContentRenderer } from './ContentRenderer'
 
 /**
- * A page's top boundary counts as reached while it is still within the upper
- * part of the scroll viewport, so the previous affordance is offered as soon as
- * the page opens and disappears once the learner scrolls away from the top.
+ * A page counts as active while its region overlaps the upper half of the scroll
+ * viewport, so scrolling down hands activity to the page entering the top half
+ * and the virtualization window follows the learner.
+ *
+ * Observing the region rather than only its start boundary line means an instant
+ * jump that lands anywhere inside a page—End, PageDown, a scrollbar drag or a
+ * restored location—still activates the page the viewport now shows. A jump into
+ * the middle or lower portion of a distant placeholder leaves its start above the
+ * viewport, so a start sentinel alone would never cross this band and the page
+ * would stay a blank placeholder.
+ *
+ * The band is a half-open slice, not a line, so the boundary between two pages
+ * can fall inside it and both neighbouring regions can intersect it at once —
+ * pages are only guaranteed to be a viewport tall, which bounds the *starts* in
+ * the band to one, not the regions. That single start means a scroll or jump
+ * crosses at most one activation boundary per frame, so exactly one region flips
+ * from not-visible to visible and the active page never flip-flops. The window of
+ * one page each side keeps both regions around that boundary mounted (a scene or
+ * its placeholder, both observed with this margin), so the hand-off is deliberate.
  */
-const PAGE_START_MARGIN = '0px 0px -40% 0px'
+const PAGE_ACTIVE_MARGIN = '0px 0px -50% 0px'
 
 /**
  * A page's end boundary counts as reached once the end sentinel enters the
- * scroll viewport, extended by a small positive bottom margin so the continue
- * affordance appears just before the learner reaches the very bottom.
- *
- * A negative bottom margin must not be used here: the end sentinel sits at the
- * maximum scroll offset, so shrinking the observer root's bottom can make it
- * impossible to intersect even at the page end. That is especially true for
- * pages no taller than the viewport (`min-h-dvh`), where the sentinel can never
- * rise into a shrunken root and the continue affordance stays hidden forever.
- * A non-negative/positive margin keeps the signal robust at the actual end.
+ * scroll viewport, extended by a small positive bottom margin so it fires just
+ * before the very bottom. A non-negative margin keeps the signal reachable at
+ * the maximum scroll offset, including for pages no taller than the viewport.
  */
 const PAGE_END_MARGIN = '0px 0px 64px 0px'
+
+/**
+ * How many pages on each side of the active page keep their content mounted.
+ * Pages outside the window render as height-preserving placeholders, so a long
+ * continuous scroll never mounts the whole document at once.
+ */
+const VIRTUALIZATION_WINDOW = 1
+
+/** The nodes already opened or done, which the shared access policy treats as reached. */
+function reachedPageIds(
+  pages: readonly PageNode[],
+  pageStates: Record<string, PlayerPageState>
+): Set<string> {
+  return new Set(
+    pages
+      .filter((page) => {
+        const state = pageStates[page.id]
+        return state?.visited === true || state?.completed === true
+      })
+      .map((page) => page.id)
+  )
+}
+
+/** The nodes whose own completion rule has been met, which advance the done prefix. */
+function donePageIds(
+  pages: readonly PageNode[],
+  pageStates: Record<string, PlayerPageState>
+): Set<string> {
+  return new Set(
+    pages.filter((page) => pageStates[page.id]?.completed === true).map((page) => page.id)
+  )
+}
 
 export interface ScrollPresentationProps {
   pages: PageNode[]
   /**
-   * Page to open on first mount, so a saved lesson location can resume on the
-   * bookmarked page instead of the first one. Clamped to the available pages
-   * and applied once; later page changes are driven by the controls.
+   * Page that should be active on first mount, so a saved lesson location can
+   * resume at the bookmarked page. Clamped to an accessible page.
    */
   initialIndex?: number
-  /**
-   * Persisted state per page id. Drives restored questionnaire answers and
-   * submitted state, and gates completion on `submittedQuestionnaires`.
-   */
+  /** Persisted state per page id, for restored answers and submitted state. */
   pageStates: Record<string, PlayerPageState>
-  /**
-   * Invoked once per displayed page — on first mount and on every next/previous
-   * transition — to store it as the current location and mark it visited.
-   */
+  /** Invoked once per page the learner reaches, storing it as the location. */
   onPageSeen: (id: string) => void
   /**
-   * Invoked once when the displayed page is complete: its end boundary was
-   * reached and every questionnaire it contains has been submitted. Completion
-   * — not mere visibility — is what reveals the continue affordance and marks
-   * the page completed.
+   * Invoked once when a page is complete: its end boundary was reached and every
+   * questionnaire it contains has been submitted. Completion unlocks the next
+   * page in the shared sequential progression.
    */
   onPageCompleted: (id: string) => void
-  /** Persists a question answer for the displayed page. */
+  /** Persists a question answer for a page. */
   onAnswer: (pageId: string, questionId: string, value: AnswerValue) => void
-  /** Marks a questionnaire on the displayed page as submitted. */
+  /** Marks a questionnaire on a page as submitted. */
   onQuestionnaireSubmitted: (pageId: string, questionnaireId: string) => void
-  /**
-   * Persists a video's semantic playback position in seconds, scoped to the
-   * page that owns the video.
-   */
+  /** Persists a video's semantic playback position in seconds, scoped to the page. */
   onVideoPosition?: (pageId: string, videoId: string, seconds: number) => void
 }
 
-/** Clamps a requested page index to the pages that actually exist. */
-export function clampPageIndex(index: number, pageCount: number): number {
-  if (pageCount <= 0) {
-    return 0
+/**
+ * A continuous, virtualized document of pages. Every page the shared sequential
+ * progression policy reports as accessible renders in reading order; locked
+ * future pages are never mounted, so their content cannot be reached until the
+ * preceding page completes. Only pages inside the virtualization window mount
+ * their content, keeping a long scroll cheap. Each accessible page completes
+ * once its end boundary is reached and every questionnaire on it is submitted,
+ * which in turn unlocks the next page.
+ */
+export function ScrollPresentation({
+  pages,
+  initialIndex = 0,
+  pageStates,
+  onPageSeen,
+  onPageCompleted,
+  onAnswer,
+  onQuestionnaireSubmitted,
+  onVideoPosition
+}: ScrollPresentationProps) {
+  const ids = pages.map((page) => page.id)
+  const { accessible } = getSequentialAccess(
+    ids,
+    donePageIds(pages, pageStates),
+    reachedPageIds(pages, pageStates)
+  )
+  const accessibleIndices = pages
+    .map((_, index) => index)
+    .filter((index) => accessible.has(pages[index]!.id))
+  const observerSupported = typeof IntersectionObserver !== 'undefined'
+
+  const [activeId, setActiveId] = useState(() => {
+    const requested = clampPageIndex(initialIndex, pages.length)
+    const requestedId = pages[requested]?.id
+    if (requestedId !== undefined && accessible.has(requestedId)) {
+      return requestedId
+    }
+    return accessibleIndices[0] !== undefined ? pages[accessibleIndices[0]]!.id : ''
+  })
+
+  const activeIndex = accessibleIndices.find((index) => pages[index]!.id === activeId) ?? -1
+
+  // Observer activations are normally driven straight into `activeId`. A Path
+  // jump suppresses them until it settles (see `navigateToPageId`), so the
+  // intended destination cannot be stolen by a neighbour crossing the band as
+  // the virtualization window re-centres.
+  const [pendingTargetId, setPendingTargetId] = useState<string | null>(null)
+  const pendingTargetRef = useRef<string | null>(null)
+
+  const activate = useCallback((pageId: string) => {
+    if (pendingTargetRef.current !== null) {
+      return
+    }
+    setActiveId(pageId)
+  }, [])
+
+  // Measured outer heights of the scenes that have mounted, so a scene replaced
+  // by a placeholder keeps its exact size and the document does not jump when
+  // the window moves. Only pages that have actually mounted are measured; the
+  // rest fall back to the placeholder's own viewport-tall default.
+  const [pageHeights, setPageHeights] = useState<Record<string, number>>({})
+  const handlePageHeight = useCallback((pageId: string, height: number) => {
+    setPageHeights((previous) =>
+      previous[pageId] === height ? previous : { ...previous, [pageId]: height }
+    )
+  }, [])
+
+  const [endedIds, setEndedIds] = useState<ReadonlySet<string>>(() => new Set())
+  const handleEndChange = useCallback((pageId: string, reached: boolean) => {
+    setEndedIds((previous) => {
+      const has = previous.has(pageId)
+      if (has === reached) {
+        return previous
+      }
+      const next = new Set(previous)
+      if (reached) {
+        next.add(pageId)
+      } else {
+        next.delete(pageId)
+      }
+      return next
+    })
+  }, [])
+
+  // A Path jumps to a referenced page. The reference only resolves when the
+  // shared policy reports the page as accessible; a locked page is ignored.
+  //
+  // The target can sit outside the virtualization window, where only a
+  // height-preserving placeholder is mounted. Scrolling that placeholder now
+  // would move the viewport to a stale box that the real scene replaces a moment
+  // later, and the placeholder's (or a neighbour's) observer could win the
+  // activation as the window re-centres. So the jump is staged instead: the
+  // target is recorded and activated, React re-centres the window around it, and
+  // only the freshly mounted scene is scrolled (see the layout effect below),
+  // while observer activation stays suppressed until the jump has settled.
+  const navigateToPageId = useCallback(
+    (pageId: string) => {
+      const index = pages.findIndex((page) => page.id === pageId)
+      if (index < 0 || !accessible.has(pageId)) {
+        return
+      }
+      pendingTargetRef.current = pageId
+      setPendingTargetId(pageId)
+      setActiveId(pageId)
+    },
+    [accessible, pages]
+  )
+
+  // Resume at the active page once, so a saved location opens where it was.
+  const activeRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const element = activeRef.current
+    if (element && typeof element.scrollIntoView === 'function') {
+      element.scrollIntoView({ block: 'start' })
+    }
+    // Only the initial active page matters; later activity is driven by scrolling.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // A staged Path jump scrolls the target scene after the window has re-centred,
+  // before paint. Querying `[data-scene-index]` (never `[data-scroll-page]`, which
+  // a placeholder also carries) guarantees the mounted scene is the element moved,
+  // so the jump lands on real content rather than the placeholder it replaced.
+  useLayoutEffect(() => {
+    if (pendingTargetId === null) {
+      return
+    }
+    const index = pages.findIndex((page) => page.id === pendingTargetId)
+    const element = document.querySelector(`[data-scene-index="${index}"]`)
+    if (element && typeof element.scrollIntoView === 'function') {
+      element.scrollIntoView({ block: 'start' })
+    }
+  }, [pendingTargetId, pages])
+
+  // Release the activation suppression only once the jump has settled, so any
+  // observer callback racing the re-centre is ignored and the destination wins.
+  useEffect(() => {
+    if (pendingTargetId === null) {
+      return
+    }
+    pendingTargetRef.current = null
+    setPendingTargetId(null)
+  }, [pendingTargetId])
+
+  if (pages.length === 0) {
+    return null
   }
-  return Math.max(0, Math.min(pageCount - 1, index))
+
+  const lockedCount = pages.length - accessibleIndices.length
+
+  return (
+    <div data-scroll>
+      {accessibleIndices.map((index) => {
+        const page = pages[index]!
+        const mounted =
+          !observerSupported ||
+          activeIndex < 0 ||
+          Math.abs(index - activeIndex) <= VIRTUALIZATION_WINDOW
+
+        if (!mounted) {
+          return (
+            <VirtualizedPlaceholder
+              key={page.id}
+              index={index}
+              pageId={page.id}
+              height={pageHeights[page.id]}
+              onActivate={activate}
+            />
+          )
+        }
+
+        const pageState = pageStates[page.id]
+        const complete =
+          endedIds.has(page.id) &&
+          areQuestionnairesSubmitted(
+            collectQuestionnaireIds(page.content),
+            pageState?.submittedQuestionnaires ?? []
+          )
+
+        return (
+          <PageScene
+            key={page.id}
+            ref={page.id === activeId ? activeRef : undefined}
+            page={page}
+            index={index}
+            pathPages={pages}
+            pageStates={pageStates}
+            onNavigatePathPage={navigateToPageId}
+            pageState={pageState}
+            onActivate={activate}
+            onMeasure={handlePageHeight}
+            onEndChange={handleEndChange}
+            onAnswer={onAnswer}
+            onQuestionnaireSubmitted={onQuestionnaireSubmitted}
+            onVideoPosition={onVideoPosition}
+            complete={complete}
+            onPageCompleted={onPageCompleted}
+          />
+        )
+      })}
+
+      <PageSeenReporter pageId={activeId} onPageSeen={onPageSeen} />
+
+      {lockedCount > 0 ? <LockedBoundary /> : null}
+    </div>
+  )
 }
 
 /**
- * Resets the document to its top for a newly displayed page. Scrolling belongs
- * to the document itself — the player renders the page in natural flow instead
- * of owning an internal scroll container — so the reset targets `window`. It is
- * instantaneous, never a smooth animation from the previous page's offset, so a
- * page always opens at its top.
+ * Stores the active page as the current location and marks it visited, once per
+ * activation. The ref holds the *last reported* id, not a set of every id ever
+ * seen, so a genuine change reports again — including revisiting A after B,
+ * which moves the location back to A — while StrictMode's doubled effect for the
+ * same id is a no-op. Re-reporting the id already stored is also harmless: the
+ * session layer's `markSeen` is idempotent, so it would not write twice.
  */
-function resetDocumentScroll(): void {
-  window.scrollTo({ top: 0, behavior: 'auto' })
+function PageSeenReporter({
+  pageId,
+  onPageSeen
+}: {
+  pageId: string
+  onPageSeen: (id: string) => void
+}) {
+  const reportedRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!pageId || reportedRef.current === pageId) {
+      return
+    }
+    reportedRef.current = pageId
+    onPageSeen(pageId)
+  }, [pageId, onPageSeen])
+
+  return null
 }
 
 /**
- * Watches a boundary sentinel against the scroll viewport (`root: null`, matching
- * the document scrolling the player uses) and reports whether it currently
- * intersects. Repeated observer callbacks that do not change the boundary are
- * ignored, so no redundant state updates are produced. Returns the disconnect
- * cleanup; when `IntersectionObserver` is unavailable (e.g. server rendering)
- * this is a no-op that returns an inert cleanup.
+ * Reports a page completion exactly once. The ref guard keeps repeated observer
+ * callbacks and StrictMode's doubled effects from reporting the same page more
+ * than once.
  */
-function observeSentinel(
+function PageCompletionReporter({
+  pageId,
+  complete,
+  onPageCompleted
+}: {
+  pageId: string
+  complete: boolean
+  onPageCompleted: (id: string) => void
+}) {
+  const reportedRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!complete || reportedRef.current === pageId) {
+      return
+    }
+    reportedRef.current = pageId
+    onPageCompleted(pageId)
+  }, [complete, pageId, onPageCompleted])
+
+  return null
+}
+
+/**
+ * Watches an element against the scroll viewport (`root: null`, the document the
+ * player scrolls) and reports changes. Returns the disconnect cleanup; when
+ * `IntersectionObserver` is unavailable this is an inert cleanup. Repeated
+ * callbacks with an unchanged visibility are dropped, so a page region and an
+ * end boundary each report at most one change per crossing and never loop.
+ */
+function observeVisibility(
   element: Element,
   rootMargin: string,
   onVisibilityChange: (visible: boolean) => void
@@ -117,244 +394,148 @@ function observeSentinel(
 }
 
 /**
- * Shows a single page at a time. The page renders in the document's natural
- * flow, so scrolling is owned by the browser rather than an internal container:
- * the displayed page's end boundary must be reached and every questionnaire on
- * the page submitted before the continue control appears, while its top is in
- * view a previous control returns to the prior page. Only the displayed page is
- * mounted, so adjacent pages are never exposed and there is no pager or package
- * chrome. The final page still observes its end so it can complete even though
- * it has no continue control.
+ * A height-preserving placeholder for an accessible page outside the window.
+ * Its whole region is observed with the same activation margin as a mounted
+ * page, so scrolling or an instant jump (e.g. restoring a saved location, End or
+ * PageDown) that lands anywhere inside the placeholder—not only across its start
+ * boundary—activates that page, which mounts its content and synchronizes the
+ * reported location. Unmounting disconnects the observer, so no stale watcher is
+ * left behind.
+ *
+ * Once the page has mounted at least once its measured height is applied, so
+ * replacing the scene with this placeholder keeps the document's height and the
+ * surrounding pages' offsets unchanged instead of collapsing to one viewport.
  */
-export function ScrollPresentation({
-  pages,
-  initialIndex = 0,
-  pageStates,
-  onPageSeen,
-  onPageCompleted,
-  onAnswer,
-  onQuestionnaireSubmitted,
-  onVideoPosition
-}: ScrollPresentationProps) {
-  const [currentIndex, setCurrentIndex] = useState(() => clampPageIndex(initialIndex, pages.length))
-  // Boundary signals for the displayed page only. The optimistic defaults match
-  // a freshly opened page: at its top, before its end is reached.
-  const [atTop, setAtTop] = useState(true)
-  const [atEnd, setAtEnd] = useState(false)
+function VirtualizedPlaceholder({
+  index,
+  pageId,
+  height,
+  onActivate
+}: {
+  index: number
+  pageId: string
+  height?: number
+  onActivate: (pageId: string) => void
+}) {
+  const regionRef = useRef<HTMLDivElement>(null)
 
-  const lastIndex = pages.length - 1
-  const currentPage = pages[currentIndex]
-
-  // Every page opens at its top. The reset is keyed to the displayed page id so
-  // it runs for the initial page — including one restored from a saved location
-  // — and for every next/previous transition, and it runs before paint so the
-  // previous page's offset never leaks into the new one. `goToPage` resets the
-  // boundary signals in the same transition.
-  useLayoutEffect(() => {
-    resetDocumentScroll()
-  }, [currentPage?.id])
-
-  const goToPage = useCallback(
-    (index: number) => {
-      const nextIndex = clampPageIndex(index, pages.length)
-      // Navigating to the page already on screen is a no-op. Resetting the
-      // boundary signals here would clear a reached end while React bails out of
-      // the unchanged index, so the observers — already past their last reported
-      // value — would never fire again and the continue affordance would stay
-      // hidden on an otherwise complete page.
-      if (nextIndex === currentIndex) {
-        return
+  useEffect(() => {
+    const element = regionRef.current
+    if (!element) {
+      return
+    }
+    return observeVisibility(element, PAGE_ACTIVE_MARGIN, (visible) => {
+      if (visible) {
+        onActivate(pageId)
       }
-      setAtTop(true)
-      setAtEnd(false)
-      setCurrentIndex(nextIndex)
-    },
-    [currentIndex, pages.length]
-  )
-
-  // Both controls delegate the boundary clamp to `goToPage`, so the page index
-  // rule has a single source of truth.
-  const goToPrevious = useCallback(() => {
-    goToPage(currentIndex - 1)
-  }, [currentIndex, goToPage])
-
-  const goToNext = useCallback(() => {
-    goToPage(currentIndex + 1)
-  }, [currentIndex, goToPage])
-
-  // Opens a page referenced by a Path node through the same page switching the
-  // previous/continue controls use, so a Path never mounts a second copy of the
-  // page. An id that is not a root page is ignored.
-  const navigateToPageId = useCallback(
-    (pageId: string) => {
-      const index = pages.findIndex((page) => page.id === pageId)
-      if (index >= 0) {
-        goToPage(index)
-      }
-    },
-    [pages, goToPage]
-  )
-
-  const handleTopChange = useCallback((visible: boolean) => {
-    setAtTop(visible)
-  }, [])
-
-  const handleEndChange = useCallback((visible: boolean) => {
-    setAtEnd(visible)
-  }, [])
-
-  if (!currentPage) {
-    return null
-  }
-
-  const pageState = pageStates[currentPage.id]
-  const submitted = pageState?.submittedQuestionnaires ?? []
-  const questionnaireIds = collectQuestionnaireIds(currentPage.content)
-  const allQuestionnairesSubmitted = areQuestionnairesSubmitted(questionnaireIds, submitted)
-  const pageComplete = atEnd && allQuestionnairesSubmitted
+    })
+  }, [onActivate, pageId])
 
   return (
-    <>
-      {currentIndex > 0 && atTop ? <PreviousControl onClick={goToPrevious} /> : null}
-
-      <PageScene
-        key={currentPage.id}
-        page={currentPage}
-        index={currentIndex}
-        hasPrev={currentIndex > 0}
-        pathPages={pages}
-        pageStates={pageStates}
-        onNavigatePathPage={navigateToPageId}
-        pageState={pageState}
-        onTopChange={handleTopChange}
-        onEndChange={handleEndChange}
-        onAnswer={onAnswer}
-        onQuestionnaireSubmitted={onQuestionnaireSubmitted}
-        onVideoPosition={onVideoPosition}
-      />
-
-      <PageSeenReporter pageId={currentPage.id} onPageSeen={onPageSeen} />
-
-      <PageCompletionReporter
-        pageId={currentPage.id}
-        complete={pageComplete}
-        onPageCompleted={onPageCompleted}
-      />
-
-      {currentIndex < lastIndex && pageComplete ? <NextControl onClick={goToNext} /> : null}
-    </>
+    <div
+      ref={regionRef}
+      data-scroll-page={index}
+      data-scroll-virtualized={pageId}
+      aria-hidden="true"
+      style={height === undefined ? undefined : { minHeight: height }}
+      className="mx-auto min-h-dvh w-full max-w-3xl px-6"
+    />
   )
-}
-
-/**
- * Reports the displayed page exactly once per display, storing it as the
- * current location and marking it visited. The ref guard keeps StrictMode's
- * doubled effects from writing the same page twice, while a genuine
- * next/previous transition changes the id and reports again. Only one page is
- * displayed at a time, so a page cannot be re-displayed without an intervening
- * transition.
- */
-function PageSeenReporter({
-  pageId,
-  onPageSeen
-}: {
-  pageId: string
-  onPageSeen: (id: string) => void
-}) {
-  const reportedRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (reportedRef.current === pageId) {
-      return
-    }
-    reportedRef.current = pageId
-    onPageSeen(pageId)
-  }, [pageId, onPageSeen])
-
-  return null
-}
-
-/**
- * Reports a page completion exactly once. The ref guard keeps repeated observer
- * callbacks (end regained after scrolling back down) and StrictMode's doubled
- * effects from reporting the same page more than once.
- */
-function PageCompletionReporter({
-  pageId,
-  complete,
-  onPageCompleted
-}: {
-  pageId: string
-  complete: boolean
-  onPageCompleted: (id: string) => void
-}) {
-  const reportedRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (!complete || reportedRef.current === pageId) {
-      return
-    }
-    reportedRef.current = pageId
-    onPageCompleted(pageId)
-  }, [complete, pageId, onPageCompleted])
-
-  return null
 }
 
 interface PageSceneProps {
   page: PageNode
   index: number
-  /** Whether a preceding page exists; the first page offers nothing to return to. */
-  hasPrev: boolean
+  ref?: Ref<HTMLDivElement>
   /** Root pages, so a Path on this page can resolve its references. */
   pathPages: readonly PageNode[]
   /** Persisted state per root page id, for Path visited status. */
   pageStates: Record<string, PlayerPageState>
-  /** Opens a page referenced by a Path through the presentation's switching. */
+  /** Opens a referenced page through the presentation's switching. */
   onNavigatePathPage: (pageId: string) => void
   pageState?: PlayerPageState
-  onTopChange: (visible: boolean) => void
-  onEndChange: (visible: boolean) => void
+  onActivate: (pageId: string) => void
+  /** Reports the scene's rendered outer height so a placeholder can match it. */
+  onMeasure: (pageId: string, height: number) => void
+  onEndChange: (pageId: string, reached: boolean) => void
   onAnswer: (pageId: string, questionId: string, value: AnswerValue) => void
   onQuestionnaireSubmitted: (pageId: string, questionnaireId: string) => void
-  /** Persists a video's playback position, scoped to this page. */
   onVideoPosition?: (pageId: string, videoId: string, seconds: number) => void
+  /** Whether the page has met its completion rule under the question gate. */
+  complete: boolean
+  /** Reports the page completion exactly once. */
+  onPageCompleted: (id: string) => void
 }
 
 /**
- * The single displayed page. It reports its top/end boundaries through
- * observers rooted to the viewport (`root: null`), matching the document
- * scrolling the player now uses, so the surrounding controls stay in sync with
- * what the learner can see. It remounts per page, which resets every observer
- * for the new page. Its end sentinel is always present — including on the final
- * page, which has no continue control but still completes at its end.
+ * One page in the continuous document. Its whole region reports when the page
+ * becomes active and an end sentinel reports when its end is reached. It remounts
+ * per page id, which resets both observers for the next page.
  */
 function PageScene({
   page,
   index,
-  hasPrev,
+  ref,
   pathPages,
   pageStates,
   onNavigatePathPage,
   pageState,
-  onTopChange,
+  onActivate,
+  onMeasure,
   onEndChange,
   onAnswer,
   onQuestionnaireSubmitted,
-  onVideoPosition
+  onVideoPosition,
+  complete,
+  onPageCompleted
 }: PageSceneProps) {
-  const startRef = useRef<HTMLDivElement>(null)
+  const regionRef = useRef<HTMLDivElement>(null)
+
+  // The scene's own region drives activation; the parent's ref is only set on the
+  // active page for resume scrolling, so both must share the same element.
+  const assignRegionRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      regionRef.current = node
+      if (typeof ref === 'function') {
+        ref(node)
+      } else if (ref) {
+        ref.current = node
+      }
+    },
+    [ref]
+  )
 
   useEffect(() => {
-    if (!hasPrev) {
-      return
-    }
-    const element = startRef.current
+    const element = regionRef.current
     if (!element) {
       return
     }
-    return observeSentinel(element, PAGE_START_MARGIN, onTopChange)
-  }, [hasPrev, index, onTopChange, page.id])
+    return observeVisibility(element, PAGE_ACTIVE_MARGIN, (visible) => {
+      if (visible) {
+        onActivate(page.id)
+      }
+    })
+  }, [onActivate, page.id])
+
+  // Report the scene's outer height as its content settles, so when the window
+  // later swaps this scene for a placeholder the replacement is the same size
+  // and the pages below do not shift. `ResizeObserver` is unavailable under SSR
+  // and in some test environments, where the placeholder's viewport-tall default
+  // is used instead.
+  useEffect(() => {
+    const element = regionRef.current
+    if (!element || typeof ResizeObserver === 'undefined') {
+      return
+    }
+    const observer = new ResizeObserver(() => {
+      const height = Math.ceil(element.getBoundingClientRect().height)
+      if (height > 0) {
+        onMeasure(page.id, height)
+      }
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [onMeasure, page.id])
 
   const endRef = useRef<HTMLDivElement>(null)
 
@@ -363,19 +544,17 @@ function PageScene({
     if (!element) {
       return
     }
-    return observeSentinel(element, PAGE_END_MARGIN, onEndChange)
-  }, [index, onEndChange, page.id])
+    return observeVisibility(element, PAGE_END_MARGIN, (visible) => onEndChange(page.id, visible))
+  }, [onEndChange, page.id])
 
   return (
     <div
+      ref={assignRegionRef}
       data-scene-index={index}
+      data-scroll-page={index}
       aria-label={page.metadata.title}
-      className="mx-auto min-h-dvh w-full max-w-3xl px-6 py-18 flex flex-col justify-center"
+      className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col justify-center px-6 py-18"
     >
-      {hasPrev ? (
-        <div ref={startRef} data-scroll-start={index} aria-hidden="true" className="h-px w-full" />
-      ) : null}
-
       <section className="prose prose-stone max-w-none! dark:prose-invert">
         <ContentRenderer
           nodes={page.content}
@@ -392,60 +571,27 @@ function PageScene({
       </section>
 
       <div ref={endRef} data-scroll-end={index} aria-hidden="true" className="h-px w-full" />
+
+      <PageCompletionReporter
+        pageId={page.id}
+        complete={complete}
+        onPageCompleted={onPageCompleted}
+      />
     </div>
   )
 }
 
-/**
- * Floating control pinned to the top of the viewport that returns to the
- * previous page. It overlays the scroll viewport rather than occupying page
- * flow, so the scene reserves top padding for it. Its wrapper is centred and
- * shrink-wrapped to the button — never spanning the viewport — so its
- * translucent background and backdrop blur stay confined to the button and
- * cannot paint across or cover the scroll container's scrollbar. The wrapper
- * ignores pointer events while the button itself stays clickable.
- */
-function PreviousControl({ onClick }: { onClick: () => void }) {
+/** Marks that locked pages remain, without mounting or revealing their content. */
+function LockedBoundary() {
   return (
     <div
-      data-scroll-previous
-      className="pointer-events-none fixed z-10 top-0 inset-x-0 flex justify-center bg-background/5 py-2.5 backdrop-blur-sm"
+      data-scroll-locked
+      className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col items-center justify-center gap-2 px-6 text-muted-foreground"
     >
-      <Button
-        type="button"
-        variant="secondary"
-        onClick={onClick}
-        className="pointer-events-auto cursor-pointer rounded-full"
-      >
-        <ArrowUp aria-hidden="true" />
-        <FormattedMessage id="scroll.previousPage" />
-      </Button>
-    </div>
-  )
-}
-
-/**
- * Minimal floating control that advances to the next page. Like the previous
- * control, its wrapper is centred and shrink-wrapped to the button so it never
- * spans the viewport; the translucent background and backdrop blur stay
- * confined to the button instead of covering the scrollbar, and the button
- * stays clickable while the wrapper ignores pointer events.
- */
-function NextControl({ onClick }: { onClick: () => void }) {
-  return (
-    <div
-      data-scroll-next
-      className="pointer-events-none fixed z-10 bottom-0 inset-x-0 flex justify-center bg-background/5 py-2.5 backdrop-blur-sm"
-    >
-      <Button
-        type="button"
-        variant="secondary"
-        onClick={onClick}
-        className="cursor-pointer pointer-events-auto rounded-full px-4"
-      >
-        <FormattedMessage id="scroll.continueNextPage" />
-        <ArrowDown aria-hidden="true" />
-      </Button>
+      <Lock aria-hidden="true" className="size-5" />
+      <p className="text-sm">
+        <FormattedMessage id="scroll.locked" />
+      </p>
     </div>
   )
 }

@@ -30,7 +30,9 @@ reports validation errors without stopping the preview.
 
 A content package directory contains an `index.mdx` root document and referenced MDX documents. Components are imported from the typed `scorm-cli/authoring` subpath so editors can complete names and check props. The import is inert: the CLI resolves the named bindings (and aliases) to its canonical vocabulary while parsing, but content files are parsed as data and never executed. Imports from other modules are ignored, and MDX JavaScript is not supported.
 
-The root requires `title` frontmatter and exactly one presentation: a `<Scroll>` containing direct `<Page>` references, or a `<Grid>` containing direct `<Item>` references. These modes cannot be mixed; root Markdown, text, and other components are not allowed. A grid may set `columns` to an integer from 1 to 12:
+The root requires `title` frontmatter and exactly one presentation: a `<Scroll>` containing direct `<Page>` references, a `<Slides>` containing direct `<Page>` references, or a `<Tiles>` containing direct `<Item>` references. These modes cannot be mixed; root Markdown, text, and other components are not allowed. A `<Tiles>` may set `columns` to an integer from 1 to 12.
+
+A `<Scroll>` is a continuous, virtualized document: pages flow in reading order, and only the pages a learner can currently access are mounted, so locked future pages are never rendered.
 
 ```mdx
 ---
@@ -46,22 +48,37 @@ import { Scroll, Page } from 'scorm-cli/authoring'
 </Scroll>
 ```
 
-Grid packages use the same exact-one-root rule and reference item documents:
+A `<Slides>` shows exactly one page at a time and renders only the active page.
+
+```mdx
+---
+title: My Slide Deck
+---
+
+import { Slides, Page } from 'scorm-cli/authoring'
+
+<Slides>
+  <Page src="lessons/intro.mdx" />
+  <Page src="lessons/one.mdx" />
+</Slides>
+```
+
+`<Tiles>` packages use the same exact-one-root rule and reference item documents:
 
 ```mdx
 ---
 title: Practice Package
 ---
 
-import { Grid, Item } from 'scorm-cli/authoring'
+import { Tiles, Item } from 'scorm-cli/authoring'
 
-<Grid columns={2}>
+<Tiles columns={2}>
   <Item src="practice/check.mdx" />
   <Item src="practice/recall.mdx" />
-</Grid>
+</Tiles>
 ```
 
-Every referenced Page or Item document requires title-only frontmatter and can contain Markdown plus supported static components such as `<Image>`, `<Video>`, and `<Questionnaire>`. A Page can also include a `<Path>` whose `<Page ref='...' />` children point at pages already declared in the root `<Scroll>`. MDX JavaScript is not supported.
+Every referenced Page or Item document requires title-only frontmatter and can contain Markdown plus supported static components such as `<Image>`, `<Video>`, and `<Questionnaire>`. A Page can also include a `<Path>` whose `<Page ref='...' />` children point at pages already declared in the root `<Scroll>` or `<Slides>`. MDX JavaScript is not supported.
 
 ```mdx
 import { Questionnaire, Question, Prompt, Option } from 'scorm-cli/authoring'
@@ -79,7 +96,7 @@ import { Questionnaire, Question, Prompt, Option } from 'scorm-cli/authoring'
 </Questionnaire>
 ```
 
-Paths reference pages that the root `<Scroll>` already declares:
+Paths reference pages that the root `<Scroll>` or `<Slides>` already declares:
 
 ```mdx
 import { Path, Page } from 'scorm-cli/authoring'
@@ -139,7 +156,8 @@ The examples demonstrate the supported package presentations and content compone
 | Package                         | What it demonstrates                                                                               | Build                                            | Preview                                            |
 | ------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------- |
 | `examples/typescript-content`   | A Scroll course with Markdown, a local image, a video reference, code samples, and questionnaires. | `pnpm scorm build examples/typescript-content`   | `pnpm scorm preview examples/typescript-content`   |
-| `examples/typescript-grid`      | A two-column Grid of short practice items using Markdown.                                          | `pnpm scorm build examples/typescript-grid`      | `pnpm scorm preview examples/typescript-grid`      |
+| `examples/typescript-slides`    | A two-page Slides deck that advances one page at a time.                                           | `pnpm scorm build examples/typescript-slides`    | `pnpm scorm preview examples/typescript-slides`    |
+| `examples/typescript-tiles`     | A two-column Tiles practice set of short items using Markdown.                                     | `pnpm scorm build examples/typescript-tiles`     | `pnpm scorm preview examples/typescript-tiles`     |
 | `examples/accessibility-basics` | A Scroll course with practical accessibility guidance and a knowledge-check questionnaire.         | `pnpm scorm build examples/accessibility-basics` | `pnpm scorm preview examples/accessibility-basics` |
 
 Builds write `dist/<content-name>.zip` by default (for example, `dist/accessibility-basics.zip`). Pass `--output <path>` to choose a different ZIP path. `pnpm scorm preview <content>` starts a local preview, watches the content directory, and reports validation errors without stopping the preview. Pass `--port <port>` to choose the preview port.

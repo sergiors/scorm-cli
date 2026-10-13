@@ -3,11 +3,12 @@ import path from 'node:path'
 import matter from 'gray-matter'
 import type {
   ContentPackage,
-  GridNode,
-  ItemNode,
   PageNode,
   RootPresentation,
-  ScrollNode
+  ScrollNode,
+  SlidesNode,
+  ItemNode,
+  TilesNode
 } from '@scorm-cli/core'
 import type { AstNode } from './ast'
 import { meaningfulChildren, rawComponentName } from './ast'
@@ -39,6 +40,7 @@ function hasPresentationChildContent(node: AstNode): boolean {
 function parsePresentationChildren(
   nodes: AstNode[],
   kind: 'page',
+  container: string,
   declaredIn: string,
   root: string,
   ids: Set<string>,
@@ -47,6 +49,7 @@ function parsePresentationChildren(
 function parsePresentationChildren(
   nodes: AstNode[],
   kind: 'item',
+  container: string,
   declaredIn: string,
   root: string,
   ids: Set<string>
@@ -54,6 +57,7 @@ function parsePresentationChildren(
 async function parsePresentationChildren(
   nodes: AstNode[],
   kind: 'page' | 'item',
+  container: string,
   declaredIn: string,
   root: string,
   ids: Set<string>,
@@ -68,7 +72,7 @@ async function parsePresentationChildren(
       const name = rawComponentName(node)
       const found = name ? `<${name}>` : node.type
       throw new Error(
-        `${sourceLocation(declaredIn, node)}: ${kind === 'page' ? '<Scroll>' : '<Grid>'} children may only contain direct <${expected} src="..." /> components; found ${found}`
+        `${sourceLocation(declaredIn, node)}: ${container} children may only contain direct <${expected} src="..." /> components; found ${found}`
       )
     }
     if (hasPresentationChildContent(node))
@@ -117,7 +121,7 @@ async function parseRootPresentation(
   const directNodes = meaningfulChildren(nodes)
   if (directNodes.length !== 1) {
     throw new Error(
-      `${sourceLocation(entry, directNodes[0])}: root must contain exactly one <Scroll> or <Grid> presentation; found ${directNodes.length}`
+      `${sourceLocation(entry, directNodes[0])}: root must contain exactly one <Scroll>, <Slides> or <Tiles> presentation; found ${directNodes.length}`
     )
   }
 
@@ -126,17 +130,21 @@ async function parseRootPresentation(
     const name = rawComponentName(node)
     const found = name ? `<${name}>` : node.type
     throw new Error(
-      `${sourceLocation(entry, node)}: root must contain exactly one <Scroll> or <Grid> presentation; found 1 direct node (${found})`
+      `${sourceLocation(entry, node)}: root must contain exactly one <Scroll>, <Slides> or <Tiles> presentation; found 1 direct node (${found})`
     )
   }
 
   const ids = new Set<string>()
   const values = attrs(node, entry)
-  if (componentName(node) === 'Scroll') {
+  const name = componentName(node)
+
+  if (name === 'Scroll' || name === 'Slides') {
     assertAttributes(values, [], entry, node)
+    const container = `<${name}>`
     const pages = await parsePresentationChildren(
       node.children ?? [],
       'page',
+      container,
       entry,
       root,
       ids,
@@ -144,11 +152,13 @@ async function parseRootPresentation(
     )
     if (!pages.length) {
       throw new Error(
-        `${sourceLocation(entry, node)}: <Scroll> must contain at least one <Page>; found 0`
+        `${sourceLocation(entry, node)}: ${container} must contain at least one <Page>; found 0`
       )
     }
 
-    return { type: 'scroll', pages } satisfies ScrollNode
+    return name === 'Scroll'
+      ? ({ type: 'scroll', pages } satisfies ScrollNode)
+      : ({ type: 'slides', pages } satisfies SlidesNode)
   }
 
   assertAttributes(values, ['columns'], entry, node)
@@ -158,22 +168,29 @@ async function parseRootPresentation(
     (!Number.isInteger(columns) || Number(columns) < 1 || Number(columns) > 12)
   ) {
     throw new Error(
-      `${sourceLocation(entry, node)}: <Grid> "columns" must be an integer from 1 to 12`
+      `${sourceLocation(entry, node)}: <Tiles> "columns" must be an integer from 1 to 12`
     )
   }
-  const items = await parsePresentationChildren(node.children ?? [], 'item', entry, root, ids)
+  const items = await parsePresentationChildren(
+    node.children ?? [],
+    'item',
+    '<Tiles>',
+    entry,
+    root,
+    ids
+  )
 
   if (!items.length) {
     throw new Error(
-      `${sourceLocation(entry, node)}: <Grid> must contain at least one <Item>; found 0`
+      `${sourceLocation(entry, node)}: <Tiles> must contain at least one <Item>; found 0`
     )
   }
 
   return {
-    type: 'grid',
+    type: 'tiles',
     ...(columns !== undefined ? { columns: Number(columns) } : {}),
     items
-  } satisfies GridNode
+  } satisfies TilesNode
 }
 
 export interface ParsedPackageLocation {

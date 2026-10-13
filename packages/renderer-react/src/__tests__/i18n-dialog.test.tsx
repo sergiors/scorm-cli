@@ -7,16 +7,16 @@ import { PackageView } from '../../app/components/PackageView'
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from '../../app/components/ui/dialog'
 import type { ContentPackage } from '../../app/types'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
-import { gridPackage } from './fixtures'
+import { tilesPackage } from './fixtures'
 
 declare global {
   // eslint-disable-next-line no-var
   var IS_REACT_ACT_ENVIRONMENT: boolean | undefined
 }
 
-const ptGridPackage: ContentPackage = {
-  ...gridPackage,
-  metadata: { ...gridPackage.metadata, lang: 'pt-BR' }
+const ptTilesPackage: ContentPackage = {
+  ...tilesPackage,
+  metadata: { ...tilesPackage.metadata, lang: 'pt-BR' }
 }
 
 let container: HTMLDivElement
@@ -61,12 +61,12 @@ function LocalizedCloseDialog() {
   )
 }
 
-describe('i18n: grid dialog', () => {
+describe('i18n: tiles dialog', () => {
   it('localizes the dialog description and close controls', () => {
     act(() =>
       root.render(
         <PlayerI18nProvider lang="pt-BR">
-          <PackageView contentPackage={ptGridPackage} />
+          <PackageView contentPackage={ptTilesPackage} />
         </PlayerI18nProvider>
       )
     )

@@ -3,17 +3,19 @@ import {
   areQuestionnairesSubmitted,
   collectQuestionnaireIds,
   collectQuestionnaires,
+  getAccessibleNodeIds,
   getDoneNodeIds,
   getPresentationNodes,
+  isNodeAccessible,
   isPackageComplete
 } from '../../app/lib/content-helpers'
 import type { ContentNode, QuestionnaireNode } from '../../app/types'
 import {
-  gridPackage,
-  makeEmptyGridPackage,
   makeEmptyPackage,
+  makeEmptyTilesPackage,
   questionnaireNode,
-  scrollPackage
+  scrollPackage,
+  tilesPackage
 } from './fixtures'
 
 /** A minimal questionnaire with a distinct wrapper id, for traversal tests. */
@@ -45,8 +47,8 @@ describe('getPresentationNodes', () => {
     ])
   })
 
-  it('returns the items of a grid presentation in document order', () => {
-    expect(getPresentationNodes(gridPackage).map((node) => node.id)).toEqual([
+  it('returns the tiles of a tiles presentation in document order', () => {
+    expect(getPresentationNodes(tilesPackage).map((node) => node.id)).toEqual([
       'item:functions.mdx',
       'item:types.mdx',
       'item:details.mdx'
@@ -55,7 +57,7 @@ describe('getPresentationNodes', () => {
 
   it('returns an empty list for an empty presentation', () => {
     expect(getPresentationNodes(makeEmptyPackage())).toEqual([])
-    expect(getPresentationNodes(makeEmptyGridPackage())).toEqual([])
+    expect(getPresentationNodes(makeEmptyTilesPackage())).toEqual([])
   })
 })
 
@@ -71,9 +73,9 @@ describe('getDoneNodeIds', () => {
     ).toEqual(['page:intro.mdx'])
   })
 
-  it('counts grid items that were visited, regardless of completion', () => {
+  it('counts tiles that were visited, regardless of completion', () => {
     expect(
-      getDoneNodeIds(gridPackage, {
+      getDoneNodeIds(tilesPackage, {
         pages: {
           'item:functions.mdx': { visited: true },
           'item:types.mdx': {}
@@ -92,7 +94,7 @@ describe('getDoneNodeIds', () => {
 
   it('is empty for an empty presentation', () => {
     expect(getDoneNodeIds(makeEmptyPackage(), { pages: {} })).toEqual([])
-    expect(getDoneNodeIds(makeEmptyGridPackage(), { pages: {} })).toEqual([])
+    expect(getDoneNodeIds(makeEmptyTilesPackage(), { pages: {} })).toEqual([])
   })
 
   it('gates package completion through the canonical core helper', () => {
@@ -103,7 +105,7 @@ describe('getDoneNodeIds', () => {
       }
     }
     expect(isPackageComplete(scrollPackage, getDoneNodeIds(scrollPackage, state))).toBe(true)
-    expect(isPackageComplete(gridPackage, getDoneNodeIds(gridPackage, state))).toBe(false)
+    expect(isPackageComplete(tilesPackage, getDoneNodeIds(tilesPackage, state))).toBe(false)
   })
 })
 
@@ -116,16 +118,16 @@ describe('isPackageComplete', () => {
     expect(isPackageComplete(scrollPackage, ['page:intro.mdx', 'page:setup.mdx'])).toBe(true)
   })
 
-  it('tracks grid items the same way', () => {
-    expect(isPackageComplete(gridPackage, ['item:functions.mdx'])).toBe(false)
+  it('tracks tiles the same way', () => {
+    expect(isPackageComplete(tilesPackage, ['item:functions.mdx'])).toBe(false)
     expect(
-      isPackageComplete(gridPackage, ['item:functions.mdx', 'item:types.mdx', 'item:details.mdx'])
+      isPackageComplete(tilesPackage, ['item:functions.mdx', 'item:types.mdx', 'item:details.mdx'])
     ).toBe(true)
   })
 
   it('is false for an empty package', () => {
     expect(isPackageComplete(makeEmptyPackage(), [])).toBe(false)
-    expect(isPackageComplete(makeEmptyGridPackage(), [])).toBe(false)
+    expect(isPackageComplete(makeEmptyTilesPackage(), [])).toBe(false)
   })
 })
 
@@ -276,5 +278,30 @@ describe('areQuestionnairesSubmitted', () => {
 
   it('ignores submitted ids that no longer name a questionnaire', () => {
     expect(areQuestionnairesSubmitted(['a'], ['stale', 'a'])).toBe(true)
+  })
+})
+
+describe('shared sequential progression (renderer helpers)', () => {
+  it('exposes only the first page until its predecessor completes', () => {
+    expect(getAccessibleNodeIds(scrollPackage, { pages: {} })).toEqual(['page:intro.mdx'])
+  })
+
+  it('unlocks the next page once the current one is completed', () => {
+    const state = { pages: { 'page:intro.mdx': { completed: true } } }
+    expect(getAccessibleNodeIds(scrollPackage, state)).toEqual(['page:intro.mdx', 'page:setup.mdx'])
+    expect(isNodeAccessible(scrollPackage, state, 'page:setup.mdx')).toBe(true)
+  })
+
+  it('keeps a visited-but-incomplete page reachable and the rest locked', () => {
+    const state = { pages: { 'page:intro.mdx': { visited: true } } }
+    expect(isNodeAccessible(scrollPackage, state, 'page:intro.mdx')).toBe(true)
+    expect(isNodeAccessible(scrollPackage, state, 'page:setup.mdx')).toBe(false)
+  })
+
+  it('unlocks tiles one at a time as they are opened', () => {
+    expect(getAccessibleNodeIds(tilesPackage, { pages: {} })).toEqual(['item:functions.mdx'])
+    expect(
+      getAccessibleNodeIds(tilesPackage, { pages: { 'item:functions.mdx': { visited: true } } })
+    ).toEqual(['item:functions.mdx', 'item:types.mdx'])
   })
 })

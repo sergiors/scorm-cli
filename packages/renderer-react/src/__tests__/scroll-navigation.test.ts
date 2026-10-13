@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampPageIndex } from '../../app/components/ScrollPresentation'
+import { clampPageIndex } from '../../app/lib/sequence'
 
 describe('clampPageIndex', () => {
   it('keeps an in-range index unchanged', () => {

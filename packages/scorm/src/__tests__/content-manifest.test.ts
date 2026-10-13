@@ -399,11 +399,11 @@ describe('content manifest', () => {
     expect(JSON.stringify(manifest)).not.toMatch(/pageId|playback|position|seconds/)
   })
 
-  it('assigns grid videos to their root item owner', () => {
+  it('assigns items videos to their root item owner', () => {
     const content: ContentPackage = {
-      metadata: { title: 'Grid videos' },
+      metadata: { title: 'Tiles videos' },
       presentation: {
-        type: 'grid',
+        type: 'tiles',
         items: [
           {
             type: 'item',
@@ -435,11 +435,11 @@ describe('content manifest', () => {
     ).toBe('en')
   })
 
-  it('indexes grid items using stable item and question ids', () => {
+  it('indexes items using stable item and question ids', () => {
     const content: ContentPackage = {
-      metadata: { title: 'Grid' },
+      metadata: { title: 'Tiles' },
       presentation: {
-        type: 'grid',
+        type: 'tiles',
         items: [
           {
             type: 'item',
@@ -466,7 +466,7 @@ describe('content manifest', () => {
       }
     }
     expect(createContentManifest(content)).toMatchObject({
-      presentation: 'grid',
+      presentation: 'tiles',
       pages: {
         '0': { id: 'item-1' },
         '1': { id: 'item-2', questions: { '0': { id: 'stable-question-id' } } }

@@ -5,7 +5,6 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ContentRenderer as ContentRendererBase } from '../../app/components/ContentRenderer'
 import { PackageView as PackageViewBase } from '../../app/components/PackageView'
-import { canOpenPathPage } from '../../app/components/PathView'
 import { QuestionnaireView as QuestionnaireViewBase } from '../../app/components/QuestionnaireView'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
 import type {
@@ -115,11 +114,16 @@ function statuses(html: string): Array<string | null> {
   )
 }
 
-function pageStatesFor(visited: readonly boolean[]): Record<string, PlayerPageState> {
+/**
+ * Builds page state for a contiguous "done" vector: a done page is both
+ * visited and completed, which is exactly what the shared access policy reads
+ * to unlock the next root page.
+ */
+function pageStatesFor(done: readonly boolean[]): Record<string, PlayerPageState> {
   const states: Record<string, PlayerPageState> = {}
   refIds.forEach((id, index) => {
-    if (visited[index]) {
-      states[id] = { visited: true }
+    if (done[index]) {
+      states[id] = { visited: true, completed: true }
     }
   })
   return states
@@ -135,28 +139,6 @@ function lastSaved(saveState: { mock: { calls: unknown[][] } }): PlayerState {
   const calls = saveState.mock.calls
   return calls[calls.length - 1]?.[0] as PlayerState
 }
-
-describe('canOpenPathPage', () => {
-  it('always opens the first entry', () => {
-    expect(canOpenPathPage(0, [false, false, false, false])).toBe(true)
-  })
-
-  it('opens only the entry after the contiguous visited prefix', () => {
-    expect(canOpenPathPage(1, [true, false, false, false])).toBe(true)
-    expect(canOpenPathPage(2, [true, false, false, false])).toBe(false)
-    expect(canOpenPathPage(3, [true, true, false, false])).toBe(false)
-  })
-
-  it('treats a gap in the visited prefix as locked, even behind a visited entry', () => {
-    // Entry 2 is visited but entries 0-1 are not, so the prefix is empty and
-    // only entry 0 opens. The predecessor-only rule this replaced would have
-    // opened entry 3, which the contiguous policy must keep locked.
-    expect(canOpenPathPage(0, [false, false, true, false])).toBe(true)
-    expect(canOpenPathPage(1, [false, false, true, false])).toBe(false)
-    expect(canOpenPathPage(2, [false, false, true, false])).toBe(true)
-    expect(canOpenPathPage(3, [false, false, true, false])).toBe(false)
-  })
-})
 
 describe('PathView status vectors', () => {
   const vectors: Array<[string, boolean[], string[]]> = [
@@ -199,7 +181,7 @@ describe('PathView status affordances', () => {
   it('pairs each status with its own icon and localized label', () => {
     const html = renderStatic([pathNode], {
       pathPages: refPages,
-      pageStates: { 'page:one.mdx': { visited: true } },
+      pageStates: { 'page:one.mdx': { visited: true, completed: true } },
       onNavigatePathPage: () => {}
     })
     const entries = Array.from(host(html).querySelectorAll('[data-path-entry]'))
@@ -269,7 +251,7 @@ describe('PathView navigation', () => {
         <ContentRenderer
           nodes={[pathNode]}
           pathPages={refPages}
-          pageStates={{ 'page:one.mdx': { visited: true } }}
+          pageStates={{ 'page:one.mdx': { visited: true, completed: true } }}
           onNavigatePathPage={onNavigate}
         />
       )
@@ -355,7 +337,7 @@ describe('QuestionnaireView nested Path', () => {
         <QuestionnaireView
           node={nestedQuestionnaire}
           pathPages={refPages}
-          pageStates={{ 'page:one.mdx': { visited: true } }}
+          pageStates={{ 'page:one.mdx': { visited: true, completed: true } }}
           onNavigatePathPage={onNavigate}
         />
       )
@@ -398,8 +380,8 @@ describe('QuestionnaireView nested Path', () => {
           submitted
           pathPages={refPages}
           pageStates={{
-            'page:one.mdx': { visited: true },
-            'page:two.mdx': { visited: true }
+            'page:one.mdx': { visited: true, completed: true },
+            'page:two.mdx': { visited: true, completed: true }
           }}
           onNavigatePathPage={() => {}}
         />
@@ -456,58 +438,56 @@ describe('PackageView Path navigation', () => {
     return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-path-entry]'))
   }
 
-  it('switches pages without mounting a duplicate and reuses visited state', () => {
+  it('opens an accessible reference through the shared progression and reuses visited state', () => {
     const saveState = vi.fn()
-    window.scormBridge = { saveState }
+    window.scormBridge = {
+      restoreState: () => ({
+        location: 'page:gateway.mdx',
+        pages: { 'page:gateway.mdx': { visited: true, completed: true } }
+      }),
+      saveState
+    }
 
     act(() => root.render(<PackageView contentPackage={contentPackage} />))
 
-    // Only the gateway is mounted; its Path offers the first reference and locks
+    // The gateway is complete, so its Path offers the first reference and locks
     // the rest.
-    expect(sceneIndices(container)).toEqual([0])
     expect(entries().map((entry) => entry.dataset.pathStatus)).toEqual(['available', 'locked'])
 
     // A locked entry cannot move the presentation.
     act(() => entries()[1]?.click())
-    expect(sceneIndices(container)).toEqual([0])
+    expect(lastSaved(saveState)).toBeUndefined()
 
-    // Opening the available reference switches through the existing page view
-    // and mounts exactly one scene.
+    // Opening the available reference stores it as the location through the
+    // existing page switching, adding only its visited flag.
     act(() => entries()[0]?.click())
-    expect(sceneIndices(container)).toEqual([1])
-    expect(container.querySelectorAll('[data-scene-index]')).toHaveLength(1)
-    expect(container.textContent).toContain('Target body.')
-
     const saved = lastSaved(saveState)
-    // Navigation reuses the existing per-page visited flag and adds nothing.
+    expect(saved.location).toBe('page:target.mdx')
     expect(saved.pages['page:target.mdx']).toEqual({ visited: true })
     expect(Object.keys(saved).sort()).toEqual(['location', 'pages'])
     expect(JSON.stringify(saved)).not.toContain('suspend_data')
   })
 
-  it('reopens visited entries and unlocks the next one', () => {
+  it('reopens a visited reference and unlocks the next one', () => {
     const saveState = vi.fn()
-    window.scormBridge = { saveState }
+    window.scormBridge = {
+      restoreState: () => ({
+        location: 'page:gateway.mdx',
+        pages: {
+          'page:gateway.mdx': { visited: true, completed: true },
+          'page:target.mdx': { visited: true, completed: true }
+        }
+      }),
+      saveState
+    }
 
     act(() => root.render(<PackageView contentPackage={contentPackage} />))
-    act(() => entries()[0]?.click())
-    expect(sceneIndices(container)).toEqual([1])
-
-    // Return to the gateway through the existing previous control.
-    const previous = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
-      (button) => button.textContent?.includes('Previous page')
-    )
-    act(() => previous?.click())
-    expect(sceneIndices(container)).toEqual([0])
 
     // The visited reference stays open and unlocks the entry after it.
     expect(entries().map((entry) => entry.dataset.pathStatus)).toEqual(['visited', 'available'])
 
     act(() => entries()[1]?.click())
-    expect(sceneIndices(container)).toEqual([2])
-    expect(container.textContent).toContain('Later body.')
-    expect(lastSaved(saveState).pages['page:later.mdx']).toEqual({
-      visited: true
-    })
+    expect(lastSaved(saveState).location).toBe('page:later.mdx')
+    expect(lastSaved(saveState).pages['page:later.mdx']).toEqual({ visited: true })
   })
 })

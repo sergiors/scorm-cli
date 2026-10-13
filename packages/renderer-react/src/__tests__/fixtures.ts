@@ -1,12 +1,12 @@
 import type {
   ContentPackage,
   ContentNode,
-  GridNode,
-  ItemNode,
   PageNode,
   QuestionnaireNode,
   QuestionNode,
-  ScrollNode
+  ScrollNode,
+  ItemNode,
+  TilesNode
 } from '@scorm-cli/core'
 
 /** A single-choice question as authored inside a questionnaire. */
@@ -180,7 +180,7 @@ function paragraph(value: string): ContentNode {
 
 /**
  * One heading per authored Markdown depth 1-6. Shared by the renderer,
- * scroll and grid suites to assert that each depth maps straight to its
+ * scroll and tiles suites to assert that each depth maps straight to its
  * matching `h1`-`h6`, with no wrapper or nested context shifting the level.
  */
 export const headingDepths: ContentNode[] = Array.from({ length: 6 }, (_, index) => ({
@@ -240,13 +240,22 @@ export const detailsItem: ItemNode = {
   content: [paragraph('Modal body content.')]
 }
 
-export const gridPackage: ContentPackage = {
-  metadata: { title: 'Grid package' },
+export const tilesPackage: ContentPackage = {
+  metadata: { title: 'Tiles package' },
   presentation: {
-    type: 'grid',
+    type: 'tiles',
     columns: 2,
     items: [functionsItem, typesItem, detailsItem]
-  } satisfies GridNode
+  } satisfies TilesNode
+}
+
+/** A one-at-a-time slides package over the same pages as {@link scrollPackage}. */
+export const slidesPackage: ContentPackage = {
+  metadata: { title: 'Slides package' },
+  presentation: {
+    type: 'slides',
+    pages: [introPage, setupPage]
+  }
 }
 
 export function makeEmptyPackage(): ContentPackage {
@@ -256,9 +265,9 @@ export function makeEmptyPackage(): ContentPackage {
   }
 }
 
-export function makeEmptyGridPackage(): ContentPackage {
+export function makeEmptyTilesPackage(): ContentPackage {
   return {
-    metadata: { title: 'Empty grid package' },
-    presentation: { type: 'grid', items: [] } satisfies GridNode
+    metadata: { title: 'Empty tiles package' },
+    presentation: { type: 'tiles', items: [] } satisfies TilesNode
   }
 }

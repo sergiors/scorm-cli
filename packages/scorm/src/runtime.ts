@@ -154,7 +154,7 @@ ${browserCodecSource()}
     if (!entries.length) return 0;
     var done = entries.reduce(function (count, page) {
       var value = state && state.pages && state.pages[page.id];
-      var complete = CONTENT_MANIFEST.presentation === "scroll"
+      var complete = CONTENT_MANIFEST.presentation === "scroll" || CONTENT_MANIFEST.presentation === "slides"
         ? value && value.completed === true
         : value && value.visited === true;
       return count + (complete ? 1 : 0);

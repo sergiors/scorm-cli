@@ -9,10 +9,17 @@ export interface ContentPackage {
   presentation: RootPresentation
 }
 
-export type RootPresentation = ScrollNode | GridNode
+export type RootPresentation = ScrollNode | SlidesNode | TilesNode
 
+/** A continuous presentation: pages flow in one virtualized document. */
 export interface ScrollNode {
   type: 'scroll'
+  pages: PageNode[]
+}
+
+/** A slide presentation: exactly one page is shown at a time. */
+export interface SlidesNode {
+  type: 'slides'
   pages: PageNode[]
 }
 
@@ -24,8 +31,9 @@ export interface PageNode {
   content: ContentNode[]
 }
 
-export interface GridNode {
-  type: 'grid'
+/** A tiled presentation: items unlock one at a time in reading order. */
+export interface TilesNode {
+  type: 'tiles'
   columns?: number
   items: ItemNode[]
 }
@@ -238,32 +246,128 @@ export interface Renderer {
   dev?(content: ContentPackage, options: RendererDevOptions): Promise<RendererDevServer>
 }
 
-function presentationNodes(contentPackage: ContentPackage): (PageNode | ItemNode)[] {
-  return contentPackage.presentation.type === 'scroll'
-    ? contentPackage.presentation.pages
-    : contentPackage.presentation.items
+/** A leaf presentation node: a page (Scroll/Slides) or an item (Tiles). */
+export type PresentationNode = PageNode | ItemNode
+
+/** The ordered leaf nodes of a presentation, in authored reading order. */
+export function getPresentationNodes(contentPackage: ContentPackage): PresentationNode[] {
+  const { presentation } = contentPackage
+  return presentation.type === 'tiles' ? presentation.items : presentation.pages
 }
 
-/** Completion is renderer-agnostic: a package is complete after every page/item is visited. */
+/**
+ * Whether a saved node counts as done for its presentation. Done nodes count
+ * toward progress and unlock the next node. Page presentations (Scroll and
+ * Slides) complete a page when its own completion rule has been met and every
+ * questionnaire on it has been submitted; an item is done once it has been
+ * opened. The rule is presentation-owned, but it lives here so every caller
+ * agrees on one definition.
+ */
+export function isPresentationNodeDone(
+  contentPackage: ContentPackage,
+  nodeId: string,
+  playerState: PlayerState
+): boolean {
+  const state = playerState.pages[nodeId]
+  return contentPackage.presentation.type === 'tiles'
+    ? state?.visited === true
+    : state?.completed === true
+}
+
+/**
+ * The shared sequential progression policy, expressed purely over ordered ids
+ * and the set of already-done ids. It decides *what* can be accessed: the done
+ * prefix advances one node at a time, so the first not-done node after the
+ * prefix is accessible and every node beyond it is locked. A node in `reached`
+ * (typically already visited) stays accessible too, so a resumed node remains
+ * reachable even when it is not done. Presentations apply the result to control
+ * *how* they expose nodes.
+ */
+export interface SequentialAccess {
+  accessible: ReadonlySet<string>
+  locked: ReadonlySet<string>
+}
+
+export function getSequentialAccess(
+  ids: readonly string[],
+  doneNodeIds: ReadonlySet<string>,
+  reachedNodeIds: ReadonlySet<string> = doneNodeIds
+): SequentialAccess {
+  const accessible = new Set<string>()
+  const locked = new Set<string>()
+  let prefixDone = true
+
+  for (const id of ids) {
+    if (prefixDone || reachedNodeIds.has(id)) {
+      accessible.add(id)
+    } else {
+      locked.add(id)
+    }
+    if (!doneNodeIds.has(id)) {
+      prefixDone = false
+    }
+  }
+
+  return { accessible, locked }
+}
+
+/** Returns presentation-node IDs considered done by the package's progress semantics. */
+export function getDoneNodeIds(contentPackage: ContentPackage, playerState: PlayerState): string[] {
+  return getPresentationNodes(contentPackage)
+    .filter((node) => isPresentationNodeDone(contentPackage, node.id, playerState))
+    .map((node) => node.id)
+}
+
+/**
+ * Nodes that may be revisited: any node the learner has already opened, plus
+ * every done node. Revisiting an opened node must stay possible even when the
+ * node is not yet done (for example a resumed Scroll page whose end was never
+ * reached), so access is a superset of the strict done prefix.
+ */
+function reachedNodeIds(contentPackage: ContentPackage, playerState: PlayerState): Set<string> {
+  const reached = new Set<string>()
+  for (const node of getPresentationNodes(contentPackage)) {
+    if (playerState.pages[node.id]?.visited === true) {
+      reached.add(node.id)
+    }
+  }
+  for (const id of getDoneNodeIds(contentPackage, playerState)) {
+    reached.add(id)
+  }
+  return reached
+}
+
+/** Presentation-node IDs accessible under the shared sequential progression policy. */
+export function getAccessibleNodeIds(
+  contentPackage: ContentPackage,
+  playerState: PlayerState
+): string[] {
+  const ids = getPresentationNodes(contentPackage).map((node) => node.id)
+  const access = getSequentialAccess(
+    ids,
+    new Set(getDoneNodeIds(contentPackage, playerState)),
+    reachedNodeIds(contentPackage, playerState)
+  )
+  return ids.filter((id) => access.accessible.has(id))
+}
+
+/** Whether `nodeId` is accessible under the shared sequential progression policy. */
+export function isNodeAccessible(
+  contentPackage: ContentPackage,
+  playerState: PlayerState,
+  nodeId: string
+): boolean {
+  return getAccessibleNodeIds(contentPackage, playerState).includes(nodeId)
+}
+
+/** Completion is renderer-agnostic: a package is complete after every node is done. */
 export function isPackageComplete(
   contentPackage: ContentPackage,
-  visitedItemIds: Iterable<string>
+  doneNodeIds: Iterable<string>
 ): boolean {
-  const visited = visitedItemIds instanceof Set ? visitedItemIds : new Set(visitedItemIds)
-  const ids = presentationNodes(contentPackage).map((node) => node.id)
-  return ids.length > 0 && ids.every((id) => visited.has(id))
-}
-
-/** Returns presentation-node IDs considered complete by the package's progress semantics. */
-export function getDoneNodeIds(contentPackage: ContentPackage, playerState: PlayerState): string[] {
-  return presentationNodes(contentPackage)
-    .filter((node) => {
-      const state = playerState.pages[node.id]
-      return contentPackage.presentation.type === 'scroll'
-        ? state?.completed === true
-        : state?.visited === true
-    })
-    .map((node) => node.id)
+  const done = doneNodeIds instanceof Set ? doneNodeIds : new Set(doneNodeIds)
+  const ids = getPresentationNodes(contentPackage).map((node) => node.id)
+  return ids.length > 0 && ids.every((id) => done.has(id))
 }
 
 /** Returns integer package progress, independently of any SCORM encoding. */
@@ -271,7 +375,7 @@ export function getPackageProgress(
   contentPackage: ContentPackage,
   playerState: PlayerState
 ): number {
-  const nodes = presentationNodes(contentPackage)
+  const nodes = getPresentationNodes(contentPackage)
   if (nodes.length === 0) {
     return 0
   }
@@ -370,7 +474,7 @@ export function getAggregateQuestionnaireScore(
     }
   }
 
-  for (const presentationNode of presentationNodes(contentPackage)) {
+  for (const presentationNode of getPresentationNodes(contentPackage)) {
     visit(presentationNode.content, playerState.pages[presentationNode.id]?.answers)
   }
 
@@ -380,7 +484,7 @@ export function getAggregateQuestionnaireScore(
 /** Local references in the content AST are normalized relative to the package root. */
 export function collectAssetReferences(contentPackage: ContentPackage): string[] {
   const refs = new Set<string>()
-  const nodes = presentationNodes(contentPackage)
+  const nodes = getPresentationNodes(contentPackage)
 
   const addLocal = (value: string | undefined) => {
     if (value && !isRemoteReference(value)) {

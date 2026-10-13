@@ -24,7 +24,7 @@ class MemoryStorage {
 const content: ContentPackage = {
   metadata: { title: 'Resume test' },
   presentation: {
-    type: 'grid',
+    type: 'tiles',
     items: [
       {
         type: 'item',

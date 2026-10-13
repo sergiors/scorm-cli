@@ -18,7 +18,7 @@ describe('CLI build orchestration', () => {
     await mkdir(path.join(contentDir, 'files'))
     await writeFile(
       path.join(contentDir, 'index.mdx'),
-      `---\ntitle: Demo\n---\n<Grid><Item src="lesson.mdx" /></Grid>`
+      `---\ntitle: Demo\n---\n<Tiles><Item src="lesson.mdx" /></Tiles>`
     )
     await writeFile(
       path.join(contentDir, 'lesson.mdx'),
@@ -55,7 +55,7 @@ describe('CLI build orchestration', () => {
     expect(contentManifest).toMatchObject({
       schemaVersion: 1,
       title: 'Demo',
-      presentation: 'grid',
+      presentation: 'tiles',
       pages: {
         '0': {
           id: expect.any(String),
@@ -87,7 +87,7 @@ describe('CLI build orchestration', () => {
     await mkdir(contentDir)
     await writeFile(
       path.join(contentDir, 'index.mdx'),
-      '---\ntitle: Demo\n---\n<Grid><Item src="lesson.mdx" /></Grid>'
+      '---\ntitle: Demo\n---\n<Tiles><Item src="lesson.mdx" /></Tiles>'
     )
     await writeFile(path.join(contentDir, 'lesson.mdx'), '---\ntitle: Lesson\n---\nHello')
     const output = path.join(temp, 'out-2004.zip')

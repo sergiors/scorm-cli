@@ -7,7 +7,7 @@ import { startDevPackage } from '../dev'
 const content: ContentPackage = {
   metadata: { title: 'Demo' },
   presentation: {
-    type: 'grid',
+    type: 'tiles',
     items: [
       {
         type: 'item',

@@ -26,7 +26,7 @@ export type ComponentContext =
   | 'flow'
   /** The single root presentation element. */
   | 'root'
-  /** A direct child of `<Scroll>` or `<Grid>`. */
+  /** A direct child of `<Scroll>`, `<Slides>`, or `<Tiles>`. */
   | 'presentation'
   /** A direct child of `<Path>`. */
   | 'path'
@@ -42,7 +42,8 @@ export type ComponentContext =
  */
 const componentRegistry = {
   Scroll: { contexts: ['root'] },
-  Grid: { contexts: ['root'] },
+  Slides: { contexts: ['root'] },
+  Tiles: { contexts: ['root'] },
   Page: { contexts: ['presentation', 'path'] },
   Item: { contexts: ['presentation'] },
   Path: { contexts: ['flow'] },

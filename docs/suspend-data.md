@@ -94,18 +94,19 @@ only a location that matches a current page/item ID.
 What the compact data does and does not preserve:
 
 - `x` stores one visited bit per manifest page/item, in manifest order. It does
-  not store page IDs in this bit string.
+  not store node IDs in this bit string.
 - `p` stores the integer package percentage passed to the encoder, rounded and
   clamped to 0–100. The Node `encodeSuspendData` API takes this as an explicit
   argument. In the generated runtime, `progressFor(state)` derives it from the
-  packaged manifest: Scroll progress counts completed pages; Grid progress
-  counts visited items. The renderer also supplies progress to `saveState`, but
-  the generated runtime recomputes it from state.
-- Decoding `p` reconstructs completion flags for Scroll pages by marking the
-  first `round(p * pageCount / 100)` manifest entries completed and visited.
-  Grid completion is not reconstructed from `p`; its progress uses the `x`
-  visited bits. Therefore per-page `completed` flags are not independently
-  encoded, and Scroll completion is necessarily positional/lossy.
+  packaged manifest: Scroll and Slides progress counts completed pages; Tiles
+  progress counts visited items. The renderer also supplies progress to
+  `saveState`, but the generated runtime recomputes it from state.
+- Decoding `p` reconstructs completion flags for sequential page presentations
+  (Scroll and Slides) by marking the first `round(p * pageCount / 100)` manifest
+  entries completed and visited. Tiles completion is not reconstructed from `p`;
+  its progress uses the `x` visited bits. Therefore per-page `completed` flags
+  are not independently encoded, and sequential completion is necessarily
+  positional/lossy.
 - `d` is a single flat map for the current v1 format. Each key is
   `<pageIndex>.<kind>.<entityIndex>` where `kind` is `a` (answer) or `t` (video
   position); answer selections are manifest option indexes and video positions
@@ -120,11 +121,11 @@ What the compact data does and does not preserve:
   and restores no answers or video positions (see
   [Format versions](#format-versions)).
 - `submittedQuestionnaires` is not encoded. The renderer sanitizer retains only
-  current questionnaire IDs and, for a **completed Scroll page**, infers that
-  all questionnaires on that page have been submitted. This preserves the
-  completed-page read-only/gating behavior even though compact state only
-  reconstructs completion from `p`. It does not infer submissions for Grid
-  items.
+  current questionnaire IDs and, for a **completed sequential page** (Scroll or
+  Slides), infers that all questionnaires on that page have been submitted. This
+  preserves the completed-page read-only/gating behavior even though compact
+  state only reconstructs completion from `p`. It does not infer submissions for
+  Tiles.
 - There is no score field in `PlayerState` or compact suspend data. Aggregate
   questionnaire score is derived from current authored questions/options and
   saved answers (`getAggregateQuestionnaireScore` in core); the separate SCORM
@@ -278,7 +279,7 @@ interface ContentManifest {
   schemaVersion: 1
   title: string
   lang: string
-  presentation: 'scroll' | 'grid'
+  presentation: 'scroll' | 'slides' | 'tiles'
   pages: Record<
     string,
     {

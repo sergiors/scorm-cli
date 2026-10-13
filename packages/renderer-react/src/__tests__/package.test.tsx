@@ -5,11 +5,11 @@ import { PackageView } from '../../app/components/PackageView'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
 import type { ContentPackage } from '../../app/types'
 import {
-  gridPackage,
   headingDepths,
-  makeEmptyGridPackage,
   makeEmptyPackage,
-  scrollPackage
+  makeEmptyTilesPackage,
+  scrollPackage,
+  tilesPackage
 } from './fixtures'
 
 const headingScrollPackage: ContentPackage = {
@@ -80,34 +80,40 @@ describe('PackageView scroll presentation', () => {
   })
 })
 
-describe('PackageView grid presentation', () => {
-  it('renders item cards using the authored titles', () => {
-    const html = renderView(gridPackage)
+describe('PackageView tiles presentation', () => {
+  it('renders tile cards using the authored titles', () => {
+    const html = renderView(tilesPackage)
     expect(html).toContain('Functions')
     expect(html).toContain('Types')
     expect(html).toContain('Extra details')
   })
 
-  it('does not render item content inline', () => {
-    const html = renderView(gridPackage)
+  it('does not render tile content inline', () => {
+    const html = renderView(tilesPackage)
     expect(html).not.toContain('Function body.')
     expect(html).not.toContain('Modal body content.')
   })
 
   it('carries the authored column count into the responsive grid', () => {
-    const html = renderView(gridPackage)
+    const html = renderView(tilesPackage)
     expect(html).toContain('grid-cols-1')
-    expect(html).toContain('--grid-columns:2')
+    expect(html).toContain('--tiles-columns:2')
   })
 
   it('does not open a dialog until a card is selected', () => {
-    const html = renderView(gridPackage)
+    const html = renderView(tilesPackage)
     expect(html).not.toContain('role="dialog"')
     expect(html).not.toContain('data-slot="dialog-content"')
   })
 
-  it('shows an empty state when a grid package has no items', () => {
-    const html = renderView(makeEmptyGridPackage())
+  it('renders locked tiles as disabled so they are behaviorally inaccessible', () => {
+    const html = renderView(tilesPackage)
+    expect(html).toContain('data-tile-status="locked"')
+    expect(html).toContain('disabled')
+  })
+
+  it('shows an empty state when a tiles package has no tiles', () => {
+    const html = renderView(makeEmptyTilesPackage())
     expect(html).toContain('does not contain any content')
   })
 })
@@ -115,8 +121,8 @@ describe('PackageView grid presentation', () => {
 describe('PackageView shared', () => {
   it('does not render any progress or completion UI of its own', () => {
     const scrollHtml = renderView(scrollPackage)
-    const gridHtml = renderView(gridPackage)
-    for (const html of [scrollHtml, gridHtml]) {
+    const tilesHtml = renderView(tilesPackage)
+    for (const html of [scrollHtml, tilesHtml]) {
       // Every progressbar must be an authored questionnaire's own wizard
       // counter; the package adds no progress chrome of its own.
       const progressbars = html.match(/role="progressbar"/g) ?? []
@@ -135,8 +141,8 @@ describe('PackageApp', () => {
     expect(html).toContain('Welcome')
   })
 
-  it('renders the authored grid view for the provided content package', () => {
-    const html = renderToStaticMarkup(<PackageApp contentPackage={gridPackage} />)
+  it('renders the authored tiles view for the provided content package', () => {
+    const html = renderToStaticMarkup(<PackageApp contentPackage={tilesPackage} />)
     expect(html).toContain('Functions')
   })
 })

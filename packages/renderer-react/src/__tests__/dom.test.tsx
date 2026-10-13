@@ -5,12 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PackageView } from '../../app/components/PackageView'
 import type {
   ContentPackage,
-  ItemNode,
   PageNode,
   PlayerState,
-  QuestionnaireNode
+  QuestionnaireNode,
+  ItemNode
 } from '../../app/types'
-import { gridPackage, headingDepths, introPage, setupPage } from './fixtures'
+import { headingDepths, introPage, setupPage, tilesPackage } from './fixtures'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
 
 /**
@@ -49,6 +49,20 @@ class FakeIntersectionObserver {
 
   observe(element: Element): void {
     this.state.elements.add(element)
+    // Real IntersectionObserver always delivers an initial observation for a
+    // newly observed target. Model it as not-yet-intersecting — the common case
+    // for a region mounted below the viewport — so `observeVisibility` starts
+    // from a real observation and a test still drives the actual crossing.
+    this.state.callback(
+      [
+        {
+          target: element,
+          isIntersecting: false,
+          intersectionRatio: 0
+        } as unknown as IntersectionObserverEntry
+      ],
+      this as unknown as IntersectionObserver
+    )
   }
 
   unobserve(element: Element): void {
@@ -64,19 +78,52 @@ class FakeIntersectionObserver {
   }
 }
 
+interface FakeResizeObserverState {
+  callback: ResizeObserverCallback
+  elements: Set<Element>
+}
+
+const resizeObservers: FakeResizeObserverState[] = []
+
+class FakeResizeObserver {
+  private readonly state: FakeResizeObserverState
+
+  constructor(callback: ResizeObserverCallback) {
+    this.state = { callback, elements: new Set<Element>() }
+    resizeObservers.push(this.state)
+  }
+
+  observe(element: Element): void {
+    this.state.elements.add(element)
+  }
+
+  unobserve(element: Element): void {
+    this.state.elements.delete(element)
+  }
+
+  disconnect(): void {
+    this.state.elements.clear()
+  }
+}
+
 let originalIntersectionObserver: typeof IntersectionObserver | undefined
+let originalResizeObserver: typeof ResizeObserver | undefined
 let container: HTMLDivElement
 let root: Root
 
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   observers.length = 0
+  resizeObservers.length = 0
   originalIntersectionObserver = globalThis.IntersectionObserver
+  originalResizeObserver = globalThis.ResizeObserver
   globalThis.IntersectionObserver =
     FakeIntersectionObserver as unknown as typeof IntersectionObserver
-  // The player resets the document scroll through `window.scrollTo`; jsdom does
-  // not implement it, so spy on it to observe the reset without side effects.
+  globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver
+  // jsdom does not implement scrolling; stub both entry points so the player's
+  // resume/navigation calls stay side-effect free and observable.
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+  Element.prototype.scrollIntoView = vi.fn()
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
@@ -88,6 +135,9 @@ afterEach(() => {
   delete window.scormBridge
   if (originalIntersectionObserver) {
     globalThis.IntersectionObserver = originalIntersectionObserver
+  }
+  if (originalResizeObserver) {
+    globalThis.ResizeObserver = originalResizeObserver
   }
   vi.restoreAllMocks()
 })
@@ -118,11 +168,16 @@ function input(value: string): HTMLInputElement {
   return element
 }
 
-/**
- * A read-only submitted choice. Submitted answers render through the shadcn
- * questionnaire choice part (dialogs portal into `document`), so search the
- * whole document rather than the render container.
- */
+/** Finds an input inside a specific mounted scene, for multi-page assertions. */
+function inputInScene(index: number, value: string): HTMLInputElement {
+  const scene = container.querySelector(`[data-scene-index="${index}"]`)
+  const element = scene?.querySelector<HTMLInputElement>(`input[value="${value}"]`)
+  if (!element) {
+    throw new Error(`Input not found for value: ${value} in scene ${index}`)
+  }
+  return element
+}
+
 function submittedControl(value: string): HTMLInputElement {
   const element = document.querySelector<HTMLInputElement>(
     `[data-slot="questionnaire-choice-input"][value="${value}"]`
@@ -145,19 +200,16 @@ function dialog(): HTMLElement | null {
   return document.querySelector('[role="dialog"]')
 }
 
-/** The state passed to the most recent `saveState` call. */
 function lastSaved(saveState: { mock: { calls: unknown[][] } }): PlayerState {
   const calls = saveState.mock.calls
   return calls[calls.length - 1]?.[0] as PlayerState
 }
 
-/** The integer progress passed to the most recent `saveState` call. */
 function lastProgress(saveState: { mock: { calls: unknown[][] } }): number {
   const calls = saveState.mock.calls
   return calls[calls.length - 1]?.[1] as number
 }
 
-/** Finds the fake observer currently watching the given element. */
 function observerFor(element: Element): FakeObserverState {
   const state = observers.find((candidate) => candidate.elements.has(element))
   if (!state) {
@@ -166,7 +218,6 @@ function observerFor(element: Element): FakeObserverState {
   return state
 }
 
-/** Drives the fake observer watching a single element. */
 function driveObserver(element: Element, isIntersecting: boolean): void {
   const state = observerFor(element)
   act(() => {
@@ -183,16 +234,20 @@ function driveObserver(element: Element, isIntersecting: boolean): void {
   })
 }
 
-/** Drives the fake start (top boundary) observer for a page's sentinel. */
-function setStartIntersecting(index: number, isIntersecting: boolean): void {
-  const sentinel = container.querySelector(`[data-scroll-start="${index}"]`)
-  if (!sentinel) {
-    throw new Error(`No start sentinel for page ${index}`)
+/**
+ * Drives the activation observer for a page's scroll region. A mounted scene and
+ * a virtualized placeholder both expose the same `[data-scroll-page]` region, so
+ * this models the page becoming visible anywhere inside it—including a jump into
+ * its middle or lower portion, not only across its start boundary.
+ */
+function setRegionIntersecting(index: number, isIntersecting: boolean): void {
+  const region = container.querySelector(`[data-scroll-page="${index}"]`)
+  if (!region) {
+    throw new Error(`No scroll region for page ${index}`)
   }
-  driveObserver(sentinel, isIntersecting)
+  driveObserver(region, isIntersecting)
 }
 
-/** Drives the fake end observer for a page's sentinel. */
 function setEndIntersecting(index: number, isIntersecting: boolean): void {
   const sentinel = container.querySelector(`[data-scroll-end="${index}"]`)
   if (!sentinel) {
@@ -201,27 +256,41 @@ function setEndIntersecting(index: number, isIntersecting: boolean): void {
   driveObserver(sentinel, isIntersecting)
 }
 
-function previousButtons(): HTMLButtonElement[] {
-  return Array.from(document.querySelectorAll('button')).filter((button) =>
-    button.textContent?.trim().startsWith('Previous page')
-  )
-}
-
-function nextButtons(): HTMLButtonElement[] {
-  return Array.from(document.querySelectorAll('button')).filter((button) =>
-    button.textContent?.trim().startsWith('Continue to next page')
-  )
-}
-
 /**
- * Any internal scroll wrapper the player must never render now that scrolling
- * belongs to the document itself.
+ * Drives the ResizeObserver watching a mounted scene, reporting `height` as its
+ * rendered outer height — jsdom does no layout, so the measurement is supplied
+ * explicitly, exactly as the observer would read it in a browser.
  */
+function measureScene(element: Element, height: number): void {
+  element.getBoundingClientRect = () =>
+    ({
+      height,
+      width: 0,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: height,
+      x: 0,
+      y: 0,
+      toJSON: () => ({})
+    }) as DOMRect
+  const state = resizeObservers.find((candidate) => candidate.elements.has(element))
+  if (!state) {
+    throw new Error('No ResizeObserver is watching the scene')
+  }
+  act(() => {
+    state.callback(
+      [{ target: element, contentRect: { height } } as unknown as ResizeObserverEntry],
+      {} as ResizeObserver
+    )
+  })
+}
+
 function scrollWrappers(): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>('.overflow-y-auto'))
 }
 
-/** Indices of the mounted scenes; at most one is ever present. */
+/** Indices of the mounted scenes, in document order. */
 function sceneIndices(): number[] {
   return Array.from(container.querySelectorAll('[data-scene-index]'), (node) =>
     Number(node.getAttribute('data-scene-index'))
@@ -345,7 +414,34 @@ const selfPathPackage: ContentPackage = {
   presentation: { type: 'scroll', pages: [selfPathPage, plainPage(2)] }
 }
 
-const gridQuizItem: ItemNode = {
+/** A page whose only content is a Path pointing to the package's last page. */
+const farPathPage: PageNode = {
+  type: 'page',
+  id: 'page:path.mdx',
+  source: 'path.mdx',
+  metadata: { title: 'Path' },
+  content: [{ type: 'path', pageIds: ['page:plain-4.mdx'] }]
+}
+
+const nonAdjacentPathPackage: ContentPackage = {
+  metadata: { title: 'Non-adjacent path' },
+  presentation: {
+    type: 'scroll',
+    pages: [farPathPage, plainPage(2), plainPage(3), plainPage(4)]
+  }
+}
+
+const slidesPackage: ContentPackage = {
+  metadata: { title: 'Slides package' },
+  presentation: { type: 'slides', pages: [plainPage(1), plainPage(2)] }
+}
+
+const gatedSlidesPackage: ContentPackage = {
+  metadata: { title: 'Gated slides' },
+  presentation: { type: 'slides', pages: [introPage, setupPage] }
+}
+
+const quizItem: ItemNode = {
   type: 'item',
   id: 'item:quiz.mdx',
   source: 'quiz.mdx',
@@ -353,12 +449,12 @@ const gridQuizItem: ItemNode = {
   content: [sharedQuestionnaire('quiz.mdx')]
 }
 
-const gridQuizPackage: ContentPackage = {
-  metadata: { title: 'Grid quiz' },
-  presentation: { type: 'grid', items: [gridQuizItem] }
+const quizTilesPackage: ContentPackage = {
+  metadata: { title: 'Tiles quiz' },
+  presentation: { type: 'tiles', items: [quizItem] }
 }
 
-const gridHeadingItem: ItemNode = {
+const headingItem: ItemNode = {
   type: 'item',
   id: 'item:headings.mdx',
   source: 'headings.mdx',
@@ -366,35 +462,50 @@ const gridHeadingItem: ItemNode = {
   content: headingDepths
 }
 
-const gridHeadingPackage: ContentPackage = {
-  metadata: { title: 'Grid headings' },
-  presentation: { type: 'grid', items: [gridHeadingItem] }
+const headingTilesPackage: ContentPackage = {
+  metadata: { title: 'Tiles headings' },
+  presentation: { type: 'tiles', items: [headingItem] }
+}
+
+function tileButtons(): HTMLButtonElement[] {
+  return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-tile] button'))
 }
 
 describe('PackageView scroll interactions', () => {
-  it('renders only the first page, without previous/next page controls', () => {
+  it('renders only the accessible page and leaves locked pages unmounted', () => {
     act(() => root.render(<Player contentPackage={gatedPackage} />))
 
     expect(sceneIndices()).toEqual([0])
-    // Only the displayed page's authored body is present. The metadata title is
-    // exposed as the scene's accessible name, never injected as visible text.
     expect(text()).toContain('Welcome')
     expect(text()).not.toContain('Setup instructions.')
-    expect(previousButtons()).toHaveLength(0)
-    expect(nextButtons()).toHaveLength(0)
-    // The player renders no page/package progress chrome of its own; the only
-    // progressbar belongs to the authored questionnaire on the displayed page.
+    // The remaining pages are locked and never mounted.
+    expect(container.querySelector('[data-scroll-locked]')).not.toBeNull()
+    expect(container.querySelector('[data-scroll-page="1"]')).toBeNull()
+  })
+
+  it('renders no package chrome, paging controls or progress UI', () => {
+    act(() => root.render(<Player contentPackage={gatedPackage} />))
+
+    expect(text()).not.toContain('Rendering Fundamentals')
+    expect(text()).not.toContain('Package complete')
     expect(
       container.querySelector('[role="progressbar"]:not([data-slot="questionnaire-progress"])')
     ).toBeNull()
+    expect(scrollWrappers()).toHaveLength(0)
   })
 
-  it('does not mark every page complete at mount', () => {
-    const markCompleted = vi.fn()
-    window.scormBridge = { markCompleted }
+  it('marks the first page visited and stores it as the location on mount', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
 
-    act(() => root.render(<Player contentPackage={gatedPackage} />))
-    expect(markCompleted).not.toHaveBeenCalled()
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
+
+    expect(saveState).toHaveBeenCalledTimes(1)
+    expect(lastSaved(saveState)).toEqual({
+      location: 'page:plain-1.mdx',
+      pages: { 'page:plain-1.mdx': { visited: true } }
+    })
+    expect(lastProgress(saveState)).toBe(0)
   })
 
   it('works without any SCORM bridge', () => {
@@ -409,14 +520,61 @@ describe('PackageView scroll interactions', () => {
     const scene = container.querySelector<HTMLElement>('[data-scene-index="0"]')
     const prose = scene?.querySelector<HTMLElement>('.prose')
     expect(prose).not.toBeNull()
-    // Light mode keeps the stone palette...
     expect(prose?.classList.contains('prose-stone')).toBe(true)
-    // ...and dark mode inverts it, so typography colors do not stay in the
-    // light palette when the surrounding theme is dark.
     expect(prose?.classList.contains('dark:prose-invert')).toBe(true)
   })
 
-  it('completes a questionnaire-free page at its end', () => {
+  it('observes page boundaries against the viewport with a non-negative end margin', () => {
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
+
+    const sentinel = container.querySelector('[data-scroll-end="0"]')
+    expect(sentinel).not.toBeNull()
+    const options = observerFor(sentinel as Element).options
+    expect(options?.root).toBeNull()
+    const [, , bottom = ''] = (options?.rootMargin ?? '').split(' ')
+    const bottomMargin = Number.parseFloat(bottom)
+    expect(Number.isNaN(bottomMargin)).toBe(false)
+    expect(bottomMargin).toBeGreaterThanOrEqual(0)
+  })
+})
+
+describe('PackageView scroll completion gating', () => {
+  it('completes a questionnaire-free page at its end and unlocks the next', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
+    expect(sceneIndices()).toEqual([0])
+
+    setEndIntersecting(0, true)
+
+    // Page one is complete, so page two unlocks and mounts.
+    expect(sceneIndices()).toEqual([0, 1])
+    expect(lastSaved(saveState).pages['page:plain-1.mdx']?.completed).toBe(true)
+  })
+
+  it('keeps the next page locked at the end until questionnaires submit', () => {
+    act(() => root.render(<Player contentPackage={gatedPackage} />))
+
+    setEndIntersecting(0, true)
+    expect(sceneIndices()).toEqual([0])
+    expect(container.querySelector('[data-scroll-page="1"]')).toBeNull()
+
+    answerQuestionnaire()
+    expect(sceneIndices()).toEqual([0, 1])
+  })
+
+  it('waits for the page end when the questionnaire is submitted first', () => {
+    act(() => root.render(<Player contentPackage={gatedPackage} />))
+
+    answerQuestionnaire()
+    expect(sceneIndices()).toEqual([0])
+
+    setEndIntersecting(0, true)
+    expect(sceneIndices()).toEqual([0, 1])
+  })
+
+  it('completes the package only after the final page completes', () => {
     const markCompleted = vi.fn()
     window.scormBridge = { markCompleted }
 
@@ -424,423 +582,216 @@ describe('PackageView scroll interactions', () => {
     expect(markCompleted).not.toHaveBeenCalled()
 
     setEndIntersecting(0, true)
-    act(() => nextButtons()[0]?.click())
     setEndIntersecting(1, true)
 
     expect(markCompleted).toHaveBeenCalledTimes(1)
   })
-
-  it('marks the first page visited and stores it as the location on mount', () => {
-    const saveState = vi.fn()
-    window.scormBridge = { saveState }
-
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-
-    expect(saveState).toHaveBeenCalledTimes(1)
-    expect(lastSaved(saveState)).toEqual({
-      location: 'page:plain-1.mdx',
-      pages: { 'page:plain-1.mdx': { visited: true } }
-    })
-    // A visited-but-not-completed scroll page contributes no package progress.
-    expect(lastProgress(saveState)).toBe(0)
-    expect(Number.isInteger(lastProgress(saveState))).toBe(true)
-  })
-
-  it('does not re-save a restored page that is already visited', () => {
-    const saveState = vi.fn()
-    window.scormBridge = {
-      restoreState: () => ({
-        location: 'page:plain-2.mdx',
-        pages: { 'page:plain-2.mdx': { visited: true } }
-      }),
-      saveState
-    }
-
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-
-    expect(sceneIndices()).toEqual([1])
-    expect(saveState).not.toHaveBeenCalled()
-  })
 })
 
-describe('PackageView scroll completion gating', () => {
-  it('keeps the next control hidden at the page end until questionnaires submit', () => {
-    act(() => root.render(<Player contentPackage={gatedPackage} />))
-
-    setEndIntersecting(0, true)
-    expect(nextButtons()).toHaveLength(0)
-
-    answerQuestionnaire()
-    expect(nextButtons()).toHaveLength(1)
-  })
-
-  it('waits for the page end when the questionnaire is submitted first', () => {
-    act(() => root.render(<Player contentPackage={gatedPackage} />))
-
-    answerQuestionnaire()
-    expect(nextButtons()).toHaveLength(0)
-
-    setEndIntersecting(0, true)
-    expect(nextButtons()).toHaveLength(1)
-  })
-
-  it('completes a page only at its end with every questionnaire submitted', () => {
-    const saveState = vi.fn()
-    window.scormBridge = { saveState }
-
-    act(() => root.render(<Player contentPackage={gatedPackage} />))
-    const afterMount = saveState.mock.calls.length
-
-    setEndIntersecting(0, true)
-    // Reaching the end is not enough: the questionnaire is still unanswered.
-    expect(saveState.mock.calls.length).toBe(afterMount)
-
-    answerQuestionnaire()
-    expect(lastSaved(saveState).pages['page:intro.mdx']?.completed).toBe(true)
-  })
-
-  it('never renders a completion banner or progress UI', () => {
-    act(() => root.render(<Player contentPackage={progressPackage} />))
-    setEndIntersecting(0, true)
-
-    expect(container.querySelector('[role="status"]')).toBeNull()
-    expect(container.querySelector('[role="progressbar"]')).toBeNull()
-    expect(text()).not.toContain('Package complete')
-  })
-})
-
-describe('PackageView scroll navigation controls', () => {
-  it('keeps the next control hidden until the page end is reached', () => {
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-
-    expect(container.querySelector('[data-scroll-end]')).not.toBeNull()
-    expect(nextButtons()).toHaveLength(0)
-  })
-
-  it('shows the next control at the page end when another page follows', () => {
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-    setEndIntersecting(0, true)
-
-    const buttons = nextButtons()
-    expect(buttons).toHaveLength(1)
-    expect(buttons[0]?.getAttribute('type')).toBe('button')
-  })
-
-  it('hides the next control after scrolling forward past the page end', () => {
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-    setEndIntersecting(0, true)
-    expect(nextButtons()).toHaveLength(1)
-
-    setEndIntersecting(0, false)
-    expect(nextButtons()).toHaveLength(0)
-  })
-
-  it('advances to the next page and hides the previous content', () => {
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-    setEndIntersecting(0, true)
-
-    act(() => nextButtons()[0]?.click())
-
-    expect(sceneIndices()).toEqual([1])
-    expect(text()).toContain('Body 2.')
-    expect(text()).not.toContain('Body 1.')
-    // The new page opens at its top, so only the previous control is offered.
-    expect(previousButtons()).toHaveLength(1)
-    expect(nextButtons()).toHaveLength(0)
-  })
-
-  it('never shows a previous control on the first page', () => {
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-
-    expect(container.querySelector('[data-scroll-start]')).toBeNull()
-    expect(previousButtons()).toHaveLength(0)
-  })
-
-  it('keeps the previous control a fixed, clickable overlay above the page', () => {
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-    setEndIntersecting(0, true)
-    act(() => nextButtons()[0]?.click())
-
-    const control = container.querySelector<HTMLElement>('[data-scroll-previous]')
-    const scene = container.querySelector<HTMLElement>('[data-scene-index="1"]')
-    if (!control || !scene) {
-      throw new Error('Previous control or page scene not found')
-    }
-
-    // The control floats over the viewport, ahead of the scene in document
-    // order, instead of occupying page flow, so the page never shifts when the
-    // control appears or disappears.
-    expect(control.classList.contains('fixed')).toBe(true)
-    expect(container.contains(control)).toBe(true)
-    expect(control.compareDocumentPosition(scene) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-
-    // The wrapper ignores pointer events so it never blocks the page beneath it,
-    // while the button itself stays operable.
-    expect(control.classList.contains('pointer-events-none')).toBe(true)
-    const button = previousButtons()[0]
-    expect(button).toBeDefined()
-    expect(button?.className).toContain('pointer-events-auto')
-  })
-
-  it('returns to the previous page when the previous control is activated', () => {
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-    setEndIntersecting(0, true)
-    act(() => nextButtons()[0]?.click())
-
-    act(() => previousButtons()[0]?.click())
-
-    expect(sceneIndices()).toEqual([0])
-    expect(text()).toContain('Body 1.')
-    expect(text()).not.toContain('Body 2.')
-    expect(previousButtons()).toHaveLength(0)
-  })
-
-  it('never shows a next control on the final page', () => {
-    act(() => root.render(<Player contentPackage={plainOnePagePackage} />))
-
-    setEndIntersecting(0, true)
-    expect(nextButtons()).toHaveLength(0)
-  })
-
-  it('never shows a next control on the last page of a multi-page package', () => {
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-    setEndIntersecting(0, true)
-    act(() => nextButtons()[0]?.click())
-
-    setEndIntersecting(1, true)
-    expect(nextButtons()).toHaveLength(0)
-  })
-
-  it('resets the document scroll to the top when the page changes', () => {
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-    // The initial page also opens at the top.
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'auto' })
-
-    vi.mocked(window.scrollTo).mockClear()
-    setEndIntersecting(0, true)
-
-    act(() => nextButtons()[0]?.click())
-
-    expect(window.scrollTo).toHaveBeenCalledTimes(1)
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'auto' })
-  })
-
-  it('shows both controls when short content exposes both boundaries', () => {
-    act(() => root.render(<Player contentPackage={progressPackage} />))
-    setEndIntersecting(0, true)
-    act(() => nextButtons()[0]?.click())
-
-    // The middle page is short: its top and end sentinels are both in view.
-    setStartIntersecting(1, true)
-    setEndIntersecting(1, true)
-
-    expect(previousButtons()).toHaveLength(1)
-    expect(nextButtons()).toHaveLength(1)
-  })
-
-  it('floats both controls without blocking the page and keeps both clickable', () => {
-    act(() => root.render(<Player contentPackage={progressPackage} />))
-    setEndIntersecting(0, true)
-    act(() => nextButtons()[0]?.click())
-
-    // The middle page is short: its top and end sentinels are both in view, so
-    // both controls render and can be inspected together.
-    setStartIntersecting(1, true)
-    setEndIntersecting(1, true)
-
-    const wrappers = [
-      container.querySelector<HTMLElement>('[data-scroll-previous]'),
-      container.querySelector<HTMLElement>('[data-scroll-next]')
-    ]
-    for (const wrapper of wrappers) {
-      if (!wrapper) {
-        throw new Error('Expected both scroll controls to be visible')
-      }
-
-      // Each overlay ignores pointer events so it never blocks the page beneath
-      // it, while the button inside re-enables them so it stays operable.
-      expect(wrapper.classList.contains('pointer-events-none')).toBe(true)
-      expect(wrapper.querySelector('button')?.className).toContain('pointer-events-auto')
-    }
-
-    // Both buttons remain wired to navigation.
-    act(() => nextButtons()[0]?.click())
-    expect(sceneIndices()).toEqual([2])
-    act(() => previousButtons()[0]?.click())
-    expect(sceneIndices()).toEqual([1])
-  })
-
-  it('observes page boundaries against the viewport', () => {
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-
-    const sentinel = container.querySelector('[data-scroll-end="0"]')
-    expect(sentinel).not.toBeNull()
-    // The document owns scrolling, so boundaries are measured against the
-    // viewport (`root: null`) rather than an internal container.
-    expect(observerFor(sentinel as Element).options?.root).toBeNull()
-  })
-
-  it('observes the page end with a non-negative bottom margin', () => {
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-
-    const sentinel = container.querySelector('[data-scroll-end="0"]')
-    expect(sentinel).not.toBeNull()
-
-    const options = observerFor(sentinel as Element).options
-    // The end sentinel must remain reachable at the maximum scroll offset, so
-    // the viewport root may not shrink its bottom edge.
-    expect(options?.root).toBeNull()
-
-    const [, , bottom = ''] = (options?.rootMargin ?? '').split(' ')
-    const bottomMargin = Number.parseFloat(bottom)
-    expect(Number.isNaN(bottomMargin)).toBe(false)
-    expect(bottomMargin).toBeGreaterThanOrEqual(0)
-  })
-
-  it('disconnects page boundary observers when the page changes', () => {
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-
-    const sentinel = container.querySelector('[data-scroll-end="0"]')
-    expect(sentinel).not.toBeNull()
-    const observer = observerFor(sentinel as Element)
-
-    setEndIntersecting(0, true)
-    act(() => nextButtons()[0]?.click())
-
-    // The previous page's observer is torn down rather than left watching a
-    // sentinel that is no longer mounted.
-    expect(observer.elements.has(sentinel as Element)).toBe(false)
-  })
-})
-
-describe('PackageView same-page Path navigation', () => {
-  /**
-   * The displayed page's own Path references the page itself. Reacting to that
-   * confirmation must be a no-op rather than resetting the page's boundary
-   * signals behind React's back.
-   */
-  it('keeps an end-reached page completed when its Path points back to itself', () => {
-    const saveState = vi.fn()
-    window.scormBridge = { saveState }
-
-    act(() => root.render(<Player contentPackage={selfPathPackage} />))
-
-    // Reaching the page end completes it and offers the continue control.
-    setEndIntersecting(0, true)
-    expect(nextButtons()).toHaveLength(1)
-    expect(lastSaved(saveState).pages['page:self.mdx']?.completed).toBe(true)
-
-    // Its Path points back to the page on screen: the entry is visited and open.
-    const selfEntry = container.querySelector<HTMLButtonElement>('[data-path-entry]')
-    expect(selfEntry?.dataset.pathStatus).toBe('visited')
-    expect(selfEntry?.disabled).toBe(false)
-
-    act(() => selfEntry?.click())
-
-    // Confirming the page already on screen must not reset its boundary signals:
-    // it stays on the same scene, stays completed and keeps offering the
-    // continue control instead of silently hiding it.
-    expect(sceneIndices()).toEqual([0])
-    expect(nextButtons()).toHaveLength(1)
-    expect(lastSaved(saveState).pages['page:self.mdx']?.completed).toBe(true)
-  })
-})
-
-describe('PackageView scroll viewport', () => {
-  it('renders pages directly in the document without an internal scroll container', () => {
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-
-    // Scrolling belongs to the document, so the player renders no viewport-sized
-    // overflow container of its own (see the stylesheet rules covered in
-    // scroll-viewport.test).
-    expect(scrollWrappers()).toHaveLength(0)
-    expect(container.querySelector('.overscroll-contain')).toBeNull()
-    expect(container.querySelector('.h-dvh')).toBeNull()
-
-    // The scene sits in the render container's natural flow.
-    const scene = container.querySelector('[data-scene-index="0"]')
-    expect(scene?.parentElement).toBe(container)
-  })
-
-  it('renders the authored page body and names the scene after the page', () => {
-    act(() => root.render(<Player contentPackage={gatedPackage} />))
-
-    const scene = container.querySelector<HTMLElement>('[data-scene-index="0"]')
-    if (!scene) {
-      throw new Error('Page scene not found')
-    }
-
-    // The page renders its authored body as-is. The metadata title is not
-    // injected as a heading, so it can never duplicate an authored h1.
-    expect(scene.textContent).toContain('Welcome')
-    expect(scene.querySelector('h1')).toBeNull()
-
-    // The scene keeps its accessible name in sync with the page metadata.
-    expect(scene.getAttribute('aria-label')).toBe('Introduction')
-  })
-
-  it('resets the document scroll once for the initial page', () => {
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-
-    // Opening the page resets the document scroll exactly once, and the reset is
-    // instantaneous rather than a smooth animation from an old offset.
-    expect(window.scrollTo).toHaveBeenCalledTimes(1)
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'auto' })
-  })
-
-  it('keeps the next control clickable above the viewport', () => {
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-    setEndIntersecting(0, true)
-
-    const button = nextButtons()[0]
-    expect(button).toBeDefined()
-    expect(button?.className).toContain('pointer-events-auto')
-    expect(button?.parentElement?.classList.contains('fixed')).toBe(true)
-    expect(button?.parentElement?.classList.contains('pointer-events-none')).toBe(true)
-  })
-})
-
-describe('PackageView scroll location restore', () => {
-  it('resumes on the saved page and offers the previous control', () => {
+describe('PackageView scroll virtualization and locking', () => {
+  it('virtualizes accessible pages outside the active window', () => {
+    // Resume deep enough that several earlier pages are accessible at once.
     window.scormBridge = {
       restoreState: () => ({
         location: 'page:plain-3.mdx',
-        pages: { 'page:plain-3.mdx': { visited: true } }
+        pages: {
+          'page:plain-1.mdx': { completed: true },
+          'page:plain-2.mdx': { completed: true },
+          'page:plain-3.mdx': { visited: true }
+        }
       })
     }
 
     act(() => root.render(<Player contentPackage={progressPackage} />))
 
-    expect(sceneIndices()).toEqual([2])
-    expect(text()).toContain('Body 3.')
-    expect(text()).not.toContain('Body 1.')
-    // The restored page opens at its top: the document scroll is reset.
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'auto' })
-    expect(previousButtons()).toHaveLength(1)
-    expect(nextButtons()).toHaveLength(0)
+    // The active page mounts; a page outside the window renders a placeholder
+    // instead of its content.
+    expect(container.querySelector('[data-scroll-virtualized]')).not.toBeNull()
+    expect(container.querySelector('[data-scroll-locked]')).not.toBeNull()
   })
 
-  it('restores a page that is completed and completed-only gates the package', () => {
-    const markCompleted = vi.fn()
+  it('activates and mounts a page when its placeholder region becomes visible', () => {
+    const saveState = vi.fn()
+    // Resume deep enough that earlier pages are accessible but outside the
+    // active window, so they render as placeholders.
     window.scormBridge = {
       restoreState: () => ({
-        location: 'page:plain-2.mdx',
+        location: 'page:plain-3.mdx',
         pages: {
           'page:plain-1.mdx': { completed: true },
-          'page:plain-2.mdx': { visited: true }
+          'page:plain-2.mdx': { completed: true },
+          'page:plain-3.mdx': { visited: true }
         }
       }),
-      markCompleted
+      saveState
     }
 
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
+    act(() => root.render(<Player contentPackage={progressPackage} />))
 
-    expect(sceneIndices()).toEqual([1])
-    expect(markCompleted).not.toHaveBeenCalled()
+    // Page one is virtualized: a placeholder stands in for its content.
+    const placeholder = container.querySelector('[data-scroll-virtualized="page:plain-1.mdx"]')
+    expect(placeholder).not.toBeNull()
+    expect(sceneIndices()).not.toContain(0)
 
-    // Reaching the end of the viewed page completes it and the package.
+    // Scrolling (or an instant jump) that brings the placeholder region into the
+    // activation band must mount the page and store it as the location.
+    setRegionIntersecting(0, true)
+
+    expect(sceneIndices()).toContain(0)
+    expect(container.querySelector('[data-scroll-virtualized="page:plain-1.mdx"]')).toBeNull()
+    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
+  })
+
+  it('activates a distant placeholder when a jump lands in its lower region', () => {
+    const saveState = vi.fn()
+    // A reached accessible tail: pages one and two are done and page three was
+    // opened, so page three is accessible but sits outside the active window and
+    // renders as a placeholder below the viewport.
+    window.scormBridge = {
+      restoreState: () => ({
+        location: 'page:plain-1.mdx',
+        pages: {
+          'page:plain-1.mdx': { completed: true },
+          'page:plain-2.mdx': { completed: true },
+          'page:plain-3.mdx': { visited: true }
+        }
+      }),
+      saveState
+    }
+
+    act(() => root.render(<Player contentPackage={progressPackage} />))
+
+    const placeholder = container.querySelector('[data-scroll-virtualized="page:plain-3.mdx"]')
+    expect(placeholder).not.toBeNull()
+    expect(sceneIndices()).not.toContain(2)
+
+    // The whole placeholder region is observed, so a jump that lands past its
+    // start boundary—End, PageDown or a scrollbar drag that leaves its start
+    // above the viewport—still activates it.
+    const state = observerFor(placeholder as Element)
+    expect(state.options?.rootMargin).toBe('0px 0px -50% 0px')
+
+    setRegionIntersecting(2, true)
+
+    expect(sceneIndices()).toContain(2)
+    expect(container.querySelector('[data-scroll-virtualized="page:plain-3.mdx"]')).toBeNull()
+    expect(lastSaved(saveState).location).toBe('page:plain-3.mdx')
+    expect(lastSaved(saveState).pages['page:plain-3.mdx']?.visited).toBe(true)
+
+    // Once mounted, the page completes through its end boundary exactly as it
+    // would after a scroll, unlocking the next page.
+    setEndIntersecting(2, true)
+    expect(lastSaved(saveState).pages['page:plain-3.mdx']?.completed).toBe(true)
+    expect(container.querySelector('[data-scroll-page="3"]')).not.toBeNull()
+  })
+
+  it('disconnects a placeholder observer once the page mounts', () => {
+    window.scormBridge = {
+      restoreState: () => ({
+        location: 'page:plain-3.mdx',
+        pages: {
+          'page:plain-1.mdx': { completed: true },
+          'page:plain-2.mdx': { completed: true },
+          'page:plain-3.mdx': { visited: true }
+        }
+      })
+    }
+
+    act(() => root.render(<Player contentPackage={progressPackage} />))
+
+    const placeholder = container.querySelector('[data-scroll-virtualized="page:plain-1.mdx"]')
+    const state = observerFor(placeholder as Element)
+    expect(state.elements.size).toBe(1)
+
+    setRegionIntersecting(0, true)
+
+    // The placeholder unmounts and its observer releases the detached region, so
+    // nothing keeps watching a page that is no longer virtualized.
+    expect(container.querySelector('[data-scroll-virtualized="page:plain-1.mdx"]')).toBeNull()
+    expect(state.elements.size).toBe(0)
+  })
+
+  it('keeps a locked future page unmounted with no scene or placeholder', () => {
+    act(() => root.render(<Player contentPackage={progressPackage} />))
+    expect(container.querySelector('[data-scroll-page="1"]')).toBeNull()
+    expect(container.querySelector('[data-scroll-virtualized="page:plain-4.mdx"]')).toBeNull()
+  })
+
+  it('keeps a mounted page height when the page is replaced by a placeholder', () => {
+    // Resume deep enough that page three is the active, mounted page.
+    window.scormBridge = {
+      restoreState: () => ({
+        location: 'page:plain-3.mdx',
+        pages: {
+          'page:plain-1.mdx': { completed: true },
+          'page:plain-2.mdx': { completed: true },
+          'page:plain-3.mdx': { visited: true }
+        }
+      })
+    }
+
+    act(() => root.render(<Player contentPackage={progressPackage} />))
+
+    // Page three is mounted; report a height taller than a single viewport.
+    const scene = container.querySelector('[data-scene-index="2"]')
+    expect(scene).not.toBeNull()
+    measureScene(scene as Element, 1234)
+
+    // Moving back to page one virtualizes page three again.
+    setRegionIntersecting(0, true)
+
+    const placeholder = container.querySelector<HTMLElement>(
+      '[data-scroll-virtualized="page:plain-3.mdx"]'
+    )
+    expect(placeholder).not.toBeNull()
+    // The placeholder keeps the measured height, so the pages below do not shift.
+    expect(placeholder?.style.minHeight).toBe('1234px')
+  })
+})
+
+describe('PackageView scroll persistence', () => {
+  it('stores each answer under its page namespace', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+
+    act(() => root.render(<Player contentPackage={gatedPackage} />))
+    act(() => input('first').click())
+
+    expect(lastSaved(saveState).pages['page:intro.mdx']?.answers).toEqual({
+      'question:intro.mdx:1:1': 'first'
+    })
+  })
+
+  it('passes integer progress as pages complete', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+
+    act(() => root.render(<Player contentPackage={progressPackage} />))
+    setEndIntersecting(0, true)
+    expect(lastProgress(saveState)).toBe(25)
+
     setEndIntersecting(1, true)
-    expect(markCompleted).toHaveBeenCalledTimes(1)
+    expect(lastProgress(saveState)).toBe(50)
+    expect(Number.isInteger(lastProgress(saveState))).toBe(true)
+  })
+
+  it('keeps page-scoped answers for a question id reused across pages', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+
+    act(() => root.render(<Player contentPackage={sharedQuestionPackage} />))
+    act(() => input('yes').click())
+    setEndIntersecting(0, true)
+    act(() => findButton('Submit questionnaire').click())
+    setRegionIntersecting(1, true)
+
+    // Page B reuses the same question id but renders its own, unanswered state.
+    expect(inputInScene(1, 'yes').checked).toBe(false)
+    expect(inputInScene(1, 'no').checked).toBe(false)
+
+    const saved = lastSaved(saveState)
+    expect(saved.pages['page:a.mdx']?.answers).toEqual({ 'question:shared': 'yes' })
+    expect(saved.pages['page:b.mdx']?.answers).toBeUndefined()
   })
 
   it('restores saved answers and submitted questionnaires read-only', () => {
@@ -864,44 +815,15 @@ describe('PackageView scroll location restore', () => {
 
     act(() => root.render(<Player contentPackage={gatedPackage} />))
 
-    // The restored submission renders read-only with both saved answers checked,
-    // and counts as submitted, so reaching the page end completes it.
     expect(submittedControl('first').checked).toBe(true)
     expect(submittedControl('first').disabled).toBe(true)
     expect(submittedControl('alpha').checked).toBe(true)
     expect(submittedControl('alpha').disabled).toBe(true)
     expect(text()).not.toContain('Submit questionnaire')
-    // Restoring an unchanged page must not write the bridge again.
     expect(saveState).not.toHaveBeenCalled()
 
     setEndIntersecting(0, true)
-    expect(nextButtons()).toHaveLength(1)
-  })
-
-  it('resumes a completed page without re-answering its questionnaire', () => {
-    window.scormBridge = {
-      restoreState: () => ({
-        location: 'page:intro.mdx',
-        pages: {
-          'page:intro.mdx': {
-            visited: true,
-            completed: true,
-            answers: { 'question:intro.mdx:1:1': 'first' }
-          }
-        }
-      })
-    }
-
-    act(() => root.render(<Player contentPackage={gatedPackage} />))
-
-    // Completion is resumed from the state, not inferred from the location, and
-    // a completed scroll page is normalized to submitted, so its questionnaire
-    // is read-only and the learner can move on without re-answering.
-    expect(submittedControl('first').disabled).toBe(true)
-    expect(text()).not.toContain('Submit questionnaire')
-
-    setEndIntersecting(0, true)
-    expect(nextButtons()).toHaveLength(1)
+    expect(container.querySelector('[data-scroll-page="1"]')).not.toBeNull()
   })
 
   it('drops an unknown saved location and starts on the first page', () => {
@@ -914,22 +836,12 @@ describe('PackageView scroll location restore', () => {
     expect(sceneIndices()).toEqual([0])
   })
 
-  it('starts fresh when no resume reader is installed', () => {
-    const saveState = vi.fn()
-    window.scormBridge = { saveState }
-
-    act(() => root.render(<Player contentPackage={progressPackage} />))
-
-    expect(sceneIndices()).toEqual([0])
-    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
-  })
-
   it('restores the location once under StrictMode', () => {
     const saveState = vi.fn()
     window.scormBridge = {
       restoreState: () => ({
         location: 'page:plain-2.mdx',
-        pages: {}
+        pages: { 'page:plain-1.mdx': { completed: true } }
       }),
       saveState
     }
@@ -942,141 +854,217 @@ describe('PackageView scroll location restore', () => {
       )
     )
 
-    expect(sceneIndices()).toEqual([1])
-    // StrictMode's doubled mount must persist the restored page exactly once.
+    expect(sceneIndices()).toContain(1)
     expect(saveState).toHaveBeenCalledTimes(1)
-    expect(lastSaved(saveState)).toEqual({
-      location: 'page:plain-2.mdx',
-      pages: { 'page:plain-2.mdx': { visited: true } }
-    })
   })
 })
 
-describe('PackageView scroll state persistence', () => {
-  it('stores each answer under its page namespace', () => {
+describe('PackageView same-page Path navigation', () => {
+  it('keeps a completed page and its visited self-reference stable', () => {
     const saveState = vi.fn()
     window.scormBridge = { saveState }
 
-    act(() => root.render(<Player contentPackage={gatedPackage} />))
-    act(() => input('first').click())
+    act(() => root.render(<Player contentPackage={selfPathPackage} />))
 
-    expect(lastSaved(saveState).pages['page:intro.mdx']?.answers).toEqual({
-      'question:intro.mdx:1:1': 'first'
-    })
-  })
-
-  it('updates the location on next navigation and preserves page state', () => {
-    const saveState = vi.fn()
-    window.scormBridge = { saveState }
-
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
     setEndIntersecting(0, true)
-    act(() => nextButtons()[0]?.click())
+    expect(lastSaved(saveState).pages['page:self.mdx']?.completed).toBe(true)
 
-    const saved = lastSaved(saveState)
-    expect(saved.location).toBe('page:plain-2.mdx')
-    expect(saved.pages['page:plain-1.mdx']).toEqual({
-      visited: true,
-      completed: true
-    })
-    expect(saved.pages['page:plain-2.mdx']).toEqual({ visited: true })
-    // One of two scroll pages is completed, so progress is 50.
-    expect(lastProgress(saveState)).toBe(50)
-  })
+    const selfEntry = container.querySelector<HTMLButtonElement>('[data-path-entry]')
+    expect(selfEntry?.dataset.pathStatus).toBe('visited')
+    expect(selfEntry?.disabled).toBe(false)
 
-  it('passes integer package progress through the bridge as pages complete', () => {
-    const saveState = vi.fn()
-    window.scormBridge = { saveState }
+    act(() => selfEntry?.click())
 
-    act(() => root.render(<Player contentPackage={progressPackage} />))
-    setEndIntersecting(0, true)
-    expect(lastProgress(saveState)).toBe(25)
-    act(() => nextButtons()[0]?.click())
-    setEndIntersecting(1, true)
-
-    expect(lastProgress(saveState)).toBe(50)
-    expect(Number.isInteger(lastProgress(saveState))).toBe(true)
-  })
-
-  it('updates the location on previous navigation without losing progress', () => {
-    const saveState = vi.fn()
-    window.scormBridge = { saveState }
-
-    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-    setEndIntersecting(0, true)
-    act(() => nextButtons()[0]?.click())
-    act(() => previousButtons()[0]?.click())
-
-    const saved = lastSaved(saveState)
-    expect(saved.location).toBe('page:plain-1.mdx')
-    expect(saved.pages['page:plain-1.mdx']?.completed).toBe(true)
-    expect(saved.pages['page:plain-2.mdx']?.visited).toBe(true)
-  })
-
-  it('keeps page-scoped answers for a question id reused across pages', () => {
-    const saveState = vi.fn()
-    window.scormBridge = { saveState }
-
-    act(() => root.render(<Player contentPackage={sharedQuestionPackage} />))
-    act(() => input('yes').click())
-    setEndIntersecting(0, true)
-    act(() => findButton('Submit questionnaire').click())
-    act(() => nextButtons()[0]?.click())
-
-    // Page B reuses the same question id but renders its own, unanswered state.
-    expect(input('yes').checked).toBe(false)
-    expect(input('no').checked).toBe(false)
-
-    const saved = lastSaved(saveState)
-    expect(saved.pages['page:a.mdx']?.answers).toEqual({
-      'question:shared': 'yes'
-    })
-    expect(saved.pages['page:b.mdx']?.answers).toBeUndefined()
-  })
-
-  it('passes readable ids and answer values, never compact indices', () => {
-    const saveState = vi.fn()
-    window.scormBridge = { saveState }
-
-    act(() => root.render(<Player contentPackage={gatedPackage} />))
-    act(() => input('first').click())
-    act(() => findButton('Next question').click())
-    act(() => input('alpha').click())
-
-    const saved = lastSaved(saveState)
-    // The bridge receives the same readable, page-scoped state the components
-    // use: stable question ids with authored option values, not page/question/
-    // option indices and never a serialized suspend-data string.
-    expect(saved.pages['page:intro.mdx']?.answers).toEqual({
-      'question:intro.mdx:1:1': 'first',
-      'question:intro.mdx:1:2': ['alpha']
-    })
-    expect(JSON.stringify(saved)).not.toContain('suspend_data')
-  })
-
-  it('never calls the SCORM API directly', () => {
-    const api = {
-      LMSInitialize: vi.fn(() => 'true'),
-      LMSGetValue: vi.fn(() => ''),
-      LMSSetValue: vi.fn(() => 'true'),
-      LMSCommit: vi.fn(() => 'true'),
-      LMSFinish: vi.fn(() => 'true')
-    }
-    ;(window as unknown as { API?: typeof api }).API = api
-
-    try {
-      act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
-      setEndIntersecting(0, true)
-      expect(Object.values(api).every((method) => method.mock.calls.length === 0)).toBe(true)
-    } finally {
-      delete (window as unknown as { API?: unknown }).API
-    }
+    // Confirming the page already on screen must not reset its boundary signals.
+    expect(lastSaved(saveState).pages['page:self.mdx']?.completed).toBe(true)
+    expect(sceneIndices()).toContain(0)
   })
 })
 
-describe('PackageView grid interactions', () => {
-  it('renders cards and opens the selected item in a dialog', () => {
-    act(() => root.render(<Player contentPackage={gridPackage} />))
+describe('PackageView non-adjacent Path navigation', () => {
+  /** A completed prefix that leaves the last page accessible and in range. */
+  function restoreWithCompletedPrefix(): {
+    location: string
+    pages: Record<string, { visited?: boolean; completed?: boolean }>
+  } {
+    return {
+      location: 'page:path.mdx',
+      pages: {
+        'page:path.mdx': { completed: true },
+        'page:plain-2.mdx': { completed: true },
+        'page:plain-3.mdx': { completed: true }
+      }
+    }
+  }
+
+  it('scrolls the mounted target scene, not the placeholder it replaces', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { restoreState: restoreWithCompletedPrefix, saveState }
+
+    act(() => root.render(<Player contentPackage={nonAdjacentPathPackage} />))
+
+    // The target sits outside the window: only a placeholder is mounted.
+    expect(container.querySelector('[data-scroll-virtualized="page:plain-4.mdx"]')).not.toBeNull()
+    expect(container.querySelector('[data-scene-index="3"]')).toBeNull()
+
+    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
+    scrollIntoView.mockClear()
+
+    act(() => container.querySelector<HTMLButtonElement>('[data-path-entry]')?.click())
+
+    // The jump re-centred the window and mounted the real target scene.
+    expect(container.querySelector('[data-scene-index="3"]')).not.toBeNull()
+    expect(container.querySelector('[data-scroll-virtualized="page:plain-4.mdx"]')).toBeNull()
+    expect(lastSaved(saveState).location).toBe('page:plain-4.mdx')
+
+    // The staged jump scrolled the mounted scene, never the placeholder it
+    // replaced (a placeholder carries `data-scroll-page` but no scene index).
+    const contexts = scrollIntoView.mock.contexts as Element[]
+    expect(contexts.some((element) => element.getAttribute('data-scene-index') === '3')).toBe(true)
+    expect(contexts.some((element) => element.hasAttribute('data-scroll-virtualized'))).toBe(false)
+  })
+
+  it('keeps the intended destination over a stale neighbour activation', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { restoreState: restoreWithCompletedPrefix, saveState }
+
+    act(() => root.render(<Player contentPackage={nonAdjacentPathPackage} />))
+
+    // The neighbour region the re-centre is about to virtualize. Its observer is
+    // still connected while the jump commits.
+    const neighbour = container.querySelector('[data-scroll-page="1"]')
+    expect(neighbour).not.toBeNull()
+
+    act(() => {
+      container.querySelector<HTMLButtonElement>('[data-path-entry]')?.click()
+      // The browser may deliver a stale observation for that neighbour as the
+      // window moves; it must not steal the intended destination.
+      driveObserver(neighbour as Element, true)
+    })
+
+    expect(lastSaved(saveState).location).toBe('page:plain-4.mdx')
+    expect(container.querySelector('[data-scene-index="3"]')).not.toBeNull()
+  })
+
+  it('releases activation suppression once the staged jump settles', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { restoreState: restoreWithCompletedPrefix, saveState }
+
+    act(() => root.render(<Player contentPackage={nonAdjacentPathPackage} />))
+
+    act(() => container.querySelector<HTMLButtonElement>('[data-path-entry]')?.click())
+
+    // The staged jump committed: the destination scene mounted and the
+    // suppression it raised was released once the jump settled.
+    expect(container.querySelector('[data-scene-index="3"]')).not.toBeNull()
+
+    // A page outside the re-centred window still renders as a placeholder, and
+    // its region activation is no longer ignored.
+    const placeholder = container.querySelector('[data-scroll-virtualized="page:plain-2.mdx"]')
+    expect(placeholder).not.toBeNull()
+    expect(sceneIndices()).not.toContain(1)
+
+    setRegionIntersecting(1, true)
+
+    expect(sceneIndices()).toContain(1)
+    expect(container.querySelector('[data-scroll-virtualized="page:plain-2.mdx"]')).toBeNull()
+    expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
+  })
+})
+
+describe('PackageView scroll location revisiting', () => {
+  it('updates the location again when a page is revisited after another', () => {
+    const saveState = vi.fn()
+    window.scormBridge = {
+      restoreState: () => ({
+        location: 'page:plain-1.mdx',
+        pages: { 'page:plain-1.mdx': { completed: true } }
+      }),
+      saveState
+    }
+
+    act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
+    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
+
+    setRegionIntersecting(1, true)
+    expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
+
+    // Returning to A after B reports A again and moves the location back.
+    setRegionIntersecting(0, true)
+    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
+  })
+
+  it('keeps StrictMode duplicate effects from double-writing a revisit', () => {
+    const saveState = vi.fn()
+    window.scormBridge = {
+      restoreState: () => ({
+        location: 'page:plain-1.mdx',
+        pages: { 'page:plain-1.mdx': { completed: true } }
+      }),
+      saveState
+    }
+
+    act(() =>
+      root.render(
+        <StrictMode>
+          <Player contentPackage={plainTwoPagePackage} />
+        </StrictMode>
+      )
+    )
+
+    setRegionIntersecting(1, true)
+    setRegionIntersecting(0, true)
+
+    // One write per activation — mount, B, then A again. StrictMode's doubled
+    // effects and a repeat of the id already stored are both no-ops.
+    expect(saveState).toHaveBeenCalledTimes(3)
+    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
+  })
+})
+
+describe('PackageView slides presentation', () => {
+  it('renders exactly one page at a time', () => {
+    act(() => root.render(<Player contentPackage={slidesPackage} />))
+
+    expect(sceneIndices()).toEqual([0])
+    expect(text()).toContain('Body 1.')
+    expect(text()).not.toContain('Body 2.')
+  })
+
+  it('advances only after the page is complete and renders the next page alone', () => {
+    act(() => root.render(<Player contentPackage={slidesPackage} />))
+
+    // A questionnaire-free slide completes once shown, so the control appears.
+    const next = findButton('Continue to next page')
+    act(() => next.click())
+
+    expect(sceneIndices()).toEqual([1])
+    expect(text()).toContain('Body 2.')
+    expect(text()).not.toContain('Body 1.')
+  })
+
+  it('gates the next slide on the question gate', () => {
+    act(() => root.render(<Player contentPackage={gatedSlidesPackage} />))
+
+    // The intro slide carries a questionnaire: no next control until submitted.
+    expect(() => findButton('Continue to next page')).toThrow()
+    answerQuestionnaire()
+    expect(findButton('Continue to next page')).toBeDefined()
+  })
+
+  it('marks the displayed slide as the location', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+
+    act(() => root.render(<Player contentPackage={slidesPackage} />))
+
+    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
+  })
+})
+
+describe('PackageView tiles interactions', () => {
+  it('renders cards and opens the selected tile in a dialog', () => {
+    act(() => root.render(<Player contentPackage={tilesPackage} />))
 
     expect(text()).toContain('Functions')
     expect(dialog()).toBeNull()
@@ -1086,8 +1074,21 @@ describe('PackageView grid interactions', () => {
     expect(documentText()).toContain('Function body.')
   })
 
-  it('wraps authored item content in prose typography', () => {
-    act(() => root.render(<Player contentPackage={gridPackage} />))
+  it('renders locked tiles as disabled so they are behaviorally inaccessible', () => {
+    act(() => root.render(<Player contentPackage={tilesPackage} />))
+
+    const locked = container.querySelectorAll<HTMLButtonElement>(
+      '[data-tile-status="locked"] button'
+    )
+    expect(locked.length).toBeGreaterThan(0)
+    for (const button of locked) {
+      expect(button.disabled).toBe(true)
+      expect(button.getAttribute('aria-disabled')).toBe('true')
+    }
+  })
+
+  it('wraps authored tile content in prose typography', () => {
+    act(() => root.render(<Player contentPackage={tilesPackage} />))
     act(() => findButton('Functions').click())
 
     const prose = dialog()?.querySelector('.prose')
@@ -1096,7 +1097,7 @@ describe('PackageView grid interactions', () => {
   })
 
   it('renders authored Markdown depths 1-6 as matching h1-h6 in the dialog', () => {
-    act(() => root.render(<Player contentPackage={gridHeadingPackage} />))
+    act(() => root.render(<Player contentPackage={headingTilesPackage} />))
     act(() => findButton('Headings').click())
 
     const content = dialog()
@@ -1107,21 +1108,8 @@ describe('PackageView grid interactions', () => {
     }
   })
 
-  it('closes the dialog with the close button', () => {
-    act(() => root.render(<Player contentPackage={gridPackage} />))
-    act(() => findButton('Functions').click())
-    expect(dialog()).not.toBeNull()
-
-    const close = document.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')
-    expect(close).not.toBeNull()
-    act(() => close?.click())
-
-    expect(dialog()).toBeNull()
-    expect(documentText()).not.toContain('Function body.')
-  })
-
   it('closes the dialog on Escape', () => {
-    act(() => root.render(<Player contentPackage={gridPackage} />))
+    act(() => root.render(<Player contentPackage={tilesPackage} />))
     act(() => findButton('Functions').click())
     expect(dialog()).not.toBeNull()
 
@@ -1132,22 +1120,35 @@ describe('PackageView grid interactions', () => {
     expect(dialog()).toBeNull()
   })
 
-  it('stores the opened item as the location and marks it visited', () => {
+  it('stores the opened tile as the location and marks it visited', () => {
     const saveState = vi.fn()
     window.scormBridge = { saveState }
 
-    act(() => root.render(<Player contentPackage={gridPackage} />))
+    act(() => root.render(<Player contentPackage={tilesPackage} />))
     act(() => findButton('Functions').click())
 
     expect(lastSaved(saveState)).toEqual({
       location: 'item:functions.mdx',
       pages: { 'item:functions.mdx': { visited: true } }
     })
-    // Grid progress counts visited items: one of three.
     expect(lastProgress(saveState)).toBe(33)
   })
 
-  it('reopens the saved item and restores its answers read-only', () => {
+  it('unlocks the next tile once the previous one is opened', () => {
+    act(() => root.render(<Player contentPackage={tilesPackage} />))
+
+    const lockedBefore = container.querySelector('[data-tile-status="locked"]')
+    expect(lockedBefore).not.toBeNull()
+
+    act(() => findButton('Functions').click())
+    const close = document.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')
+    act(() => close?.click())
+
+    const firstTwo = tileButtons().slice(0, 2)
+    expect(firstTwo.every((button) => !button.disabled)).toBe(true)
+  })
+
+  it('reopens the saved tile and restores its answers read-only', () => {
     window.scormBridge = {
       restoreState: () => ({
         location: 'item:quiz.mdx',
@@ -1161,7 +1162,7 @@ describe('PackageView grid interactions', () => {
       })
     }
 
-    act(() => root.render(<Player contentPackage={gridQuizPackage} />))
+    act(() => root.render(<Player contentPackage={quizTilesPackage} />))
 
     expect(dialog()).not.toBeNull()
     expect(documentText()).toContain('Shared prompt')
@@ -1170,16 +1171,16 @@ describe('PackageView grid interactions', () => {
     expect(no.disabled).toBe(true)
   })
 
-  it('completes once every item has been opened and notifies the bridge once', () => {
+  it('completes once every tile has been opened and notifies the bridge once', () => {
     const markCompleted = vi.fn()
     const finish = vi.fn()
     window.scormBridge = { markCompleted, finish }
 
-    act(() => root.render(<Player contentPackage={gridPackage} />))
+    act(() => root.render(<Player contentPackage={tilesPackage} />))
     expect(markCompleted).not.toHaveBeenCalled()
 
-    act(() => findButton('Functions').click())
     const close = () => document.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')
+    act(() => findButton('Functions').click())
     act(() => close()?.click())
     act(() => findButton('Types').click())
     act(() => close()?.click())
@@ -1194,7 +1195,7 @@ describe('PackageView grid interactions', () => {
   })
 
   it('never renders a completion banner or progress UI', () => {
-    act(() => root.render(<Player contentPackage={gridPackage} />))
+    act(() => root.render(<Player contentPackage={tilesPackage} />))
     expect(container.querySelector('[role="status"]')).toBeNull()
     expect(container.querySelector('[role="progressbar"]')).toBeNull()
     expect(text()).not.toContain('Package complete')

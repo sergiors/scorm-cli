@@ -1,38 +1,28 @@
-import type {
-  ContentNode,
-  ContentPackage,
-  InlineContentNode,
-  ItemNode,
-  PageNode,
-  QuestionnaireNode
-} from '../types'
+import type { ContentNode, InlineContentNode, QuestionnaireNode } from '../types'
 
 /**
- * Re-exported from `@scorm-cli/core` so completion and score semantics stay
- * canonical across the CLI and the renderer. In particular, an empty package is
- * never considered complete, the done-node rule — a scroll page counts once
- * `completed`, a grid item once `visited` — lives in one place, and the
+ * Re-exported from `@scorm-cli/core` so completion, access and score semantics
+ * stay canonical across the CLI and the renderer. In particular, an empty
+ * package is never complete, the done-node rule — a Scroll/Slides page counts
+ * once `completed`, a Tiles item once `visited` — the shared sequential access
+ * policy, and the ordered presentation nodes all live in one place, and the
  * aggregate questionnaire score is derived from the authored AST and the owned
  * resume state rather than tracked separately.
  */
 export {
   collectVideoNodes,
+  getAccessibleNodeIds,
   getAggregateQuestionnaireScore,
   getDoneNodeIds,
   getPackageProgress,
-  isPackageComplete
+  getPresentationNodes,
+  getSequentialAccess,
+  isNodeAccessible,
+  isPackageComplete,
+  isPresentationNodeDone
 } from '@scorm-cli/core'
 
-/**
- * Flattens the authored presentation into the ordered list of leaf nodes it
- * contains: the pages of a scroll presentation, or the items of a grid
- * presentation. The two share the same shape (`id`, `source`, `metadata`,
- * `content`), so callers can treat them uniformly for completion tracking.
- */
-export function getPresentationNodes(contentPackage: ContentPackage): Array<PageNode | ItemNode> {
-  const { presentation } = contentPackage
-  return presentation.type === 'scroll' ? presentation.pages : presentation.items
-}
+export type { PresentationNode, SequentialAccess } from '../types'
 
 /**
  * Collects every questionnaire reachable from a set of block nodes, in document
@@ -95,7 +85,7 @@ function assertNever(node: never): never {
 
 /**
  * Collects the ids of every questionnaire reachable from a set of block nodes,
- * in document order. Scroll completion waits on exactly these wrapper ids.
+ * in document order. Page completion waits on exactly these wrapper ids.
  */
 export function collectQuestionnaireIds(nodes: ContentNode[]): string[] {
   return collectQuestionnaires(nodes).map((node) => node.id)
@@ -104,8 +94,8 @@ export function collectQuestionnaireIds(nodes: ContentNode[]): string[] {
 /**
  * Whether every questionnaire in `questionnaireIds` has been submitted, ignoring
  * any submitted ids that no longer name a reachable questionnaire. This is the
- * completion gate a scroll page applies once its end boundary is reached, kept
- * pure and shared so the decision never depends on viewport state.
+ * question gate every presentation applies before a node completes, kept pure
+ * and shared so the decision never depends on viewport state.
  */
 export function areQuestionnairesSubmitted(
   questionnaireIds: readonly string[],

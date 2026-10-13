@@ -52,7 +52,7 @@ export interface ContentRendererProps {
   /**
    * The root presentation's pages, so a Path node can resolve its referenced
    * ids to display metadata. Threaded unchanged through nested blocks; only a
-   * scroll presentation supplies it.
+   * Scroll or Slides presentation supplies it.
    */
   pathPages?: readonly PageNode[]
   /**

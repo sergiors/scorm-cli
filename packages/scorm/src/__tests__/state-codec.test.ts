@@ -415,7 +415,7 @@ describe('compact suspend-data codec', () => {
     const single: ContentPackage = {
       ...packageContent,
       presentation: {
-        type: 'grid',
+        type: 'tiles',
         items: [
           {
             type: 'item',
@@ -744,7 +744,7 @@ describe('compact suspend-data codec', () => {
     const manyPages: ContentPackage = {
       metadata: { title: 'Large' },
       presentation: {
-        type: 'grid',
+        type: 'tiles',
         items: Array.from({ length: 4100 }, (_, index) => ({
           type: 'item' as const,
           id: `item-${index}`,

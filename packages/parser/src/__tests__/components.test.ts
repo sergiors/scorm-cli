@@ -21,7 +21,7 @@ function parse(node: AstNode) {
 describe('authoring component registry', () => {
   it('recognizes exactly the canonical component names', () => {
     for (const name of authoringComponentNames) expect(isAuthoringComponent(name)).toBe(true)
-    for (const name of ['Widget', 'div', 'span', 'scroll', '']) {
+    for (const name of ['Widget', 'div', 'span', 'scroll', '', 'Grid', 'Tile']) {
       expect(isAuthoringComponent(name)).toBe(false)
     }
   })
@@ -51,7 +51,16 @@ describe('authoring component registry', () => {
     ])
     for (const name of ['Image', 'Video', 'Questionnaire', 'Path'])
       expect(isFlowComponent(name)).toBe(true)
-    for (const name of ['Scroll', 'Grid', 'Page', 'Item', 'Question', 'Prompt', 'Option'])
+    for (const name of [
+      'Scroll',
+      'Slides',
+      'Tiles',
+      'Page',
+      'Item',
+      'Question',
+      'Prompt',
+      'Option'
+    ])
       expect(isFlowComponent(name)).toBe(false)
   })
 })

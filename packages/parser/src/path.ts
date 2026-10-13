@@ -33,9 +33,9 @@ function pathPageRef(child: AstNode, file: string): string {
 
 /**
  * Converts a `<Path>` authoring component into ordered references to existing
- * root Scroll page IDs. A Path may contain only self-closing `<Page ref="..." />`
+ * root page IDs. A Path may contain only self-closing `<Page ref="..." />`
  * children, and each ref must match a page declared directly in the root
- * `<Scroll>` presentation.
+ * `<Scroll>` or `<Slides>` presentation.
  */
 export function parsePath(node: AstNode, source: ContentSource): PathNode {
   const { sourceFile: file, root, rootPageSources } = source
@@ -70,7 +70,7 @@ export function parsePath(node: AstNode, source: ContentSource): PathNode {
   const firstRef = pathPageRef(firstChild, file)
   if (!rootPageSources) {
     throw new Error(
-      `${sourceLocation(file, firstChild)}: Path references are only valid for pages declared directly in a root <Scroll> presentation`
+      `${sourceLocation(file, firstChild)}: Path references are only valid for pages declared directly in a root <Scroll> or <Slides> presentation`
     )
   }
 
@@ -84,7 +84,7 @@ export function parsePath(node: AstNode, source: ContentSource): PathNode {
     )
     if (!rootPageSources.has(pageSource)) {
       throw new Error(
-        `${sourceLocation(file, child)}: Path Page ref "${ref}" does not match a root <Page src="..." /> in the root <Scroll> presentation`
+        `${sourceLocation(file, child)}: Path Page ref "${ref}" does not match a root <Page src="..." /> in the root <Scroll> or <Slides> presentation`
       )
     }
 

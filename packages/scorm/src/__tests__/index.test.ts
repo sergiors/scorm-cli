@@ -24,7 +24,7 @@ afterEach(async () => {
 const content: ContentPackage = {
   metadata: { title: 'Package title' },
   presentation: {
-    type: 'grid',
+    type: 'tiles',
     items: [
       {
         type: 'item',

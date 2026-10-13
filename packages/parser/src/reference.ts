@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import matter from 'gray-matter'
-import type { ContentNode, ItemNode, PageNode } from '@scorm-cli/core'
+import type { ContentNode, PageNode, ItemNode } from '@scorm-cli/core'
 import type { AstNode } from './ast'
 import {
   assertFrontmatterKeys,

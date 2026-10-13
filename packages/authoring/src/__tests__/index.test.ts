@@ -2,19 +2,22 @@ import { describe, expect, expectTypeOf, it } from 'vitest'
 import * as authoring from '../index'
 import type {
   AuthoringComponentName,
-  GridProps,
+  ItemProps,
   OptionProps,
   PageProps,
   QuestionProps,
   QuestionnaireProps,
   QuestionType,
-  ScrollProps
+  ScrollProps,
+  SlidesProps,
+  TilesProps
 } from '../index'
 
 /** Canonical marker vocabulary; the parser asserts the same names stay aligned. */
 const markerNames: AuthoringComponentName[] = [
   'Scroll',
-  'Grid',
+  'Slides',
+  'Tiles',
   'Page',
   'Item',
   'Path',
@@ -53,15 +56,18 @@ describe('@scorm-cli/authoring', () => {
     const sourcePage: PageProps = { src: 'lesson.mdx' }
     const referencePage: PageProps = { ref: 'lesson.mdx' }
     const scroll: ScrollProps = { children: null }
-    const grid: GridProps = { columns: 2 }
-    expect([sourcePage, referencePage, scroll, grid]).toHaveLength(4)
+    const slides: SlidesProps = { children: null }
+    const tiles: TilesProps = { columns: 2 }
+    const item: ItemProps = { src: 'item.mdx' }
+    expect([sourcePage, referencePage, scroll, slides, tiles, item]).toHaveLength(6)
   })
 
   it('enforces authoring marker prop constraints at compile time', () => {
     // Accepted shapes compile; a bare JSX `correct` attribute passes `true`.
     const sourcePage = { src: 'lesson.mdx' } satisfies PageProps
     const referencePage = { ref: 'lesson.mdx' } satisfies PageProps
-    const grid = { columns: 2 } satisfies GridProps
+    const tiles = { columns: 2 } satisfies TilesProps
+    const item = { src: 'item.mdx' } satisfies ItemProps
     const singleChoice = { type: 'single-choice' } satisfies QuestionProps
     const multipleChoice = { type: 'multiple-choice' } satisfies QuestionProps
     const trueFalse = { type: 'true-false' } satisfies QuestionProps
@@ -78,8 +84,8 @@ describe('@scorm-cli/authoring', () => {
     const neitherPage: PageProps = {}
     // @ts-expect-error <Page> rejects src and ref together.
     const bothPage: PageProps = { src: 'lesson.mdx', ref: 'lesson.mdx' }
-    // @ts-expect-error <Grid columns> must be a number.
-    const stringColumns: GridProps = { columns: '2' }
+    // @ts-expect-error <Tiles columns> must be a number.
+    const stringColumns: TilesProps = { columns: '2' }
     // @ts-expect-error <Question type> must be a supported kind.
     const invalidQuestion: QuestionProps = { type: 'unsupported' }
     // @ts-expect-error <Option correct> must be a boolean.
@@ -92,7 +98,8 @@ describe('@scorm-cli/authoring', () => {
     expect([
       sourcePage,
       referencePage,
-      grid,
+      tiles,
+      item,
       singleChoice,
       multipleChoice,
       trueFalse,
@@ -108,6 +115,6 @@ describe('@scorm-cli/authoring', () => {
       stringCorrect,
       missingValue,
       invalidScoreContribution
-    ]).toHaveLength(18)
+    ]).toHaveLength(19)
   })
 })

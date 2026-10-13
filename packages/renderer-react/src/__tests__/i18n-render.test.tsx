@@ -66,7 +66,7 @@ function pathView(): string {
     <PathView
       node={pathNode}
       pathPages={pathPages}
-      pageStates={{ 'page:a.mdx': { visited: true } }}
+      pageStates={{ 'page:a.mdx': { visited: true, completed: true } }}
       onNavigatePathPage={() => {}}
     />
   )
@@ -149,7 +149,7 @@ describe('player i18n: English', () => {
       <PathView
         node={pathNode}
         pathPages={pathPages}
-        pageStates={{ 'page:a.mdx': { visited: true } }}
+        pageStates={{ 'page:a.mdx': { visited: true, completed: true } }}
         onNavigatePathPage={() => {}}
       />
     )
