@@ -13,7 +13,7 @@ function assignVideos(manifest: ContentManifest, byPage: Record<string, VideoFix
     const videos = byPage[page.id]
     if (videos) {
       page.videos = Object.fromEntries(
-        videos.map(([id, src, provider]) => [id, { id, src, provider }])
+        videos.map(([id, src, provider], videoIndex) => [String(videoIndex), { id, src, provider }])
       )
     }
   })
@@ -133,12 +133,12 @@ describe('compact suspend-data codec', () => {
         ['video-e', 'e.mp4', 'native']
       ]
     })
-    const legacyState: PlayerState = { pages: {} }
-    expect(encodeSuspendData(manifest, legacyState, 0)).toEqual({ v: 1, p: 0, x: '00' })
-    expect(JSON.stringify(encodeSuspendData(manifest, legacyState, 0))).toBe(
+    const emptyState: PlayerState = { pages: {} }
+    expect(encodeSuspendData(manifest, emptyState, 0)).toEqual({ v: 1, p: 0, x: '00' })
+    expect(JSON.stringify(encodeSuspendData(manifest, emptyState, 0))).toBe(
       '{"v":1,"p":0,"x":"00"}'
     )
-    expect(encodeSuspendData(videoManifest, legacyState, 0)).toEqual({
+    expect(encodeSuspendData(videoManifest, emptyState, 0)).toEqual({
       v: 1,
       p: 0,
       x: '00'
@@ -151,8 +151,8 @@ describe('compact suspend-data codec', () => {
           'page-one': {
             videos: {
               'video-a': 12.34,
+              'video-c': 0,
               'video-b': -1,
-              'video-c': Number.POSITIVE_INFINITY,
               negative: -1,
               infinite: Number.POSITIVE_INFINITY,
               nan: Number.NaN
@@ -167,18 +167,25 @@ describe('compact suspend-data codec', () => {
       v: 1,
       p: 0,
       x: '00',
-      d: { '0': { t: { 'video-a': 123 } }, '1': { t: { 'video-e': 1 } } }
+      d: { '0': { t: { '0': 123 } }, '1': { t: { '1': 1 } } }
     })
     expect(encoded).not.toHaveProperty('t')
+    expect(JSON.stringify(encoded)).not.toMatch(/video-a|video-b|video-c|video-d|video-e/)
     expect(decodeSuspendData(videoManifest, encoded)).toEqual({
       pages: {
         'page-one': { videos: { 'video-a': 12.3 } },
         'page-two': { videos: { 'video-e': 0.1 } }
       }
     })
+    expect(encodeSuspendData(videoManifest, decodeSuspendData(videoManifest, encoded), 0)).toEqual(
+      encoded
+    )
+    expect(
+      encodeSuspendData(videoManifest, { pages: { 'page-one': { videos: { 'video-a': 0 } } } }, 0)
+    ).toEqual({ v: 1, p: 0, x: '00' })
   })
 
-  it('restores video positions by stable ID across additions, reordering, and deletions', () => {
+  it('restores positions by page-local video indexes and ignores removed indexes', () => {
     const originalManifest = structuredClone(manifest)
     assignVideos(originalManifest, {
       'page-one': [
@@ -198,8 +205,8 @@ describe('compact suspend-data codec', () => {
       0
     )
     expect(encoded.d).toEqual({
-      '0': { t: { 'video-a': 11, 'video-c': 33 } },
-      '1': { t: { 'video-b': 22 } }
+      '0': { t: { '0': 11, '1': 33 } },
+      '1': { t: { '0': 22 } }
     })
     expect(encoded).not.toHaveProperty('t')
 
@@ -213,18 +220,18 @@ describe('compact suspend-data codec', () => {
     })
     expect(decodeSuspendData(updatedManifest, encoded)).toEqual({
       pages: {
-        'page-one': { videos: { 'video-b': 2.2 } },
-        'page-two': { videos: { 'video-a': 1.1 } }
+        'page-one': { videos: { 'video-b': 1.1 } },
+        'page-two': { videos: { 'video-new': 2.2 } }
       }
     })
 
     delete updatedManifest.pages['1']
     expect(decodeSuspendData(updatedManifest, encoded)).toEqual({
-      pages: { 'page-one': { videos: { 'video-b': 2.2 } } }
+      pages: { 'page-one': { videos: { 'video-b': 1.1 } } }
     })
   })
 
-  it('decodes payloads without video data and ignores invalid or unknown video IDs', () => {
+  it('decodes payloads without video data and ignores invalid or unknown video indexes', () => {
     const videoManifest = structuredClone(manifest)
     assignVideos(videoManifest, {
       'page-one': [['video-a', 'a.mp4', 'native']],
@@ -237,41 +244,60 @@ describe('compact suspend-data codec', () => {
         p: 0,
         x: '00',
         d: {
-          '0': { t: { 'video-a': 15, 'video-b': -1, removed: 20, fractional: 1.5 } }
+          '0': { t: { '0': 15, '1': -1, removed: 20, fractional: 1.5 } }
         },
         t: { 'video-b': 25 }
       })
     ).toEqual({ pages: { 'page-one': { videos: { 'video-a': 1.5 } } } })
   })
 
-  it('decodes stable video IDs across page reorder and keeps them independent of page indexes', () => {
+  it('rejects non-index video dictionary keys instead of serializing semantic IDs', () => {
+    const malformedManifest = structuredClone(manifest)
+    malformedManifest.pages['0']!.videos = {
+      'video-a': { id: 'video-a', src: 'a.mp4', provider: 'native' }
+    }
+    expect(
+      encodeSuspendData(
+        malformedManifest,
+        { pages: { 'page-one': { videos: { 'video-a': 12.3 } } } },
+        0
+      )
+    ).toEqual({ v: 1, p: 0, x: '00' })
+    expect(
+      decodeSuspendData(malformedManifest, {
+        v: 1,
+        p: 0,
+        x: '00',
+        d: { '0': { t: { 'video-a': 123 } } }
+      })
+    ).toEqual({ pages: {} })
+  })
+
+  it('uses current page and video indexes and ignores semantic video IDs', () => {
     const videoManifest = structuredClone(manifest)
-    const firstPage = videoManifest.pages['0']!
-    videoManifest.pages['0'] = videoManifest.pages['1']!
-    videoManifest.pages['1'] = firstPage
     assignVideos(videoManifest, {
-      'page-one': [['video-b', 'b.mp4', 'native']],
-      'page-two': [['video-a', 'a.mp4', 'native']]
+      'page-one': [['current-a', 'a.mp4', 'native']],
+      'page-two': [['current-b', 'b.mp4', 'native']]
     })
     expect(
       decodeSuspendData(videoManifest, {
         v: 1,
         p: 0,
-        x: '000',
+        x: '00',
         d: {
-          '0': { a: { '0': 1 }, t: { 'video-a': 11 } },
-          '1': { t: { 'video-b': 22 } }
+          '0': { t: { '0': 11, 'video-a': 99 } },
+          '1': { t: { '0': 22 } }
         }
       })
     ).toEqual({
       pages: {
-        'page-one': { videos: { 'video-b': 2.2 } },
-        'page-two': { videos: { 'video-a': 1.1 } }
+        'page-one': { videos: { 'current-a': 1.1 } },
+        'page-two': { videos: { 'current-b': 2.2 } }
       }
     })
   })
 
-  it('drops duplicate, unknown, unsafe, and malformed nested video data', () => {
+  it('ignores missing and malformed video entries without rejecting valid state', () => {
     const videoManifest = structuredClone(manifest)
     assignVideos(videoManifest, {
       'page-one': [['video-a', 'a.mp4', 'native']]
@@ -280,31 +306,14 @@ describe('compact suspend-data codec', () => {
       decodeSuspendData(videoManifest, {
         v: 1,
         p: 0,
-        x: '00',
+        x: '10',
         d: {
-          '0': { t: { 'video-a': 11, removed: 20, constructor: 30, fractional: 1.5 } },
-          '1': { t: { 'video-a': 12 } },
-          '2': { t: null }
+          '0': { t: { '0': 11, '1': -1, removed: 20, fractional: 1.5 } },
+          '1': { t: null },
+          '2': { t: { '0': 12 } }
         }
       })
-    ).toEqual({ pages: {} })
-  })
-
-  it('does not decode a video ID duplicated across manifest pages', () => {
-    const videoManifest = structuredClone(manifest)
-    assignVideos(videoManifest, {
-      'page-one': [['video-a', 'a.mp4', 'native']],
-      'page-two': [['video-a', 'another-a.mp4', 'native']]
-    })
-
-    expect(
-      decodeSuspendData(videoManifest, {
-        v: 1,
-        p: 0,
-        x: '00',
-        d: { '0': { t: { 'video-a': 11 } } }
-      })
-    ).toEqual({ pages: {} })
+    ).toEqual({ pages: { 'page-one': { visited: true, videos: { 'video-a': 1.1 } } } })
   })
 
   it('nests single answers under each page so question indexes are page-local', () => {
@@ -417,7 +426,7 @@ describe('compact suspend-data codec', () => {
   it('returns a fresh state for malformed data and unsupported versions', () => {
     for (const raw of [
       'no json',
-      '{"v":2,"p":0,"x":"00"}',
+      '{"v":0,"p":0,"x":"00"}',
       '{"v":1,"p":101,"x":"00"}',
       '{"v":1,"p":0,"x":"bad"}'
     ]) {

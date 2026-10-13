@@ -246,17 +246,17 @@ describe('suspend-data codec integration', () => {
     )
   })
 
-  it('matches browser and Node codecs for stable-ID video positions', () => {
+  it('matches browser and Node codecs for indexed video positions', () => {
     const videoManifest = structuredClone(manifest)
     videoManifest.pages['3']!.videos = {
-      'video:lesson.mdx:4:1': {
+      '0': {
         id: 'video:lesson.mdx:4:1',
         src: 'lesson.mp4',
         provider: 'native'
       }
     }
     videoManifest.pages['4']!.videos = {
-      'video:lesson.mdx:8:1': {
+      '0': {
         id: 'video:lesson.mdx:8:1',
         src: 'https://youtu.be/abc',
         provider: 'youtube'
@@ -284,21 +284,37 @@ describe('suspend-data codec integration', () => {
       p: 0,
       x: '00000',
       d: {
-        '3': { t: { 'video:lesson.mdx:4:1': 343 } },
-        '4': { t: { 'video:lesson.mdx:8:1': 0 } }
+        '3': { t: { '0': 343 } }
       }
     })
     expect(encoded).not.toHaveProperty('t')
     expect(decodeSuspendData(videoManifest, encoded)).toEqual({
       pages: {
-        'page-3': { videos: { 'video:lesson.mdx:4:1': 34.3 } },
-        'page-4': { videos: { 'video:lesson.mdx:8:1': 0 } }
+        'page-3': { videos: { 'video:lesson.mdx:4:1': 34.3 } }
       }
     })
+    expect(JSON.stringify(encoded)).not.toMatch(/video:lesson\.mdx/)
     expect(JSON.parse(browserEncode(videoManifest, state, 0))).toEqual(encoded)
     expect(normalize(browserDecode(videoManifest, JSON.stringify(encoded)))).toEqual(
       decodeSuspendData(videoManifest, encoded)
     )
+
+    const malformedVideoData = {
+      v: 1,
+      p: 0,
+      x: '00000',
+      d: {
+        '3': { t: { '0': 343, '1': -1, '2': 1.5 } },
+        '4': { t: null },
+        '99': { t: { '0': 500 } }
+      }
+    }
+    expect(normalize(browserDecode(videoManifest, JSON.stringify(malformedVideoData)))).toEqual(
+      decodeSuspendData(videoManifest, malformedVideoData)
+    )
+    expect(decodeSuspendData(videoManifest, malformedVideoData)).toEqual({
+      pages: { 'page-3': { videos: { 'video:lesson.mdx:4:1': 34.3 } } }
+    })
   })
 
   it('keeps browser and Node behavior in parity across defaults, bounds, and malformed indexes', () => {

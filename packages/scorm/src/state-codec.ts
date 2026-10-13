@@ -25,17 +25,11 @@ function createSuspendDataCodec() {
     value !== null && typeof value === 'object' && !Array.isArray(value)
   const safeKey = (value: string): boolean =>
     value.length > 0 && value !== '__proto__' && value !== 'prototype' && value !== 'constructor'
-
-  const videosByPage = (manifest: ContentManifest) =>
-    Object.values(manifest.pages).flatMap((page) =>
-      page.videos && isRecord(page.videos)
-        ? Object.entries(page.videos)
-            .filter(
-              ([videoId, video]) => safeKey(videoId) && isRecord(video) && video.id === videoId
-            )
-            .map(([, video]) => ({ pageId: page.id, video }))
-        : []
-    )
+  const safeVideoIndex = (value: string): boolean =>
+    safeKey(value) &&
+    Number.isSafeInteger(Number(value)) &&
+    Number(value) >= 0 &&
+    String(Number(value)) === value
 
   function encode(
     manifest: ContentManifest,
@@ -60,24 +54,22 @@ function createSuspendDataCodec() {
       { a?: Record<string, number | number[]>; t?: Record<string, number> }
     > = Object.create(null)
 
-    const pageIndexById = new Map(entries.map(([pageIndex, page]) => [page.id, pageIndex]))
-
-    videosByPage(manifest).forEach(({ pageId, video }) => {
-      const videoId = video.id as string
-      if (!safeKey(pageId)) return
-      const pageIndex = pageIndexById.get(pageId)
-      if (pageIndex === undefined) return
-      const videoState = state.pages[pageId]?.videos
-      if (!isRecord(videoState) || !Object.prototype.hasOwnProperty.call(videoState, videoId)) {
-        return
-      }
-      const seconds = videoState[videoId]
-      if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) return
-      const deciseconds = Math.round(seconds * 10)
-      if (!Number.isSafeInteger(deciseconds)) return
-      const pageData = dataByPage[pageIndex] ?? (dataByPage[pageIndex] = {})
-      const videos = pageData.t ?? (pageData.t = Object.create(null))
-      videos[videoId] = deciseconds
+    entries.forEach(([pageIndex, page]) => {
+      if (!safeKey(page.id) || !isRecord(page.videos)) return
+      const videoState = state.pages[page.id]?.videos
+      if (!isRecord(videoState)) return
+      Object.entries(page.videos).forEach(([videoIndex, video]) => {
+        if (!safeVideoIndex(videoIndex) || !isRecord(video) || !safeKey(video.id)) return
+        const videoId = video.id
+        if (!Object.prototype.hasOwnProperty.call(videoState, videoId)) return
+        const seconds = videoState[videoId]
+        if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) return
+        const deciseconds = Math.round(seconds * 10)
+        if (!Number.isSafeInteger(deciseconds) || deciseconds === 0) return
+        const pageData = dataByPage[pageIndex] ?? (dataByPage[pageIndex] = {})
+        const videos = pageData.t ?? (pageData.t = Object.create(null))
+        videos[videoIndex] = deciseconds
+      })
     })
 
     entries.forEach(([pageIndex, page]) => {
@@ -144,7 +136,7 @@ function createSuspendDataCodec() {
       }
 
       // Page-indexed data is only meaningful when its visited bitmap is not
-      // oversized for the current page list. Stable-ID videos can still restore.
+      // oversized for the current page list.
       if (x.length <= entries.length) {
         const completedCount =
           manifest.presentation === 'scroll'
@@ -198,47 +190,27 @@ function createSuspendDataCodec() {
       }
       const encodedPages = parsed.d
       if (isRecord(encodedPages)) {
-        const occurrences = new Map<string, number>()
-        Object.values(encodedPages).forEach((encodedPage) => {
+        entries.forEach(([pageIndex, page]) => {
+          if (!safeKey(page.id) || !isRecord(page.videos)) return
+          const encodedPage = encodedPages[pageIndex]
           const encodedVideos = isRecord(encodedPage) ? encodedPage.t : undefined
           if (!isRecord(encodedVideos)) return
-          Object.keys(encodedVideos).forEach((videoId) => {
-            occurrences.set(videoId, (occurrences.get(videoId) ?? 0) + 1)
-          })
-        })
-
-        const videos = videosByPage(manifest)
-        const manifestOccurrences = new Map<string, number>()
-        videos.forEach(({ video }) => {
-          const videoId = video.id as string
-          manifestOccurrences.set(videoId, (manifestOccurrences.get(videoId) ?? 0) + 1)
-        })
-        videos.forEach(({ pageId, video }) => {
-          const videoId = video.id as string
-          if (
-            !safeKey(pageId) ||
-            occurrences.get(videoId) !== 1 ||
-            manifestOccurrences.get(videoId) !== 1
-          ) {
-            return
-          }
-          let deciseconds: unknown
-          Object.values(encodedPages).some((encodedPage) => {
-            const encodedVideos = isRecord(encodedPage) ? encodedPage.t : undefined
+          Object.entries(page.videos).forEach(([videoIndex, video]) => {
             if (
-              isRecord(encodedVideos) &&
-              Object.prototype.hasOwnProperty.call(encodedVideos, videoId)
+              !safeVideoIndex(videoIndex) ||
+              !isRecord(video) ||
+              !safeKey(video.id) ||
+              !Object.prototype.hasOwnProperty.call(encodedVideos, videoIndex)
             ) {
-              deciseconds = encodedVideos[videoId]
-              return true
+              return
             }
-            return false
+            const deciseconds = encodedVideos[videoIndex]
+            if (Number.isSafeInteger(deciseconds) && (deciseconds as number) >= 0) {
+              const pageState = fresh.pages[page.id] ?? (fresh.pages[page.id] = {})
+              const videos = pageState.videos ?? (pageState.videos = {})
+              videos[video.id] = (deciseconds as number) / 10
+            }
           })
-          if (Number.isSafeInteger(deciseconds) && (deciseconds as number) >= 0) {
-            const pageState = fresh.pages[pageId] ?? (fresh.pages[pageId] = {})
-            const videos = pageState.videos ?? (pageState.videos = {})
-            videos[videoId] = (deciseconds as number) / 10
-          }
         })
       }
       return fresh

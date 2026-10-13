@@ -109,7 +109,8 @@ What the compact data does and does not preserve:
 - `d` stores page-indexed data: answer selections as manifest option indexes in
   `d[pageIndex].a`, and video positions in `d[pageIndex].t`. Answers do not store
   question IDs, answer strings, labels, correctness, prompts, or questionnaire
-  IDs. Video positions use stable video IDs as keys and integer deciseconds;
+  IDs. Video positions use page-local manifest video indexes as keys and integer
+  deciseconds;
   semantic positions are seconds rounded to tenths (for example, `132.5`
   seconds encodes as `1325` and decodes as `132.5` seconds). Empty/unknown
   values are omitted; `d` is omitted when no valid answers or video positions
@@ -142,7 +143,7 @@ it is `{"v":1,"p":0,"x":""}`. Optional `d` is absent when empty.
   d?: {
     [pageIndex: string]: {
       a?: { [questionIndex: string]: number | number[] }
-      t?: { [stableVideoId: string]: number } // integer deciseconds
+      t?: { [videoIndex: string]: number } // integer deciseconds
     }
   }
 }
@@ -204,18 +205,16 @@ respectively. The input answer order is normalized by option index.
 
 ### Video positions
 
-With manifest video ID `video-a` owned by `page-one` (page index `0`), semantic
+With manifest video ID `video-a` at local video index `0` on `page-one` (page index `0`), semantic
 `pages: { "page-one": { videos: { "video-a": 12.34 } } }` produces
-`d["0"].t: { "video-a": 123 }`; decoding returns
+`d["0"].t: { "0": 123 }`; decoding returns
 `pages: { "page-one": { videos: { "video-a": 12.3 } } }`. The codec encodes a
-video by looking for its stable ID in `state.pages[ownerPageId].videos`, where
-the owner is the page/item containing that ID in the manifest. Compact positions live in the nested
-`d[pageIndex].t[videoId]` map and store integer deciseconds. On decode, the codec
-scans nested `t` maps by stable ID, then resolves each ID through the current
-manifest and attaches it to that video's current owner. Page indexes therefore
-do not reassign a saved position to another video during page/video reordering;
-moving a same-ID video to a different Page/Item reattaches its position there.
-Unknown and duplicate IDs are discarded. The codec test covers negative,
+video by looking for its semantic ID in `state.pages[ownerPageId].videos`, and
+uses the manifest's local video index for storage. Decode resolves page and
+video indexes through the current manifest, so content at the same index owns
+the saved position after reordering. Unknown/removed indexes are discarded.
+Zero positions are omitted because absence means playback starts at zero. The
+codec test covers negative,
 non-finite, and unknown video values, and verifies fractional rounding (for
 example, `0.06` seconds becomes `0.1` seconds). The implementation also enforces
 safe-integer decisecond values. Nested `t` maps are omitted when semantic state
@@ -238,7 +237,7 @@ contains a submitted questionnaire ID. The actual serialized result is:
   "x": "11",
   "d": {
     "0": { "a": { "0": [0, 2] } },
-    "1": { "t": { "video:video.mdx:8:1": 1325 } }
+    "1": { "t": { "0": 1325 } }
   }
 }
 ```
@@ -257,7 +256,7 @@ correctness metadata as well as display labels, but no learner responses. Its ex
 
 ```ts
 interface ContentManifest {
-  schemaVersion: 2
+  schemaVersion: 1
   title: string
   lang: string
   presentation: 'scroll' | 'grid'
@@ -283,12 +282,13 @@ interface ContentManifest {
 ```
 
 In generated JSON, the outer page keys are stringified page/item indexes; nested
-question and option keys are likewise stringified indexes. Question collection
+question, option, and page-local video keys are likewise stringified indexes. Question collection
 walks nested block content in document order, and each question includes the
 semantic values of its correct options. Each page/item may include a `videos`
-record keyed by video ID; each static `{ id, src, provider }` entry repeats that
-key as its explicit `id`. Nesting identifies the owner, so the codec restores
-each stable video ID under its current page/item. Neither
+record keyed by deterministic traversal-order video index (`"0"`, `"1"`, ...);
+each static `{ id, src, provider }` entry retains its semantic `id`. Nesting
+identifies the owner, and the manifest maps compact local indexes back to
+semantic video IDs. Neither
 the manifest nor its video entries contain learner playback positions. `createContentManifest` includes
 the package title, language (default `en`), presentation type, page titles,
 plain-text question prompt/option labels, authored `correctAnswers`, and the static mappings. The SCORM
@@ -303,8 +303,8 @@ The codec validates compact values against that packaged manifest:
 - `v` must equal `1`; `p` must be an integer from 0 through 100; and `x` must
   contain only `0` and `1`. A shorter `x` is accepted; missing trailing bits
   mean unvisited. If `x` is longer than the current manifest page count, the
-  decoder skips page-indexed visited, progress, and answer restoration, but
-  still scans nested `d[*].t` maps and decodes valid stable-ID video entries.
+  decoder skips page-indexed visited, progress, and answer restoration. Video
+  data is independently resolved through page/local-video indexes.
 - An absent, non-object, or malformed `d` does not invalidate otherwise-valid
   progress. A page entry and its `a` answer map must also be objects; malformed
   namespaces are ignored. Unknown page/question indexes and invalid or unknown
@@ -313,13 +313,10 @@ The codec validates compact values against that packaged manifest:
   then the rest are deduplicated and sorted. A non-multiple-choice question uses
   only the first mapped value. Only valid decoded answers are returned.
 - An absent, malformed, or non-object page entry / nested `t` map is ignored.
-  Only IDs present in the current manifest and non-negative safe-integer
-  decisecond values are decoded. Unknown/removed IDs, IDs duplicated in the
-  current manifest, and duplicate IDs found in multiple nested `t` maps are
-  dropped, as are negative/fractional/unsafe values.
-  A valid value is divided by ten and nested in `pages[ownerPageId].videos` using
-  that stable ID's current manifest owner, not the compact page index. Thus page
-  or video reordering cannot reassign one known ID's position to another video.
+  Only current page/local-video indexes and non-negative safe-integer decisecond
+  values are decoded; missing/removed indexes and invalid values are discarded
+  without rejecting other state. A valid value is divided by ten and nested in
+  `pages[ownerPageId].videos` using the semantic video ID from the manifest.
 - Unknown extra root sections are ignored; there is no root-level `t` field and
   root `t` values are not decoded. The codec has no rejection rule for extra
   properties beyond the required root fields.
@@ -333,9 +330,8 @@ on that page; and, within each `PlayerPageState.videos`, video IDs not found by
 `collectVideoNodes` in that specific Page/Item or positions that are non-numeric,
 non-finite, or negative. Malformed video maps and stale/malformed positions are
 dropped there; surviving video values are normalized to tenths of a second.
-Unlike codec decode, which relinks a stable ID through the current manifest
-owner, direct sanitizer input is not moved between pages: a position stored
-under the wrong page is rejected. Multiple-choice answers must be arrays whose
+Direct sanitizer input is not moved between pages: a position stored under the
+wrong page is rejected. Multiple-choice answers must be arrays whose
 every element is a current option value; valid arrays are deduplicated.
 Correctness is not consulted by the sanitizer.
 
@@ -347,19 +343,13 @@ different current page/question/option. Changed option values are likewise
 resolved through current manifest values and then checked against the AST. The
 format carries no content fingerprint or standalone migration table.
 
-Video positions differ: `d[pageIndex].t` is keyed directly by stable video ID,
-not by a manifest video index. Decode scans those nested maps by ID and
-uses the current manifest owner, so a changed page index or video ordering does
-not shift a position onto a different ID. A position remains attached when
-that video's generated ID stays the same. Because the ID uses source coordinates,
-reordering or inserting content in the same source can change the ID and make
-the old position unmatched. Deleting a video drops its old key when that ID is
-absent from the current manifest. The ID is not a content hash: replacing a
-video at the same source path and coordinates keeps the ID and therefore keeps
-its position. This is not a general migration framework. Nested `t` is additive
-within `d` and keeps `v: 1`; old pre-video payloads without nested `t` still
-decode. An older runtime that ignores `d[*].t` and then decodes/re-encodes state
-will omit those positions, so video progress would be lost on that save.
+Video positions use `d[pageIndex].t[videoIndex]`, where both indexes come
+from the current manifest. As with page/question/option indexes, reordering can
+map a saved position to a different semantic video at the same index; removed
+indexes are ignored. The compact payload contains no video IDs. The decoder
+accepts only this v1 format; it does not support ID-keyed video maps from earlier
+payloads. Payloads without nested `t` remain valid, and video positions are
+omitted on encode when no valid position exists.
 
 ## Persisted ID generation and stability
 
@@ -388,13 +378,13 @@ questionnaires/questions. Stability is limited by the inputs: moving/renaming a
 referenced Page/Item source changes its ID; moving/renaming a questionnaire,
 question, or video source changes its ID; and inserting/removing text or nodes
 before one on the same source can change its line or column. Reordering source
-content can therefore change line/column IDs. There is deliberately no video
-array-index identity: nested `d[*].t` uses the generated video ID.
+content can therefore change line/column IDs. The manifest assigns deterministic
+local video indexes in traversal order; semantic IDs remain in the manifest and
+`PlayerState`, not the compact payload.
 
-Even when stable IDs themselves remain unchanged, the compact `d` answer
-dictionary is positional through the current manifest. Adding/reordering pages,
-questions, or options can change those numeric mappings; the ID-keyed video map
-does not have that positional limitation.
+The compact `d` dictionary is positional through the current manifest. Adding
+or reordering pages, questions, options, or videos can change those numeric
+mappings.
 
 ## Node/browser parity, tests, and change checklist
 
@@ -403,7 +393,7 @@ source of the same self-contained `createSuspendDataCodec()` used by the Node
 exports. The generated SCO and preview runtime therefore use the same encode,
 decode, validation, and normalization logic. The parity tests execute that
 source in a VM and compare browser encode/decode behavior with the Node exports,
-including video IDs and malformed inputs.
+including indexed video positions, round trips, and malformed inputs.
 
 Relevant implementation and test paths:
 

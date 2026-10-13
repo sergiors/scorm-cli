@@ -9,7 +9,7 @@ import type {
 } from '@scorm-cli/core'
 
 export interface ContentManifest {
-  schemaVersion: 2
+  schemaVersion: 1
   title: string
   lang: string
   presentation: 'scroll' | 'grid'
@@ -152,7 +152,10 @@ export function createContentManifest(contentPackage: ContentPackage): ContentMa
       }
     })
     const videos = Object.fromEntries(
-      collectVideoNodes(node.content).map(({ id, src, provider }) => [id, { id, src, provider }])
+      collectVideoNodes(node.content).map(({ id, src, provider }, videoIndex) => [
+        String(videoIndex),
+        { id, src, provider }
+      ])
     )
     pages[String(pageIndex)] = {
       id: node.id,
@@ -163,7 +166,7 @@ export function createContentManifest(contentPackage: ContentPackage): ContentMa
   })
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 1,
     title: contentPackage.metadata.title,
     lang: contentPackage.metadata.lang ?? 'en',
     presentation: contentPackage.presentation.type,

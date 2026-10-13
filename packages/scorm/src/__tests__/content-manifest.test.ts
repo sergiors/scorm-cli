@@ -141,10 +141,10 @@ describe('content manifest', () => {
     })
     expect(manifest.pages['2']!.questions).toEqual({})
     expect(manifest.pages['2']!.videos).toEqual({
-      'stable-video': { id: 'stable-video', src: 'clip.mp4', provider: 'native' }
+      '0': { id: 'stable-video', src: 'clip.mp4', provider: 'native' }
     })
     expect(manifest.pages['3']!.videos).toEqual({
-      'second-video': { id: 'second-video', src: 'https://vimeo.com/42', provider: 'vimeo' }
+      '0': { id: 'second-video', src: 'https://vimeo.com/42', provider: 'vimeo' }
     })
     expect(manifest.pages['3']!.questions!['0']).toMatchObject({
       prompt: '',
@@ -264,7 +264,7 @@ describe('content manifest', () => {
     const first = createContentManifest(content)
     expect(first).toEqual(createContentManifest(content))
     expect(first).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 1,
       title: 'Course',
       lang: 'en',
       presentation: 'scroll',
@@ -293,7 +293,7 @@ describe('content manifest', () => {
     expect(first).not.toHaveProperty('videos')
   })
 
-  it('indexes video IDs and static metadata through nested content without playback state', () => {
+  it('indexes videos and static metadata through nested content without playback state', () => {
     const video = (
       id: string,
       provider: 'native' | 'youtube' | 'vimeo',
@@ -366,40 +366,35 @@ describe('content manifest', () => {
 
     const manifest = createContentManifest(content)
     expect(manifest.pages['0']!.videos).toEqual({
-      'video:videos.mdx:1:1': {
+      '0': {
         id: 'video:videos.mdx:1:1',
         src: 'assets/local.mp4',
         provider: 'native'
       },
-      'video:videos.mdx:2:1': {
+      '1': {
         id: 'video:videos.mdx:2:1',
         src: 'https://youtu.be/abc',
         provider: 'youtube'
       },
-      'video:videos.mdx:3:1': {
+      '2': {
         id: 'video:videos.mdx:3:1',
         src: 'https://vimeo.com/42',
         provider: 'vimeo'
       },
-      'video:videos.mdx:4:1': {
+      '3': {
         id: 'video:videos.mdx:4:1',
         src: 'https://cdn.example.test/clip.mp4',
         provider: 'native'
       }
     })
     expect(manifest.pages['1']!.videos).toEqual({
-      'video:second.mdx:1:1': {
+      '0': {
         id: 'video:second.mdx:1:1',
         src: 'assets/second.mp4',
         provider: 'native'
       }
     })
-    expect(Object.keys(manifest.pages['0']!.videos ?? {})).toEqual([
-      'video:videos.mdx:1:1',
-      'video:videos.mdx:2:1',
-      'video:videos.mdx:3:1',
-      'video:videos.mdx:4:1'
-    ])
+    expect(Object.keys(manifest.pages['0']!.videos ?? {})).toEqual(['0', '1', '2', '3'])
     expect(manifest).not.toHaveProperty('videos')
     expect(JSON.stringify(manifest)).not.toMatch(/pageId|playback|position|seconds/)
   })
@@ -422,7 +417,7 @@ describe('content manifest', () => {
     }
 
     expect(createContentManifest(content).pages['0']!.videos).toEqual({
-      'video:item.mdx:1:1': { id: 'video:item.mdx:1:1', src: 'abc', provider: 'youtube' }
+      '0': { id: 'video:item.mdx:1:1', src: 'abc', provider: 'youtube' }
     })
   })
 
