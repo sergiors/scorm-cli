@@ -181,8 +181,8 @@ describe('SCORM dev reload resume (scroll)', () => {
     const secondWindow = createWindow()
     // Scroll completion is reconstructed from progress, answers decode through
     // the current manifest, and the location stays in its separate CMI element —
-    // so a refresh restores the learner's answers/progress even though the Scroll
-    // presentation itself always reopens at the top of the document.
+    // so a refresh restores the learner's answers/progress and the Scroll
+    // presentation reopens at the saved `page:two` location.
     expect(secondWindow.scormBridge.restoreState()).toEqual({
       location: 'page:two',
       pages: {

@@ -19,8 +19,8 @@ import {
  * - it reports the window through `rangeChanged`, so the semantic current page
  *   is driven by the virtualizer's visible range;
  * - `initialTopMostItemIndex` seeds the window's anchor, so the presentation's
- *   startup position is observable (the reading presentation always passes zero,
- *   so a reload mounts the first page);
+ *   startup position is observable (the reading presentation seeds it from the
+ *   saved lesson location, falling back to zero);
  * - `scrollToIndex` is recorded, so explicit navigation is observable.
  *
  * The double is installed for a suite with

@@ -77,6 +77,14 @@ export interface ScrollPresentationProps {
   contentProvider: ContentProvider
   /** Persisted state per page id, for restored answers and submitted state. */
   pageStates: Record<string, PlayerPageState>
+  /**
+   * Page id named by the saved lesson location (`PlayerState.location`), so a
+   * refresh resumes on the bookmarked page instead of the first one. It is read
+   * only once, to seed the initial reading position; it falls back to the first
+   * accessible page when the id is absent, unknown, or still locked under the
+   * shared progression policy.
+   */
+  initialPageId?: string
   /** Invoked once per page the learner reaches, storing it as the location. */
   onPageSeen: (id: string) => void
   /**
@@ -135,15 +143,23 @@ export interface ScrollPresentationProps {
  * no custom height compensation and no viewport-sized default (see the list
  * props below).
  *
- * Every reload starts at the first page, at the top of the document: the list is
- * always initialised at item zero and no saved location positions it, so a
- * refresh never reopens a deep page. Restored answers, submissions and progress
- * are unaffected — only the reading position restarts.
+ * A reload resumes the saved reading position. The runtime exposes the lesson
+ * location as a sanitized `PlayerState.location` — SCORM 1.2 stores it in
+ * `cmi.core.lesson_location`, SCORM 2004 in `cmi.location`, and the runtime
+ * normalizes both into the same semantic id — and the presentation seeds its
+ * initial position from it: the accessible page that id names, or the first
+ * accessible page when it is absent, unknown, or still locked. The index is
+ * computed once on first mount and handed straight to Virtuoso as its initial
+ * item, so the list opens directly at that page with no scripted scroll. The
+ * semantic current page is initialized to the same restored page, so the first
+ * seen report matches it rather than transiently overwriting the saved location
+ * with page zero. Restored answers, submissions and progress are unaffected.
  */
 export function ScrollPresentation({
   pages,
   contentProvider,
   pageStates,
+  initialPageId,
   onPageSeen,
   onPageCompleted,
   onAnswer,
@@ -173,10 +189,22 @@ export function ScrollPresentation({
   const accessiblePagesRef = useRef(accessiblePages)
   accessiblePagesRef.current = accessiblePages
 
-  // The list always opens at its first accessible page. No saved location is
-  // read or passed to Virtuoso, so a reload restarts at page zero / the top of
-  // the document instead of resuming a prior reading position.
-  const [activeId, setActiveId] = useState(() => accessiblePages[0]?.id ?? '')
+  // The reading position the list opens at, computed once on first mount: the
+  // accessible page named by the saved lesson location, or the first accessible
+  // page when the location is absent, unknown, or still locked. It is captured
+  // here — before `activeId` or any later location change — so it is a stable
+  // constant handed to Virtuoso as the initial item, never re-derived from state
+  // that the presentation itself writes. A later `PlayerState.location` change
+  // (a scroll or a Path jump) therefore never repositions the list.
+  const [initialIndex] = useState(() => {
+    const index = accessiblePages.findIndex((page) => page.id === initialPageId)
+    return index >= 0 ? index : 0
+  })
+
+  // The semantic current page starts at the restored item, so the first seen
+  // report matches the restored location instead of transiently writing page
+  // zero over it. It then follows the visible range exactly as before.
+  const [activeId, setActiveId] = useState(() => accessiblePages[initialIndex]?.id ?? '')
 
   // The synchronous mirror of `activeId`, so a range update can no-op on an
   // unchanged page without closing over stale state.
@@ -281,11 +309,13 @@ export function ScrollPresentation({
         ref={virtuosoRef}
         useWindowScroll
         totalCount={accessiblePages.length}
-        // The list opens at item zero without a scripted scroll, so a reload
-        // always starts at the first page — never a saved, deeper location.
-        initialTopMostItemIndex={0}
+        // The list opens directly at the restored reading position — the
+        // accessible page named by the saved lesson location, or item zero when
+        // there is none — with no scripted scroll. The index is a stable
+        // constant, so a later location change never repositions the list.
+        initialTopMostItemIndex={initialIndex}
         // Only a server-rendered shell (the app renders client-side) needs a
-        // forced initial item; on the client Virtuoso opens at item zero.
+        // forced initial item; on the client Virtuoso opens at the initial index.
         initialItemCount={typeof window === 'undefined' ? 1 : undefined}
         // Render exactly the visible window, so `rangeChanged` reports the pages
         // the viewport actually shows rather than a pre-rendered overscan band.
@@ -647,7 +677,7 @@ function LockedBoundary() {
   return (
     <div
       data-scroll-locked
-      className="flex items-center justify-center gap-2 pt-6 text-muted-foreground"
+      className="flex items-center justify-center gap-2 py-6 text-muted-foreground"
     >
       <Lock aria-hidden="true" className="size-5" />
       <p className="text-sm">

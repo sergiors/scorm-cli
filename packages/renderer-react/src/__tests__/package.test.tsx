@@ -93,6 +93,12 @@ describe('PackageView scroll presentation', () => {
     const contentTag = html.match(/<div data-scroll-page-content[^>]*>/)?.[0] ?? ''
     expect(contentTag).not.toBe('')
     expect(contentTag).not.toMatch(/\b(py-|pt-|pb-)/)
+    // The prose region wrapping the authored content adds no vertical padding of
+    // its own either, so pages keep only their natural typography spacing and no
+    // explicit gap opens between consecutive pages.
+    const proseTag = html.match(/<section class="[^"]*prose[^"]*"/)?.[0] ?? ''
+    expect(proseTag).not.toBe('')
+    expect(proseTag).not.toMatch(/\b(py-|pt-|pb-)/)
     // A single shared column frames the whole list: one responsive max width and
     // horizontal padding, and no overflow, height or vertical padding that could
     // turn it into a second scroll container.

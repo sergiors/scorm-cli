@@ -12,8 +12,8 @@ describe('disableNativeScrollRestoration', () => {
 
     disableNativeScrollRestoration()
 
-    // A reload then opens at the top of the document rather than at a saved
-    // scroll offset.
+    // The reading position is restored deliberately by the presentation, so
+    // native restoration must not replay a stale scroll offset on top of it.
     expect(history.scrollRestoration).toBe('manual')
   })
 

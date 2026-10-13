@@ -7,10 +7,11 @@ import { ScormDevToolsToolbar } from './components/ScormDevToolsToolbar'
 import { disableNativeScrollRestoration } from './lib/scroll-restoration'
 import './styles.css'
 
-// A reload always opens the reading at the top of the document, never at a
-// previously saved scroll offset, so the browser must not restore scroll on its
-// own (reload, back/forward). Persisted learner state — location, answers,
-// submissions, progress — is unaffected; only the native restoration is off.
+// The reading position is restored deliberately from the saved lesson location,
+// so the browser must not also restore a remembered scroll offset on its own
+// (reload, back/forward) — the two would compete. Persisted learner state —
+// location, answers, submissions, progress — is unaffected; only the native
+// restoration is off.
 disableNativeScrollRestoration()
 
 const container = document.getElementById('root')

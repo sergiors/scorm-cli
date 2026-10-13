@@ -62,11 +62,11 @@ export interface PlayerSession {
  *   completes once its own completion rule is met (for Scroll, its end boundary
  *   was reached; for Slides, it is simply displayed) and every questionnaire on
  *   the page has been submitted. The page being viewed is stored as the lesson
- *   location. Slides resumes on that page after a refresh, but Scroll always
- *   reopens at the top of the document: it ignores the saved location, so only
- *   the reading position restarts while restored answers, submissions and
- *   progress are unaffected. The package is complete once every page is
- *   completed.
+ *   location. Both resume on that page after a refresh: the location the runtime
+ *   read back (SCORM 1.2 `cmi.core.lesson_location` / SCORM 2004 `cmi.location`,
+ *   normalized to `PlayerState.location`) seeds the initial reading position,
+ *   while restored answers, submissions and progress are unaffected. The package
+ *   is complete once every page is completed.
  * - Tiles items are visited (and stored as the location) as they are opened;
  *   the package is complete once every item has been opened. A saved location
  *   reopens that item's dialog on mount.

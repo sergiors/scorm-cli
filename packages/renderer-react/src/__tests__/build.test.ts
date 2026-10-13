@@ -147,10 +147,11 @@ describe('renderReactPackage', () => {
   })
 
   it('disables native browser scroll restoration in the entry bundle', () => {
-    // A reload must open the reading at the top, so the packaged entry turns off
-    // the browser's own scroll restoration behind a feature check; persisted
-    // learner state is untouched. Assert the guarded assignment itself rather
-    // than merely the presence of the two tokens.
+    // The reading position is restored deliberately from the saved lesson
+    // location, so the packaged entry turns off the browser's own scroll
+    // restoration behind a feature check to keep a stale pixel offset from
+    // competing; persisted learner state is untouched. Assert the guarded
+    // assignment itself rather than merely the presence of the two tokens.
     expect(appJs).toMatch(/['"]scrollRestoration['"]\s*in\s+history/)
     expect(appJs).toMatch(/history\.scrollRestoration\s*=\s*['"]manual['"]/)
   })

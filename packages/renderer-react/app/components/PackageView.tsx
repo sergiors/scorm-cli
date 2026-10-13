@@ -88,6 +88,7 @@ export function PackageView({ contentPackage, contentProvider }: PackageViewProp
       pages={presentation.pages}
       contentProvider={contentProvider}
       pageStates={state.pages}
+      initialPageId={state.location}
       onPageSeen={markSeen}
       onPageCompleted={markCompleted}
       onAnswer={setAnswer}
