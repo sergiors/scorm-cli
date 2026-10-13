@@ -21,6 +21,13 @@ import {
   tilesPackage
 } from './fixtures'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
+import { virtuosoMock } from './virtuoso-mock'
+
+// The real Virtuoso virtualizes against measured DOM geometry, which jsdom does
+// not provide. The suite drives a deterministic double that models the parts the
+// presentation relies on: the rendered window, `rangeChanged`, the initial
+// index and `scrollToIndex`.
+vi.mock('react-virtuoso', () => import('./virtuoso-mock'))
 
 /**
  * Renders a package under the player's i18n provider, mirroring `PackageApp`.
@@ -155,13 +162,13 @@ let root: Root
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   observers.length = 0
+  virtuosoMock.reset()
   originalIntersectionObserver = globalThis.IntersectionObserver
   globalThis.IntersectionObserver =
     FakeIntersectionObserver as unknown as typeof IntersectionObserver
-  // jsdom does not implement scrolling; stub both entry points so the player's
-  // resume/navigation calls stay side-effect free and observable.
+  // jsdom does not implement scrolling; stub the entry point the slides
+  // presentation uses so the run stays side-effect free and observable.
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
-  Element.prototype.scrollIntoView = vi.fn()
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
@@ -275,107 +282,6 @@ function driveObserver(element: Element, isIntersecting: boolean): void {
   })
 }
 
-/**
- * The reading anchor the presentation compares page regions against: the top
- * edge of the viewport. The current page is the one whose region spans the line
- * at the top of the screen.
- */
-const ANCHOR = 0
-
-/**
- * The viewport height the scroll geometry tests resolve the anchor against.
- * jsdom defaults `innerHeight` to 768, but the anchor tests hand-tune their
- * scroll offsets around `innerHeight * ANCHOR`; pinning it explicitly keeps the
- * geometry deterministic instead of silently tracking jsdom's default.
- */
-const VIEWPORT_HEIGHT = 768
-
-/**
- * Pins `window.innerHeight` to a fixed value and returns a restore for the
- * original. jsdom reports `innerHeight` as a plain own property, so replacing it
- * and putting the descriptor back is enough to leave every other test untouched.
- */
-function pinViewportHeight(height: number): () => void {
-  const original = Object.getOwnPropertyDescriptor(window, 'innerHeight')
-  Object.defineProperty(window, 'innerHeight', {
-    configurable: true,
-    writable: true,
-    enumerable: true,
-    value: height
-  })
-  return () => {
-    if (original) {
-      Object.defineProperty(window, 'innerHeight', original)
-    } else {
-      Reflect.deleteProperty(window, 'innerHeight')
-    }
-  }
-}
-
-/**
- * Scopes a fixed viewport height to the surrounding suite, pinning
- * `window.innerHeight` before each test and restoring it afterwards. Call it at
- * the top of a `describe` whose assertions depend on the anchor's pixel geometry.
- */
-function useViewportHeight(height: number): void {
-  let restore: (() => void) | undefined
-  beforeEach(() => {
-    restore = pinViewportHeight(height)
-  })
-  afterEach(() => {
-    restore?.()
-    restore = undefined
-  })
-}
-
-function makeRect(top: number, bottom: number): DOMRect {
-  return {
-    top,
-    bottom,
-    height: bottom - top,
-    width: 0,
-    left: 0,
-    right: 0,
-    x: 0,
-    y: top,
-    toJSON: () => ({})
-  } as DOMRect
-}
-
-/**
- * Lays the rendered scroll regions out as the natural-height stack a browser
- * would produce — each page starting where the previous ended, shifted by the
- * scroll offset — and reports those rects. jsdom performs no layout, so the
- * geometry is supplied explicitly, keyed by page index.
- */
-function layoutRegions(heights: number[], scrollTop: number): void {
-  for (const region of container.querySelectorAll<HTMLElement>('[data-scroll-page]')) {
-    const index = Number(region.getAttribute('data-scroll-page'))
-    const height = heights[index] ?? 0
-    const start = heights.slice(0, index).reduce((sum, value) => sum + value, 0) - scrollTop
-    region.getBoundingClientRect = () => makeRect(start, start + height)
-  }
-}
-
-/** Reports an arbitrary scroll offset with the given page heights. */
-function scrollToOffset(scrollTop: number, heights: number[]): void {
-  layoutRegions(heights, scrollTop)
-  act(() => {
-    window.dispatchEvent(new Event('scroll'))
-  })
-}
-
-/**
- * Reports a scroll position that leaves the reading anchor inside the given
- * page, modelling the learner scrolling until that page owns the anchor: the
- * page's top is placed on the anchor line at the viewport top.
- */
-function scrollToPage(index: number, heights: number[]): void {
-  const anchor = window.innerHeight * ANCHOR
-  const start = heights.slice(0, index).reduce((sum, value) => sum + value, 0)
-  scrollToOffset(start - anchor, heights)
-}
-
 function setEndIntersecting(index: number, isIntersecting: boolean): void {
   const sentinel = container.querySelector(`[data-scroll-end="${index}"]`)
   if (!sentinel) {
@@ -385,29 +291,12 @@ function setEndIntersecting(index: number, isIntersecting: boolean): void {
 }
 
 /**
- * Reports `prefers-reduced-motion: reduce` to `matchMedia`, so the presentation
- * is pushed the way a learner with the preference set would push it. Every other
- * query reports no match, so the stub is a faithful replacement for jsdom's own
- * always-false `matchMedia`.
+ * Moves React Virtuoso's rendered window to an item index, modelling a learner
+ * scroll that leaves the window's top edge on that page. The double reports the
+ * new range, so the semantic current page follows the visible range.
  */
-function preferReducedMotion(): void {
-  vi.spyOn(window, 'matchMedia').mockImplementation(
-    (query: string) =>
-      ({
-        matches: query === '(prefers-reduced-motion: reduce)',
-        media: query,
-        onchange: null,
-        addListener: () => {},
-        removeListener: () => {},
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        dispatchEvent: () => false
-      }) as unknown as MediaQueryList
-  )
-}
-
-function scrollWrappers(): HTMLElement[] {
-  return Array.from(container.querySelectorAll<HTMLElement>('.overflow-y-auto'))
+function showScrollPage(index: number): void {
+  act(() => virtuosoMock.setAnchor?.(index))
 }
 
 /** Indices of the mounted scenes, in document order. */
@@ -415,6 +304,27 @@ function sceneIndices(): number[] {
   return Array.from(container.querySelectorAll('[data-scene-index]'), (node) =>
     Number(node.getAttribute('data-scene-index'))
   )
+}
+
+/** Whether the presentation rendered page `index` in its virtualized window. */
+function renderedPage(index: number): HTMLElement | null {
+  return container.querySelector<HTMLElement>(`[data-scroll-page="${index}"]`)
+}
+
+/**
+ * An element's classes with any responsive variant prefix stripped, so `sm:py-12`
+ * reads as `py-12` for a spacing assertion independent of the breakpoint.
+ */
+function baseClasses(element: Element | null | undefined): string[] {
+  return (element?.className ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((name) => name.slice(name.lastIndexOf(':') + 1))
+}
+
+/** The accessible item count the presentation last handed the virtualizer. */
+function virtualizedTotal(): number | undefined {
+  return virtuosoMock.lastTotalCount()
 }
 
 function plainPage(index: number): PageNode {
@@ -509,9 +419,6 @@ const progressPackage: ContentPackage = {
   }
 }
 
-/** Page heights used by the anchor-detection tests: taller than the viewport. */
-const FOUR_PAGE_HEIGHTS = [1500, 1500, 1500, 1500]
-
 /** Restores the progress package with every page already reachable. */
 function restoreAllFourPages(): {
   location: string
@@ -587,9 +494,6 @@ const shortPagesPackage: ContentPackage = {
     pages: [shortTargetPathPage, plainPage(2), plainPage(3), plainPage(4), plainPage(5)]
   }
 }
-
-/** Each short page's height, a small fraction of the viewport. */
-const SHORT_PAGE_HEIGHTS = [300, 300, 300, 300, 300]
 
 /** Restores the short-pages package with every page reachable from page one. */
 function restoreShortPages(): {
@@ -668,7 +572,6 @@ describe('PackageView scroll interactions', () => {
     expect(
       container.querySelector('[role="progressbar"]:not([data-slot="questionnaire-progress"])')
     ).toBeNull()
-    expect(scrollWrappers()).toHaveLength(0)
   })
 
   it('marks the first page visited and stores it as the location on mount', () => {
@@ -732,9 +635,54 @@ describe('PackageView scroll natural layout', () => {
     // geometry stays exactly what anchor detection reads.
     expect(scene?.classList.contains('transition')).toBe(false)
     expect(scene?.classList.contains('translate-y-1')).toBe(false)
-    // Natural block padding keeps the flow readable without filling the viewport.
+    // Responsive horizontal padding keeps the content off the viewport edges.
     expect(scene?.className).toContain('px-4')
-    expect(scene?.className).toContain('py-12')
+    // The wrapper carries no vertical padding, margin, gap or scroll class — any
+    // of which would open an artificial space between consecutive page wrappers.
+    const wrapperUtilities = baseClasses(scene)
+    for (const spacing of ['py-', 'pt-', 'pb-', 'my-', 'mt-', 'mb-', 'gap-', 'scroll-']) {
+      expect(wrapperUtilities.some((name) => name.startsWith(spacing))).toBe(false)
+    }
+
+    // The intentional, responsive vertical padding lives inside the page, on its
+    // content, so a page still reads with breathing room from its top and bottom
+    // edges even though the wrapper itself is spacing-free.
+    const content = scene?.querySelector<HTMLElement>('[data-scroll-page-content]')
+    expect(content).not.toBeNull()
+    const contentClasses = (content?.className ?? '').split(/\s+/)
+    expect(contentClasses).toContain('py-8')
+    expect(contentClasses).toContain('sm:py-12')
+  })
+
+  it('keeps the loading and error slots frame- and padding-consistent with content', async () => {
+    const { provider, rejectLoad } = deferredProvider(plainOnePagePackage)
+
+    act(() =>
+      root.render(<LazyPlayer contentPackage={plainOnePagePackage} contentProvider={provider} />)
+    )
+
+    // The skeleton reuses the page frame — still a minimum small viewport, still
+    // spacing-free on the wrapper — and the same inner content padding, so the
+    // swap to real content changes neither the minimum size nor the spacing.
+    const skeleton = container.querySelector<HTMLElement>('[data-scroll-loading]')
+    expect(skeleton).not.toBeNull()
+    expect(skeleton?.classList.contains('min-h-svh')).toBe(true)
+    expect(baseClasses(skeleton).some((name) => name.startsWith('py-'))).toBe(false)
+    expect(baseClasses(skeleton?.firstElementChild)).toContain('py-8')
+    expect(baseClasses(skeleton?.firstElementChild)).toContain('py-12')
+
+    await act(async () => {
+      rejectLoad('page:plain-1.mdx')
+    })
+    await flushLoads()
+
+    // The error slot keeps the same frame and the same inner padding as content.
+    const error = container.querySelector<HTMLElement>('[data-scroll-error]')
+    expect(error).not.toBeNull()
+    expect(error?.classList.contains('min-h-svh')).toBe(true)
+    expect(baseClasses(error).some((name) => name.startsWith('py-'))).toBe(false)
+    expect(baseClasses(error?.firstElementChild)).toContain('py-8')
+    expect(baseClasses(error?.firstElementChild)).toContain('py-12')
   })
 
   it('lets a page longer than the viewport grow without clipping or centering', () => {
@@ -761,7 +709,7 @@ describe('PackageView scroll natural layout', () => {
     }
   })
 
-  it('renders every accessible restored page as a real scene with no spacer', () => {
+  it('exposes every accessible page to the virtualizer with no spacer', () => {
     window.scormBridge = {
       restoreState: () => ({
         location: 'page:plain-4.mdx',
@@ -775,15 +723,12 @@ describe('PackageView scroll natural layout', () => {
 
     act(() => root.render(<Player contentPackage={progressPackage} />))
 
-    // Every accessible page is a real, viewport-tall scene. The old
-    // height-preserving spacer is gone, so nothing is left as a placeholder to
-    // reserve or collapse room.
-    expect(container.querySelector('[data-scroll-virtualized]')).toBeNull()
-    expect(sceneIndices()).toEqual([0, 1, 2, 3])
-    for (const index of [0, 1, 2, 3]) {
-      const scene = container.querySelector(`[data-scene-index="${index}"]`)
-      expect(scene?.classList.contains('min-h-svh')).toBe(true)
-    }
+    // Every accessible page is an item the virtualizer may render — a real,
+    // viewport-tall scene, never a height-preserving spacer — and the reload
+    // opens on the first page even though a later one was saved as the location.
+    expect(virtualizedTotal()).toBe(4)
+    expect(sceneIndices()).toEqual([0])
+    expect(renderedPage(0)?.classList.contains('min-h-svh')).toBe(true)
   })
 })
 
@@ -794,12 +739,18 @@ describe('PackageView scroll completion gating', () => {
 
     act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
     expect(sceneIndices()).toEqual([0])
+    expect(virtualizedTotal()).toBe(1)
 
     setEndIntersecting(0, true)
 
-    // Page one is complete, so page two unlocks and mounts.
-    expect(sceneIndices()).toEqual([0, 1])
+    // Page one is complete, so page two becomes accessible — a new list item —
+    // and renders once the learner scrolls to it.
+    expect(virtualizedTotal()).toBe(2)
     expect(lastSaved(saveState).pages['page:plain-1.mdx']?.completed).toBe(true)
+
+    showScrollPage(1)
+    expect(sceneIndices()).toEqual([1])
+    expect(text()).toContain('Body 2.')
   })
 
   it('keeps the next page locked at the end until questionnaires submit', () => {
@@ -807,7 +758,8 @@ describe('PackageView scroll completion gating', () => {
 
     setEndIntersecting(0, true)
     expect(sceneIndices()).toEqual([0])
-    expect(container.querySelector('[data-scroll-page="1"]')).toBeNull()
+    expect(renderedPage(1)).toBeNull()
+    expect(virtualizedTotal()).toBe(1)
 
     // The end is reached but the page still has an unsubmitted questionnaire, so
     // the page after it stays locked and the boundary notice shows at its bottom.
@@ -817,7 +769,7 @@ describe('PackageView scroll completion gating', () => {
     expect(boundary?.textContent).toContain('Complete this page to continue.')
 
     answerQuestionnaire()
-    expect(sceneIndices()).toEqual([0, 1])
+    expect(virtualizedTotal()).toBe(2)
     // Completing the page unlocked the next one, so the notice is gone.
     expect(container.querySelector('[data-scroll-locked]')).toBeNull()
   })
@@ -826,10 +778,10 @@ describe('PackageView scroll completion gating', () => {
     act(() => root.render(<Player contentPackage={gatedPackage} />))
 
     answerQuestionnaire()
-    expect(sceneIndices()).toEqual([0])
+    expect(virtualizedTotal()).toBe(1)
 
     setEndIntersecting(0, true)
-    expect(sceneIndices()).toEqual([0, 1])
+    expect(virtualizedTotal()).toBe(2)
   })
 
   it('completes the package only after the final page completes', () => {
@@ -840,46 +792,47 @@ describe('PackageView scroll completion gating', () => {
     expect(markCompleted).not.toHaveBeenCalled()
 
     setEndIntersecting(0, true)
+    showScrollPage(1)
     setEndIntersecting(1, true)
 
     expect(markCompleted).toHaveBeenCalledTimes(1)
   })
 })
 
-describe('PackageView scroll append-only loading and locking', () => {
-  useViewportHeight(VIEWPORT_HEIGHT)
-
-  it('renders every accessible page and never a locked one', () => {
+describe('PackageView scroll accessible list and locking', () => {
+  it('exposes every accessible page and never a locked one', () => {
     window.scormBridge = { restoreState: restoreAllFourPages }
 
     act(() => root.render(<Player contentPackage={progressPackage} />))
 
-    // All four pages are accessible, so all four mount; the boundary notice waits
-    // until the frontier page's end is reached.
-    expect(sceneIndices()).toEqual([0, 1, 2, 3])
-    expect(container.querySelector('[data-scroll-virtualized]')).toBeNull()
+    // All four pages are accessible, so the virtualizer is told there are four
+    // items; the boundary notice waits until the frontier page's end is reached.
+    expect(virtualizedTotal()).toBe(4)
     expect(container.querySelector('[data-scroll-locked]')).toBeNull()
   })
 
-  it('keeps a loaded page mounted when the current page moves away and back', () => {
+  it('tracks the current page as the visible window moves away and back', () => {
     const saveState = vi.fn()
     window.scormBridge = { restoreState: restoreAllFourPages, saveState }
 
     act(() => root.render(<Player contentPackage={progressPackage} />))
 
-    // The document is append-only: scrolling far down and back up never recycles
-    // a page, so the mounted set is unchanged throughout.
-    scrollToPage(2, FOUR_PAGE_HEIGHTS)
-    expect(sceneIndices()).toEqual([0, 1, 2, 3])
-    scrollToPage(0, FOUR_PAGE_HEIGHTS)
-    expect(sceneIndices()).toEqual([0, 1, 2, 3])
+    // Scrolling down and back re-renders the window and moves the location, and
+    // a page's loaded content is kept by the loader across the round trip.
+    showScrollPage(2)
+    expect(sceneIndices()).toEqual([2])
+    expect(lastSaved(saveState).location).toBe('page:plain-3.mdx')
+
+    showScrollPage(0)
+    expect(sceneIndices()).toEqual([0])
+    expect(text()).toContain('Body 1.')
     expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
   })
 
-  it('activates a distant accessible page once the anchor reaches it', () => {
+  it('activates a distant accessible page once the visible window reaches it', () => {
     const saveState = vi.fn()
     // A reached accessible tail: pages one and two are done and page three was
-    // opened, so page three is accessible and mounted from the first paint.
+    // opened, so page three is accessible and in the list from the first paint.
     window.scormBridge = {
       restoreState: () => ({
         location: 'page:plain-1.mdx',
@@ -894,13 +847,12 @@ describe('PackageView scroll append-only loading and locking', () => {
 
     act(() => root.render(<Player contentPackage={progressPackage} />))
 
-    expect(sceneIndices()).toEqual([0, 1, 2])
+    expect(virtualizedTotal()).toBe(3)
     expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
 
-    // The anchor is tested against every mounted region, so a jump that lands
-    // past the page's start — as End, PageDown or a scrollbar drag would — still
-    // activates it.
-    scrollToPage(2, [1500, 1500, 1500])
+    // Only when the visible window's top edge actually reaches it does the
+    // location move.
+    showScrollPage(2)
 
     expect(lastSaved(saveState).location).toBe('page:plain-3.mdx')
     expect(lastSaved(saveState).pages['page:plain-3.mdx']?.visited).toBe(true)
@@ -909,45 +861,46 @@ describe('PackageView scroll append-only loading and locking', () => {
     // would after a scroll, unlocking the next page.
     setEndIntersecting(2, true)
     expect(lastSaved(saveState).pages['page:plain-3.mdx']?.completed).toBe(true)
-    expect(container.querySelector('[data-scroll-page="3"]')).not.toBeNull()
+    expect(virtualizedTotal()).toBe(4)
   })
 
-  it('keeps a locked future page unmounted with no scene or skeleton', () => {
+  it('keeps a locked future page out of the list with no scene or skeleton', () => {
     act(() => root.render(<Player contentPackage={progressPackage} />))
-    expect(container.querySelector('[data-scroll-page="1"]')).toBeNull()
-    // A locked page is never revealed — not its content, and not any loading
-    // stand-in for it either.
+    expect(renderedPage(1)).toBeNull()
+    // A locked page is not a list item at all — never its content, and never any
+    // loading stand-in for it either.
+    expect(virtualizedTotal()).toBe(1)
     expect(container.querySelector('[data-slot="skeleton"]')).toBeNull()
     expect(container.textContent).not.toContain('Body 4.')
   })
 })
 
 describe('PackageView scroll lazy page loading', () => {
-  useViewportHeight(VIEWPORT_HEIGHT)
-
-  it('shows a startup skeleton until the restored page module resolves', async () => {
-    const { provider, resolve } = deferredProvider(progressPackage)
+  it('shows a page skeleton for the first page until its module resolves', async () => {
+    const { provider, calls, resolve } = deferredProvider(progressPackage)
 
     act(() =>
       root.render(<LazyPlayer contentPackage={progressPackage} contentProvider={provider} />)
     )
 
-    // The restored page is page one; until its module resolves only the startup
-    // skeleton is shown and no page is mounted or reported.
-    expect(container.querySelector('[data-scroll-startup]')).not.toBeNull()
-    expect(sceneIndices()).toEqual([])
+    // The first page's slot mounts immediately and requests its module, and a
+    // stable, viewport-tall skeleton stands in until it resolves. No other page
+    // is rendered or requested.
+    expect(calls).toEqual(['page:plain-1.mdx'])
+    expect(container.querySelector('[data-scroll-loading]')).not.toBeNull()
+    expect(container.querySelector('[data-scroll-page="0"] .prose')).toBeNull()
 
     await act(async () => {
       resolve('page:plain-1.mdx')
     })
     await flushLoads()
 
-    expect(container.querySelector('[data-scroll-startup]')).toBeNull()
-    expect(sceneIndices()).toEqual([0])
+    expect(container.querySelector('[data-scroll-loading]')).toBeNull()
+    expect(container.querySelector('[data-scroll-page="0"] .prose')).not.toBeNull()
     expect(container.textContent).toContain('Body 1.')
   })
 
-  it('shows a skeleton slot while the next page loads and replaces it with content', async () => {
+  it('shows a skeleton slot while a newly reachable page loads and replaces it', async () => {
     const { provider, calls, resolve } = deferredProvider(plainTwoPagePackage)
 
     act(() =>
@@ -960,9 +913,14 @@ describe('PackageView scroll lazy page loading', () => {
     expect(sceneIndices()).toEqual([0])
 
     setEndIntersecting(0, true)
+    // Page two is now accessible, but it is not requested until the virtualizer
+    // renders it.
+    expect(calls).not.toContain('page:plain-2.mdx')
 
-    // Page two is unlocked and its module requested; a stable skeleton slot
-    // stands in while it loads.
+    showScrollPage(1)
+
+    // Page two's slot mounts and requests its module; a stable skeleton stands
+    // in while it loads.
     expect(calls).toContain('page:plain-2.mdx')
     expect(container.querySelector('[data-scroll-page="1"] [data-slot="skeleton"]')).not.toBeNull()
 
@@ -971,7 +929,6 @@ describe('PackageView scroll lazy page loading', () => {
     })
     await flushLoads()
 
-    expect(sceneIndices()).toEqual([0, 1])
     expect(container.querySelector('[data-scroll-page="1"] [data-slot="skeleton"]')).toBeNull()
     expect(container.textContent).toContain('Body 2.')
   })
@@ -1004,6 +961,7 @@ describe('PackageView scroll lazy page loading', () => {
     await flushLoads()
 
     setEndIntersecting(0, true)
+    showScrollPage(1)
     await act(async () => {
       rejectLoad('page:plain-2.mdx')
     })
@@ -1025,10 +983,10 @@ describe('PackageView scroll lazy page loading', () => {
     await flushLoads()
 
     expect(container.querySelector('[data-scroll-error]')).toBeNull()
-    expect(sceneIndices()).toEqual([0, 1])
+    expect(container.textContent).toContain('Body 2.')
   })
 
-  it('loads a small backward context and backfills older pages as the learner scrolls back', async () => {
+  it('loads the first page and requests later pages only as the window reaches them', async () => {
     const { provider, calls, resolve } = deferredProvider(progressPackage)
     window.scormBridge = {
       restoreState: () => ({
@@ -1045,172 +1003,105 @@ describe('PackageView scroll lazy page loading', () => {
       root.render(<LazyPlayer contentPackage={progressPackage} contentProvider={provider} />)
     )
 
-    // The restored page and a small backward context load first — never the whole
-    // preceding prefix.
-    for (const id of ['page:plain-2.mdx', 'page:plain-3.mdx', 'page:plain-4.mdx']) {
-      await act(async () => {
-        resolve(id)
-      })
-    }
-    await flushLoads()
-
-    expect(calls).toContain('page:plain-4.mdx')
-    expect(calls).not.toContain('page:plain-1.mdx')
-    expect(sceneIndices()).toEqual([1, 2, 3])
-
-    // Scrolling back towards the earliest loaded page backfills the older
-    // accessible page, which then stays loaded.
-    scrollToPage(1, FOUR_PAGE_HEIGHTS)
-    expect(calls).toContain('page:plain-1.mdx')
+    // The first page loads first, and no later page is requested — the saved
+    // deep location is ignored, so its module is never eagerly fetched.
+    expect(calls).toEqual(['page:plain-1.mdx'])
     await act(async () => {
       resolve('page:plain-1.mdx')
     })
     await flushLoads()
-    expect(sceneIndices()).toEqual([0, 1, 2, 3])
+
+    expect(calls).not.toContain('page:plain-4.mdx')
+    expect(sceneIndices()).toEqual([0])
+
+    // Scrolling down to a later accessible page mounts its slot, which requests
+    // its module and renders it once resolved.
+    showScrollPage(1)
+    expect(calls).toContain('page:plain-2.mdx')
+    await act(async () => {
+      resolve('page:plain-2.mdx')
+    })
+    await flushLoads()
+    expect(sceneIndices()).toEqual([1])
+    expect(container.textContent).toContain('Body 2.')
   })
 })
 
-describe('PackageView scroll anchor detection', () => {
-  useViewportHeight(VIEWPORT_HEIGHT)
-
+describe('PackageView scroll current page tracking', () => {
   function renderFourPages(saveState = vi.fn()) {
     window.scormBridge = { restoreState: restoreAllFourPages, saveState }
     act(() => root.render(<Player contentPackage={progressPackage} />))
     return { saveState }
   }
 
-  it('keeps the current page while a tall page fills the viewport', () => {
+  it('makes the top edge page of the visible window current', () => {
     const { saveState } = renderFourPages()
     expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
 
-    // Half-way down a 1500px page the anchor has moved but is still inside it.
-    scrollToOffset(500, FOUR_PAGE_HEIGHTS)
-    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
-
-    // Still inside the same tall page near its lower part.
-    scrollToOffset(1200, FOUR_PAGE_HEIGHTS)
-    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
-  })
-
-  it('hands the current page to the neighbour when its end leaves the viewport top', () => {
-    const { saveState } = renderFourPages()
-
-    scrollToOffset(1400, FOUR_PAGE_HEIGHTS)
-    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
-
-    // Past page one's end the top-of-viewport line is inside page two.
-    scrollToOffset(1500, FOUR_PAGE_HEIGHTS)
+    showScrollPage(1)
     expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
 
-    // Scrolling back into page one's body hands it back.
-    scrollToOffset(700, FOUR_PAGE_HEIGHTS)
-    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
-  })
-
-  it('resolves a shared boundary to the single page the line actually sits in', () => {
-    const { saveState } = renderFourPages()
-
-    // The line is a point, so it can only ever be inside one page: crossing the
-    // exact boundary flips deterministically with no deadband or oscillation.
-    const expected: Array<[number, string]> = [
-      [1499, 'page:plain-1.mdx'],
-      [1500, 'page:plain-2.mdx'],
-      [1499, 'page:plain-1.mdx'],
-      [1501, 'page:plain-2.mdx']
-    ]
-    for (const [offset, location] of expected) {
-      scrollToOffset(offset, FOUR_PAGE_HEIGHTS)
-      expect(lastSaved(saveState).location).toBe(location)
-    }
-  })
-
-  it('keeps a short page current while its top is at the line, then hands over', () => {
-    const { saveState } = renderFourPages()
-
-    // Page two is only 40px tall. It owns the line the moment its top reaches the
-    // viewport top, however short it is ...
-    scrollToOffset(1500, [1500, 40, 1500, 1500])
-    expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
-
-    // ... and hands over once it has been scrolled fully past the line.
-    scrollToOffset(1540, [1500, 40, 1500, 1500])
+    showScrollPage(2)
     expect(lastSaved(saveState).location).toBe('page:plain-3.mdx')
+
+    showScrollPage(3)
+    expect(lastSaved(saveState).location).toBe('page:plain-4.mdx')
   })
 
-  it('does not activate a distant page before the anchor reaches it', () => {
+  it('does not move the location until the visible window changes', () => {
     const { saveState } = renderFourPages()
 
-    // Every accessible page is mounted, but the current page is still page one.
+    // Re-reporting the same window — as the virtualizer does on any re-render —
+    // is a no-op, and a distant page is not activated until the window reaches
+    // it.
+    showScrollPage(0)
+    expect(saveState).toHaveBeenCalledTimes(1)
     expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
 
-    // A scroll still inside page one must not prematurely hand activation to a
-    // distant page.
-    scrollToOffset(500, FOUR_PAGE_HEIGHTS)
-    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
-
-    // Only when the anchor actually reaches it does the location move.
-    scrollToPage(3, FOUR_PAGE_HEIGHTS)
+    showScrollPage(3)
     expect(lastSaved(saveState).location).toBe('page:plain-4.mdx')
+  })
+
+  it('hands the current page back when the window returns to a page', () => {
+    const { saveState } = renderFourPages()
+
+    showScrollPage(1)
+    expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
+
+    showScrollPage(0)
+    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
   })
 })
 
-describe('PackageView scroll active page emphasis', () => {
-  useViewportHeight(VIEWPORT_HEIGHT)
-
+describe('PackageView scroll active page marker', () => {
   function renderFourPages() {
     window.scormBridge = { restoreState: restoreAllFourPages, saveState: vi.fn() }
     act(() => root.render(<Player contentPackage={progressPackage} />))
   }
 
-  function activeScene(): HTMLElement | null {
-    return container.querySelector<HTMLElement>('[data-active="true"]')
-  }
-
-  /** The emphasis wrapper inside a given mounted scene. */
-  function pageContent(index: number): HTMLElement | null {
-    return container.querySelector<HTMLElement>(
-      `[data-scene-index="${index}"] [data-scroll-page-content]`
-    )
-  }
-
-  it('marks exactly the page under the anchor as active as the current page moves', () => {
+  it('marks exactly the page at the top of the visible window as active', () => {
     renderFourPages()
 
-    expect(activeScene()?.getAttribute('data-scene-index')).toBe('0')
+    expect(
+      container.querySelector<HTMLElement>('[data-active="true"]')?.getAttribute('data-scene-index')
+    ).toBe('0')
     expect(container.querySelectorAll('[data-active="true"]')).toHaveLength(1)
 
-    scrollToPage(1, FOUR_PAGE_HEIGHTS)
+    showScrollPage(1)
 
-    // The anchor moved to page two, so exactly that scene is now the active one.
-    expect(activeScene()?.getAttribute('data-scene-index')).toBe('1')
+    expect(
+      container.querySelector<HTMLElement>('[data-active="true"]')?.getAttribute('data-scene-index')
+    ).toBe('1')
     expect(container.querySelectorAll('[data-active="true"]')).toHaveLength(1)
-
-    // The page that lost the anchor stays fully in the flow: it is marked
-    // inactive and only slightly emphasized down, never hidden or removed.
-    const previous = container.querySelector<HTMLElement>('[data-scene-index="0"]')
-    expect(previous?.getAttribute('data-active')).toBe('false')
-    expect(previous?.classList.contains('min-h-svh')).toBe(true)
-    const previousContent = pageContent(0)
-    expect(previousContent?.className).toContain('opacity-90')
-    expect(previousContent?.className).not.toContain('opacity-0')
   })
 
-  it('settles the active emphasis over 200ms and drops the transition under reduced motion', () => {
+  it('adds no animation or transition of its own', () => {
     renderFourPages()
 
-    const content = pageContent(0)
-    // A short opacity-only settle; the reduced-motion variant removes the
-    // transition entirely.
-    expect(content?.className).toContain('transition-opacity')
-    expect(content?.className).toContain('duration-200')
-    expect(content?.className).toContain('ease-out')
-    expect(content?.className).toContain('motion-reduce:transition-none')
-    // The emphasis is a subtle opacity only: nothing is scaled, offset, hidden
-    // or removed from the flow.
-    expect(content?.className).toContain('opacity-100')
-    expect(content?.className).not.toContain('scale')
-    expect(content?.className).not.toContain('translate')
-    expect(content?.className).not.toContain('hidden')
+    const content = container.querySelector<HTMLElement>('[data-scroll-page-content]')
+    expect(content).not.toBeNull()
+    expect(content?.className).not.toContain('transition')
+    expect(content?.className).not.toContain('animate')
   })
 })
 
@@ -1233,7 +1124,7 @@ describe('PackageView scroll locked boundary', () => {
     expect(boundary?.textContent).toContain('Complete this page to continue.')
   })
 
-  it('removes the boundary and mounts the next page once the frontier completes', () => {
+  it('removes the boundary and unlocks the next page once the frontier completes', () => {
     act(() => root.render(<Player contentPackage={gatedPackage} />))
 
     setEndIntersecting(0, true)
@@ -1244,7 +1135,7 @@ describe('PackageView scroll locked boundary', () => {
     // Completion unlocked the next page, so the generic boundary is gone and the
     // newly accessible page is the frontier, still untouched at its own start.
     expect(container.querySelector('[data-scroll-locked]')).toBeNull()
-    expect(sceneIndices()).toEqual([0, 1])
+    expect(virtualizedTotal()).toBe(2)
   })
 
   it('never renders locked page content even while the boundary is shown', () => {
@@ -1277,6 +1168,7 @@ describe('PackageView scroll persistence', () => {
     setEndIntersecting(0, true)
     expect(lastProgress(saveState)).toBe(25)
 
+    showScrollPage(1)
     setEndIntersecting(1, true)
     expect(lastProgress(saveState)).toBe(50)
     expect(Number.isInteger(lastProgress(saveState))).toBe(true)
@@ -1291,8 +1183,9 @@ describe('PackageView scroll persistence', () => {
     setEndIntersecting(0, true)
     act(() => findButton('Submit questionnaire').click())
 
-    // Completing page A unlocked page B, which is mounted as its next page, and
-    // reuses the same question id but renders its own, unanswered state.
+    // Completing page A unlocked page B; rendering it reuses the same question id
+    // but shows its own, unanswered state.
+    showScrollPage(1)
     expect(inputInScene(1, 'yes').checked).toBe(false)
     expect(inputInScene(1, 'no').checked).toBe(false)
 
@@ -1330,7 +1223,7 @@ describe('PackageView scroll persistence', () => {
     expect(saveState).not.toHaveBeenCalled()
 
     setEndIntersecting(0, true)
-    expect(container.querySelector('[data-scroll-page="1"]')).not.toBeNull()
+    expect(virtualizedTotal()).toBe(2)
   })
 
   it('drops an unknown saved location and starts on the first page', () => {
@@ -1343,7 +1236,7 @@ describe('PackageView scroll persistence', () => {
     expect(sceneIndices()).toEqual([0])
   })
 
-  it('restores the location once under StrictMode', () => {
+  it('writes the starting location once under StrictMode', () => {
     const saveState = vi.fn()
     window.scormBridge = {
       restoreState: () => ({
@@ -1361,12 +1254,14 @@ describe('PackageView scroll persistence', () => {
       )
     )
 
-    expect(sceneIndices()).toContain(1)
+    // A reload opens on the first page even though a later one was saved, and
+    // StrictMode's doubled effects do not double-write the location.
+    expect(sceneIndices()).toEqual([0])
     expect(saveState).toHaveBeenCalledTimes(1)
+    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
   })
 
-  it('restores a saved location instantly rather than with a smooth scroll', () => {
-    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
+  it('starts at the first page despite a saved advanced location and never scrolls', () => {
     window.scormBridge = {
       restoreState: () => ({
         location: 'page:plain-3.mdx',
@@ -1380,10 +1275,41 @@ describe('PackageView scroll persistence', () => {
 
     act(() => root.render(<Player contentPackage={progressPackage} />))
 
-    expect(scrollIntoView).toHaveBeenCalled()
-    for (const [options] of scrollIntoView.mock.calls) {
-      expect(options).toMatchObject({ block: 'start', behavior: 'auto' })
+    // The list opens at item zero, ignoring the saved location entirely, and no
+    // startup navigation (`scrollToIndex`) is issued.
+    expect(virtuosoMock.lastInitialIndex()).toBe(0)
+    expect(virtuosoMock.scrollToIndexCalls).toHaveLength(0)
+    expect(sceneIndices()).toEqual([0])
+  })
+
+  it('preserves restored answers and submissions while starting at the first page', () => {
+    window.scormBridge = {
+      restoreState: () => ({
+        location: 'page:setup.mdx',
+        pages: {
+          'page:intro.mdx': {
+            completed: true,
+            answers: {
+              'question:intro.mdx:1:1': 'first',
+              'question:intro.mdx:1:2': ['alpha']
+            },
+            submittedQuestionnaires: ['questionnaire:intro.mdx:1:1']
+          }
+        }
+      })
     }
+
+    act(() => root.render(<Player contentPackage={gatedPackage} />))
+
+    // The reload opens on the first page, and its restored answers and submitted
+    // questionnaire are still rendered read-only: only the reading position
+    // restarts, never the learner's answers.
+    expect(sceneIndices()).toEqual([0])
+    expect(submittedControl('first').checked).toBe(true)
+    expect(submittedControl('first').disabled).toBe(true)
+    expect(submittedControl('alpha').checked).toBe(true)
+    expect(submittedControl('alpha').disabled).toBe(true)
+    expect(text()).not.toContain('Submit questionnaire')
   })
 })
 
@@ -1410,8 +1336,6 @@ describe('PackageView same-page Path navigation', () => {
 })
 
 describe('PackageView non-adjacent Path navigation', () => {
-  useViewportHeight(VIEWPORT_HEIGHT)
-
   /** A completed prefix that leaves the last page accessible and in range. */
   function restoreWithCompletedPrefix(): {
     location: string
@@ -1427,43 +1351,27 @@ describe('PackageView non-adjacent Path navigation', () => {
     }
   }
 
-  it('scrolls the mounted target scene to the referenced page', () => {
+  it('jumps to the referenced page through the virtualizer', () => {
     const saveState = vi.fn()
     window.scormBridge = { restoreState: restoreWithCompletedPrefix, saveState }
 
     act(() => root.render(<Player contentPackage={nonAdjacentPathPackage} />))
 
-    // The target is accessible, so its real scene is already mounted; nothing is
-    // held back as a placeholder.
-    expect(container.querySelector('[data-scene-index="3"]')).not.toBeNull()
-    expect(container.querySelector('[data-scroll-virtualized]')).toBeNull()
     expect(lastSaved(saveState).location).toBe('page:path.mdx')
-
-    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
-    scrollIntoView.mockClear()
+    expect(virtuosoMock.scrollToIndexCalls).toHaveLength(0)
 
     act(() => container.querySelector<HTMLButtonElement>('[data-path-entry]')?.click())
 
-    // The jump mounted nothing new; the document stays append-only.
-    expect(sceneIndices()).toEqual([0, 1, 2, 3])
-
-    // A deliberate Path jump animates to the target scene ...
-    const contexts = scrollIntoView.mock.contexts as Element[]
-    const targetCall = contexts.findIndex(
-      (element) => element.getAttribute('data-scene-index') === '3'
-    )
-    expect(targetCall).toBeGreaterThanOrEqual(0)
-    expect(scrollIntoView.mock.calls[targetCall]?.[0]).toMatchObject({
-      block: 'start',
-      behavior: 'smooth'
-    })
-
-    // jsdom reports no geometry, so the intended target is recorded as the
-    // current page — after the scroll was issued, never ahead of it.
+    // The jump is an immediate, non-animated `scrollToIndex` to the target's
+    // index; the virtualizer renders the target and it becomes the location.
+    expect(virtuosoMock.scrollToIndexCalls).toEqual([
+      { index: 3, align: 'start', behavior: 'auto' }
+    ])
+    expect(sceneIndices()).toEqual([3])
     expect(lastSaved(saveState).location).toBe('page:plain-4.mdx')
   })
 
-  it('requests a target whose module is not loaded and scrolls once it arrives', async () => {
+  it('requests a target whose module is not loaded when the jump mounts it', async () => {
     const { provider, calls, resolve } = deferredProvider(nonAdjacentPathPackage)
     const saveState = vi.fn()
     window.scormBridge = { restoreState: restoreWithCompletedPrefix, saveState }
@@ -1476,85 +1384,49 @@ describe('PackageView non-adjacent Path navigation', () => {
     })
     await flushLoads()
 
-    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
-    scrollIntoView.mockClear()
+    expect(calls).not.toContain('page:plain-4.mdx')
 
     act(() => container.querySelector<HTMLButtonElement>('[data-path-entry]')?.click())
 
-    // The target's module is requested and a skeleton stands in while it
-    // resolves; the jump waits rather than scrolling a placeholder.
+    // The jump is issued immediately; the target's slot then mounts, requests its
+    // module and a skeleton stands in while it resolves.
+    expect(virtuosoMock.scrollToIndexCalls).toEqual([
+      { index: 3, align: 'start', behavior: 'auto' }
+    ])
     expect(calls).toContain('page:plain-4.mdx')
     expect(container.querySelector('[data-scroll-page="3"] [data-slot="skeleton"]')).not.toBeNull()
-    expect(scrollIntoView).not.toHaveBeenCalled()
-    expect(lastSaved(saveState).location).toBe('page:path.mdx')
 
     await act(async () => {
       resolve('page:plain-4.mdx')
     })
     await flushLoads()
 
-    // Once the real scene exists the jump scrolls it, and the target becomes the
-    // stored location where no geometry is available to reconcile.
-    const contexts = scrollIntoView.mock.contexts as Element[]
-    const targetCall = contexts.findIndex(
-      (element) => element.getAttribute('data-scene-index') === '3'
-    )
-    expect(targetCall).toBeGreaterThanOrEqual(0)
-    expect(scrollIntoView.mock.calls[targetCall]?.[0]).toMatchObject({
-      block: 'start',
-      behavior: 'smooth'
-    })
+    expect(container.querySelector('[data-scroll-page="3"] [data-slot="skeleton"]')).toBeNull()
     expect(lastSaved(saveState).location).toBe('page:plain-4.mdx')
-  })
-
-  it('scrolls a Path jump instantly under reduced motion', () => {
-    preferReducedMotion()
-    window.scormBridge = { restoreState: restoreWithCompletedPrefix }
-
-    act(() => root.render(<Player contentPackage={nonAdjacentPathPackage} />))
-
-    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
-    scrollIntoView.mockClear()
-
-    act(() => container.querySelector<HTMLButtonElement>('[data-path-entry]')?.click())
-
-    // A deliberate jump still moves to the target scene, but under reduced motion
-    // the browser is asked to jump instantly rather than animate.
-    const contexts = scrollIntoView.mock.contexts as Element[]
-    const targetCall = contexts.findIndex(
-      (element) => element.getAttribute('data-scene-index') === '3'
-    )
-    expect(scrollIntoView.mock.calls[targetCall]?.[0]).toMatchObject({
-      block: 'start',
-      behavior: 'auto'
-    })
   })
 })
 
 describe('PackageView short-page jump navigation', () => {
-  useViewportHeight(VIEWPORT_HEIGHT)
-
-  it('keeps every short page mounted after a jump', () => {
+  it('jumps to the referenced short page through the virtualizer', () => {
     const saveState = vi.fn()
     window.scormBridge = { restoreState: restoreShortPages, saveState }
 
     act(() => root.render(<Player contentPackage={shortPagesPackage} />))
 
-    // Every accessible short page is mounted from the first paint.
-    expect(container.querySelector('[data-scene-index="2"]')).not.toBeNull()
+    // Every accessible short page is an item the virtualizer can reach.
+    expect(virtualizedTotal()).toBe(5)
 
     act(() => container.querySelector<HTMLButtonElement>('[data-path-entry]')?.click())
 
-    // The jump targets the short page three; the short pages around it stay real
-    // scenes rather than being removed.
+    expect(virtuosoMock.scrollToIndexCalls).toEqual([
+      { index: 2, align: 'start', behavior: 'auto' }
+    ])
     expect(lastSaved(saveState).location).toBe('page:plain-3.mdx')
-    expect(sceneIndices()).toContain(4)
+    expect(sceneIndices()).toEqual([2])
   })
 })
 
 describe('PackageView scroll location revisiting', () => {
-  useViewportHeight(VIEWPORT_HEIGHT)
-
   it('updates the location again when a page is revisited after another', () => {
     const saveState = vi.fn()
     window.scormBridge = {
@@ -1568,11 +1440,11 @@ describe('PackageView scroll location revisiting', () => {
     act(() => root.render(<Player contentPackage={plainTwoPagePackage} />))
     expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
 
-    scrollToPage(1, [1500, 1500])
+    showScrollPage(1)
     expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
 
     // Returning to A after B reports A again and moves the location back.
-    scrollToPage(0, [1500, 1500])
+    showScrollPage(0)
     expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
   })
 
@@ -1594,8 +1466,8 @@ describe('PackageView scroll location revisiting', () => {
       )
     )
 
-    scrollToPage(1, [1500, 1500])
-    scrollToPage(0, [1500, 1500])
+    showScrollPage(1)
+    showScrollPage(0)
 
     // One write per activation — mount, B, then A again. StrictMode's doubled
     // effects and a repeat of the id already stored are both no-ops.
@@ -1604,13 +1476,7 @@ describe('PackageView scroll location revisiting', () => {
   })
 })
 
-describe('PackageView scroll refresh restore', () => {
-  useViewportHeight(VIEWPORT_HEIGHT)
-
-  // The pages around the restored one are short, so several share the viewport
-  // at once; the restore still positions the saved page at the viewport top.
-  const RESTORE_HEIGHTS = [300, 300, 100, 300, 300]
-
+describe('PackageView scroll reload start', () => {
   /** Completed prefix so the middle page is accessible; its next stays locked. */
   function restoreMiddleLockedNext(): {
     location: string
@@ -1640,7 +1506,7 @@ describe('PackageView scroll refresh restore', () => {
     }
   }
 
-  it('waits for the restored page and its backward context before positioning', async () => {
+  it('starts at the first page and never renders or loads a saved later page', async () => {
     const { provider, calls, resolve } = deferredProvider(shortPagesPackage)
     const saveState = vi.fn()
     window.scormBridge = { restoreState: restoreMiddleUnlockedNext, saveState }
@@ -1649,55 +1515,27 @@ describe('PackageView scroll refresh restore', () => {
       root.render(<LazyPlayer contentPackage={shortPagesPackage} contentProvider={provider} />)
     )
 
-    // While the saved page's module resolves, no page is mounted and nothing is
-    // reported, so the location is never transiently moved to page zero.
-    expect(container.querySelector('[data-scroll-startup]')).not.toBeNull()
-    expect(sceneIndices()).toEqual([])
+    // Virtuoso opens at item zero — the saved location (index 2) is ignored — so
+    // only the first page's slot mounts and requests content; the saved later
+    // page is neither rendered nor loaded.
+    expect(virtuosoMock.lastInitialIndex()).toBe(0)
+    expect(sceneIndices()).toEqual([0])
+    expect(calls).toEqual(['page:short-path.mdx'])
     expect(saveState).not.toHaveBeenCalled()
 
-    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
-
-    // The saved page resolves, but its two backward-context pages are still in
-    // flight. Their skeleton slots sit *above* the saved page and would later
-    // swap to their natural height, so positioning now would shift the saved
-    // page on an engine without scroll anchoring. The restore therefore waits:
-    // still only the startup skeleton, nothing mounted, positioned or detected.
-    expect(calls).toContain('page:plain-3.mdx')
-    await act(async () => {
-      resolve('page:plain-3.mdx')
-    })
-    await flushLoads()
-
-    expect(container.querySelector('[data-scroll-startup]')).not.toBeNull()
-    expect(sceneIndices()).toEqual([])
-    expect(scrollIntoView).not.toHaveBeenCalled()
-    expect(saveState).not.toHaveBeenCalled()
-
-    // Detection is not wired up either, so a scroll while the context resolves
-    // cannot move the location.
-    scrollToOffset(0, SHORT_PAGE_HEIGHTS)
-    expect(saveState).not.toHaveBeenCalled()
-
-    // Once the backward context commits, the document renders and the saved page
-    // is positioned exactly once, so late content above it cannot move it.
     await act(async () => {
       resolve('page:short-path.mdx')
     })
-    await act(async () => {
-      resolve('page:plain-2.mdx')
-    })
     await flushLoads()
 
-    expect(container.querySelector('[data-scroll-startup]')).toBeNull()
-    expect(sceneIndices()).toEqual([0, 1, 2, 3])
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start', behavior: 'auto' })
-    expect(lastSaved(saveState).location).toBe('page:plain-3.mdx')
-    // The accessible neighbour the anchor could otherwise fall into was never
-    // marked seen on the restore.
+    expect(container.querySelector('[data-scroll-loading]')).toBeNull()
+    expect(renderedPage(0)?.querySelector('.prose')).not.toBeNull()
+    expect(lastSaved(saveState).location).toBe('page:short-path.mdx')
+    // The saved later page was never mounted, so it was never marked seen.
     expect(lastSaved(saveState).pages['page:plain-4.mdx']).toBeUndefined()
   })
 
-  it('restores the last accessible page with a small window and a locked next', () => {
+  it('keeps the page after the last accessible one out of the list', () => {
     const saveState = vi.fn()
     window.scormBridge = {
       restoreState: () => ({
@@ -1713,71 +1551,67 @@ describe('PackageView scroll refresh restore', () => {
 
     act(() => root.render(<Player contentPackage={shortPagesPackage} />))
 
-    // Pages one to four are accessible and mounted; the locked page after the
-    // last accessible one never mounts.
-    expect(sceneIndices()).toEqual([0, 1, 2, 3])
-    expect(container.querySelector('[data-scroll-page="4"]')).toBeNull()
-    expect(lastSaved(saveState).location).toBe('page:plain-4.mdx')
+    // Pages one to four are accessible list items; the locked page after the
+    // last accessible one is not in the list at all, and the reload still opens
+    // on the first page.
+    expect(virtualizedTotal()).toBe(4)
+    expect(renderedPage(4)).toBeNull()
+    expect(sceneIndices()).toEqual([0])
+    expect(lastSaved(saveState).location).toBe('page:short-path.mdx')
   })
 
-  it('keeps a locked next page unmounted through the restore', () => {
+  it('keeps a locked next page out of the list at the start', () => {
     const saveState = vi.fn()
     window.scormBridge = { restoreState: restoreMiddleLockedNext, saveState }
 
     act(() => root.render(<Player contentPackage={shortPagesPackage} />))
 
-    // The next page is locked, so it never mounts inside the restore window.
-    expect(sceneIndices()).toEqual([0, 1, 2])
-    expect(container.querySelector('[data-scroll-page="3"]')).toBeNull()
-    expect(lastSaved(saveState).location).toBe('page:plain-3.mdx')
+    // The next page is locked, so it is not a list item; the reload opens on the
+    // first page regardless of the saved location.
+    expect(virtualizedTotal()).toBe(3)
+    expect(renderedPage(3)).toBeNull()
+    expect(sceneIndices()).toEqual([0])
+    expect(lastSaved(saveState).location).toBe('page:short-path.mdx')
   })
 
-  it('resumes ordinary detection once the restore is positioned', () => {
+  it('tracks the current page from the visible range after a reload', () => {
     const saveState = vi.fn()
     window.scormBridge = { restoreState: restoreMiddleUnlockedNext, saveState }
 
     act(() => root.render(<Player contentPackage={shortPagesPackage} />))
 
-    // Scrolling up to the first page and back down to the restored one moves the
-    // location exactly as an uninterrupted session would.
-    scrollToPage(0, RESTORE_HEIGHTS)
+    // The reload opens on the first page and stores it as the location, ignoring
+    // the saved later one.
     expect(lastSaved(saveState).location).toBe('page:short-path.mdx')
 
-    scrollToPage(2, RESTORE_HEIGHTS)
+    // Scrolling down and back moves the location exactly as an uninterrupted
+    // session would.
+    showScrollPage(2)
     expect(lastSaved(saveState).location).toBe('page:plain-3.mdx')
+
+    showScrollPage(0)
+    expect(lastSaved(saveState).location).toBe('page:short-path.mdx')
   })
 
-  it('positions the restore with browser-native scrolling on a natural-height page', () => {
+  it('opens on a natural-height first page with no inner scroll viewport', () => {
     window.scormBridge = { restoreState: restoreMiddleUnlockedNext }
 
     act(() => root.render(<Player contentPackage={shortPagesPackage} />))
 
-    const scene = container.querySelector('[data-scene-index="2"]')
+    const scene = renderedPage(0)
     expect(scene).not.toBeNull()
     // A page reserves a minimum small viewport; there is no dynamic viewport
     // height, no centering and no inner scroll viewport: the document is the
-    // single, browser-native scroll container, so a mobile gesture scrolls it
-    // directly with no correction of its own.
+    // single, browser-native scroll container, which Virtuoso uses directly.
     expect(scene?.classList.contains('min-h-svh')).toBe(true)
     expect(scene?.classList.contains('min-h-dvh')).toBe(false)
     expect(scene?.classList.contains('justify-center')).toBe(false)
-    expect(scrollWrappers()).toHaveLength(0)
+    expect(container.querySelector('.overflow-y-auto')).toBeNull()
 
-    // The restore is the instant jump the browser performs natively.
-    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start', behavior: 'auto' })
-  })
-
-  it('restores instantly even when reduced motion is requested', () => {
-    preferReducedMotion()
-    window.scormBridge = { restoreState: restoreMiddleUnlockedNext }
-
-    act(() => root.render(<Player contentPackage={shortPagesPackage} />))
-
-    // Reduced motion only affects deliberate Path jumps; a resume is always an
-    // instant jump, so the preference changes nothing here.
-    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start', behavior: 'auto' })
+    // The reload sits at Virtuoso's own initial item zero — not a scripted
+    // scroll — and the saved location never positions it.
+    expect(virtuosoMock.lastInitialIndex()).toBe(0)
+    expect(virtuosoMock.scrollToIndexCalls).toHaveLength(0)
   })
 })
 

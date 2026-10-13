@@ -4,7 +4,14 @@ import contentPackage, { contentProvider } from 'virtual:package-data'
 import { PackageApp } from './App'
 import { DevPreviewOverlay } from './components/DevPreviewOverlay'
 import { ScormDevToolsToolbar } from './components/ScormDevToolsToolbar'
+import { disableNativeScrollRestoration } from './lib/scroll-restoration'
 import './styles.css'
+
+// A reload always opens the reading at the top of the document, never at a
+// previously saved scroll offset, so the browser must not restore scroll on its
+// own (reload, back/forward). Persisted learner state — location, answers,
+// submissions, progress — is unaffected; only the native restoration is off.
+disableNativeScrollRestoration()
 
 const container = document.getElementById('root')
 

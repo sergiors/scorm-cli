@@ -125,6 +125,111 @@ describe('CLI dev orchestration', () => {
     expect(serverClosed).toBe(1)
   })
 
+  it('derives version-aware preview scripts that toggle 1.2 ↔ 2004 without carrying page bodies', async () => {
+    const scrollContent: ContentPackage = {
+      metadata: { title: 'Preview' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'page:intro.mdx',
+            source: 'intro.mdx',
+            metadata: { title: 'Intro' },
+            content: [
+              {
+                type: 'paragraph',
+                children: [{ type: 'text', value: 'Page body text.' }]
+              },
+              {
+                type: 'questionnaire',
+                id: 'questionnaire:intro.mdx:1:1',
+                contributesToScore: true,
+                questions: [
+                  {
+                    type: 'question',
+                    id: 'question:intro.mdx:1:1',
+                    questionType: 'single-choice',
+                    prompt: [
+                      { type: 'paragraph', children: [{ type: 'text', value: 'Pick one' }] }
+                    ],
+                    options: [
+                      {
+                        value: 'a',
+                        correct: true,
+                        content: [
+                          { type: 'paragraph', children: [{ type: 'text', value: 'Option A' }] }
+                        ]
+                      },
+                      {
+                        value: 'b',
+                        correct: false,
+                        content: [
+                          { type: 'paragraph', children: [{ type: 'text', value: 'Option B' }] }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+
+    let options: RendererDevOptions | undefined
+    const dev = vi.fn(async (_initial: ContentPackage, config: RendererDevOptions) => {
+      options = config
+      return {
+        url: 'http://localhost:5173',
+        update: async () => {},
+        reportError: () => {},
+        close: async () => {}
+      }
+    })
+    const renderer: Renderer = { build: vi.fn(), dev }
+
+    await startDevPackage(
+      '/content',
+      {},
+      {
+        loadPackage: async () => ({
+          content: scrollContent,
+          contentRoot: '/content',
+          entrypoint: '/content/index.mdx'
+        }),
+        loadRenderer: async () => renderer,
+        watch: async () => ({ close: async () => {} }),
+        debounceMs: 1
+      }
+    )
+
+    const scripts = options?.scripts ?? []
+    const mock = scripts.find((script) => script.id === 'scorm-dev-mock')?.source ?? ''
+    const runtime = scripts.find((script) => script.id === 'scorm-runtime')?.source ?? ''
+
+    // The mock installs both supported learner APIs and owns the active version,
+    // so the toolbar switches 1.2 ↔ 2004 by persisting the choice and reloading
+    // — it never asks the CLI to re-derive the renderer or its content modules.
+    expect(mock).toContain('"API"')
+    expect(mock).toContain('"API_1484_11"')
+    expect(mock).toContain('setScormVersion')
+
+    // The runtime binds at startup to the version the mock recorded, reusing the
+    // production template, so neither version needs its own runtime source.
+    expect(runtime).toContain('PREVIEW_RUNTIME_MAPPINGS')
+    expect(runtime).toContain('__SCORM_PREVIEW_VERSION__')
+
+    // The injected scripts carry only the semantic content manifest (question
+    // ids, prompts and correctness) the runtime needs to score, never a page
+    // body. Content stays owned by the renderer's lazy content modules, so a
+    // version switch and reload cannot change what the preview serves.
+    expect(runtime).toContain('question:intro.mdx:1:1')
+    expect(runtime).toContain('Pick one')
+    expect(runtime).not.toContain('Page body text.')
+  })
+
   it('fails clearly when the renderer has no dev implementation', async () => {
     await expect(
       startDevPackage(

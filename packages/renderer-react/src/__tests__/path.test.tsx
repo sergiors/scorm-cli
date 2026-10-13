@@ -18,6 +18,11 @@ import type {
   QuestionnaireNode
 } from '../../app/types'
 import { inlineContentProvider } from './fixtures'
+import { virtuosoMock } from './virtuoso-mock'
+
+// The scroll presentation is virtualized by React Virtuoso, which measures real
+// DOM geometry. The suite drives the deterministic double instead.
+vi.mock('react-virtuoso', () => import('./virtuoso-mock'))
 
 /**
  * Wraps a player component in the i18n provider, matching how `PackageApp`
@@ -72,6 +77,7 @@ let root: Root
 
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
+  virtuosoMock.reset()
   // PackageView resets the document scroll through `window.scrollTo` when a
   // page opens; jsdom does not implement it, so stub it to keep the run quiet.
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
@@ -154,17 +160,6 @@ function sceneIndices(element: HTMLElement): number[] {
 function lastSaved(saveState: { mock: { calls: unknown[][] } }): PlayerState {
   const calls = saveState.mock.calls
   return calls[calls.length - 1]?.[0] as PlayerState
-}
-
-/**
- * Settles a smooth Path jump the way a browser does when its animated scroll
- * completes. The target is only stored as the current page once the jump has
- * physically settled, so the tests release the suppression explicitly.
- */
-function settleScrollJump(): void {
-  act(() => {
-    document.dispatchEvent(new Event('scrollend'))
-  })
 }
 
 describe('PathView status vectors', () => {
@@ -484,12 +479,15 @@ describe('PackageView Path navigation', () => {
     // A locked entry cannot move the presentation.
     act(() => entries()[1]?.click())
     expect(lastSaved(saveState)).toBeUndefined()
+    expect(virtuosoMock.scrollToIndexCalls).toHaveLength(0)
 
-    // Opening the available reference stages a jump to it; the target is stored
-    // as the location once the smooth scroll settles, through the existing page
-    // switching, adding only its visited flag.
+    // Opening the available reference jumps straight to it through the
+    // virtualizer, which then renders the target and stores it as the location,
+    // adding only its visited flag.
     act(() => entries()[0]?.click())
-    settleScrollJump()
+    expect(virtuosoMock.scrollToIndexCalls).toEqual([
+      { index: 1, align: 'start', behavior: 'auto' }
+    ])
     const saved = lastSaved(saveState)
     expect(saved.location).toBe('page:target.mdx')
     expect(saved.pages['page:target.mdx']).toEqual({ visited: true })
@@ -516,7 +514,9 @@ describe('PackageView Path navigation', () => {
     expect(entries().map((entry) => entry.dataset.pathStatus)).toEqual(['visited', 'available'])
 
     act(() => entries()[1]?.click())
-    settleScrollJump()
+    expect(virtuosoMock.scrollToIndexCalls).toEqual([
+      { index: 2, align: 'start', behavior: 'auto' }
+    ])
     expect(lastSaved(saveState).location).toBe('page:later.mdx')
     expect(lastSaved(saveState).pages['page:later.mdx']).toEqual({ visited: true })
   })

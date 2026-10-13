@@ -8,33 +8,6 @@ import { samplePackage, slidesPackage, tilesPackage } from './fixtures'
 
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>`
 
-/**
- * Returns the body of every `@media (prefers-reduced-motion: reduce)` block in
- * `css`. Extracting each block lets an assertion require that a rule sits
- * *inside* the reduced-motion media query rather than merely coexisting with the
- * feature name elsewhere in the sheet, and matching braces keeps a block's
- * nested rules in view even when the stylesheet is minified.
- */
-function reducedMotionBlocks(css: string): string[] {
-  const blocks: string[] = []
-  const opening = /@media[^{]*prefers-reduced-motion:\s*reduce[^{]*\{/g
-  for (const match of css.matchAll(opening)) {
-    const start = (match.index ?? 0) + match[0].length
-    let depth = 1
-    let index = start
-    while (index < css.length && depth > 0) {
-      if (css[index] === '{') {
-        depth += 1
-      } else if (css[index] === '}') {
-        depth -= 1
-      }
-      index += 1
-    }
-    blocks.push(css.slice(start, index - 1))
-  }
-  return blocks
-}
-
 let workDir: string
 let outputDirectory: string
 let entrypoint: RenderResult
@@ -173,6 +146,15 @@ describe('renderReactPackage', () => {
     expect(appJs).not.toContain('virtual:package-data')
   })
 
+  it('disables native browser scroll restoration in the entry bundle', () => {
+    // A reload must open the reading at the top, so the packaged entry turns off
+    // the browser's own scroll restoration behind a feature check; persisted
+    // learner state is untouched. Assert the guarded assignment itself rather
+    // than merely the presence of the two tokens.
+    expect(appJs).toMatch(/['"]scrollRestoration['"]\s*in\s+history/)
+    expect(appJs).toMatch(/history\.scrollRestoration\s*=\s*['"]manual['"]/)
+  })
+
   it('splits each Scroll page into an independent lazily loaded chunk', () => {
     expectLazySplit(
       { appJs, bundleJs, jsFileNames, chunkContents },
@@ -237,21 +219,17 @@ describe('renderReactPackage', () => {
     // presentations, so the compiled stylesheet must carry its rules.
     expect(css).toContain('.prose')
     expect(css).toContain('--tw-prose-body')
-    // The Scroll presentation's page sizing and active-page emphasis must be
-    // compiled as well, so a page reserves a small viewport and its subtle,
-    // reduced-motion-aware opacity emphasis survives into the packaged player.
+    // The Scroll presentation's page sizing, its inner content padding and its
+    // static loading skeleton must be compiled as well, so a page reserves a
+    // small viewport, keeps readable vertical padding inside its spacing-free
+    // wrapper, and never animates. The removed per-page emphasis leaves no
+    // transition behind.
     expect(css).toContain('.min-h-svh')
-    expect(css).toContain('.transition-opacity')
-    expect(css).toContain('.opacity-90')
-    // The emphasis drops its transition under reduced motion. The compiled
-    // `motion-reduce:transition-none` rule must sit *inside* a
-    // `@media (prefers-reduced-motion: reduce)` block, so the utility only takes
-    // effect when the preference is set rather than merely coexisting with the
-    // feature name elsewhere in the sheet.
-    expect(css).toContain('.motion-reduce\\:transition-none')
-    expect(
-      reducedMotionBlocks(css).some((block) => block.includes('.motion-reduce\\:transition-none'))
-    ).toBe(true)
+    expect(css).toContain('.py-8')
+    expect(css).toMatch(/\.sm\\:py-12/)
+    expect(css).toContain('.animate-none')
+    expect(css).not.toContain('.transition-opacity')
+    expect(css).not.toContain('.opacity-90')
   })
 
   it('copies provided assets to their target paths', async () => {

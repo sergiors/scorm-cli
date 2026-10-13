@@ -62,12 +62,12 @@ export function PackageView({ contentPackage, contentProvider }: PackageViewProp
     return <EmptyPackage />
   }
 
-  const initialIndex = Math.max(
-    0,
-    presentation.pages.findIndex((page) => page.id === state.location)
-  )
-
   if (presentation.type === 'slides') {
+    const initialIndex = Math.max(
+      0,
+      presentation.pages.findIndex((page) => page.id === state.location)
+    )
+
     return (
       <SlidesPresentation
         pages={presentation.pages}
@@ -87,7 +87,6 @@ export function PackageView({ contentPackage, contentProvider }: PackageViewProp
     <ScrollPresentation
       pages={presentation.pages}
       contentProvider={contentProvider}
-      initialIndex={initialIndex}
       pageStates={state.pages}
       onPageSeen={markSeen}
       onPageCompleted={markCompleted}

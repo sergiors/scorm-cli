@@ -79,13 +79,27 @@ describe('PackageView scroll presentation', () => {
     expect(sceneClasses).not.toContain('max-h-svh')
     expect(sceneClasses).not.toContain('justify-center')
     expect(sceneTag).toContain('max-w-3xl')
-    expect(sceneTag).toContain('py-12')
-    // The current page is marked with a subtle, reduced-motion-aware transition
-    // on an inner content wrapper, so the measured region stays transform-free.
+    // The wrapper keeps its responsive horizontal content padding but carries no
+    // vertical padding, margin, gap or scroll class — responsive or not — so
+    // consecutive page wrappers meet directly with no artificial gap between them.
+    expect(sceneClasses).toContain('px-4')
+    const wrapperUtilities = sceneClasses.map((name) => name.slice(name.lastIndexOf(':') + 1))
+    for (const spacing of ['py-', 'pt-', 'pb-', 'my-', 'mt-', 'mb-', 'gap-', 'scroll-']) {
+      expect(wrapperUtilities.some((name) => name.startsWith(spacing))).toBe(false)
+    }
+    // The intentional, responsive vertical padding lives inside the page, on its
+    // content, so a page still reads with breathing room from its top and bottom
+    // edges even though the wrapper itself is spacing-free.
+    const contentTag = html.match(/<div data-scroll-page-content[^>]*>/)?.[0] ?? ''
+    expect(contentTag).not.toBe('')
+    expect(contentTag).toContain('py-8')
+    expect(contentTag).toContain('sm:py-12')
+    // The current page is marked semantically; the package adds no animation,
+    // transition or scroll snapping of its own.
     expect(sceneTag).toContain('data-active="true"')
-    expect(html).toContain('data-scroll-page-content')
-    expect(html).toContain('duration-200')
-    expect(html).toContain('motion-reduce:transition-none')
+    expect(html).not.toContain('transition-opacity')
+    expect(html).not.toContain('duration-200')
+    expect(html).not.toContain('motion-reduce:transition-none')
     expect(html).not.toContain('snap-proximity')
     expect(html).not.toContain('snap-start')
     // The package never exposes scroll paging controls; the questionnaire's
