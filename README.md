@@ -119,6 +119,11 @@ parser does not depend on the renderer, and the renderer consumes parsed content
 parsing MDX. The player keeps semantic progress separate from the SCORM suspend-data codec, while
 package generation owns the SCORM manifest and archive format.
 
+The generated content manifest includes page question prompts, option labels,
+authored `correctAnswers`, and static video metadata.
+Pages without questions still include an empty `questions` map; learner answers
+remain in the separate suspend-data state.
+
 ```sh
 pnpm install
 pnpm format:check

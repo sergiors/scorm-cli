@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { createScormRuntime, formatScorm12Duration, formatScorm2004Duration } from '../runtime'
 
 const manifest = {
-  schemaVersion: 1 as const,
+  schemaVersion: 2 as const,
   title: '',
   lang: 'en',
   presentation: 'scroll' as const,

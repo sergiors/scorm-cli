@@ -146,19 +146,19 @@ const normalize = (value: unknown): unknown => JSON.parse(JSON.stringify(value))
 
 describe('suspend-data codec integration', () => {
   it('maps authored option order into manifest indexes without sorting values', () => {
-    expect(manifest.pages['3']!.questions['0']!.options).toEqual({
+    expect(manifest.pages['3']!.questions!['0']!.options).toEqual({
       '0': { value: 'zebra', label: 'Zebra' },
       '1': { value: 'mango', label: 'Mango' },
       '2': { value: 'apple', label: 'Apple' }
     })
-    expect(manifest.pages['3']!.questions['1']!.options).toEqual({
+    expect(manifest.pages['3']!.questions!['1']!.options).toEqual({
       '0': { value: 'beta', label: 'Beta' },
       '1': { value: 'alpha', label: 'Alpha' }
     })
     // Index 1 is the authored second option, not the alphabetically first value.
-    expect(manifest.pages['3']!.questions['0']!.options['1']!.value).toBe('mango')
-    expect(manifest.pages['3']!.questions['0']!.options['2']!.value).toBe('apple')
-    expect(manifest.pages['3']!.questions['1']!.options['1']!.value).toBe('alpha')
+    expect(manifest.pages['3']!.questions!['0']!.options['1']!.value).toBe('mango')
+    expect(manifest.pages['3']!.questions!['0']!.options['2']!.value).toBe('apple')
+    expect(manifest.pages['3']!.questions!['1']!.options['1']!.value).toBe('alpha')
   })
 
   it('encodes scalar vs array per question type and decodes page-local values', () => {
@@ -192,7 +192,7 @@ describe('suspend-data codec integration', () => {
     // Page 3 question index 0 is the multiple-choice question, so scalar/array
     // index 1 resolves to the authored second option (mango), not the
     // alphabetically first value.
-    const questions3 = manifest.pages['3']!.questions
+    const questions3 = manifest.pages['3']!.questions!
     expect(questions3['0']!.type).toBe('multiple-choice')
     expect(questions3['0']!.options['1']!.value).toBe('mango')
     expect(decoded.pages['page-3']!.answers!['q-3-multi']).toEqual(['mango'])
@@ -204,7 +204,7 @@ describe('suspend-data codec integration', () => {
 
     // Page 4 also uses question index 0: scalar 0 resolves to gamma through its
     // own options, independent of page 3.
-    expect(manifest.pages['4']!.questions['0']!.options['0']!.value).toBe('gamma')
+    expect(manifest.pages['4']!.questions!['0']!.options['0']!.value).toBe('gamma')
     expect(decoded.pages['page-4']!.answers!['q-4-single']).toBe('gamma')
 
     // p: 100 completes all five pages and x: '11111' marks each visited.
@@ -248,16 +248,18 @@ describe('suspend-data codec integration', () => {
 
   it('matches browser and Node codecs for stable-ID video positions', () => {
     const videoManifest = structuredClone(manifest)
-    videoManifest.videos = {
+    videoManifest.pages['3']!.videos = {
       'video:lesson.mdx:4:1': {
+        id: 'video:lesson.mdx:4:1',
         src: 'lesson.mp4',
-        provider: 'native',
-        pageId: 'page-3'
-      },
+        provider: 'native'
+      }
+    }
+    videoManifest.pages['4']!.videos = {
       'video:lesson.mdx:8:1': {
+        id: 'video:lesson.mdx:8:1',
         src: 'https://youtu.be/abc',
-        provider: 'youtube',
-        pageId: 'page-4'
+        provider: 'youtube'
       }
     }
     const state: PlayerState = {

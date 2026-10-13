@@ -11,6 +11,150 @@ const question = (id: string, prompt: ContentNode[], options: QuestionOption[] =
 })
 
 describe('content manifest', () => {
+  it('emits the focused empty, question-only, video-only, and combined page shapes', () => {
+    const content: ContentPackage = {
+      metadata: { title: 'Focused manifest' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'empty',
+            source: 'empty.mdx',
+            metadata: { title: 'Empty' },
+            content: []
+          },
+          {
+            type: 'page',
+            id: 'question-only',
+            source: 'question.mdx',
+            metadata: { title: 'Question' },
+            content: [
+              {
+                type: 'questionnaire',
+                id: 'quiz',
+                contributesToScore: true,
+                questions: [
+                  {
+                    ...question(
+                      'multi',
+                      [
+                        {
+                          type: 'paragraph',
+                          children: [
+                            { type: 'text', value: 'Pick ' },
+                            { type: 'strong', children: [{ type: 'text', value: 'two' }] }
+                          ]
+                        }
+                      ],
+                      [
+                        {
+                          value: 'semantic-z',
+                          correct: true,
+                          content: [
+                            {
+                              type: 'paragraph',
+                              children: [{ type: 'text', value: 'First label' }]
+                            }
+                          ]
+                        },
+                        {
+                          value: 'semantic-a',
+                          correct: false,
+                          content: [
+                            {
+                              type: 'paragraph',
+                              children: [{ type: 'text', value: 'Wrong label' }]
+                            }
+                          ]
+                        },
+                        {
+                          value: 'semantic-y',
+                          correct: true,
+                          content: [
+                            { type: 'paragraph', children: [{ type: 'text', value: 'Last label' }] }
+                          ]
+                        }
+                      ]
+                    ),
+                    questionType: 'multiple-choice' as const
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            type: 'page',
+            id: 'video-only',
+            source: 'video.mdx',
+            metadata: { title: 'Video' },
+            content: [{ type: 'video', id: 'stable-video', src: 'clip.mp4', provider: 'native' }]
+          },
+          {
+            type: 'page',
+            id: 'both',
+            source: 'both.mdx',
+            metadata: { title: 'Both' },
+            content: [
+              { type: 'video', id: 'second-video', src: 'https://vimeo.com/42', provider: 'vimeo' },
+              {
+                type: 'questionnaire',
+                id: 'quiz-2',
+                contributesToScore: false,
+                questions: [
+                  question(
+                    'single',
+                    [],
+                    [
+                      {
+                        value: 'semantic-value',
+                        correct: true,
+                        content: [
+                          {
+                            type: 'paragraph',
+                            children: [{ type: 'text', value: 'Visible label' }]
+                          }
+                        ]
+                      }
+                    ]
+                  )
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+    const manifest = createContentManifest(content)
+    expect(manifest.pages['0']).toEqual({ id: 'empty', title: 'Empty', questions: {} })
+    expect(manifest.pages['1']!.videos).toBeUndefined()
+    expect(manifest.pages['1']!.questions!['0']).toMatchObject({
+      id: 'multi',
+      prompt: 'Pick two',
+      type: 'multiple-choice',
+      correctAnswers: ['semantic-z', 'semantic-y'],
+      options: {
+        '0': { value: 'semantic-z', label: 'First label' },
+        '1': { value: 'semantic-a', label: 'Wrong label' },
+        '2': { value: 'semantic-y', label: 'Last label' }
+      }
+    })
+    expect(manifest.pages['2']!.questions).toEqual({})
+    expect(manifest.pages['2']!.videos).toEqual({
+      'stable-video': { id: 'stable-video', src: 'clip.mp4', provider: 'native' }
+    })
+    expect(manifest.pages['3']!.videos).toEqual({
+      'second-video': { id: 'second-video', src: 'https://vimeo.com/42', provider: 'vimeo' }
+    })
+    expect(manifest.pages['3']!.questions!['0']).toMatchObject({
+      prompt: '',
+      correctAnswers: ['semantic-value'],
+      options: { '0': { value: 'semantic-value', label: 'Visible label' } }
+    })
+    expect(manifest).not.toHaveProperty('videos')
+    expect(JSON.stringify(manifest)).not.toMatch(/pageId|quiz-2|quiz\"/)
+  })
+
   it('deterministically indexes pages, nested questionnaires, questions, and authored options', () => {
     const content: ContentPackage = {
       metadata: { title: 'Course' },
@@ -120,7 +264,7 @@ describe('content manifest', () => {
     const first = createContentManifest(content)
     expect(first).toEqual(createContentManifest(content))
     expect(first).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       title: 'Course',
       lang: 'en',
       presentation: 'scroll',
@@ -132,19 +276,20 @@ describe('content manifest', () => {
             '0': {
               id: 'q1',
               prompt: 'Choose one',
+              correctAnswers: ['a'],
               options: {
                 '0': { value: 'a', label: 'Alpha' },
                 '1': { value: 'b', label: 'Beta' }
               }
             },
-            '1': { id: 'q2', prompt: 'Second prompt', options: {} },
-            '2': { id: 'q3', prompt: 'Third', options: {} }
+            '1': { id: 'q2', prompt: 'Second prompt', options: {}, correctAnswers: [] },
+            '2': { id: 'q3', prompt: 'Third', options: {}, correctAnswers: [] }
           }
         },
         '1': { id: 'p-b', title: 'Second', questions: {} }
       }
     })
-    expect(JSON.stringify(first)).not.toMatch(/correct|quiz-a|Before/)
+    expect(JSON.stringify(first)).not.toMatch(/quiz-a|Before/)
     expect(first).not.toHaveProperty('videos')
   })
 
@@ -219,34 +364,44 @@ describe('content manifest', () => {
       }
     }
 
-    expect(createContentManifest(content).videos).toEqual({
+    const manifest = createContentManifest(content)
+    expect(manifest.pages['0']!.videos).toEqual({
       'video:videos.mdx:1:1': {
+        id: 'video:videos.mdx:1:1',
         src: 'assets/local.mp4',
-        provider: 'native',
-        pageId: 'p-videos'
+        provider: 'native'
       },
       'video:videos.mdx:2:1': {
+        id: 'video:videos.mdx:2:1',
         src: 'https://youtu.be/abc',
-        provider: 'youtube',
-        pageId: 'p-videos'
+        provider: 'youtube'
       },
       'video:videos.mdx:3:1': {
+        id: 'video:videos.mdx:3:1',
         src: 'https://vimeo.com/42',
-        provider: 'vimeo',
-        pageId: 'p-videos'
+        provider: 'vimeo'
       },
       'video:videos.mdx:4:1': {
+        id: 'video:videos.mdx:4:1',
         src: 'https://cdn.example.test/clip.mp4',
-        provider: 'native',
-        pageId: 'p-videos'
-      },
-      'video:second.mdx:1:1': {
-        src: 'assets/second.mp4',
-        provider: 'native',
-        pageId: 'p-second'
+        provider: 'native'
       }
     })
-    expect(JSON.stringify(createContentManifest(content))).not.toMatch(/playback|position|seconds/)
+    expect(manifest.pages['1']!.videos).toEqual({
+      'video:second.mdx:1:1': {
+        id: 'video:second.mdx:1:1',
+        src: 'assets/second.mp4',
+        provider: 'native'
+      }
+    })
+    expect(Object.keys(manifest.pages['0']!.videos ?? {})).toEqual([
+      'video:videos.mdx:1:1',
+      'video:videos.mdx:2:1',
+      'video:videos.mdx:3:1',
+      'video:videos.mdx:4:1'
+    ])
+    expect(manifest).not.toHaveProperty('videos')
+    expect(JSON.stringify(manifest)).not.toMatch(/pageId|playback|position|seconds/)
   })
 
   it('assigns grid videos to their root item owner', () => {
@@ -266,8 +421,8 @@ describe('content manifest', () => {
       }
     }
 
-    expect(createContentManifest(content).videos).toEqual({
-      'video:item.mdx:1:1': { src: 'abc', provider: 'youtube', pageId: 'item-video' }
+    expect(createContentManifest(content).pages['0']!.videos).toEqual({
+      'video:item.mdx:1:1': { id: 'video:item.mdx:1:1', src: 'abc', provider: 'youtube' }
     })
   })
 
@@ -372,7 +527,7 @@ describe('content manifest', () => {
         ]
       }
     }
-    expect(createContentManifest(content).pages['0']!.questions['0']).toMatchObject({
+    expect(createContentManifest(content).pages['0']!.questions!['0']).toMatchObject({
       id: 'q-tight',
       prompt: 'See Prompt diagram'
     })
@@ -423,7 +578,7 @@ describe('content manifest', () => {
         ]
       }
     }
-    expect(createContentManifest(content).pages['0']!.questions['0']).toMatchObject({
+    expect(createContentManifest(content).pages['0']!.questions!['0']).toMatchObject({
       id: 'q-nested',
       prompt: 'Nested'
     })

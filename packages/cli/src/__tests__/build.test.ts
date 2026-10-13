@@ -22,7 +22,7 @@ describe('CLI build orchestration', () => {
     )
     await writeFile(
       path.join(contentDir, 'lesson.mdx'),
-      `---\ntitle: Lesson\n---\n<Image src="media/picture.svg" alt="Picture" />\n\n[Guide](files/guide.pdf?download=1#page-2)`
+      `---\ntitle: Lesson\n---\n<Image src="media/picture.svg" alt="Picture" />\n\n<Video src="https://youtu.be/abc" />\n\n[Guide](files/guide.pdf?download=1#page-2)`
     )
     await writeFile(path.join(contentDir, 'media', 'picture.svg'), '<svg/>')
     await writeFile(path.join(contentDir, 'files', 'guide.pdf'), 'pdf')
@@ -53,12 +53,26 @@ describe('CLI build orchestration', () => {
     const zip = await JSZip.loadAsync(archive)
     const contentManifest = JSON.parse(await zip.file('content-manifest.json')!.async('string'))
     expect(contentManifest).toMatchObject({
+      schemaVersion: 2,
       title: 'Demo',
       presentation: 'grid',
       pages: {
-        '0': { id: expect.any(String), title: 'Lesson', questions: {} }
+        '0': {
+          id: expect.any(String),
+          title: 'Lesson',
+          questions: {}
+        }
       }
     })
+    const pageVideos = contentManifest.pages['0'].videos
+    expect(Object.keys(pageVideos)).toEqual([expect.any(String)])
+    const videoId = Object.keys(pageVideos)[0]
+    expect(pageVideos[videoId]).toEqual({
+      id: videoId,
+      src: 'https://youtu.be/abc',
+      provider: 'youtube'
+    })
+    expect(contentManifest).not.toHaveProperty('videos')
     expect(await zip.file('scorm-runtime.js')!.async('string')).toContain(
       JSON.stringify(contentManifest)
     )

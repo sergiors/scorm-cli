@@ -83,7 +83,7 @@ export const runtimeApiMappings: Record<ScormVersion, RuntimeApiMapping> = {
 }
 
 const emptyManifest: ContentManifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   title: '',
   lang: 'en',
   presentation: 'scroll',

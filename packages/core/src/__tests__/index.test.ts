@@ -475,7 +475,9 @@ describe('collectVideoNodes', () => {
       }
     }
 
-    expect(collectVideoNodes(content).map((video) => video.id)).toEqual([
+    const sourceNodes =
+      content.presentation.type === 'scroll' ? content.presentation.pages[0]!.content : []
+    expect(collectVideoNodes(sourceNodes).map((video) => video.id)).toEqual([
       'video:page.mdx:1:1',
       'video:page.mdx:2:1',
       'video:page.mdx:3:1'

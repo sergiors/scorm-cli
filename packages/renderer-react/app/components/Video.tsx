@@ -87,7 +87,7 @@ export function Video({ node, position, onPosition }: VideoProps) {
         role="group"
         aria-label={label}
         className={cn(
-          'w-full overflow-hidden rounded-2xl',
+          'w-full overflow-hidden rounded-2xl not-prose',
           isEmbedded && 'aspect-video [&_iframe]:h-full [&_iframe]:w-full'
         )}
       >

@@ -4,7 +4,7 @@ import type { ContentManifest } from '../content-manifest'
 import { createScormRuntime } from '../runtime'
 
 const manifest: ContentManifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   title: 'Runtime events',
   lang: 'en',
   presentation: 'scroll',
@@ -16,7 +16,7 @@ const manifest: ContentManifest = {
 const runtime = createScormRuntime(manifest)
 
 const suspendManifest: ContentManifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   title: 'Suspend events',
   lang: 'en',
   presentation: 'scroll',
@@ -29,6 +29,7 @@ const suspendManifest: ContentManifest = {
           id: 'q-one',
           type: 'multiple-choice',
           prompt: '',
+          correctAnswers: [],
           options: {
             '0': { value: 'alpha', label: 'Alpha' },
             '1': { value: 'beta', label: 'Beta' }

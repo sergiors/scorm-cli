@@ -9,7 +9,7 @@ import type {
 } from '@scorm-cli/core'
 
 export interface ContentManifest {
-  schemaVersion: 1
+  schemaVersion: 2
   title: string
   lang: string
   presentation: 'scroll' | 'grid'
@@ -25,11 +25,12 @@ export interface ContentManifest {
           prompt: string
           type: QuestionNode['questionType']
           options: Record<string, { value: string; label: string }>
+          correctAnswers: string[]
         }
       >
+      videos?: Record<string, { id: string; src: string; provider: VideoProvider }>
     }
   >
-  videos?: Record<string, { src: string; provider: VideoProvider; pageId: string }>
 }
 
 function inlineText(nodes: InlineNode[]): string {
@@ -121,7 +122,7 @@ function collectQuestions(
   }
 }
 
-/** Creates the stable, content-free dictionary shared by packaging and runtime. */
+/** Creates the stable static dictionary, including authored question correctness, shared by packaging and runtime. */
 export function createContentManifest(contentPackage: ContentPackage): ContentManifest {
   const nodes =
     contentPackage.presentation.type === 'scroll'
@@ -144,45 +145,28 @@ export function createContentManifest(contentPackage: ContentPackage): ContentMa
         id: question.id,
         prompt: plainText(question.prompt),
         type: question.questionType,
-        options
+        options,
+        correctAnswers: question.options
+          .filter((option) => option.correct)
+          .map((option) => option.value)
       }
     })
+    const videos = Object.fromEntries(
+      collectVideoNodes(node.content).map(({ id, src, provider }) => [id, { id, src, provider }])
+    )
     pages[String(pageIndex)] = {
       id: node.id,
       title: node.metadata.title,
-      questions
+      questions,
+      ...(Object.keys(videos).length > 0 ? { videos } : {})
     }
   })
 
-  const videos: NonNullable<ContentManifest['videos']> = {}
-  if (contentPackage.presentation.type === 'scroll') {
-    for (const node of contentPackage.presentation.pages) {
-      const ownerPackage: ContentPackage = {
-        ...contentPackage,
-        presentation: { type: 'scroll', pages: [node] }
-      }
-      for (const video of collectVideoNodes(ownerPackage)) {
-        videos[video.id] = { src: video.src, provider: video.provider, pageId: node.id }
-      }
-    }
-  } else {
-    for (const node of contentPackage.presentation.items) {
-      const ownerPackage: ContentPackage = {
-        ...contentPackage,
-        presentation: { type: 'grid', items: [node] }
-      }
-      for (const video of collectVideoNodes(ownerPackage)) {
-        videos[video.id] = { src: video.src, provider: video.provider, pageId: node.id }
-      }
-    }
-  }
-
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     title: contentPackage.metadata.title,
     lang: contentPackage.metadata.lang ?? 'en',
     presentation: contentPackage.presentation.type,
-    pages,
-    ...(Object.keys(videos).length > 0 ? { videos } : {})
+    pages
   }
 }

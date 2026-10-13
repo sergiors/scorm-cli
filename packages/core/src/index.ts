@@ -451,9 +451,11 @@ export function collectAssetReferences(contentPackage: ContentPackage): string[]
 }
 
 /** Collects video nodes in source traversal order, including nested content. */
-export function collectVideoNodes(contentPackage: ContentPackage): VideoNode[] {
+export function collectVideoNodes(
+  nodes: readonly (ContentNode | InlineContentNode)[]
+): VideoNode[] {
   const videos: VideoNode[] = []
-  const visit = (nodes: Array<ContentNode | InlineContentNode>) => {
+  const visit = (nodes: readonly (ContentNode | InlineContentNode)[]) => {
     for (const node of nodes) {
       switch (node.type) {
         case 'video':
@@ -483,7 +485,7 @@ export function collectVideoNodes(contentPackage: ContentPackage): VideoNode[] {
     }
   }
 
-  for (const node of presentationNodes(contentPackage)) visit(node.content)
+  visit(nodes)
   return videos
 }
 

@@ -4,6 +4,20 @@ import type { ContentPackage, PlayerState } from '@scorm-cli/core'
 import { createContentManifest } from '../content-manifest'
 import { decodeSuspendData, encodeSuspendData } from '../state-codec'
 import { createScormRuntime } from '../runtime'
+import type { ContentManifest } from '../content-manifest'
+
+type VideoFixture = [id: string, src: string, provider: 'native' | 'youtube' | 'vimeo']
+
+function assignVideos(manifest: ContentManifest, byPage: Record<string, VideoFixture[]>): void {
+  Object.values(manifest.pages).forEach((page) => {
+    const videos = byPage[page.id]
+    if (videos) {
+      page.videos = Object.fromEntries(
+        videos.map(([id, src, provider]) => [id, { id, src, provider }])
+      )
+    }
+  })
+}
 
 const packageContent: ContentPackage = {
   metadata: { title: 'Codec test' },
@@ -108,13 +122,17 @@ describe('compact suspend-data codec', () => {
 
   it('keeps video-free payloads unchanged and stores valid positions as deciseconds', () => {
     const videoManifest = structuredClone(manifest)
-    videoManifest.videos = {
-      'video-a': { src: 'a.mp4', provider: 'native', pageId: 'page-one' },
-      'video-b': { src: 'https://youtu.be/abc', provider: 'youtube', pageId: 'page-one' },
-      'video-c': { src: 'c.mp4', provider: 'native', pageId: 'page-one' },
-      'video-d': { src: 'd.mp4', provider: 'native', pageId: 'page-two' },
-      'video-e': { src: 'e.mp4', provider: 'native', pageId: 'page-two' }
-    }
+    assignVideos(videoManifest, {
+      'page-one': [
+        ['video-a', 'a.mp4', 'native'],
+        ['video-b', 'https://youtu.be/abc', 'youtube'],
+        ['video-c', 'c.mp4', 'native']
+      ],
+      'page-two': [
+        ['video-d', 'd.mp4', 'native'],
+        ['video-e', 'e.mp4', 'native']
+      ]
+    })
     const legacyState: PlayerState = { pages: {} }
     expect(encodeSuspendData(manifest, legacyState, 0)).toEqual({ v: 1, p: 0, x: '00' })
     expect(JSON.stringify(encodeSuspendData(manifest, legacyState, 0))).toBe(
@@ -162,11 +180,13 @@ describe('compact suspend-data codec', () => {
 
   it('restores video positions by stable ID across additions, reordering, and deletions', () => {
     const originalManifest = structuredClone(manifest)
-    originalManifest.videos = {
-      'video-a': { src: 'a.mp4', provider: 'native', pageId: 'page-one' },
-      'video-b': { src: 'b.mp4', provider: 'native', pageId: 'page-two' },
-      'video-c': { src: 'c.mp4', provider: 'native', pageId: 'page-one' }
-    }
+    assignVideos(originalManifest, {
+      'page-one': [
+        ['video-a', 'a.mp4', 'native'],
+        ['video-c', 'c.mp4', 'native']
+      ],
+      'page-two': [['video-b', 'b.mp4', 'native']]
+    })
     const encoded = encodeSuspendData(
       originalManifest,
       {
@@ -184,11 +204,13 @@ describe('compact suspend-data codec', () => {
     expect(encoded).not.toHaveProperty('t')
 
     const updatedManifest = structuredClone(manifest)
-    updatedManifest.videos = {
-      'video-new': { src: 'new.mp4', provider: 'native', pageId: 'page-two' },
-      'video-b': { src: 'b.mp4', provider: 'native', pageId: 'page-one' },
-      'video-a': { src: 'a.mp4', provider: 'native', pageId: 'page-two' }
-    }
+    assignVideos(updatedManifest, {
+      'page-one': [['video-b', 'b.mp4', 'native']],
+      'page-two': [
+        ['video-new', 'new.mp4', 'native'],
+        ['video-a', 'a.mp4', 'native']
+      ]
+    })
     expect(decodeSuspendData(updatedManifest, encoded)).toEqual({
       pages: {
         'page-one': { videos: { 'video-b': 2.2 } },
@@ -204,10 +226,10 @@ describe('compact suspend-data codec', () => {
 
   it('decodes payloads without video data and ignores invalid or unknown video IDs', () => {
     const videoManifest = structuredClone(manifest)
-    videoManifest.videos = {
-      'video-a': { src: 'a.mp4', provider: 'native', pageId: 'page-one' },
-      'video-b': { src: 'b.mp4', provider: 'native', pageId: 'page-two' }
-    }
+    assignVideos(videoManifest, {
+      'page-one': [['video-a', 'a.mp4', 'native']],
+      'page-two': [['video-b', 'b.mp4', 'native']]
+    })
     expect(decodeSuspendData(videoManifest, { v: 1, p: 0, x: '00' })).toEqual({ pages: {} })
     expect(
       decodeSuspendData(videoManifest, {
@@ -227,10 +249,10 @@ describe('compact suspend-data codec', () => {
     const firstPage = videoManifest.pages['0']!
     videoManifest.pages['0'] = videoManifest.pages['1']!
     videoManifest.pages['1'] = firstPage
-    videoManifest.videos = {
-      'video-a': { src: 'a.mp4', provider: 'native', pageId: 'page-two' },
-      'video-b': { src: 'b.mp4', provider: 'native', pageId: 'page-one' }
-    }
+    assignVideos(videoManifest, {
+      'page-one': [['video-b', 'b.mp4', 'native']],
+      'page-two': [['video-a', 'a.mp4', 'native']]
+    })
     expect(
       decodeSuspendData(videoManifest, {
         v: 1,
@@ -251,9 +273,9 @@ describe('compact suspend-data codec', () => {
 
   it('drops duplicate, unknown, unsafe, and malformed nested video data', () => {
     const videoManifest = structuredClone(manifest)
-    videoManifest.videos = {
-      'video-a': { src: 'a.mp4', provider: 'native', pageId: 'page-one' }
-    }
+    assignVideos(videoManifest, {
+      'page-one': [['video-a', 'a.mp4', 'native']]
+    })
     expect(
       decodeSuspendData(videoManifest, {
         v: 1,
@@ -268,10 +290,27 @@ describe('compact suspend-data codec', () => {
     ).toEqual({ pages: {} })
   })
 
+  it('does not decode a video ID duplicated across manifest pages', () => {
+    const videoManifest = structuredClone(manifest)
+    assignVideos(videoManifest, {
+      'page-one': [['video-a', 'a.mp4', 'native']],
+      'page-two': [['video-a', 'another-a.mp4', 'native']]
+    })
+
+    expect(
+      decodeSuspendData(videoManifest, {
+        v: 1,
+        p: 0,
+        x: '00',
+        d: { '0': { t: { 'video-a': 11 } } }
+      })
+    ).toEqual({ pages: {} })
+  })
+
   it('nests single answers under each page so question indexes are page-local', () => {
     const singleChoiceManifest = structuredClone(manifest)
     Object.values(singleChoiceManifest.pages).forEach((page) => {
-      page.questions['0']!.type = 'single-choice'
+      page.questions!['0']!.type = 'single-choice'
     })
     const encoded = encodeSuspendData(
       singleChoiceManifest,

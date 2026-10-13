@@ -5,8 +5,7 @@ import type {
   PageNode,
   PlayerPageState,
   PlayerState,
-  QuestionNode,
-  RootPresentation
+  QuestionNode
 } from '../types'
 import { collectQuestionnaires, collectVideoNodes } from './content-helpers'
 
@@ -153,7 +152,7 @@ export function sanitizePlayerState(contentPackage: ContentPackage, raw: unknown
       node,
       pageRaw,
       presentation.type === 'scroll',
-      nodeVideoIds(contentPackage, node)
+      nodeVideoIds(node)
     )
     if (page) state.pages[pageId] = page
   }
@@ -163,13 +162,11 @@ export function sanitizePlayerState(contentPackage: ContentPackage, raw: unknown
 
 /**
  * The ids of every video authored inside a single page/item's nested AST.
- * Reuses the canonical core traversal by scoping the package to that one node,
- * so a page only accepts positions for the videos it actually owns.
+ * Reuses the canonical core traversal directly on the node's content, so a page
+ * only accepts positions for the videos it actually owns.
  */
-function nodeVideoIds(contentPackage: ContentPackage, node: PageNode | ItemNode): Set<string> {
-  const presentation: RootPresentation =
-    node.type === 'page' ? { type: 'scroll', pages: [node] } : { type: 'grid', items: [node] }
-  const videos = collectVideoNodes({ ...contentPackage, presentation })
+function nodeVideoIds(node: PageNode | ItemNode): Set<string> {
+  const videos = collectVideoNodes(node.content)
   return new Set(videos.map((video) => video.id))
 }
 

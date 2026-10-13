@@ -35,7 +35,7 @@ function createMockWindow(storage: MemoryStorage): Record<string, any> {
 }
 
 const manifest: ContentManifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   title: 'Preview version',
   lang: 'en',
   presentation: 'scroll',

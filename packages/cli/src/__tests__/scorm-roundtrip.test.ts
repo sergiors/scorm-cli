@@ -101,20 +101,22 @@ describe('authored MDX to suspend_data round trip', () => {
     const manifest = createContentManifest(contentPackage)
     const manifestPage = manifest.pages['0']
     if (!manifestPage) throw new Error('expected manifest page 0')
-    expect(manifestPage.questions['0']!.id).toBe(multi.id)
-    expect(manifestPage.questions['1']!.id).toBe(single.id)
-    expect(manifestPage.questions['0']!.options).toEqual({
+    expect(manifestPage.questions['0'].id).toBe(multi.id)
+    expect(manifestPage.questions['1'].id).toBe(single.id)
+    expect(manifestPage.questions['0'].options).toEqual({
       '0': { value: 'zebra', label: 'Zebra' },
       '1': { value: 'mango', label: 'Mango' },
       '2': { value: 'apple', label: 'Apple' }
     })
-    expect(manifestPage.questions['1']!.options).toEqual({
+    expect(manifestPage.questions['1'].options).toEqual({
       '0': { value: 'beta', label: 'Beta' },
       '1': { value: 'alpha', label: 'Alpha' }
     })
     // Index 1 is the authored second option, not the alphabetically first value.
-    expect(manifestPage.questions['0']!.options['1']!.value).toBe('mango')
-    expect(manifestPage.questions['1']!.options['1']!.value).toBe('alpha')
+    expect(manifestPage.questions['0'].options['1']!.value).toBe('mango')
+    expect(manifestPage.questions['1'].options['1']!.value).toBe('alpha')
+    expect(manifestPage.questions['0'].correctAnswers).toEqual(['zebra', 'apple'])
+    expect(manifestPage.questions['1'].correctAnswers).toEqual(['alpha'])
 
     // 3. A runtime selects semantic option values, not indexes: an array for
     //    multiple-choice and a scalar for single-choice.

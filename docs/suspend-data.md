@@ -208,8 +208,8 @@ With manifest video ID `video-a` owned by `page-one` (page index `0`), semantic
 `pages: { "page-one": { videos: { "video-a": 12.34 } } }` produces
 `d["0"].t: { "video-a": 123 }`; decoding returns
 `pages: { "page-one": { videos: { "video-a": 12.3 } } }`. The codec encodes a
-video by looking for its stable ID in `state.pages[pageId].videos`, where
-`pageId` comes from the current manifest. Compact positions live in the nested
+video by looking for its stable ID in `state.pages[ownerPageId].videos`, where
+the owner is the page/item containing that ID in the manifest. Compact positions live in the nested
 `d[pageIndex].t[videoId]` map and store integer deciseconds. On decode, the codec
 scans nested `t` maps by stable ID, then resolves each ID through the current
 manifest and attaches it to that video's current owner. Page indexes therefore
@@ -251,12 +251,13 @@ the video's owning page. It does not contain `location` or
 
 ## Manifest and validation boundaries
 
-`packages/scorm/src/content-manifest.ts` defines and creates the static,
-content-free dictionary shared by packaging and runtime. Its exact shape is:
+`packages/scorm/src/content-manifest.ts` defines and creates the static
+content manifest shared by packaging and runtime. It includes authored question
+correctness metadata as well as display labels, but no learner responses. Its exact shape is:
 
 ```ts
 interface ContentManifest {
-  schemaVersion: 1
+  schemaVersion: 2
   title: string
   lang: string
   presentation: 'scroll' | 'grid'
@@ -272,23 +273,25 @@ interface ContentManifest {
           prompt: string
           type: QuestionType
           options: Record<string, { value: string; label: string }>
+          correctAnswers: string[]
         }
       >
+      videos?: Record<string, { id: string; src: string; provider: VideoProvider }>
     }
   >
-  videos?: Record<string, { src: string; provider: VideoProvider; pageId: string }>
 }
 ```
 
 In generated JSON, the outer page keys are stringified page/item indexes; nested
 question and option keys are likewise stringified indexes. Question collection
-walks nested block content in document order. The optional `videos` map is keyed
-by video node ID and each entry contains static `src`, `provider`, and `pageId`,
-the ID of its owning Page/Item. The owner mapping lets the codec restore each
-stable video ID under its current page/item. Neither the manifest nor its video
-entries contain learner playback positions. `createContentManifest` includes
+walks nested block content in document order, and each question includes the
+semantic values of its correct options. Each page/item may include a `videos`
+record keyed by video ID; each static `{ id, src, provider }` entry repeats that
+key as its explicit `id`. Nesting identifies the owner, so the codec restores
+each stable video ID under its current page/item. Neither
+the manifest nor its video entries contain learner playback positions. `createContentManifest` includes
 the package title, language (default `en`), presentation type, page titles,
-plain-text question prompt/option labels, and the static mappings. The SCORM
+plain-text question prompt/option labels, authored `correctAnswers`, and the static mappings. The SCORM
 packager writes it as `content-manifest.json` and embeds the same manifest in
 `scorm-runtime.js`.
 
@@ -311,9 +314,10 @@ The codec validates compact values against that packaged manifest:
   only the first mapped value. Only valid decoded answers are returned.
 - An absent, malformed, or non-object page entry / nested `t` map is ignored.
   Only IDs present in the current manifest and non-negative safe-integer
-  decisecond values are decoded. Unknown/removed IDs and duplicate IDs found in
-  multiple nested `t` maps are dropped, as are negative/fractional/unsafe values.
-  A valid value is divided by ten and nested in `pages[pageId].videos` using
+  decisecond values are decoded. Unknown/removed IDs, IDs duplicated in the
+  current manifest, and duplicate IDs found in multiple nested `t` maps are
+  dropped, as are negative/fractional/unsafe values.
+  A valid value is divided by ten and nested in `pages[ownerPageId].videos` using
   that stable ID's current manifest owner, not the compact page index. Thus page
   or video reordering cannot reassign one known ID's position to another video.
 - Unknown extra root sections are ignored; there is no root-level `t` field and
@@ -344,7 +348,7 @@ resolved through current manifest values and then checked against the AST. The
 format carries no content fingerprint or standalone migration table.
 
 Video positions differ: `d[pageIndex].t` is keyed directly by stable video ID,
-not by a manifest video array index. Decode scans those nested maps by ID and
+not by a manifest video index. Decode scans those nested maps by ID and
 uses the current manifest owner, so a changed page index or video ordering does
 not shift a position onto a different ID. A position remains attached when
 that video's generated ID stays the same. Because the ID uses source coordinates,
