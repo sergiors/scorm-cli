@@ -360,7 +360,7 @@ function SubmittedQuestionnaire({
   contentContext: NestedContentContext
 }) {
   return (
-    <Card className="not-prose ">
+    <Card className="not-prose">
       <CardContent className="space-y-6">
         {node.questions.map((question) => (
           <SubmittedQuestion

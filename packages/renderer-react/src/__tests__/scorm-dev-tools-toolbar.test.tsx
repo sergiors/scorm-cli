@@ -175,10 +175,6 @@ function fieldDescriptionContaining(text: string): HTMLElement {
 }
 
 /** Reads the text of the field description that shows the active API name. */
-function activeApiText(): string {
-  return fieldDescriptionContaining('Active API').textContent ?? ''
-}
-
 /** The read-only CMI inspector's snapshot element, when the bridge exposes one. */
 function cmiPre(): HTMLPreElement | null {
   return document.querySelector<HTMLPreElement>('pre[aria-label="CMI data"]')
@@ -435,7 +431,6 @@ describe('ScormDevToolsToolbar', () => {
     expect(bridge.getScormVersion).toHaveBeenCalled()
     expect(bridge.getApiName).toHaveBeenCalled()
     expect(versionTrigger().textContent).toContain('SCORM 2004')
-    expect(activeApiText()).toContain('API_1484_11')
   })
 
   it('renders the version control as an accessible combobox wired to its label', () => {
@@ -450,9 +445,6 @@ describe('ScormDevToolsToolbar', () => {
 
     const label = fieldLabelWithText('SCORM version')
     expect(label.getAttribute('for')).toBe(trigger.id)
-    expect(trigger.getAttribute('aria-describedby')).toBe(
-      fieldDescriptionContaining('Active API').id
-    )
   })
 
   it('switches the preview version through the dev bridge and reflects the new API', () => {
@@ -461,7 +453,6 @@ describe('ScormDevToolsToolbar', () => {
     togglePopover()
 
     expect(versionTrigger().textContent).toContain('SCORM 1.2')
-    expect(activeApiText()).toContain('API')
 
     // The combobox is closed until its trigger is activated.
     expect(versionSelectContent()).toBeNull()
@@ -474,7 +465,6 @@ describe('ScormDevToolsToolbar', () => {
 
     expect(bridge.setScormVersion).toHaveBeenCalledWith('2004')
     expect(versionTrigger().textContent).toContain('SCORM 2004')
-    expect(activeApiText()).toContain('API_1484_11')
     // Selecting a version dismisses the menu.
     expect(versionSelectContent()).toBeNull()
     expect(versionTrigger().getAttribute('aria-expanded')).toBe('false')

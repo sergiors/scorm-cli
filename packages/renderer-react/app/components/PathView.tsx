@@ -2,7 +2,6 @@ import { Check, Circle, Lock, type LucideIcon } from 'lucide-react'
 import { useIntl } from 'react-intl'
 import type { PageNode, PathNode, PlayerPageState } from '../types'
 import type { MessageId } from '../lib/messages'
-import { cn } from '../lib/utils'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from './ui/item'
 
 /**

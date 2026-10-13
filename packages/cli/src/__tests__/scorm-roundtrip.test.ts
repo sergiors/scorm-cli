@@ -137,7 +137,7 @@ describe('authored MDX to suspend_data round trip', () => {
       v: 1,
       p: 0,
       x: '1',
-      d: { '0': { a: { '0': [0, 2], '1': 1 } } }
+      d: { '0.a.0': [0, 2], '0.a.1': 1 }
     }
     expect(encodeSuspendData(manifest, selected, 0)).toEqual(compact)
 

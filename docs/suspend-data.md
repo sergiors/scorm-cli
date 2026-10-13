@@ -106,15 +106,19 @@ What the compact data does and does not preserve:
   Grid completion is not reconstructed from `p`; its progress uses the `x`
   visited bits. Therefore per-page `completed` flags are not independently
   encoded, and Scroll completion is necessarily positional/lossy.
-- `d` stores page-indexed data: answer selections as manifest option indexes in
-  `d[pageIndex].a`, and video positions in `d[pageIndex].t`. Answers do not store
+- `d` is a single flat map for the current v1 format. Each key is
+  `<pageIndex>.<kind>.<entityIndex>` where `kind` is `a` (answer) or `t` (video
+  position); answer selections are manifest option indexes and video positions
+  are integer deciseconds. Answers do not store
   question IDs, answer strings, labels, correctness, prompts, or questionnaire
-  IDs. Video positions use page-local manifest video indexes as keys and integer
-  deciseconds;
+  IDs. Video positions use page-local manifest video indexes in their keys;
   semantic positions are seconds rounded to tenths (for example, `132.5`
   seconds encodes as `1325` and decodes as `132.5` seconds). Empty/unknown
-  values are omitted; `d` is omitted when no valid answers or video positions
-  remain.
+  values are omitted from the map; `d` is omitted when no valid answers or video
+  positions remain. The compact codec supports only the current flat layout; a
+  payload using the earlier nested `d[pageIndex].a`/`.t` shape is not decoded
+  and restores no answers or video positions (see
+  [Format versions](#format-versions)).
 - `submittedQuestionnaires` is not encoded. The renderer sanitizer retains only
   current questionnaire IDs and, for a **completed Scroll page**, infers that
   all questionnaires on that page have been submitted. This preserves the
@@ -133,18 +137,17 @@ it is `{"v":1,"p":0,"x":""}`. Optional `d` is absent when empty.
 
 ## Compact format and examples
 
-`CompactSuspendData` is declared in `packages/scorm/src/state-codec.ts`:
+`CompactSuspendData` is declared in `packages/scorm/src/state-codec.ts`. It is
+the one supported shape, the flat v1 layout:
 
 ```ts
-{
-  v: 1,                           // compact format version
-  p: number,                      // rounded/clamped integer package progress
-  x: string,                      // manifest-order visited bits
+interface CompactSuspendData {
+  v: 1 // sole supported compact format version
+  p: number // rounded/clamped integer package progress
+  x: string // manifest-order visited bits
   d?: {
-    [pageIndex: string]: {
-      a?: { [questionIndex: string]: number | number[] }
-      t?: { [videoIndex: string]: number } // integer deciseconds
-    }
+    // key: `${pageIndex}.${kind}.${entityIndex}`, kind is 'a' or 't'
+    [key: string]: number | number[] // option indexes (a) or deciseconds (t)
   }
 }
 ```
@@ -158,6 +161,21 @@ is an array of option indexes sorted numerically. On decode, selections are
 deduplicated, filtered to valid indexes, sorted, then mapped to option values.
 As a result, multiple-choice values return in authored option order, not in the
 learner's selection order.
+
+### Format versions
+
+`v` identifies the payload layout and is validated as part of decoding:
+
+- `v: 1` is the flat layout and the only supported version. `d` keys are
+  `<pageIndex>.<kind>.<entityIndex>` with exactly three segments: two canonical
+  non-negative safe-integer indexes around a kind of `a` or `t`.
+- Any other `v` is unsupported: the whole payload is rejected and decoding
+  returns a fresh `{ pages: {} }` state. There is no versioned decode path.
+
+An earlier revision of the compact format reused `v: 1` but nested `d` under
+`d[pageIndex] = { a, t }`. Because that nested shape is not the flat layout, its
+entries are not decoded and no answers or video positions are restored. The
+top-level `p` and `x` fields are unaffected and still decode normally.
 
 The following small payloads are produced by the current Node
 `encodeSuspendData` implementation (the same code used by the browser runtime).
@@ -196,7 +214,7 @@ In the codec test manifest, `page-one` question `q1` has options
 plus `page-two` answer `q1: ["blue"]`, encoded with progress 50, produces:
 
 ```json
-{ "v": 1, "p": 50, "x": "10", "d": { "0": { "a": { "0": [0, 2] } }, "1": { "a": { "0": [1] } } } }
+{ "v": 1, "p": 50, "x": "10", "d": { "0.a.0": [0, 2], "1.a.0": [1] } }
 ```
 
 The first page gets `completed: true` from `p: 50` for this two-page Scroll
@@ -207,19 +225,20 @@ respectively. The input answer order is normalized by option index.
 
 With manifest video ID `video-a` at local video index `0` on `page-one` (page index `0`), semantic
 `pages: { "page-one": { videos: { "video-a": 12.34 } } }` produces
-`d["0"].t: { "0": 123 }`; decoding returns
+`d["0.t.0"]: 123`; decoding returns
 `pages: { "page-one": { videos: { "video-a": 12.3 } } }`. The codec encodes a
 video by looking for its semantic ID in `state.pages[ownerPageId].videos`, and
-uses the manifest's local video index for storage. Decode resolves page and
+uses the manifest's local video index in the flat key. Decode resolves page and
 video indexes through the current manifest, so content at the same index owns
 the saved position after reordering. Unknown/removed indexes are discarded.
 Zero positions are omitted because absence means playback starts at zero. The
 codec test covers negative,
 non-finite, and unknown video values, and verifies fractional rounding (for
 example, `0.06` seconds becomes `0.1` seconds). The implementation also enforces
-safe-integer decisecond values. Nested `t` maps are omitted when semantic state
-has no valid position for a video in the manifest, including when the manifest
-has no videos; `d` is still omitted if there are no valid answers either.
+safe-integer decisecond values. Video entries are omitted from the flat map when
+semantic state has no valid position for a video in the manifest, including when
+the manifest has no videos; `d` is still omitted if there are no valid answers
+either.
 
 ### Combined state, including an intentionally omitted submission
 
@@ -236,8 +255,8 @@ contains a submitted questionnaire ID. The actual serialized result is:
   "p": 50,
   "x": "11",
   "d": {
-    "0": { "a": { "0": [0, 2] } },
-    "1": { "t": { "0": 1325 } }
+    "0.a.0": [0, 2],
+    "1.t.0": 1325
   }
 }
 ```
@@ -300,20 +319,24 @@ The codec validates compact values against that packaged manifest:
 - A non-object root, invalid JSON, unsupported version, invalid progress, or
   invalid visited string rejects the **whole compact payload** and returns a
   fresh `{ pages: {} }` state.
-- `v` must equal `1`; `p` must be an integer from 0 through 100; and `x` must
-  contain only `0` and `1`. A shorter `x` is accepted; missing trailing bits
+- `v` must equal `1`; `p` must be an integer from 0 through 100; and `x`
+  must contain only `0` and `1`. A shorter `x` is accepted; missing trailing bits
   mean unvisited. If `x` is longer than the current manifest page count, the
   decoder skips page-indexed visited, progress, and answer restoration. Video
   data is independently resolved through page/local-video indexes.
 - An absent, non-object, or malformed `d` does not invalidate otherwise-valid
-  progress. A page entry and its `a` answer map must also be objects; malformed
-  namespaces are ignored. Unknown page/question indexes and invalid or unknown
-  option indexes are ignored. A selection must be a safe-integer scalar or an
-  array; array members that are not non-negative safe integers are filtered,
-  then the rest are deduplicated and sorted. A non-multiple-choice question uses
-  only the first mapped value. Only valid decoded answers are returned.
-- An absent, malformed, or non-object page entry / nested `t` map is ignored.
-  Only current page/local-video indexes and non-negative safe-integer decisecond
+  progress. `d` is a flat map whose keys must be exactly
+  `<pageIndex>.<kind>.<entityIndex>` with canonical non-negative safe-integer
+  page/entity indexes and a kind of `a` or `t`. Malformed keys, unknown pages or
+  entities, and invalid values are ignored individually without affecting other
+  entries.
+- Unknown page/question indexes and invalid or unknown option indexes are
+  ignored. A selection must be a safe-integer scalar or an array; array members
+  that are not non-negative safe integers are filtered, then the rest are
+  deduplicated and sorted. A non-multiple-choice question uses only the first
+  mapped value. Only valid decoded answers are returned.
+- An absent, malformed, or non-object video value/namespace is ignored. Only
+  current page/local-video indexes and non-negative safe-integer decisecond
   values are decoded; missing/removed indexes and invalid values are discarded
   without rejecting other state. A valid value is divided by ten and nested in
   `pages[ownerPageId].videos` using the semantic video ID from the manifest.
@@ -343,13 +366,12 @@ different current page/question/option. Changed option values are likewise
 resolved through current manifest values and then checked against the AST. The
 format carries no content fingerprint or standalone migration table.
 
-Video positions use `d[pageIndex].t[videoIndex]`, where both indexes come
-from the current manifest. As with page/question/option indexes, reordering can
-map a saved position to a different semantic video at the same index; removed
-indexes are ignored. The compact payload contains no video IDs. The decoder
-accepts only this v1 format; it does not support ID-keyed video maps from earlier
-payloads. Payloads without nested `t` remain valid, and video positions are
-omitted on encode when no valid position exists.
+Video positions use a flat key `<pageIndex>.t.<videoIndex>`, where both indexes
+come from the current manifest. As with page/question/option indexes, reordering
+can map a saved position to a different semantic video at the same index; removed
+indexes are ignored. The compact payload contains no video IDs and does not
+support ID-keyed video maps. Payloads without video entries remain valid, and
+video positions are omitted on encode when no valid position exists.
 
 ## Persisted ID generation and stability
 
@@ -382,9 +404,10 @@ content can therefore change line/column IDs. The manifest assigns deterministic
 local video indexes in traversal order; semantic IDs remain in the manifest and
 `PlayerState`, not the compact payload.
 
-The compact `d` dictionary is positional through the current manifest. Adding
-or reordering pages, questions, options, or videos can change those numeric
-mappings.
+The compact `d` dictionary is positional through the current manifest: its flat
+`<pageIndex>.<kind>.<entityIndex>` keys reference current manifest positions.
+Adding or reordering pages, questions, options, or videos can change those
+numeric mappings.
 
 ## Node/browser parity, tests, and change checklist
 
@@ -393,7 +416,8 @@ source of the same self-contained `createSuspendDataCodec()` used by the Node
 exports. The generated SCO and preview runtime therefore use the same encode,
 decode, validation, and normalization logic. The parity tests execute that
 source in a VM and compare browser encode/decode behavior with the Node exports,
-including indexed video positions, round trips, and malformed inputs.
+including flat encoding, indexed video positions, round trips, malformed inputs,
+and rejection of unsupported versions.
 
 Relevant implementation and test paths:
 
@@ -424,12 +448,16 @@ persisted. Then update the semantic type and player ownership/update path; add
 current-AST sanitization; add static manifest mapping only if the codec needs a
 current-content lookup; add compact encode/decode behavior in
 `createSuspendDataCodec()` (the browser source follows automatically); and
-define how absent/old, malformed, unknown, removed, and reordered values behave.
+define how absent, malformed, unknown, removed, and reordered values behave.
 Keep `location` in its separate CMI element and score in the separate score
-bridge unless their ownership is intentionally changed. Test Node and browser
-parity, encode/decode round trips, renderer sanitization, runtime writes and
-limits, and parser/manifest mappings as applicable. The current code has no
-standalone suspend-data migration framework.
+bridge unless their ownership is intentionally changed. The flat layout is the
+single supported v1 shape: `v: 1` and the flat `<pageIndex>.<kind>.<entityIndex>`
+`d` keys are the only supported compact format. There is no version bump, no
+new `v` value, and no legacy or nested decoder in scope; the decoder accepts
+only `v: 1` (the flat layout) and rejects every other `v` outright. Test Node
+and browser parity, encode/decode round trips, renderer sanitization, runtime
+writes and limits, and parser/manifest mappings as applicable. The current code
+has no standalone suspend-data migration framework.
 
 The production SCORM runtime talks to the LMS API discovered in the SCO
 window/parent chain. `scorm preview` instead supplies its preview runtime and

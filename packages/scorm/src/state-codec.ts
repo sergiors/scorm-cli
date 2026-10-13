@@ -1,19 +1,22 @@
 import type { PlayerState } from '@scorm-cli/core'
 import type { ContentManifest } from './content-manifest'
 
+type ManifestPage = ContentManifest['pages'][string]
+type ManifestQuestion = ManifestPage['questions'][string]
+
+/** A single flat value: answer option indexes or video deciseconds. */
+type CompactValue = number | readonly number[]
+
+/**
+ * Compact suspend-data payload. Keys in `d` are
+ * `<pageIndex>.<kind>.<entityIndex>` where `kind` is `a` (answer) or `t`
+ * (video position).
+ */
 export interface CompactSuspendData {
   readonly v: 1
   readonly p: number
   readonly x: string
-  readonly d?: Readonly<
-    Record<
-      string,
-      {
-        readonly a?: Readonly<Record<string, number | readonly number[]>>
-        readonly t?: Readonly<Record<string, number>>
-      }
-    >
-  >
+  readonly d?: Readonly<Record<string, CompactValue>>
 }
 
 /**
@@ -25,11 +28,104 @@ function createSuspendDataCodec() {
     value !== null && typeof value === 'object' && !Array.isArray(value)
   const safeKey = (value: string): boolean =>
     value.length > 0 && value !== '__proto__' && value !== 'prototype' && value !== 'constructor'
-  const safeVideoIndex = (value: string): boolean =>
-    safeKey(value) &&
+  const canonicalIndex = (value: string): boolean =>
+    value.length > 0 &&
     Number.isSafeInteger(Number(value)) &&
     Number(value) >= 0 &&
     String(Number(value)) === value
+  const safeVideoIndex = (value: string): boolean => safeKey(value) && canonicalIndex(value)
+
+  /** Builds the single flat data key for a manifest page/kind/entity. */
+  const makeDataKey = (pageIndex: string, kind: 'a' | 't', entityIndex: string): string =>
+    `${pageIndex}.${kind}.${entityIndex}`
+
+  /**
+   * Parses a flat data key. Returns undefined unless it is exactly three
+   * segments: two canonical non-negative safe-integer indexes around a kind of
+   * `a` or `t`.
+   */
+  const parseDataKey = (
+    key: string
+  ): { pageIndex: string; kind: 'a' | 't'; entityIndex: string } | undefined => {
+    const segments = key.split('.')
+    if (segments.length !== 3) return undefined
+    const [pageIndex, kind, entityIndex] = segments as [string, string, string]
+    if (kind !== 'a' && kind !== 't') return undefined
+    if (!canonicalIndex(pageIndex) || !canonicalIndex(entityIndex)) return undefined
+    return { pageIndex, kind, entityIndex }
+  }
+
+  /** Maps persisted option indexes back to semantic values through the manifest. */
+  const resolveAnswer = (
+    question: ManifestQuestion,
+    selection: unknown
+  ): string | string[] | undefined => {
+    const selections = Array.isArray(selection)
+      ? selection
+      : Number.isSafeInteger(selection)
+        ? [selection]
+        : []
+    const values = [...new Set(selections)]
+      .filter((index): index is number => Number.isSafeInteger(index) && index >= 0)
+      .sort((left, right) => left - right)
+      .map((index) => question.options[String(index)]?.value)
+      .filter((value): value is string => typeof value === 'string')
+    if (values.length === 0) return undefined
+    return question.type === 'multiple-choice' ? values : values[0]
+  }
+
+  /** Stores one valid decisecond position under its semantic video ID. */
+  function assignVideoPosition(
+    fresh: PlayerState,
+    page: ManifestPage,
+    videoIndex: string,
+    deciseconds: unknown
+  ): void {
+    if (
+      !safeVideoIndex(videoIndex) ||
+      typeof deciseconds !== 'number' ||
+      !Number.isSafeInteger(deciseconds) ||
+      deciseconds < 0
+    ) {
+      return
+    }
+    const video = page.videos?.[videoIndex]
+    if (!isRecord(video) || !safeKey(video.id)) return
+    const pageState = fresh.pages[page.id] ?? (fresh.pages[page.id] = {})
+    const videos = pageState.videos ?? (pageState.videos = {})
+    videos[video.id] = deciseconds / 10
+  }
+
+  /** Flat `d` layout keyed by `<pageIndex>.<kind>.<entityIndex>`. */
+  function decodeData(
+    encoded: Record<string, unknown>,
+    entries: Array<[string, ManifestPage]>,
+    fresh: PlayerState,
+    pageIndexed: boolean
+  ): void {
+    const pagesByIndex = new Map<string, ManifestPage>()
+    entries.forEach(([pageIndex, page]) => {
+      if (safeKey(page.id)) pagesByIndex.set(pageIndex, page)
+    })
+    Object.entries(encoded).forEach(([key, value]) => {
+      const parsedKey = parseDataKey(key)
+      if (!parsedKey) return
+      const page = pagesByIndex.get(parsedKey.pageIndex)
+      if (!page) return
+      if (parsedKey.kind === 'a') {
+        if (!pageIndexed) return
+        const question = (page.questions ?? {})[parsedKey.entityIndex]
+        if (!question || !safeKey(question.id)) return
+        const answer = resolveAnswer(question, value)
+        if (answer === undefined) return
+        const pageState = fresh.pages[page.id] ?? (fresh.pages[page.id] = {})
+        const answers = pageState.answers ?? (pageState.answers = {})
+        answers[question.id] = answer
+      } else {
+        assignVideoPosition(fresh, page, parsedKey.entityIndex, value)
+      }
+    })
+  }
 
   function encode(
     manifest: ContentManifest,
@@ -49,44 +145,35 @@ function createSuspendDataCodec() {
         return pageState?.visited === true ? '1' : '0'
       })
       .join('')
-    const dataByPage: Record<
-      string,
-      { a?: Record<string, number | number[]>; t?: Record<string, number> }
-    > = Object.create(null)
+    const data: Record<string, CompactValue> = Object.create(null)
 
     entries.forEach(([pageIndex, page]) => {
-      if (!safeKey(page.id) || !isRecord(page.videos)) return
+      if (!canonicalIndex(pageIndex) || !safeKey(page.id) || !isRecord(page.videos)) return
       const videoState = state.pages[page.id]?.videos
       if (!isRecord(videoState)) return
       Object.entries(page.videos).forEach(([videoIndex, video]) => {
         if (!safeVideoIndex(videoIndex) || !isRecord(video) || !safeKey(video.id)) return
-        const videoId = video.id
-        if (!Object.prototype.hasOwnProperty.call(videoState, videoId)) return
-        const seconds = videoState[videoId]
+        const seconds = videoState[video.id]
         if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) return
         const deciseconds = Math.round(seconds * 10)
         if (!Number.isSafeInteger(deciseconds) || deciseconds === 0) return
-        const pageData = dataByPage[pageIndex] ?? (dataByPage[pageIndex] = {})
-        const videos = pageData.t ?? (pageData.t = Object.create(null))
-        videos[videoIndex] = deciseconds
+        data[makeDataKey(pageIndex, 't', videoIndex)] = deciseconds
       })
     })
 
     entries.forEach(([pageIndex, page]) => {
-      if (!safeKey(page.id) || !Object.prototype.hasOwnProperty.call(state.pages, page.id)) {
+      if (
+        !canonicalIndex(pageIndex) ||
+        !safeKey(page.id) ||
+        !Object.prototype.hasOwnProperty.call(state.pages, page.id)
+      ) {
         return
       }
-      const pageState = state.pages[page.id]
-      const pageAnswers = pageState?.answers
-      if (!isRecord(pageAnswers)) {
-        return
-      }
+      const pageAnswers = state.pages[page.id]?.answers
+      if (!isRecord(pageAnswers)) return
 
-      const answers: Record<string, number | number[]> = Object.create(null)
       Object.entries(page.questions ?? {}).forEach(([questionIndex, question]) => {
-        if (!safeKey(question.id)) {
-          return
-        }
+        if (!canonicalIndex(questionIndex) || !safeKey(question.id)) return
         const answer = pageAnswers[question.id]
         const optionIndexes = Object.entries(question.options)
           .filter(([, option]) =>
@@ -95,22 +182,17 @@ function createSuspendDataCodec() {
           .map(([optionIndex]) => Number(optionIndex))
           .filter(Number.isSafeInteger)
           .sort((left, right) => left - right)
-        if (optionIndexes.length > 0) {
-          answers[questionIndex] =
-            question.type === 'multiple-choice' ? optionIndexes : optionIndexes[0]
-        }
+        if (optionIndexes.length === 0) return
+        data[makeDataKey(pageIndex, 'a', questionIndex)] =
+          question.type === 'multiple-choice' ? optionIndexes : optionIndexes[0]
       })
-      if (Object.keys(answers).length > 0) {
-        const pageData = dataByPage[pageIndex] ?? (dataByPage[pageIndex] = {})
-        pageData.a = answers
-      }
     })
 
     return {
       v: 1,
       p: normalizedProgress,
       x: visited,
-      ...(Object.keys(dataByPage).length > 0 ? { d: dataByPage } : {})
+      ...(Object.keys(data).length > 0 ? { d: data } : {})
     }
   }
 
@@ -137,12 +219,13 @@ function createSuspendDataCodec() {
 
       // Page-indexed data is only meaningful when its visited bitmap is not
       // oversized for the current page list.
-      if (x.length <= entries.length) {
+      const pageIndexed = x.length <= entries.length
+      if (pageIndexed) {
         const completedCount =
           manifest.presentation === 'scroll'
             ? Math.max(0, Math.min(entries.length, Math.round((p * entries.length) / 100)))
             : 0
-        entries.forEach(([pageIndex, page], order) => {
+        entries.forEach(([, page], order) => {
           if (!safeKey(page.id)) {
             return
           }
@@ -154,64 +237,15 @@ function createSuspendDataCodec() {
           if (completed) {
             pageState.completed = true
           }
-
-          const encodedPage = isRecord(parsed.d) ? parsed.d[pageIndex] : undefined
-          const encodedAnswers = isRecord(encodedPage) ? encodedPage.a : undefined
-          if (isRecord(encodedAnswers)) {
-            const answers: NonNullable<PlayerState['pages'][string]['answers']> = {}
-            Object.entries(page.questions ?? {}).forEach(([questionIndex, question]) => {
-              if (!safeKey(question.id)) {
-                return
-              }
-              const selection = encodedAnswers[questionIndex]
-              const selections = Array.isArray(selection)
-                ? selection
-                : Number.isSafeInteger(selection)
-                  ? [selection]
-                  : []
-              const values = [...new Set(selections)]
-                .filter((index): index is number => Number.isSafeInteger(index) && index >= 0)
-                .sort((left, right) => left - right)
-                .map((index) => question.options[String(index)]?.value)
-                .filter((value): value is string => typeof value === 'string')
-              if (values.length > 0) {
-                answers[question.id] = question.type === 'multiple-choice' ? values : values[0]
-              }
-            })
-            if (Object.keys(answers).length > 0) {
-              pageState.answers = answers
-            }
-          }
-
           if (Object.keys(pageState).length > 0) {
             fresh.pages[page.id] = pageState
           }
         })
       }
-      const encodedPages = parsed.d
-      if (isRecord(encodedPages)) {
-        entries.forEach(([pageIndex, page]) => {
-          if (!safeKey(page.id) || !isRecord(page.videos)) return
-          const encodedPage = encodedPages[pageIndex]
-          const encodedVideos = isRecord(encodedPage) ? encodedPage.t : undefined
-          if (!isRecord(encodedVideos)) return
-          Object.entries(page.videos).forEach(([videoIndex, video]) => {
-            if (
-              !safeVideoIndex(videoIndex) ||
-              !isRecord(video) ||
-              !safeKey(video.id) ||
-              !Object.prototype.hasOwnProperty.call(encodedVideos, videoIndex)
-            ) {
-              return
-            }
-            const deciseconds = encodedVideos[videoIndex]
-            if (Number.isSafeInteger(deciseconds) && (deciseconds as number) >= 0) {
-              const pageState = fresh.pages[page.id] ?? (fresh.pages[page.id] = {})
-              const videos = pageState.videos ?? (pageState.videos = {})
-              videos[video.id] = (deciseconds as number) / 10
-            }
-          })
-        })
+
+      const encoded = parsed.d
+      if (isRecord(encoded)) {
+        decodeData(encoded, entries, fresh, pageIndexed)
       }
       return fresh
     } catch {

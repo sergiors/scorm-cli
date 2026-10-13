@@ -40,12 +40,12 @@ const suspendManifest: ContentManifest = {
   }
 }
 
-/** A valid compact payload that already carries page progress and answers. */
+/** A valid flat v1 payload carrying page progress and answers. */
 const initialSuspendData = JSON.stringify({
   v: 1,
   p: 50,
   x: '1',
-  d: { '0': { a: { '0': [0, 1] } } }
+  d: { '0.a.0': [0, 1] }
 })
 
 interface CreateWindowOptions {
@@ -191,7 +191,7 @@ describe('SCORM runtime dev event logging', () => {
       v: 1,
       p: 100,
       x: '1',
-      d: { '0': { a: { '0': [0, 1] } } }
+      d: { '0.a.0': [0, 1] }
     })
 
     expect(JSON.stringify([readEvent, writeEvent])).not.toContain('redacted')
@@ -234,7 +234,7 @@ describe('SCORM runtime dev event logging', () => {
         v: 1,
         p: 100,
         x: '1',
-        d: { '0': { a: { '0': [0, 1] } } }
+        d: { '0.a.0': [0, 1] }
       })
 
       // ...and records how the write failed.

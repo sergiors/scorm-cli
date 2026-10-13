@@ -109,14 +109,15 @@ const content: ContentPackage = {
 
 const manifest = createContentManifest(content)
 
-// The target shape from the plan: page 3 holds a multiple-choice answer (array)
-// at question index 0 and a single-choice answer (scalar) at index 1; page 4
-// holds a scalar at question index 0. Question indexes are page-local.
+// The target flat v1 shape: page 3 holds a multiple-choice answer (array) at
+// question index 0 and a single-choice answer (scalar) at index 1; page 4 holds
+// a scalar at question index 0. Question indexes are page-local and encoded as
+// `<pageIndex>.a.<questionIndex>`.
 const compact = {
   v: 1,
   p: 0,
   x: '00000',
-  d: { '3': { a: { '0': [1], '1': 1 } }, '4': { a: { '0': 0 } } }
+  d: { '3.a.0': [1], '3.a.1': 1, '4.a.0': 0 }
 }
 
 // A complete persisted payload: answers match `compact`, but progress is 100%
@@ -125,7 +126,7 @@ const supplied = {
   v: 1,
   p: 100,
   x: '11111',
-  d: { '3': { a: { '0': [1], '1': 1 } }, '4': { a: { '0': 0 } } }
+  d: { '3.a.0': [1], '3.a.1': 1, '4.a.0': 0 }
 }
 
 const selected: PlayerState = {
@@ -284,7 +285,7 @@ describe('suspend-data codec integration', () => {
       p: 0,
       x: '00000',
       d: {
-        '3': { t: { '0': 343 } }
+        '3.t.0': 343
       }
     })
     expect(encoded).not.toHaveProperty('t')
@@ -304,9 +305,11 @@ describe('suspend-data codec integration', () => {
       p: 0,
       x: '00000',
       d: {
-        '3': { t: { '0': 343, '1': -1, '2': 1.5 } },
-        '4': { t: null },
-        '99': { t: { '0': 500 } }
+        '3.t.0': 343,
+        '3.t.1': -1,
+        '3.t.2': 1.5,
+        '4.t.0': null,
+        '99.t.0': 500
       }
     }
     expect(normalize(browserDecode(videoManifest, JSON.stringify(malformedVideoData)))).toEqual(
@@ -364,20 +367,26 @@ describe('suspend-data codec integration', () => {
       JSON.stringify({ v: 1, p: 101, x: '00000' }),
       JSON.stringify({ v: 1, p: 0, x: '000000' }),
       JSON.stringify({ v: 1, p: 0, x: '10x00' }),
+      // Unsupported versions must decode to a fresh state.
+      JSON.stringify({ v: 0, p: 0, x: '00000' }),
+      JSON.stringify({ v: 3, p: 0, x: '00000' }),
+      // The retired nested layout also used `v: 1`; its `d[pageIndex].a` entries
+      // are not the supported flat keys, so they restore no learner data.
+      JSON.stringify({ v: 1, p: 0, x: '00000', d: { '3': { a: { '0': [0] } } } }),
       JSON.stringify({
         v: 1,
         p: 0,
         x: '00000',
         d: {
-          '3': {
-            a: {
-              '0': [-1, 1, 1, 2, 99, 1.5, '1'],
-              '1': [0, 1, 99],
-              '99': 0
-            }
-          },
-          '4': { a: { '0': 0 } },
-          '99': { a: { '0': 1 } }
+          '3.a.0': [-1, 1, 1, 2, 99, 1.5, '1'],
+          '3.a.1': [0, 1, 99],
+          '3.a.99': 0,
+          '4.a.0': 0,
+          '99.a.0': 1,
+          '3.a': 1,
+          '3.a.01': 1,
+          '3.z.0': 1,
+          '3.t.0': 343
         }
       }),
       JSON.stringify({ v: 1, p: 0, x: '00000', d: null })
