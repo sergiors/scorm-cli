@@ -219,15 +219,19 @@ describe('renderReactPackage', () => {
     // presentations, so the compiled stylesheet must carry its rules.
     expect(css).toContain('.prose')
     expect(css).toContain('--tw-prose-body')
-    // The Scroll presentation's page sizing, its inner content padding and its
-    // static loading skeleton must be compiled as well, so a page reserves a
-    // small viewport, keeps readable vertical padding inside its spacing-free
-    // wrapper, and never animates. The removed per-page emphasis leaves no
-    // transition behind.
-    expect(css).toContain('.min-h-svh')
-    expect(css).toContain('.py-8')
-    expect(css).toMatch(/\.sm\\:py-12/)
+    // The Scroll presentation's single shared column and its small static
+    // loading indication must be compiled as well: the list is framed once by a
+    // responsive max width and horizontal padding, and the skeleton never
+    // animates. The layout guarantees themselves — a page's natural height, no
+    // vertical page padding, no viewport minimum — are asserted against the
+    // rendered Scroll elements in the package/dom tests, so they are not
+    // re-checked here against the whole stylesheet, which every presentation
+    // shares.
+    expect(css).toContain('.max-w-3xl')
+    expect(css).toContain('.px-4')
+    expect(css).toMatch(/\.sm\\:px-6/)
     expect(css).toContain('.animate-none')
+    expect(css).toContain('.sr-only')
     expect(css).not.toContain('.transition-opacity')
     expect(css).not.toContain('.opacity-90')
   })

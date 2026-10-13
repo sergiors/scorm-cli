@@ -109,3 +109,86 @@ describe('SCORM dev reload resume', () => {
     })
   })
 })
+
+const scrollContent: ContentPackage = {
+  metadata: { title: 'Scroll resume' },
+  presentation: {
+    type: 'scroll',
+    pages: [
+      {
+        type: 'page',
+        id: 'page:one',
+        source: 'one.mdx',
+        metadata: { title: 'One' },
+        content: []
+      },
+      {
+        type: 'page',
+        id: 'page:two',
+        source: 'two.mdx',
+        metadata: { title: 'Two' },
+        content: [
+          {
+            type: 'questionnaire',
+            id: 'two-check',
+            contributesToScore: true,
+            questions: [
+              {
+                type: 'question',
+                id: 'two-question',
+                questionType: 'single-choice',
+                prompt: [],
+                options: [
+                  { value: 'yes', correct: true, content: [] },
+                  { value: 'no', correct: false, content: [] }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+
+describe('SCORM dev reload resume (scroll)', () => {
+  it('restores sequential completion and answers after a reload, keeping the location separate', () => {
+    const storage = new MemoryStorage()
+    const manifest = createContentManifest(scrollContent)
+    const runtime = createScormRuntime(manifest)
+    const createWindow = () => {
+      const window: Record<string, any> = { localStorage: storage }
+      window.parent = window
+      vm.runInNewContext(scormDevMock, { window })
+      vm.runInNewContext(runtime, { window })
+      return window
+    }
+
+    const firstWindow = createWindow()
+    expect(
+      firstWindow.scormBridge.saveState(
+        {
+          location: 'page:two',
+          pages: {
+            'page:one': { completed: true },
+            'page:two': { visited: true, answers: { 'two-question': 'yes' } }
+          }
+        },
+        50
+      )
+    ).toBe(true)
+
+    const secondWindow = createWindow()
+    // Scroll completion is reconstructed from progress, answers decode through
+    // the current manifest, and the location stays in its separate CMI element —
+    // so a refresh restores the learner's answers/progress even though the Scroll
+    // presentation itself always reopens at the top of the document.
+    expect(secondWindow.scormBridge.restoreState()).toEqual({
+      location: 'page:two',
+      pages: {
+        'page:one': { visited: true, completed: true },
+        'page:two': { visited: true, answers: { 'two-question': 'yes' } }
+      }
+    })
+  })
+})

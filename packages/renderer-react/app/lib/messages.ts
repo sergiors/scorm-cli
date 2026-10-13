@@ -14,6 +14,7 @@ import type { PlayerLocale } from '../i18n/locale'
 export const en = {
   'slides.previousPage': 'Previous page',
   'slides.continueNextPage': 'Continue to next page',
+  'scroll.loading': 'Loading page',
   'scroll.locked': 'Complete this page to continue.',
   'content.loadError': 'This content could not be loaded.',
   'content.retry': 'Try again',
@@ -46,6 +47,7 @@ export type MessageId = keyof typeof en
 export const ptBR: Record<MessageId, string> = {
   'slides.previousPage': 'Página anterior',
   'slides.continueNextPage': 'Continuar para a próxima página',
+  'scroll.loading': 'Carregando página',
   'scroll.locked': 'Conclua esta página para continuar.',
   'content.loadError': 'Não foi possível carregar este conteúdo.',
   'content.retry': 'Tentar novamente',

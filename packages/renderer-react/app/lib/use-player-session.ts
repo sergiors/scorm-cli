@@ -62,15 +62,20 @@ export interface PlayerSession {
  *   completes once its own completion rule is met (for Scroll, its end boundary
  *   was reached; for Slides, it is simply displayed) and every questionnaire on
  *   the page has been submitted. The page being viewed is stored as the lesson
- *   location, so a refresh resumes on that page even when it is not complete.
- *   The package is complete once every page is completed.
+ *   location. Slides resumes on that page after a refresh, but Scroll always
+ *   reopens at the top of the document: it ignores the saved location, so only
+ *   the reading position restarts while restored answers, submissions and
+ *   progress are unaffected. The package is complete once every page is
+ *   completed.
  * - Tiles items are visited (and stored as the location) as they are opened;
  *   the package is complete once every item has been opened. A saved location
  *   reopens that item's dialog on mount.
  *
  * All three presentations share one sequential progression policy from the core
- * model: a node is accessible only while it is done or every preceding node is
- * done, so locks are contiguous and no node can be skipped.
+ * model: the done prefix and the first not-done node are accessible, and any
+ * previously visited node stays accessible so it can be revisited — but a node
+ * that was never reached stays locked until every preceding node is done, so the
+ * learner can never skip forward to fresh content.
  */
 export function usePlayerSession(contentPackage: ContentPackage): PlayerSession {
   // Validate the saved state once, on first mount. Reading the bridge is a pure

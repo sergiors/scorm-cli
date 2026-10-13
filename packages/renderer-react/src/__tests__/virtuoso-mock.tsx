@@ -54,6 +54,9 @@ interface VirtuosoProps {
   initialTopMostItemIndex?: number | { index: number | 'LAST' }
   initialItemCount?: number
   defaultItemHeight?: number
+  heightEstimates?: number[]
+  fixedItemHeight?: number
+  overscan?: number | { main: number; reverse: number }
   useWindowScroll?: boolean
   itemContent?: (index: number, data: unknown, context: unknown) => ReactNode
   computeItemKey?: (index: number, data: unknown, context: unknown) => string | number

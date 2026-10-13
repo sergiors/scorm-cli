@@ -42,8 +42,27 @@ export interface ContentLoader {
   isLoading(nodeId: string): boolean
   /** Whether a node's module failed to load and awaits a retry. */
   hasError(nodeId: string): boolean
-  /** Requests a node's content once; a no-op when it is already available or in flight. */
+  /**
+   * Requests a node's content once. A no-op when the content is already
+   * available from the provider or loaded this session, when a load is in
+   * flight, or when the node was requested before — including after a failure,
+   * which is not re-issued until `retry` clears it.
+   */
   request(nodeId: string): void
+  /**
+   * Loads a node's content and resolves once it is available, so a caller can
+   * defer an action (such as moving a list) until the target exists. This is a
+   * user-explicit load attempt: the caller invokes it in response to a
+   * deliberate action, never automatically on a remount. A node is only
+   * remembered as loaded once its load succeeds, so `ensure` will reattempt a
+   * node whose earlier `request` or `ensure` failed rather than treating the
+   * failure as loaded. That is not an automatic retry: nothing re-runs `ensure`
+   * on its own, and the failure still surfaces through `hasError` until a
+   * caller retries explicitly. Rejects if the node's module fails to load.
+   * Unlike `request`, the load is not fire-and-forget, and it joins any load
+   * already in flight rather than issuing a second one.
+   */
+  ensure(nodeId: string): Promise<void>
   /** Clears a failed load and requests it again. */
   retry(nodeId: string): void
 }
@@ -67,6 +86,11 @@ export function useContentLoader(provider: ContentProvider): ContentLoader {
   const [loadingIds, setLoadingIds] = useState<ReadonlySet<string>>(() => new Set())
   const [errorIds, setErrorIds] = useState<ReadonlySet<string>>(() => new Set())
   const requestedRef = useRef<Set<string>>(new Set())
+  // The nodes whose content is already resolved for the session, and the loads
+  // still in flight, kept as refs so `request` and `ensure` stay state-free and
+  // stable and can share one load per node.
+  const loadedRef = useRef<Set<string>>(new Set())
+  const pendingRef = useRef<Map<string, Promise<ContentNode[]>>>(new Map())
 
   const content = useCallback(
     (nodeId: string) => contentById[nodeId] ?? provider.get(nodeId),
@@ -81,52 +105,99 @@ export function useContentLoader(provider: ContentProvider): ContentLoader {
   const isLoading = useCallback((nodeId: string) => loadingIds.has(nodeId), [loadingIds])
   const hasError = useCallback((nodeId: string) => errorIds.has(nodeId), [errorIds])
 
-  // `request` deliberately reads no state: it is stable until the provider
-  // itself changes, so effects can depend on it without re-issuing loads on
-  // every render. A node the provider can already answer synchronously, or one
-  // already requested, is skipped.
-  const request = useCallback(
-    (nodeId: string) => {
-      if (provider.get(nodeId) !== undefined || requestedRef.current.has(nodeId)) {
-        return
+  // Starts a node's load, or joins the one already in flight, and returns the
+  // shared promise. Both `request` (fire-and-forget) and `ensure` (awaited) go
+  // through it, so a node is loaded at most once and either caller can observe
+  // the same result. It deliberately reads no state: it is stable until the
+  // provider itself changes, so effects can depend on it without re-issuing
+  // loads on every render.
+  const beginLoad = useCallback(
+    (nodeId: string): Promise<ContentNode[]> => {
+      const available = provider.get(nodeId)
+      if (available !== undefined) {
+        loadedRef.current.add(nodeId)
+        return Promise.resolve(available)
       }
-      requestedRef.current.add(nodeId)
+      const inFlight = pendingRef.current.get(nodeId)
+      if (inFlight !== undefined) {
+        return inFlight
+      }
+
       setLoadingIds((previous) => withId(previous, nodeId, true))
 
       let pending: Promise<ContentNode[]>
       try {
         pending = provider.load(nodeId)
-      } catch {
+      } catch (error) {
         setErrorIds((previous) => withId(previous, nodeId, true))
         setLoadingIds((previous) => withId(previous, nodeId, false))
-        return
+        return Promise.reject(error)
       }
 
-      pending
-        .then((nodes) => {
-          setContentById((previous) =>
-            previous[nodeId] !== undefined ? previous : { ...previous, [nodeId]: nodes }
-          )
-          setErrorIds((previous) => withId(previous, nodeId, false))
-        })
-        .catch(() => {
-          setErrorIds((previous) => withId(previous, nodeId, true))
-        })
+      const tracked = pending
+        .then(
+          (nodes) => {
+            setContentById((previous) =>
+              previous[nodeId] !== undefined ? previous : { ...previous, [nodeId]: nodes }
+            )
+            setErrorIds((previous) => withId(previous, nodeId, false))
+            loadedRef.current.add(nodeId)
+            return nodes
+          },
+          (error: unknown) => {
+            setErrorIds((previous) => withId(previous, nodeId, true))
+            throw error
+          }
+        )
         .finally(() => {
           setLoadingIds((previous) => withId(previous, nodeId, false))
+          pendingRef.current.delete(nodeId)
         })
+
+      pendingRef.current.set(nodeId, tracked)
+      return tracked
     },
     [provider]
+  )
+
+  const request = useCallback(
+    (nodeId: string) => {
+      if (
+        provider.get(nodeId) !== undefined ||
+        loadedRef.current.has(nodeId) ||
+        pendingRef.current.has(nodeId) ||
+        requestedRef.current.has(nodeId)
+      ) {
+        return
+      }
+      requestedRef.current.add(nodeId)
+      // A failed load surfaces through `hasError`; the fire-and-forget caller
+      // has nothing to await, so the rejection is swallowed here.
+      beginLoad(nodeId).catch(() => {})
+    },
+    [provider, beginLoad]
+  )
+
+  const ensure = useCallback(
+    (nodeId: string): Promise<void> => {
+      if (provider.get(nodeId) !== undefined || loadedRef.current.has(nodeId)) {
+        return Promise.resolve()
+      }
+      requestedRef.current.add(nodeId)
+      return beginLoad(nodeId).then(() => undefined)
+    },
+    [provider, beginLoad]
   )
 
   const retry = useCallback(
     (nodeId: string) => {
       requestedRef.current.delete(nodeId)
+      loadedRef.current.delete(nodeId)
       setErrorIds((previous) => withId(previous, nodeId, false))
       request(nodeId)
     },
     [request]
   )
 
-  return { content, isLoaded, isLoading, hasError, request, retry }
+  return { content, isLoaded, isLoading, hasError, request, ensure, retry }
 }

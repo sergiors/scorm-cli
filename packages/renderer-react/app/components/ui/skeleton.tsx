@@ -2,10 +2,13 @@ import * as React from 'react'
 import { cn } from 'cn'
 
 /**
- * A shadcn/ui-shaped loading placeholder. It is deliberately inert (no text, no
- * motion beyond the pulse) so it can stand in for page content while a lazily
- * loaded Page module resolves without announcing anything to assistive
- * technology — the surrounding region marks itself `aria-hidden`.
+ * A shadcn/ui-shaped loading placeholder: a plain, decorative block with no text
+ * and no motion of its own beyond the default `animate-pulse` from its own
+ * classes. It carries no accessibility semantics — no `role`, no status text and
+ * no `aria-hidden` — so that decision belongs to the caller: a consumer chooses
+ * whether the placeholder is inert decoration or announces a pending state (for
+ * example a `role="status"` region with visually hidden text, or a static
+ * placeholder via `animate-none`).
  */
 function Skeleton({ className, ...props }: React.ComponentProps<'div'>) {
   return (

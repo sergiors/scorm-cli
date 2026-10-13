@@ -66,34 +66,50 @@ describe('PackageView scroll presentation', () => {
     }
   })
 
-  it('renders the current page as a min-viewport, natural-height scene without paging controls', () => {
+  it('renders the current page as a natural-height scene without paging controls', () => {
     const html = renderView(scrollPackage)
-    // Pages reserve at least one small viewport and grow naturally beyond it —
-    // never a dynamic viewport height and never vertically centered — and no
-    // adjacent page peeks in.
+    // Pages keep their natural content height — no viewport-based sizing, never
+    // vertically centered — and no adjacent page peeks in.
     expect(html).not.toContain('dvh')
     const sceneTag = html.match(/<div data-scene-index="0"[^>]*>/)?.[0] ?? ''
     const sceneClasses = sceneTag.match(/class="([^"]*)"/)?.[1].split(/\s+/) ?? []
-    expect(sceneClasses).toContain('min-h-svh')
+    expect(sceneClasses).not.toContain('min-h-svh')
     expect(sceneClasses).not.toContain('h-svh')
     expect(sceneClasses).not.toContain('max-h-svh')
     expect(sceneClasses).not.toContain('justify-center')
-    expect(sceneTag).toContain('max-w-3xl')
-    // The wrapper keeps its responsive horizontal content padding but carries no
-    // vertical padding, margin, gap or scroll class — responsive or not — so
-    // consecutive page wrappers meet directly with no artificial gap between them.
-    expect(sceneClasses).toContain('px-4')
+    // The width and horizontal padding live once on the shared column around the
+    // whole list, never on an individual page slot.
+    expect(sceneTag).not.toContain('max-w-3xl')
+    expect(sceneClasses).not.toContain('px-4')
+    // The page slot carries no padding, margin, gap or scroll class — any of
+    // which would open an artificial space between consecutive pages.
     const wrapperUtilities = sceneClasses.map((name) => name.slice(name.lastIndexOf(':') + 1))
     for (const spacing of ['py-', 'pt-', 'pb-', 'my-', 'mt-', 'mb-', 'gap-', 'scroll-']) {
       expect(wrapperUtilities.some((name) => name.startsWith(spacing))).toBe(false)
     }
-    // The intentional, responsive vertical padding lives inside the page, on its
-    // content, so a page still reads with breathing room from its top and bottom
-    // edges even though the wrapper itself is spacing-free.
+    // The page content carries no vertical padding of its own either, so
+    // consecutive pages meet with only their natural typography spacing between
+    // them and no artificial vertical space is introduced.
     const contentTag = html.match(/<div data-scroll-page-content[^>]*>/)?.[0] ?? ''
     expect(contentTag).not.toBe('')
-    expect(contentTag).toContain('py-8')
-    expect(contentTag).toContain('sm:py-12')
+    expect(contentTag).not.toMatch(/\b(py-|pt-|pb-)/)
+    // A single shared column frames the whole list: one responsive max width and
+    // horizontal padding, and no overflow, height or vertical padding that could
+    // turn it into a second scroll container.
+    const columnTag = html.match(/<div data-scroll-column[^>]*>/)?.[0] ?? ''
+    expect(columnTag).not.toBe('')
+    expect(columnTag).toContain('mx-auto')
+    expect(columnTag).toContain('w-full')
+    expect(columnTag).toContain('max-w-3xl')
+    expect(columnTag).toContain('px-4')
+    expect(columnTag).toContain('sm:px-6')
+    const columnUtilities = (columnTag.match(/class="([^"]*)"/)?.[1] ?? '')
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((name) => name.slice(name.lastIndexOf(':') + 1))
+    for (const forbidden of ['overflow-', 'h-', 'min-h-', 'max-h-', 'py-', 'pt-', 'pb-']) {
+      expect(columnUtilities.some((name) => name.startsWith(forbidden))).toBe(false)
+    }
     // The current page is marked semantically; the package adds no animation,
     // transition or scroll snapping of its own.
     expect(sceneTag).toContain('data-active="true"')
