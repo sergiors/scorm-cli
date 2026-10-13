@@ -56,6 +56,11 @@ export interface ScrollPresentationProps {
   onAnswer: (pageId: string, questionId: string, value: AnswerValue) => void
   /** Marks a questionnaire on the displayed page as submitted. */
   onQuestionnaireSubmitted: (pageId: string, questionnaireId: string) => void
+  /**
+   * Persists a video's semantic playback position in seconds, scoped to the
+   * page that owns the video.
+   */
+  onVideoPosition?: (pageId: string, videoId: string, seconds: number) => void
 }
 
 /** Clamps a requested page index to the pages that actually exist. */
@@ -128,7 +133,8 @@ export function ScrollPresentation({
   onPageSeen,
   onPageCompleted,
   onAnswer,
-  onQuestionnaireSubmitted
+  onQuestionnaireSubmitted,
+  onVideoPosition
 }: ScrollPresentationProps) {
   const [currentIndex, setCurrentIndex] = useState(() => clampPageIndex(initialIndex, pages.length))
   // Boundary signals for the displayed page only. The optimistic defaults match
@@ -224,6 +230,7 @@ export function ScrollPresentation({
         onEndChange={handleEndChange}
         onAnswer={onAnswer}
         onQuestionnaireSubmitted={onQuestionnaireSubmitted}
+        onVideoPosition={onVideoPosition}
       />
 
       <PageSeenReporter pageId={currentPage.id} onPageSeen={onPageSeen} />
@@ -310,6 +317,8 @@ interface PageSceneProps {
   onEndChange: (visible: boolean) => void
   onAnswer: (pageId: string, questionId: string, value: AnswerValue) => void
   onQuestionnaireSubmitted: (pageId: string, questionnaireId: string) => void
+  /** Persists a video's playback position, scoped to this page. */
+  onVideoPosition?: (pageId: string, videoId: string, seconds: number) => void
 }
 
 /**
@@ -331,7 +340,8 @@ function PageScene({
   onTopChange,
   onEndChange,
   onAnswer,
-  onQuestionnaireSubmitted
+  onQuestionnaireSubmitted,
+  onVideoPosition
 }: PageSceneProps) {
   const startRef = useRef<HTMLDivElement>(null)
 
@@ -376,6 +386,8 @@ function PageScene({
           submittedQuestionnaires={pageState?.submittedQuestionnaires}
           onAnswer={(questionId, value) => onAnswer(page.id, questionId, value)}
           onQuestionnaireSubmitted={(id) => onQuestionnaireSubmitted(page.id, id)}
+          videoPositions={pageState?.videos}
+          onVideoPosition={(videoId, seconds) => onVideoPosition?.(page.id, videoId, seconds)}
         />
       </section>
 

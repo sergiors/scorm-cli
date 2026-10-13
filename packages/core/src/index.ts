@@ -156,11 +156,15 @@ export interface QuoteNode {
 
 export interface VideoNode {
   type: 'video'
+  id: string
+  provider: VideoProvider
   src: string
   title?: string
   poster?: string
   captions?: string
 }
+
+export type VideoProvider = 'native' | 'youtube' | 'vimeo'
 
 export interface QuestionNode {
   type: 'question'
@@ -185,6 +189,8 @@ export interface PlayerPageState {
   completed?: boolean
   answers?: Record<string, AnswerValue>
   submittedQuestionnaires?: string[]
+  /** Playback positions in semantic seconds, keyed by stable video node ID. */
+  videos?: Record<string, number>
 }
 
 export interface PlayerState {
@@ -442,6 +448,43 @@ export function collectAssetReferences(contentPackage: ContentPackage): string[]
   }
 
   return [...refs].sort()
+}
+
+/** Collects video nodes in source traversal order, including nested content. */
+export function collectVideoNodes(contentPackage: ContentPackage): VideoNode[] {
+  const videos: VideoNode[] = []
+  const visit = (nodes: Array<ContentNode | InlineContentNode>) => {
+    for (const node of nodes) {
+      switch (node.type) {
+        case 'video':
+          videos.push(node)
+          break
+        case 'list':
+          for (const item of node.items) visit(item.children)
+          break
+        case 'quote':
+          visit(node.children)
+          break
+        case 'questionnaire':
+          for (const question of node.questions) {
+            visit(question.prompt)
+            for (const option of question.options) visit(option.content)
+          }
+          break
+        case 'heading':
+        case 'paragraph':
+        case 'inlineContent':
+        case 'image':
+        case 'path':
+        case 'code':
+        case 'thematicBreak':
+          break
+      }
+    }
+  }
+
+  for (const node of presentationNodes(contentPackage)) visit(node.content)
+  return videos
 }
 
 export function isRemoteReference(value: string): boolean {

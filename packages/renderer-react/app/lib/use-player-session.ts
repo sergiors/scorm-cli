@@ -6,7 +6,13 @@ import {
   getPackageProgress,
   isPackageComplete
 } from './content-helpers'
-import { sanitizePlayerState, sameAnswer, updatePageState, withLocation } from './player-state'
+import {
+  sanitizePlayerState,
+  sameAnswer,
+  updatePageState,
+  withLocation,
+  normalizeVideoPosition
+} from './player-state'
 import { restoreState, saveState, useScormBridge, useScormScore } from './use-scorm-bridge'
 
 /**
@@ -25,6 +31,13 @@ export interface PlayerSession {
   setAnswer(pageId: string, questionId: string, value: AnswerValue): void
   /** Marks a questionnaire on a node as submitted. */
   markQuestionnaireSubmitted(pageId: string, questionnaireId: string): void
+  /**
+   * Persists a video's semantic playback position in seconds, scoped to the
+   * page/item that owns the video. Non-finite and negative positions are
+   * ignored, values are normalized to tenths, and an unchanged position is a
+   * no-op.
+   */
+  setVideoPosition(pageId: string, videoId: string, seconds: number): void
 }
 
 /**
@@ -55,13 +68,11 @@ export interface PlayerSession {
  *   reopens that item's dialog on mount.
  */
 export function usePlayerSession(contentPackage: ContentPackage): PlayerSession {
-  const { presentation } = contentPackage
-
   // Validate the saved state once, on first mount. Reading the bridge is a pure
   // lookup and sanitizing is pure, so StrictMode's doubled initializer yields
   // the same value.
   const [state, setState] = useState<PlayerState>(() =>
-    sanitizePlayerState(presentation, restoreState())
+    sanitizePlayerState(contentPackage, restoreState())
   )
   const stateRef = useRef(state)
 
@@ -141,6 +152,30 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
     [applyState]
   )
 
+  // Stores a video's semantic playback position under the page/item that owns
+  // it. The value is validated here — the semantic persistence boundary — and
+  // normalized to tenths, so neither an invalid provider reading nor sub-tenth
+  // noise can reach the persisted state. Package progress never depends on video
+  // playback, so the accompanying `saveState` write carries the unchanged
+  // progress `applyState` computes.
+  const setVideoPosition = useCallback(
+    (pageId: string, videoId: string, seconds: number) => {
+      if (!Number.isFinite(seconds) || seconds < 0) {
+        return
+      }
+      const normalized = normalizeVideoPosition(seconds)
+      applyState((previous) =>
+        updatePageState(previous, pageId, (page) => {
+          if (page.videos?.[videoId] === normalized) {
+            return page
+          }
+          return { ...page, videos: { ...page.videos, [videoId]: normalized } }
+        })
+      )
+    },
+    [applyState]
+  )
+
   // Scroll completion requires every page to be *completed*; grid completion
   // requires every item to be *visited*. Reusing the canonical helper keeps
   // both presentations (and the CLI) in agreement.
@@ -153,5 +188,5 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
   // on unrelated renders. No scored questions yields `undefined`, never a zero.
   useScormScore(getAggregateQuestionnaireScore(contentPackage, state))
 
-  return { state, markSeen, markCompleted, setAnswer, markQuestionnaireSubmitted }
+  return { state, markSeen, markCompleted, setAnswer, markQuestionnaireSubmitted, setVideoPosition }
 }

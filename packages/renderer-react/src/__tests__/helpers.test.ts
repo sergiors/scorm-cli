@@ -242,7 +242,7 @@ describe('collectQuestionnaireIds', () => {
       { type: 'thematicBreak' },
       { type: 'code', value: 'x' },
       { type: 'image', src: 'a.png', alt: 'a' },
-      { type: 'video', src: 'v.mp4' },
+      { type: 'video', id: 'video:test.mdx:1:1', provider: 'native', src: 'v.mp4' },
       { type: 'path', pageIds: ['page:one.mdx'] }
     ]
 

@@ -579,37 +579,32 @@ describe('ContentRenderer images and video', () => {
     expect(html).not.toContain('<figcaption')
   })
 
-  it('renders video with poster, source, caption track and title', () => {
+  // Playback itself is owned by ReactPlayer (see video.test.tsx); here we only
+  // assert the accessible frame the renderer adds around it.
+  it('frames a video with its title and accessible label', () => {
     const html = render([
       {
         type: 'video',
+        id: 'video:test.mdx:1:1',
+        provider: 'native',
         src: './v.mp4',
         title: 'Intro video',
         poster: './poster.png',
         captions: './v.vtt'
       }
     ])
-    expect(html).toContain('<video')
-    expect(html).toContain('controls')
-    expect(html).toContain('preload="metadata"')
-    expect(html).toContain('poster="./poster.png"')
+    expect(html).toContain('role="group"')
     expect(html).toContain('aria-label="Intro video"')
-    expect(html).toContain('<source src="./v.mp4"')
-    expect(html).toContain('<track')
-    expect(html).toContain('kind="captions"')
-    expect(html).toContain('src="./v.vtt"')
-    // Unspecified locale must not be reported as a concrete, wrong locale.
-    expect(html).toContain('srcLang="und"')
     expect(html).toContain('<figcaption')
     expect(html).toContain('Intro video')
   })
 
-  it('omits the caption track and figcaption when not provided', () => {
-    const html = render([{ type: 'video', src: './v.mp4' }])
+  it('omits the figcaption when no title is provided', () => {
+    const html = render([
+      { type: 'video', id: 'video:test.mdx:1:1', provider: 'native', src: './v.mp4' }
+    ])
     expect(html).toContain('aria-label="Video"')
-    expect(html).not.toContain('<track')
     expect(html).not.toContain('<figcaption')
-    expect(html).not.toContain('poster=')
   })
 })
 

@@ -1,0 +1,446 @@
+# Player state and SCORM suspend data
+
+This describes the implementation in this repository, including the current
+video-position addition. It is not a separate format specification: the codec,
+packaged manifest, parser IDs, player sanitizer, and SCORM runtime are the
+behavioral sources of truth.
+
+## Ownership and end-to-end flow
+
+The player owns a readable semantic `PlayerState`, keyed by authored IDs and
+answer values. It restores through `window.scormBridge.restoreState()`, then
+validates the returned object against the current content AST with
+`sanitizePlayerState`. Every real state change is sent with the current integer
+package progress through `window.scormBridge.saveState(state, progress)`. The
+generated runtime uses the state to recompute package progress with
+`progressFor(state)` from its packaged content manifest before encoding; it does
+not use the renderer-supplied progress argument. The Node
+`encodeSuspendData(manifest, state, progress)` API does take an explicit progress
+argument. The renderer does not serialize suspend data.
+
+The runtime uses the packaged `content-manifest.json` dictionary to do this:
+
+```text
+Renderer: scormBridge.saveState(state, progress)
+  → generated runtime: progressFor(state) from packaged content manifest
+  → browser codec: encode(manifest, state, progressFor(state))
+  → compact object { v, p, x, d? }
+  → JSON.stringify(compact object)
+  → cmi.suspend_data
+
+cmi.suspend_data → JSON parse / decodeSuspendData(current manifest)
+  → semantic PlayerState + separately read CMI location
+  → renderer sanitizePlayerState(current content AST)
+  → player
+```
+
+Both SCORM versions use the exact same `cmi.suspend_data` field and the same
+compact codec. Version-specific fields only affect location and other runtime
+CMI elements:
+
+| SCORM version | Location field             | Maximum serialized suspend-data length |
+| ------------- | -------------------------- | -------------------------------------: |
+| 1.2           | `cmi.core.lesson_location` |                                   4096 |
+| 2004          | `cmi.location`             |                                  64000 |
+
+The runtime checks JavaScript string `.length` on the serialized JSON. If it is
+over the limit, it does **not** call `SetValue` for `cmi.suspend_data`, emits
+`lms.suspend-data-too-large` when devtools logging is enabled, still attempts
+the location write (if supplied) and commit, and returns `false`. It does not
+truncate the payload. A suspend-data `SetValue` that throws or returns anything
+other than the exact string `"true"` also makes `saveState` return `false`; the
+runtime still attempts commit. Commit failure also makes the result false. The
+runtime updates its in-memory `resumeState` to the normalized encode/decode
+result even when the LMS write was rejected or too large. An unavailable or
+uninitialized LMS API makes `saveState` return false without saving.
+
+At startup the runtime reads the version-specific location and
+`cmi.suspend_data`, decodes the latter through the current packaged manifest,
+and attaches the location separately. `restoreState()` normalizes resume state
+through the codec once more and reattaches that location. The renderer then
+sanitizes the semantic result against the AST. An absent or malformed suspend
+value decodes to `{ pages: {} }`; the CMI location remains a separate value.
+
+## Semantic state versus compact state
+
+The current public types in `packages/core/src/index.ts` are:
+
+```ts
+export type AnswerValue = string | string[]
+
+export interface PlayerPageState {
+  visited?: boolean
+  completed?: boolean
+  answers?: Record<string, AnswerValue>
+  submittedQuestionnaires?: string[]
+  /** Playback positions in semantic seconds, keyed by stable video node ID. */
+  videos?: Record<string, number>
+}
+
+export interface PlayerState {
+  location?: string
+  pages: Record<string, PlayerPageState>
+}
+```
+
+Video positions belong to the Page/Item that currently owns each video. Within
+that page's `PlayerPageState.videos`, positions are keyed by stable video node
+ID; there is no root-level `PlayerState.videos` map.
+
+`location` is **not** in compact data. The SCORM runtime reads and writes it in
+`cmi.core.lesson_location` (1.2) or `cmi.location` (2004). The renderer accepts
+only a location that matches a current page/item ID.
+
+What the compact data does and does not preserve:
+
+- `x` stores one visited bit per manifest page/item, in manifest order. It does
+  not store page IDs in this bit string.
+- `p` stores the integer package percentage passed to the encoder, rounded and
+  clamped to 0–100. The Node `encodeSuspendData` API takes this as an explicit
+  argument. In the generated runtime, `progressFor(state)` derives it from the
+  packaged manifest: Scroll progress counts completed pages; Grid progress
+  counts visited items. The renderer also supplies progress to `saveState`, but
+  the generated runtime recomputes it from state.
+- Decoding `p` reconstructs completion flags for Scroll pages by marking the
+  first `round(p * pageCount / 100)` manifest entries completed and visited.
+  Grid completion is not reconstructed from `p`; its progress uses the `x`
+  visited bits. Therefore per-page `completed` flags are not independently
+  encoded, and Scroll completion is necessarily positional/lossy.
+- `d` stores page-indexed data: answer selections as manifest option indexes in
+  `d[pageIndex].a`, and video positions in `d[pageIndex].t`. Answers do not store
+  question IDs, answer strings, labels, correctness, prompts, or questionnaire
+  IDs. Video positions use stable video IDs as keys and integer deciseconds;
+  semantic positions are seconds rounded to tenths (for example, `132.5`
+  seconds encodes as `1325` and decodes as `132.5` seconds). Empty/unknown
+  values are omitted; `d` is omitted when no valid answers or video positions
+  remain.
+- `submittedQuestionnaires` is not encoded. The renderer sanitizer retains only
+  current questionnaire IDs and, for a **completed Scroll page**, infers that
+  all questionnaires on that page have been submitted. This preserves the
+  completed-page read-only/gating behavior even though compact state only
+  reconstructs completion from `p`. It does not infer submissions for Grid
+  items.
+- There is no score field in `PlayerState` or compact suspend data. Aggregate
+  questionnaire score is derived from current authored questions/options and
+  saved answers (`getAggregateQuestionnaireScore` in core); the separate SCORM
+  bridge reports it through `setScore` and version-specific CMI score fields.
+
+`emptyPlayerState()` in `packages/renderer-react/app/lib/player-state.ts`
+returns `{ pages: {} }`. The compact empty payload depends on the manifest: for
+a two-entry manifest it is exactly `{"v":1,"p":0,"x":"00"}`; with no entries
+it is `{"v":1,"p":0,"x":""}`. Optional `d` is absent when empty.
+
+## Compact format and examples
+
+`CompactSuspendData` is declared in `packages/scorm/src/state-codec.ts`:
+
+```ts
+{
+  v: 1,                           // compact format version
+  p: number,                      // rounded/clamped integer package progress
+  x: string,                      // manifest-order visited bits
+  d?: {
+    [pageIndex: string]: {
+      a?: { [questionIndex: string]: number | number[] }
+      t?: { [stableVideoId: string]: number } // integer deciseconds
+    }
+  }
+}
+```
+
+Page, question, and option indexes are zero-based positions in the manifest.
+Question indexes are local to a page, and option indexes are local to a
+question. The decoder maps those indexes through that page's current manifest
+entry to recover semantic page/question IDs and option `value`s. A single-choice
+or true-false selection is encoded as one number; a multiple-choice selection
+is an array of option indexes sorted numerically. On decode, selections are
+deduplicated, filtered to valid indexes, sorted, then mapped to option values.
+As a result, multiple-choice values return in authored option order, not in the
+learner's selection order.
+
+The following small payloads are produced by the current Node
+`encodeSuspendData` implementation (the same code used by the browser runtime).
+
+### Empty state
+
+For a manifest containing two pages, semantic `{ pages: {} }` and progress `0`
+produce:
+
+```json
+{ "v": 1, "p": 0, "x": "00" }
+```
+
+Decoding that payload returns `{ "pages": {} }`.
+
+### Visited state and navigation location
+
+With the two manifest entries `page-one`, `page-two`, a semantic state with
+`location: "page:next"` and only `page-two.visited === true`, encoded with
+progress `0`, produces:
+
+```json
+{ "v": 1, "p": 0, "x": "01" }
+```
+
+The decoded compact state is `{ "pages": { "page-two": { "visited": true } } }`.
+`page:next` is not part of that JSON: it is written separately to the
+version-specific CMI location field. This is the behavior asserted by
+`packages/scorm/src/__tests__/state-codec.test.ts`.
+
+### Answers
+
+In the codec test manifest, `page-one` question `q1` has options
+`red` (index 0), `blue` (index 1), and `green` (index 2). A state with
+`page-one.visited`, `page-one.completed`, and answer `q1: ["green", "red"]`,
+plus `page-two` answer `q1: ["blue"]`, encoded with progress 50, produces:
+
+```json
+{ "v": 1, "p": 50, "x": "10", "d": { "0": { "a": { "0": [0, 2] } }, "1": { "a": { "0": [1] } } } }
+```
+
+The first page gets `completed: true` from `p: 50` for this two-page Scroll
+manifest. Decoded answers are `q1: ["red", "green"]` and `q1: ["blue"]`,
+respectively. The input answer order is normalized by option index.
+
+### Video positions
+
+With manifest video ID `video-a` owned by `page-one` (page index `0`), semantic
+`pages: { "page-one": { videos: { "video-a": 12.34 } } }` produces
+`d["0"].t: { "video-a": 123 }`; decoding returns
+`pages: { "page-one": { videos: { "video-a": 12.3 } } }`. The codec encodes a
+video by looking for its stable ID in `state.pages[pageId].videos`, where
+`pageId` comes from the current manifest. Compact positions live in the nested
+`d[pageIndex].t[videoId]` map and store integer deciseconds. On decode, the codec
+scans nested `t` maps by stable ID, then resolves each ID through the current
+manifest and attaches it to that video's current owner. Page indexes therefore
+do not reassign a saved position to another video during page/video reordering;
+moving a same-ID video to a different Page/Item reattaches its position there.
+Unknown and duplicate IDs are discarded. The codec test covers negative,
+non-finite, and unknown video values, and verifies fractional rounding (for
+example, `0.06` seconds becomes `0.1` seconds). The implementation also enforces
+safe-integer decisecond values. Nested `t` maps are omitted when semantic state
+has no valid position for a video in the manifest, including when the manifest
+has no videos; `d` is still omitted if there are no valid answers either.
+
+### Combined state, including an intentionally omitted submission
+
+This was generated by calling `encodeSuspendData` with a two-page manifest that
+maps page `page:intro.mdx`, question option indexes 0/1/2 to `alpha`/`beta`/
+`gamma`, and video ID `video:video.mdx:8:1`. Input location is
+`page:video.mdx`; its semantic video position is stored in
+`pages["page:video.mdx"].videos["video:video.mdx:8:1"]`, and the input also
+contains a submitted questionnaire ID. The actual serialized result is:
+
+```json
+{
+  "v": 1,
+  "p": 50,
+  "x": "11",
+  "d": {
+    "0": { "a": { "0": [0, 2] } },
+    "1": { "t": { "video:video.mdx:8:1": 1325 } }
+  }
+}
+```
+
+The decoded semantic state contains both visited pages, completion on the first
+Scroll page, answer `["alpha", "gamma"]`, and video position
+`pages["page:video.mdx"].videos["video:video.mdx:8:1"] === 132.5`, nested under
+the video's owning page. It does not contain `location` or
+`submittedQuestionnaires`; those are handled separately as described above.
+
+## Manifest and validation boundaries
+
+`packages/scorm/src/content-manifest.ts` defines and creates the static,
+content-free dictionary shared by packaging and runtime. Its exact shape is:
+
+```ts
+interface ContentManifest {
+  schemaVersion: 1
+  title: string
+  lang: string
+  presentation: 'scroll' | 'grid'
+  pages: Record<
+    string,
+    {
+      id: string
+      title: string
+      questions: Record<
+        string,
+        {
+          id: string
+          prompt: string
+          type: QuestionType
+          options: Record<string, { value: string; label: string }>
+        }
+      >
+    }
+  >
+  videos?: Record<string, { src: string; provider: VideoProvider; pageId: string }>
+}
+```
+
+In generated JSON, the outer page keys are stringified page/item indexes; nested
+question and option keys are likewise stringified indexes. Question collection
+walks nested block content in document order. The optional `videos` map is keyed
+by video node ID and each entry contains static `src`, `provider`, and `pageId`,
+the ID of its owning Page/Item. The owner mapping lets the codec restore each
+stable video ID under its current page/item. Neither the manifest nor its video
+entries contain learner playback positions. `createContentManifest` includes
+the package title, language (default `en`), presentation type, page titles,
+plain-text question prompt/option labels, and the static mappings. The SCORM
+packager writes it as `content-manifest.json` and embeds the same manifest in
+`scorm-runtime.js`.
+
+The codec validates compact values against that packaged manifest:
+
+- A non-object root, invalid JSON, unsupported version, invalid progress, or
+  invalid visited string rejects the **whole compact payload** and returns a
+  fresh `{ pages: {} }` state.
+- `v` must equal `1`; `p` must be an integer from 0 through 100; and `x` must
+  contain only `0` and `1`. A shorter `x` is accepted; missing trailing bits
+  mean unvisited. If `x` is longer than the current manifest page count, the
+  decoder skips page-indexed visited, progress, and answer restoration, but
+  still scans nested `d[*].t` maps and decodes valid stable-ID video entries.
+- An absent, non-object, or malformed `d` does not invalidate otherwise-valid
+  progress. A page entry and its `a` answer map must also be objects; malformed
+  namespaces are ignored. Unknown page/question indexes and invalid or unknown
+  option indexes are ignored. A selection must be a safe-integer scalar or an
+  array; array members that are not non-negative safe integers are filtered,
+  then the rest are deduplicated and sorted. A non-multiple-choice question uses
+  only the first mapped value. Only valid decoded answers are returned.
+- An absent, malformed, or non-object page entry / nested `t` map is ignored.
+  Only IDs present in the current manifest and non-negative safe-integer
+  decisecond values are decoded. Unknown/removed IDs and duplicate IDs found in
+  multiple nested `t` maps are dropped, as are negative/fractional/unsafe values.
+  A valid value is divided by ten and nested in `pages[pageId].videos` using
+  that stable ID's current manifest owner, not the compact page index. Thus page
+  or video reordering cannot reassign one known ID's position to another video.
+- Unknown extra root sections are ignored; there is no root-level `t` field and
+  root `t` values are not decoded. The codec has no rejection rule for extra
+  properties beyond the required root fields.
+
+The renderer's `sanitizePlayerState` in
+`packages/renderer-react/app/lib/player-state.ts` is a distinct second check
+against the current parsed content AST. It drops unknown page/item and location
+IDs; unknown questions and options; answer values whose shape does not fit the
+current question type; submission IDs that do not name a questionnaire reachable
+on that page; and, within each `PlayerPageState.videos`, video IDs not found by
+`collectVideoNodes` in that specific Page/Item or positions that are non-numeric,
+non-finite, or negative. Malformed video maps and stale/malformed positions are
+dropped there; surviving video values are normalized to tenths of a second.
+Unlike codec decode, which relinks a stable ID through the current manifest
+owner, direct sanitizer input is not moved between pages: a position stored
+under the wrong page is rejected. Multiple-choice answers must be arrays whose
+every element is a current option value; valid arrays are deduplicated.
+Correctness is not consulted by the sanitizer.
+
+The compact codec cannot detect semantic removal/reordering for its numeric
+indexes. If a page, question, or option is removed and a new entry occupies its
+old index, the codec resolves the old value through the **new** entry at that
+index. Out-of-range indexes are ignored; in-range shifted indexes can map to a
+different current page/question/option. Changed option values are likewise
+resolved through current manifest values and then checked against the AST. The
+format carries no content fingerprint or standalone migration table.
+
+Video positions differ: `d[pageIndex].t` is keyed directly by stable video ID,
+not by a manifest video array index. Decode scans those nested maps by ID and
+uses the current manifest owner, so a changed page index or video ordering does
+not shift a position onto a different ID. A position remains attached when
+that video's generated ID stays the same. Because the ID uses source coordinates,
+reordering or inserting content in the same source can change the ID and make
+the old position unmatched. Deleting a video drops its old key when that ID is
+absent from the current manifest. The ID is not a content hash: replacing a
+video at the same source path and coordinates keeps the ID and therefore keeps
+its position. This is not a general migration framework. Nested `t` is additive
+within `d` and keeps `v: 1`; old pre-video payloads without nested `t` still
+decode. An older runtime that ignores `d[*].t` and then decodes/re-encodes state
+will omit those positions, so video progress would be lost on that save.
+
+## Persisted ID generation and stability
+
+The parser establishes IDs consumed by page state, answers, questionnaire
+submissions, locations, and video positions:
+
+- A `<Page src="..." />` and `<Item src="..." />` gets an ID in
+  `packages/parser/src/reference.ts`: `page:<normalized-relative-source>` or
+  `item:<normalized-relative-source>`. The source is resolved relative to the
+  declaring MDX file and normalized relative to the package root. The ID is
+  based on the referenced file path, not its declaration position.
+- Questionnaires and questions are generated by `sourceNodeId` in
+  `packages/parser/src/io.ts`, called from `question.ts`. Videos use the same
+  helper from `media.ts`. The format is
+  `<kind>:<normalized-relative-source-file>:<line>:<column>`; kinds are
+  `questionnaire`, `question`, and `video`. The line includes the frontmatter
+  line offset; the column is the parser node's source-start column (defaulting
+  to 1 when missing). These are parser source coordinates, not array indexes.
+- A Path node stores references to page IDs; it does not introduce a separate
+  resume identity. Other presentational/content nodes do not get persisted IDs
+  from this parser path.
+
+The IDs are stable across package-directory locations when relative files and
+source coordinates are unchanged; the parser test explicitly checks that for
+questionnaires/questions. Stability is limited by the inputs: moving/renaming a
+referenced Page/Item source changes its ID; moving/renaming a questionnaire,
+question, or video source changes its ID; and inserting/removing text or nodes
+before one on the same source can change its line or column. Reordering source
+content can therefore change line/column IDs. There is deliberately no video
+array-index identity: nested `d[*].t` uses the generated video ID.
+
+Even when stable IDs themselves remain unchanged, the compact `d` answer
+dictionary is positional through the current manifest. Adding/reordering pages,
+questions, or options can change those numeric mappings; the ID-keyed video map
+does not have that positional limitation.
+
+## Node/browser parity, tests, and change checklist
+
+`browserCodecSource()` in `packages/scorm/src/state-codec.ts` serializes the
+source of the same self-contained `createSuspendDataCodec()` used by the Node
+exports. The generated SCO and preview runtime therefore use the same encode,
+decode, validation, and normalization logic. The parity tests execute that
+source in a VM and compare browser encode/decode behavior with the Node exports,
+including video IDs and malformed inputs.
+
+Relevant implementation and test paths:
+
+- Types and progress/score derivation: `packages/core/src/index.ts`.
+- Stable parser IDs and source positions: `packages/parser/src/io.ts`,
+  `packages/parser/src/reference.ts`, `packages/parser/src/question.ts`, and
+  `packages/parser/src/media.ts`.
+- Manifest: `packages/scorm/src/content-manifest.ts`.
+- Node/browser codec: `packages/scorm/src/state-codec.ts`.
+- LMS runtime and limits: `packages/scorm/src/runtime.ts`.
+- Renderer sanitizer and state ownership: `packages/renderer-react/app/lib/player-state.ts`,
+  `packages/renderer-react/app/lib/use-player-session.ts`, and
+  `packages/renderer-react/app/lib/use-scorm-bridge.ts`.
+- Codec, manifest, runtime, and browser parity tests:
+  `packages/scorm/src/__tests__/state-codec.test.ts`,
+  `packages/scorm/src/__tests__/state-codec.integration.test.ts`,
+  `packages/scorm/src/__tests__/content-manifest.test.ts`, and
+  `packages/scorm/src/__tests__/runtime-events.test.ts`.
+- AST sanitizer and video position tests:
+  `packages/renderer-react/src/__tests__/player-state.test.ts` and
+  `packages/renderer-react/src/__tests__/video.test.tsx`.
+- Source ID stability and frontmatter-offset tests:
+  `packages/parser/src/__tests__/package.test.ts`.
+
+For a new persisted field, first decide whether it belongs in semantic
+`PlayerState`, separate version-specific CMI, or is derived and should not be
+persisted. Then update the semantic type and player ownership/update path; add
+current-AST sanitization; add static manifest mapping only if the codec needs a
+current-content lookup; add compact encode/decode behavior in
+`createSuspendDataCodec()` (the browser source follows automatically); and
+define how absent/old, malformed, unknown, removed, and reordered values behave.
+Keep `location` in its separate CMI element and score in the separate score
+bridge unless their ownership is intentionally changed. Test Node and browser
+parity, encode/decode round trips, renderer sanitization, runtime writes and
+limits, and parser/manifest mappings as applicable. The current code has no
+standalone suspend-data migration framework.
+
+The production SCORM runtime talks to the LMS API discovered in the SCO
+window/parent chain. `scorm preview` instead supplies its preview runtime and
+mock LMS API; that mock exercises the same version mapping, codec, and bridge
+contract locally. The preview LMS is a test/development host, not the source of
+the semantic state or a second serializer. Without an installed bridge, the
+renderer remains usable, but bridge restore/save/report calls are best-effort
+no-ops.

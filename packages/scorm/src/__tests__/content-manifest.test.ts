@@ -145,6 +145,130 @@ describe('content manifest', () => {
       }
     })
     expect(JSON.stringify(first)).not.toMatch(/correct|quiz-a|Before/)
+    expect(first).not.toHaveProperty('videos')
+  })
+
+  it('indexes video IDs and static metadata through nested content without playback state', () => {
+    const video = (
+      id: string,
+      provider: 'native' | 'youtube' | 'vimeo',
+      src: string
+    ): ContentNode => ({ type: 'video', id, provider, src })
+    const content: ContentPackage = {
+      metadata: { title: 'Videos' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'p-videos',
+            source: 'videos.mdx',
+            metadata: { title: 'Videos' },
+            content: [
+              video('video:videos.mdx:1:1', 'native', 'assets/local.mp4'),
+              {
+                type: 'quote',
+                children: [
+                  {
+                    type: 'list',
+                    ordered: false,
+                    items: [
+                      {
+                        children: [
+                          video('video:videos.mdx:2:1', 'youtube', 'https://youtu.be/abc'),
+                          {
+                            type: 'questionnaire',
+                            id: 'quiz',
+                            contributesToScore: false,
+                            questions: [
+                              question(
+                                'q',
+                                [video('video:videos.mdx:3:1', 'vimeo', 'https://vimeo.com/42')],
+                                [
+                                  {
+                                    value: 'option',
+                                    correct: false,
+                                    content: [
+                                      video(
+                                        'video:videos.mdx:4:1',
+                                        'native',
+                                        'https://cdn.example.test/clip.mp4'
+                                      )
+                                    ]
+                                  }
+                                ]
+                              )
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            type: 'page',
+            id: 'p-second',
+            source: 'second.mdx',
+            metadata: { title: 'Second' },
+            content: [video('video:second.mdx:1:1', 'native', 'assets/second.mp4')]
+          }
+        ]
+      }
+    }
+
+    expect(createContentManifest(content).videos).toEqual({
+      'video:videos.mdx:1:1': {
+        src: 'assets/local.mp4',
+        provider: 'native',
+        pageId: 'p-videos'
+      },
+      'video:videos.mdx:2:1': {
+        src: 'https://youtu.be/abc',
+        provider: 'youtube',
+        pageId: 'p-videos'
+      },
+      'video:videos.mdx:3:1': {
+        src: 'https://vimeo.com/42',
+        provider: 'vimeo',
+        pageId: 'p-videos'
+      },
+      'video:videos.mdx:4:1': {
+        src: 'https://cdn.example.test/clip.mp4',
+        provider: 'native',
+        pageId: 'p-videos'
+      },
+      'video:second.mdx:1:1': {
+        src: 'assets/second.mp4',
+        provider: 'native',
+        pageId: 'p-second'
+      }
+    })
+    expect(JSON.stringify(createContentManifest(content))).not.toMatch(/playback|position|seconds/)
+  })
+
+  it('assigns grid videos to their root item owner', () => {
+    const content: ContentPackage = {
+      metadata: { title: 'Grid videos' },
+      presentation: {
+        type: 'grid',
+        items: [
+          {
+            type: 'item',
+            id: 'item-video',
+            source: 'item.mdx',
+            metadata: { title: 'Video item' },
+            content: [{ type: 'video', id: 'video:item.mdx:1:1', provider: 'youtube', src: 'abc' }]
+          }
+        ]
+      }
+    }
+
+    expect(createContentManifest(content).videos).toEqual({
+      'video:item.mdx:1:1': { src: 'abc', provider: 'youtube', pageId: 'item-video' }
+    })
   })
 
   it('includes the package language and defaults legacy package metadata to English', () => {

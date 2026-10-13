@@ -246,6 +246,59 @@ describe('suspend-data codec integration', () => {
     )
   })
 
+  it('matches browser and Node codecs for stable-ID video positions', () => {
+    const videoManifest = structuredClone(manifest)
+    videoManifest.videos = {
+      'video:lesson.mdx:4:1': {
+        src: 'lesson.mp4',
+        provider: 'native',
+        pageId: 'page-3'
+      },
+      'video:lesson.mdx:8:1': {
+        src: 'https://youtu.be/abc',
+        provider: 'youtube',
+        pageId: 'page-4'
+      }
+    }
+    const state: PlayerState = {
+      pages: {
+        'page-3': { videos: { 'video:lesson.mdx:4:1': 34.26 } },
+        'page-4': { videos: { 'video:lesson.mdx:8:1': 0 } }
+      }
+    }
+    const context: Record<string, unknown> = {}
+    vm.createContext(context)
+    vm.runInContext(browserCodecSource(), context)
+    const browserEncode = context.compactEncode as (
+      manifest: unknown,
+      state: unknown,
+      progress: number
+    ) => string
+    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState
+
+    const encoded = encodeSuspendData(videoManifest, state, 0)
+    expect(encoded).toEqual({
+      v: 1,
+      p: 0,
+      x: '00000',
+      d: {
+        '3': { t: { 'video:lesson.mdx:4:1': 343 } },
+        '4': { t: { 'video:lesson.mdx:8:1': 0 } }
+      }
+    })
+    expect(encoded).not.toHaveProperty('t')
+    expect(decodeSuspendData(videoManifest, encoded)).toEqual({
+      pages: {
+        'page-3': { videos: { 'video:lesson.mdx:4:1': 34.3 } },
+        'page-4': { videos: { 'video:lesson.mdx:8:1': 0 } }
+      }
+    })
+    expect(JSON.parse(browserEncode(videoManifest, state, 0))).toEqual(encoded)
+    expect(normalize(browserDecode(videoManifest, JSON.stringify(encoded)))).toEqual(
+      decodeSuspendData(videoManifest, encoded)
+    )
+  })
+
   it('keeps browser and Node behavior in parity across defaults, bounds, and malformed indexes', () => {
     const context: Record<string, unknown> = {}
     vm.createContext(context)

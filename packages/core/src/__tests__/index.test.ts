@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   collectAssetReferences,
+  collectVideoNodes,
   getAggregateQuestionnaireScore,
   getDoneNodeIds,
   getPackageProgress,
@@ -23,7 +24,12 @@ const contentPackage: ContentPackage = {
         metadata: { title: 'A' },
         content: [
           { type: 'image', src: 'images/z.png', alt: 'Z' },
-          { type: 'video', src: 'https://example.test/v.mp4' }
+          {
+            type: 'video',
+            id: 'video:a.mdx:1:1',
+            provider: 'native',
+            src: 'https://example.test/v.mp4'
+          }
         ]
       },
       {
@@ -354,6 +360,8 @@ describe('core package helpers', () => {
                         content: [
                           {
                             type: 'video',
+                            id: 'video:nested.mdx:1:1',
+                            provider: 'native',
                             src: 'https://example.test/remote.mp4',
                             poster: 'inline/remote-poster.svg'
                           }
@@ -365,6 +373,8 @@ describe('core package helpers', () => {
               },
               {
                 type: 'video',
+                id: 'video:nested.mdx:2:1',
+                provider: 'native',
                 src: 'media/lesson.mp4',
                 poster: 'media/lesson-poster.svg',
                 captions: 'media/lesson-captions.vtt'
@@ -387,6 +397,88 @@ describe('core package helpers', () => {
       'media/lesson-captions.vtt',
       'media/lesson-poster.svg',
       'media/lesson.mp4'
+    ])
+  })
+})
+
+describe('collectVideoNodes', () => {
+  it('collects videos from nested lists, quotes, prompts, and options in order', () => {
+    const content: ContentPackage = {
+      metadata: { title: 'Videos' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'page',
+            source: 'page.mdx',
+            metadata: { title: 'Videos' },
+            content: [
+              {
+                type: 'quote',
+                children: [
+                  {
+                    type: 'list',
+                    ordered: false,
+                    items: [
+                      {
+                        children: [
+                          {
+                            type: 'video',
+                            id: 'video:page.mdx:1:1',
+                            provider: 'native',
+                            src: 'first.mp4'
+                          },
+                          {
+                            type: 'questionnaire',
+                            id: 'quiz',
+                            contributesToScore: false,
+                            questions: [
+                              {
+                                type: 'question',
+                                id: 'q',
+                                questionType: 'single-choice',
+                                prompt: [
+                                  {
+                                    type: 'video',
+                                    id: 'video:page.mdx:2:1',
+                                    provider: 'youtube',
+                                    src: 'https://youtu.be/abc'
+                                  }
+                                ],
+                                options: [
+                                  {
+                                    value: 'a',
+                                    correct: false,
+                                    content: [
+                                      {
+                                        type: 'video',
+                                        id: 'video:page.mdx:3:1',
+                                        provider: 'vimeo',
+                                        src: 'https://vimeo.com/123'
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+
+    expect(collectVideoNodes(content).map((video) => video.id)).toEqual([
+      'video:page.mdx:1:1',
+      'video:page.mdx:2:1',
+      'video:page.mdx:3:1'
     ])
   })
 })

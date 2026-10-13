@@ -78,16 +78,29 @@ export interface QuestionnaireViewProps {
    * every nested {@link ContentRenderer}.
    */
   onNavigatePathPage?: (pageId: string) => void
+  /**
+   * Restored playback positions for the owning page/item, in seconds, keyed by
+   * stable video node id, so a video authored in a prompt or option resumes like
+   * one at the page top level. Forwarded unchanged to every nested
+   * {@link ContentRenderer}.
+   */
+  videoPositions?: Record<string, number>
+  /**
+   * Persists a video's semantic playback position in seconds, already scoped to
+   * the owning page/item. Forwarded unchanged to every nested
+   * {@link ContentRenderer}.
+   */
+  onVideoPosition?: (videoId: string, seconds: number) => void
 }
 
 /**
- * The Path rendering context forwarded verbatim to every nested
- * {@link ContentRenderer}, so a Path authored inside a questionnaire prompt or
- * option behaves exactly like one authored at the page top level.
+ * The nested content rendering context forwarded verbatim to every nested
+ * {@link ContentRenderer}, so a Path or video authored inside a questionnaire
+ * prompt or option behaves exactly like one authored at the page top level.
  */
-type NestedPathContext = Pick<
+type NestedContentContext = Pick<
   QuestionnaireViewProps,
-  'pathPages' | 'pageStates' | 'onNavigatePathPage'
+  'pathPages' | 'pageStates' | 'onNavigatePathPage' | 'videoPositions' | 'onVideoPosition'
 >
 
 /**
@@ -126,15 +139,19 @@ export function QuestionnaireView({
   onSubmitted,
   pathPages,
   pageStates,
-  onNavigatePathPage
+  onNavigatePathPage,
+  videoPositions,
+  onVideoPosition
 }: QuestionnaireViewProps) {
   const submittedRef = useRef(false)
   const intl = useIntl()
   // Bundled once so it can be forwarded verbatim to every nested renderer.
-  const pathContext: NestedPathContext = {
+  const contentContext: NestedContentContext = {
     pathPages,
     pageStates,
-    onNavigatePathPage
+    onNavigatePathPage,
+    videoPositions,
+    onVideoPosition
   }
 
   if (node.questions.length === 0) {
@@ -142,7 +159,7 @@ export function QuestionnaireView({
   }
 
   if (submitted) {
-    return <SubmittedQuestionnaire node={node} answers={answers} pathContext={pathContext} />
+    return <SubmittedQuestionnaire node={node} answers={answers} contentContext={contentContext} />
   }
 
   // The primitive owns the selection only when the owner supplies neither
@@ -208,7 +225,7 @@ export function QuestionnaireView({
               value={answers?.[question.id]}
               onAnswer={onAnswer}
               onQuestionnaireSubmitted={onSubmitted}
-              pathContext={pathContext}
+              contentContext={contentContext}
             />
           ))}
 
@@ -253,14 +270,14 @@ function QuestionnaireQuestion({
   value,
   onAnswer,
   onQuestionnaireSubmitted,
-  pathContext
+  contentContext
 }: {
   node: QuestionNode
   controlled: boolean
   value: AnswerValue | undefined
   onAnswer?: (questionId: string, value: AnswerValue) => void
   onQuestionnaireSubmitted?: (id: string) => void
-  pathContext: NestedPathContext
+  contentContext: NestedContentContext
 }) {
   const promptId = useId()
   // Single-choice and true-false become radios; multiple-choice checkboxes.
@@ -287,7 +304,7 @@ function QuestionnaireQuestion({
         <ContentRenderer
           nodes={node.prompt}
           onQuestionnaireSubmitted={onQuestionnaireSubmitted}
-          {...pathContext}
+          {...contentContext}
         />
       </QuestionnaireTitle>
 
@@ -304,7 +321,7 @@ function QuestionnaireQuestion({
             <ContentRenderer
               nodes={option.content}
               onQuestionnaireSubmitted={onQuestionnaireSubmitted}
-              {...pathContext}
+              {...contentContext}
             />
           </QuestionnaireChoice>
         ))}
@@ -336,11 +353,11 @@ function QuestionnaireQuestion({
 function SubmittedQuestionnaire({
   node,
   answers,
-  pathContext
+  contentContext
 }: {
   node: QuestionnaireNode
   answers?: Record<string, AnswerValue>
-  pathContext: NestedPathContext
+  contentContext: NestedContentContext
 }) {
   return (
     <Card className="not-prose ">
@@ -350,7 +367,7 @@ function SubmittedQuestionnaire({
             key={question.id}
             question={question}
             value={answers?.[question.id]}
-            pathContext={pathContext}
+            contentContext={contentContext}
           />
         ))}
       </CardContent>
@@ -361,11 +378,11 @@ function SubmittedQuestionnaire({
 function SubmittedQuestion({
   question,
   value,
-  pathContext
+  contentContext
 }: {
   question: QuestionNode
   value: AnswerValue | undefined
-  pathContext: NestedPathContext
+  contentContext: NestedContentContext
 }) {
   const promptId = useId()
   // Single-choice and true-false become radios; multiple-choice checkboxes.
@@ -375,7 +392,7 @@ function SubmittedQuestion({
     <Questionnaire items={[{ name: question.id }]}>
       <QuestionnaireItem name={question.id} multiple={multiple} aria-labelledby={promptId}>
         <QuestionnaireTitle id={promptId}>
-          <ContentRenderer nodes={question.prompt} {...pathContext} />
+          <ContentRenderer nodes={question.prompt} {...contentContext} />
         </QuestionnaireTitle>
 
         <QuestionnaireChoices>
@@ -393,7 +410,7 @@ function SubmittedQuestion({
                 data-result={result}
                 className={resultClassName(result)}
               >
-                <ContentRenderer nodes={option.content} {...pathContext} />
+                <ContentRenderer nodes={option.content} {...contentContext} />
               </QuestionnaireChoice>
             )
           })}

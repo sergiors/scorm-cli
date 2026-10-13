@@ -1,11 +1,11 @@
 import { Fragment } from 'react'
 import type { ComponentType, ReactNode } from 'react'
 import type { AnswerValue, ContentNode, PageNode, PlayerPageState } from '../types'
-import { useIntl } from 'react-intl'
 import { cn } from '../lib/utils'
 import { InlineContent } from './InlineContent'
 import { PathView } from './PathView'
 import { QuestionnaireView } from './QuestionnaireView'
+import { Video } from './Video'
 
 const HEADING_TAGS = {
   1: 'h1',
@@ -68,6 +68,18 @@ export interface ContentRendererProps {
    * render inert.
    */
   onNavigatePathPage?: (pageId: string) => void
+  /**
+   * Restored playback positions for the owning page/item, in semantic seconds,
+   * keyed by stable video node id. Threaded to every video in the subtree so a
+   * resume seeks to the saved position once its provider is ready.
+   */
+  videoPositions?: Record<string, number>
+  /**
+   * Persists a video's semantic playback position in seconds, already scoped to
+   * the owning page/item by the presentation. Threaded to every video in the
+   * subtree so nested videos save under the same page.
+   */
+  onVideoPosition?: (videoId: string, seconds: number) => void
 }
 
 /**
@@ -197,33 +209,13 @@ function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
   )
 }
 
-function VideoView({ node }: ContentNodeViewProps<'video'>) {
-  const intl = useIntl()
+function VideoView({ node, context }: ContentNodeViewProps<'video'>) {
   return (
-    <figure>
-      <video
-        controls
-        preload="metadata"
-        poster={node.poster}
-        aria-label={node.title ?? intl.formatMessage({ id: 'video.label' })}
-        className="w-full rounded-2xl"
-      >
-        <source src={node.src} />
-        {node.captions ? (
-          // BCP 47 tag for an undetermined language: the AST only carries a
-          // caption track path, so we must not invent a specific locale.
-          <track
-            kind="captions"
-            src={node.captions}
-            srcLang="und"
-            label={intl.formatMessage({ id: 'video.captions' })}
-            default
-          />
-        ) : null}
-      </video>
-
-      {node.title ? <figcaption>{node.title}</figcaption> : null}
-    </figure>
+    <Video
+      node={node}
+      position={context.videoPositions?.[node.id]}
+      onPosition={(seconds) => context.onVideoPosition?.(node.id, seconds)}
+    />
   )
 }
 
@@ -244,6 +236,8 @@ function QuestionnaireBlockView({ node, context }: ContentNodeViewProps<'questio
       pathPages={context.pathPages}
       pageStates={context.pageStates}
       onNavigatePathPage={context.onNavigatePathPage}
+      videoPositions={context.videoPositions}
+      onVideoPosition={context.onVideoPosition}
     />
   )
 }

@@ -16,6 +16,7 @@ import type {
  * resume state rather than tracked separately.
  */
 export {
+  collectVideoNodes,
   getAggregateQuestionnaireScore,
   getDoneNodeIds,
   getPackageProgress,

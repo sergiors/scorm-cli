@@ -103,7 +103,13 @@ const imageComponent = (node: AstNode, context: ComponentParseContext): Promise<
  */
 export const flowComponentHandlers = {
   Image: imageComponent,
-  Video: (node, context) => parseVideo(node, context.source.sourceFile, context.source.root),
+  Video: (node, context) =>
+    parseVideo(
+      node,
+      context.source.sourceFile,
+      context.source.root,
+      context.source.sourceLineOffset
+    ),
   Questionnaire: (node, context) =>
     parseQuestionnaire(
       node,

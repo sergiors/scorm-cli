@@ -1,0 +1,502 @@
+// @vitest-environment jsdom
+import { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Video } from '../../app/components/Video'
+import { ContentRenderer } from '../../app/components/ContentRenderer'
+import { getPackageProgress } from '../../app/lib/content-helpers'
+import { PlayerI18nProvider } from '../../app/lib/player-i18n'
+import { usePlayerSession, type PlayerSession } from '../../app/lib/use-player-session'
+import type {
+  ContentNode,
+  ContentPackage,
+  PlayerState,
+  VideoNode,
+  VideoProvider
+} from '../../app/types'
+import { reactPlayerMock as players, type RecordedPlayer } from './react-player-mock'
+
+declare global {
+  // eslint-disable-next-line no-var
+  var IS_REACT_ACT_ENVIRONMENT: boolean | undefined
+}
+
+const VIDEO_ID = 'video:lesson.mdx:1:1'
+
+const nativeNode: VideoNode = {
+  type: 'video',
+  id: VIDEO_ID,
+  provider: 'native',
+  src: './lesson.mp4',
+  title: 'Lesson video',
+  poster: './poster.png',
+  captions: './lesson.vtt'
+}
+
+/** A canonical source per provider; ReactPlayer never sees a sniffed host. */
+const providerSources: Record<VideoProvider, string> = {
+  native: './lesson.mp4',
+  youtube: 'https://youtu.be/abc123',
+  vimeo: 'https://vimeo.com/42'
+}
+
+let container: HTMLDivElement
+let root: Root
+let session: PlayerSession | undefined
+
+beforeEach(() => {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true
+  players.reset()
+  container = document.createElement('div')
+  document.body.appendChild(container)
+  root = createRoot(container)
+})
+
+afterEach(() => {
+  act(() => root.unmount())
+  container.remove()
+  session = undefined
+  delete window.scormBridge
+  vi.restoreAllMocks()
+})
+
+/** Renders a `Video` and returns the props handed to ReactPlayer. */
+async function mountVideo(
+  node: VideoNode,
+  position: number | undefined,
+  onPosition: (seconds: number) => void
+): Promise<RecordedPlayer> {
+  await act(async () => {
+    root.render(
+      <PlayerI18nProvider>
+        <Video node={node} position={position} onPosition={onPosition} />
+      </PlayerI18nProvider>
+    )
+  })
+  return players.latest()
+}
+
+function savedPositions(onPosition: { mock: { calls: unknown[][] } }): number[] {
+  return onPosition.mock.calls.map((call) => call[0] as number)
+}
+
+function lastSaved(saveState: { mock: { calls: unknown[][] } }): PlayerState {
+  const calls = saveState.mock.calls
+  return calls[calls.length - 1]?.[0] as PlayerState
+}
+
+function SessionHarness({ contentPackage }: { contentPackage: ContentPackage }) {
+  session = usePlayerSession(contentPackage)
+  return null
+}
+
+function renderSession(contentPackage: ContentPackage): void {
+  act(() => root.render(<SessionHarness contentPackage={contentPackage} />))
+}
+
+describe('Video provider inputs', () => {
+  it.each<VideoProvider>(['native', 'youtube', 'vimeo'])(
+    'feeds the canonical source and controls to ReactPlayer for %s',
+    async (provider) => {
+      const record = await mountVideo(
+        { ...nativeNode, provider, src: providerSources[provider] },
+        undefined,
+        () => {}
+      )
+
+      expect(record.url).toBe(providerSources[provider])
+      expect(record.controls).toBe(true)
+      expect(record.progressInterval).toBe(1000)
+      // Never autoplay: a resume leaves playback paused.
+      expect(record.playing).toBeFalsy()
+    }
+  )
+
+  it('preserves poster and caption tracks for native playback', async () => {
+    const record = await mountVideo(nativeNode, undefined, () => {})
+
+    expect(record.config?.file?.attributes).toEqual({
+      preload: 'metadata',
+      poster: './poster.png'
+    })
+    expect(record.config?.file?.tracks).toEqual([
+      {
+        kind: 'captions',
+        src: './lesson.vtt',
+        srcLang: 'und',
+        label: 'Captions',
+        default: true
+      }
+    ])
+  })
+
+  it('titles the Vimeo iframe from the authored title', async () => {
+    const record = await mountVideo(
+      { ...nativeNode, provider: 'vimeo', src: providerSources.vimeo },
+      undefined,
+      () => {}
+    )
+
+    expect(record.config?.vimeo?.title).toBe('Lesson video')
+  })
+
+  it('localizes the caption track label for the authored language', async () => {
+    await act(async () => {
+      root.render(
+        <PlayerI18nProvider lang="pt-BR">
+          <Video node={nativeNode} />
+        </PlayerI18nProvider>
+      )
+    })
+    const record = players.latest()
+    expect(record.config?.file?.tracks?.[0]?.label).toBe('Legendas')
+  })
+
+  it('reserves a stable embed box and keeps the accessible label', () => {
+    const html = renderToStaticMarkup(
+      <PlayerI18nProvider>
+        <Video
+          node={{ ...nativeNode, provider: 'youtube', src: providerSources.youtube }}
+          position={5}
+        />
+      </PlayerI18nProvider>
+    )
+
+    expect(html).toContain('aspect-video')
+    expect(html).toContain('aria-label="Lesson video"')
+    expect(html).toContain('data-url="https://youtu.be/abc123"')
+  })
+})
+
+describe('Video resume and persistence', () => {
+  it('waits for ready before seeking to the restored position and never autoplays', async () => {
+    const onPosition = vi.fn()
+    const record = await mountVideo(nativeNode, 12.3, onPosition)
+
+    // Not ready yet: no seek, no autoplay, nothing persisted.
+    expect(players.seekTo).not.toHaveBeenCalled()
+    expect(onPosition).not.toHaveBeenCalled()
+
+    await act(async () => {
+      record.onReady?.()
+    })
+
+    // The seek is typed so ReactPlayer never treats a sub-second value as a fraction.
+    expect(players.seekTo).toHaveBeenCalledWith(12.3, 'seconds')
+    expect(record.playing).toBeFalsy()
+    // The restored position is already persisted, so ready writes nothing back.
+    expect(onPosition).not.toHaveBeenCalled()
+  })
+
+  it('does not seek when there is no restored position', async () => {
+    const record = await mountVideo(nativeNode, 0, () => {})
+    await act(async () => {
+      record.onReady?.()
+    })
+    expect(players.seekTo).not.toHaveBeenCalled()
+  })
+
+  it('throttles progress to five seconds and persists promptly on pause and seek', async () => {
+    const onPosition = vi.fn()
+    const record = await mountVideo(nativeNode, 0, onPosition)
+    await act(async () => {
+      record.onReady?.()
+    })
+
+    act(() => record.onProgress?.({ playedSeconds: 3 }))
+    act(() => record.onProgress?.({ playedSeconds: 6 }))
+    act(() => record.onProgress?.({ playedSeconds: 7 }))
+    expect(savedPositions(onPosition)).toEqual([6])
+
+    players.getCurrentTime.mockReturnValue(20.27)
+    act(() => record.onPause?.())
+    act(() => record.onSeek?.(30))
+    expect(savedPositions(onPosition)).toEqual([6, 20.27, 30])
+  })
+
+  it('falls back to the last progress tick when the provider exposes no live time', async () => {
+    const onPosition = vi.fn()
+    const record = await mountVideo(nativeNode, 0, onPosition)
+    await act(async () => {
+      record.onReady?.()
+    })
+
+    act(() => record.onProgress?.({ playedSeconds: 2 }))
+    expect(onPosition).not.toHaveBeenCalled()
+
+    players.getCurrentTime.mockReturnValue(null)
+    act(() => record.onPause?.())
+    expect(savedPositions(onPosition)).toEqual([2])
+  })
+
+  it('resets a finished video to the beginning and ignores the trailing pause', async () => {
+    const onPosition = vi.fn()
+    const record = await mountVideo(nativeNode, 0, onPosition)
+    await act(async () => {
+      record.onReady?.()
+    })
+
+    act(() => record.onProgress?.({ playedSeconds: 60 }))
+    players.getCurrentTime.mockReturnValue(60)
+    act(() => record.onEnded?.())
+    // Persist the reset, not the duration, so a replay starts at the beginning.
+    expect(savedPositions(onPosition)).toEqual([60, 0])
+
+    // Some providers emit a trailing tick and a pause as they stop at the end;
+    // neither may restore the finished position over the reset.
+    act(() => record.onProgress?.({ playedSeconds: 60 }))
+    act(() => record.onPause?.())
+    expect(savedPositions(onPosition)).toEqual([60, 0])
+  })
+
+  it('persists a replay position once play clears the ended guard', async () => {
+    const onPosition = vi.fn()
+    const record = await mountVideo(nativeNode, 0, onPosition)
+    await act(async () => {
+      record.onReady?.()
+    })
+
+    players.getCurrentTime.mockReturnValue(60)
+    act(() => record.onProgress?.({ playedSeconds: 60 }))
+    act(() => record.onEnded?.())
+    act(() => record.onPlay?.())
+
+    players.getCurrentTime.mockReturnValue(3)
+    act(() => record.onPause?.())
+    expect(savedPositions(onPosition)).toEqual([60, 0, 3])
+  })
+
+  it('flushes the latest progress tick once on teardown', async () => {
+    const onPosition = vi.fn()
+    const record = await mountVideo(nativeNode, 0, onPosition)
+    await act(async () => {
+      record.onReady?.()
+    })
+
+    act(() => record.onProgress?.({ playedSeconds: 6 }))
+    act(() => record.onProgress?.({ playedSeconds: 8 }))
+    expect(savedPositions(onPosition)).toEqual([6])
+
+    // The ReactPlayer ref is gone by teardown, so the last progress tick is the
+    // fallback the single flush persists.
+    act(() => root.unmount())
+    expect(savedPositions(onPosition)).toEqual([6, 8])
+  })
+
+  it('does not flush the finished duration after an end reset', async () => {
+    const onPosition = vi.fn()
+    const record = await mountVideo(nativeNode, 0, onPosition)
+    await act(async () => {
+      record.onReady?.()
+    })
+
+    players.getCurrentTime.mockReturnValue(120)
+    act(() => record.onProgress?.({ playedSeconds: 120 }))
+    act(() => record.onEnded?.())
+    act(() => root.unmount())
+    expect(savedPositions(onPosition)).toEqual([120, 0])
+  })
+
+  it('ignores a late provider event after unmount', async () => {
+    const onPosition = vi.fn()
+    const record = await mountVideo(nativeNode, undefined, onPosition)
+
+    act(() => root.unmount())
+    act(() => {
+      record.onProgress?.({ playedSeconds: 10 })
+      record.onPause?.()
+    })
+
+    expect(onPosition).not.toHaveBeenCalled()
+  })
+
+  it('threads the restored position into nested quote and questionnaire content', async () => {
+    const quote: ContentNode = { type: 'quote', children: [nativeNode] }
+    const questionnaire: ContentNode = {
+      type: 'questionnaire',
+      id: 'questionnaire:lesson.mdx:1:1',
+      contributesToScore: false,
+      questions: [
+        {
+          type: 'question',
+          id: 'question:lesson.mdx:1:1',
+          questionType: 'single-choice',
+          prompt: [nativeNode],
+          options: [
+            {
+              value: 'a',
+              correct: true,
+              content: [{ type: 'paragraph', children: [{ type: 'text', value: 'A' }] }]
+            }
+          ]
+        }
+      ]
+    }
+
+    await act(async () => {
+      root.render(
+        <PlayerI18nProvider>
+          <ContentRenderer
+            nodes={[quote, questionnaire]}
+            videoPositions={{ [VIDEO_ID]: 9.5 }}
+            onVideoPosition={() => {}}
+          />
+        </PlayerI18nProvider>
+      )
+    })
+
+    const records = players.records
+    expect(records.length).toBeGreaterThanOrEqual(2)
+    for (const record of records) {
+      act(() => record.onReady?.())
+    }
+
+    expect(players.seekTo).toHaveBeenCalledTimes(records.length)
+    for (const call of players.seekTo.mock.calls) {
+      expect(call).toEqual([9.5, 'seconds'])
+    }
+  })
+})
+
+describe('usePlayerSession video positions', () => {
+  const PAGE_ID = 'page:lesson.mdx'
+  const videoPackage: ContentPackage = {
+    metadata: { title: 'Video package' },
+    presentation: {
+      type: 'scroll',
+      pages: [
+        {
+          type: 'page',
+          id: PAGE_ID,
+          source: 'lesson.mdx',
+          metadata: { title: 'Lesson' },
+          content: [nativeNode]
+        }
+      ]
+    }
+  }
+
+  const secondVideoNode: VideoNode = {
+    ...nativeNode,
+    id: 'video:second.mdx:1:1',
+    src: './second.mp4'
+  }
+  /** Two pages, each owning a distinct video, to prove positions stay scoped. */
+  const twoPageVideoPackage: ContentPackage = {
+    metadata: { title: 'Two-page video package' },
+    presentation: {
+      type: 'scroll',
+      pages: [
+        {
+          type: 'page',
+          id: 'page:first.mdx',
+          source: 'first.mdx',
+          metadata: { title: 'First' },
+          content: [nativeNode]
+        },
+        {
+          type: 'page',
+          id: 'page:second.mdx',
+          source: 'second.mdx',
+          metadata: { title: 'Second' },
+          content: [secondVideoNode]
+        }
+      ]
+    }
+  }
+
+  it('persists a finite position normalized to tenths with unchanged package progress', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+    renderSession(videoPackage)
+
+    act(() => session?.setVideoPosition(PAGE_ID, VIDEO_ID, 12.34))
+    const saved = lastSaved(saveState)
+    expect(saved.pages[PAGE_ID]?.videos).toEqual({ [VIDEO_ID]: 12.3 })
+    // Video playback never contributes to progress, so the accompanying write
+    // carries the same integer the package would report without it.
+    expect(saveState.mock.calls.at(-1)?.[1]).toBe(getPackageProgress(videoPackage, saved))
+
+    const progress = saveState.mock.calls.at(-1)?.[1]
+    act(() => session?.setVideoPosition(PAGE_ID, VIDEO_ID, 40.06))
+    expect(lastSaved(saveState).pages[PAGE_ID]?.videos).toEqual({ [VIDEO_ID]: 40.1 })
+    expect(saveState.mock.calls.at(-1)?.[1]).toBe(progress)
+    // Only the owning page gains state; there is no top-level videos map.
+    expect(lastSaved(saveState).pages['page:other.mdx']).toBeUndefined()
+    expect(lastSaved(saveState)).not.toHaveProperty('videos')
+  })
+
+  it('skips an update that normalizes to the stored position', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+    renderSession(videoPackage)
+
+    act(() => session?.setVideoPosition(PAGE_ID, VIDEO_ID, 20.3))
+    const calls = saveState.mock.calls.length
+    act(() => session?.setVideoPosition(PAGE_ID, VIDEO_ID, 20.34))
+    expect(saveState.mock.calls.length).toBe(calls)
+    expect(lastSaved(saveState).pages[PAGE_ID]?.videos).toEqual({ [VIDEO_ID]: 20.3 })
+  })
+
+  it('ignores negative and non-finite positions', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+    renderSession(videoPackage)
+
+    act(() => session?.setVideoPosition(PAGE_ID, VIDEO_ID, -1))
+    act(() => session?.setVideoPosition(PAGE_ID, VIDEO_ID, Number.NaN))
+    act(() => session?.setVideoPosition(PAGE_ID, VIDEO_ID, Number.POSITIVE_INFINITY))
+    expect(saveState).not.toHaveBeenCalled()
+    expect(session?.state.pages[PAGE_ID]).toBeUndefined()
+  })
+
+  it('keeps positions scoped to the page that owns each video', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+    renderSession(twoPageVideoPackage)
+
+    act(() => session?.setVideoPosition('page:first.mdx', VIDEO_ID, 5))
+    act(() => session?.setVideoPosition('page:second.mdx', secondVideoNode.id, 9.5))
+
+    const saved = lastSaved(saveState)
+    expect(saved.pages['page:first.mdx']?.videos).toEqual({ [VIDEO_ID]: 5 })
+    expect(saved.pages['page:second.mdx']?.videos).toEqual({ [secondVideoNode.id]: 9.5 })
+  })
+
+  it('restores only the positions each page still owns', () => {
+    const saveState = vi.fn()
+    window.scormBridge = {
+      restoreState: () => ({
+        pages: {
+          'page:first.mdx': {
+            videos: {
+              [VIDEO_ID]: 34.26,
+              'video:gone.mdx:1:1': 10,
+              stale: Number.NaN
+            }
+          },
+          // VIDEO_ID belongs to page:first, not page:second, so it is dropped.
+          'page:second.mdx': { videos: { [VIDEO_ID]: 99 } }
+        }
+      }),
+      saveState
+    }
+    renderSession(twoPageVideoPackage)
+
+    expect(session?.state.pages['page:first.mdx']?.videos).toEqual({ [VIDEO_ID]: 34.3 })
+    expect(session?.state.pages['page:second.mdx']).toBeUndefined()
+  })
+
+  it('persists plain numbers, never provider objects', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+    renderSession(videoPackage)
+
+    act(() => session?.setVideoPosition(PAGE_ID, VIDEO_ID, 5))
+    const saved = lastSaved(saveState)
+    const videos = saved.pages[PAGE_ID]?.videos ?? {}
+    expect(Object.values(videos).every((value) => typeof value === 'number')).toBe(true)
+    expect(JSON.stringify(saved)).not.toMatch(/player|iframe|YT\.|youtube|vimeo/i)
+  })
+})

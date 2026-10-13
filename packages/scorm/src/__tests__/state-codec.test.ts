@@ -106,6 +106,168 @@ describe('compact suspend-data codec', () => {
     })
   })
 
+  it('keeps video-free payloads unchanged and stores valid positions as deciseconds', () => {
+    const videoManifest = structuredClone(manifest)
+    videoManifest.videos = {
+      'video-a': { src: 'a.mp4', provider: 'native', pageId: 'page-one' },
+      'video-b': { src: 'https://youtu.be/abc', provider: 'youtube', pageId: 'page-one' },
+      'video-c': { src: 'c.mp4', provider: 'native', pageId: 'page-one' },
+      'video-d': { src: 'd.mp4', provider: 'native', pageId: 'page-two' },
+      'video-e': { src: 'e.mp4', provider: 'native', pageId: 'page-two' }
+    }
+    const legacyState: PlayerState = { pages: {} }
+    expect(encodeSuspendData(manifest, legacyState, 0)).toEqual({ v: 1, p: 0, x: '00' })
+    expect(JSON.stringify(encodeSuspendData(manifest, legacyState, 0))).toBe(
+      '{"v":1,"p":0,"x":"00"}'
+    )
+    expect(encodeSuspendData(videoManifest, legacyState, 0)).toEqual({
+      v: 1,
+      p: 0,
+      x: '00'
+    })
+
+    const encoded = encodeSuspendData(
+      videoManifest,
+      {
+        pages: {
+          'page-one': {
+            videos: {
+              'video-a': 12.34,
+              'video-b': -1,
+              'video-c': Number.POSITIVE_INFINITY,
+              negative: -1,
+              infinite: Number.POSITIVE_INFINITY,
+              nan: Number.NaN
+            }
+          },
+          'page-two': { videos: { 'video-d': Number.NaN, 'video-e': 0.06 } }
+        }
+      },
+      0
+    )
+    expect(encoded).toEqual({
+      v: 1,
+      p: 0,
+      x: '00',
+      d: { '0': { t: { 'video-a': 123 } }, '1': { t: { 'video-e': 1 } } }
+    })
+    expect(encoded).not.toHaveProperty('t')
+    expect(decodeSuspendData(videoManifest, encoded)).toEqual({
+      pages: {
+        'page-one': { videos: { 'video-a': 12.3 } },
+        'page-two': { videos: { 'video-e': 0.1 } }
+      }
+    })
+  })
+
+  it('restores video positions by stable ID across additions, reordering, and deletions', () => {
+    const originalManifest = structuredClone(manifest)
+    originalManifest.videos = {
+      'video-a': { src: 'a.mp4', provider: 'native', pageId: 'page-one' },
+      'video-b': { src: 'b.mp4', provider: 'native', pageId: 'page-two' },
+      'video-c': { src: 'c.mp4', provider: 'native', pageId: 'page-one' }
+    }
+    const encoded = encodeSuspendData(
+      originalManifest,
+      {
+        pages: {
+          'page-one': { videos: { 'video-a': 1.1, 'video-c': 3.3 } },
+          'page-two': { videos: { 'video-b': 2.2 } }
+        }
+      },
+      0
+    )
+    expect(encoded.d).toEqual({
+      '0': { t: { 'video-a': 11, 'video-c': 33 } },
+      '1': { t: { 'video-b': 22 } }
+    })
+    expect(encoded).not.toHaveProperty('t')
+
+    const updatedManifest = structuredClone(manifest)
+    updatedManifest.videos = {
+      'video-new': { src: 'new.mp4', provider: 'native', pageId: 'page-two' },
+      'video-b': { src: 'b.mp4', provider: 'native', pageId: 'page-one' },
+      'video-a': { src: 'a.mp4', provider: 'native', pageId: 'page-two' }
+    }
+    expect(decodeSuspendData(updatedManifest, encoded)).toEqual({
+      pages: {
+        'page-one': { videos: { 'video-b': 2.2 } },
+        'page-two': { videos: { 'video-a': 1.1 } }
+      }
+    })
+
+    delete updatedManifest.pages['1']
+    expect(decodeSuspendData(updatedManifest, encoded)).toEqual({
+      pages: { 'page-one': { videos: { 'video-b': 2.2 } } }
+    })
+  })
+
+  it('decodes payloads without video data and ignores invalid or unknown video IDs', () => {
+    const videoManifest = structuredClone(manifest)
+    videoManifest.videos = {
+      'video-a': { src: 'a.mp4', provider: 'native', pageId: 'page-one' },
+      'video-b': { src: 'b.mp4', provider: 'native', pageId: 'page-two' }
+    }
+    expect(decodeSuspendData(videoManifest, { v: 1, p: 0, x: '00' })).toEqual({ pages: {} })
+    expect(
+      decodeSuspendData(videoManifest, {
+        v: 1,
+        p: 0,
+        x: '00',
+        d: {
+          '0': { t: { 'video-a': 15, 'video-b': -1, removed: 20, fractional: 1.5 } }
+        },
+        t: { 'video-b': 25 }
+      })
+    ).toEqual({ pages: { 'page-one': { videos: { 'video-a': 1.5 } } } })
+  })
+
+  it('decodes stable video IDs across page reorder and keeps them independent of page indexes', () => {
+    const videoManifest = structuredClone(manifest)
+    const firstPage = videoManifest.pages['0']!
+    videoManifest.pages['0'] = videoManifest.pages['1']!
+    videoManifest.pages['1'] = firstPage
+    videoManifest.videos = {
+      'video-a': { src: 'a.mp4', provider: 'native', pageId: 'page-two' },
+      'video-b': { src: 'b.mp4', provider: 'native', pageId: 'page-one' }
+    }
+    expect(
+      decodeSuspendData(videoManifest, {
+        v: 1,
+        p: 0,
+        x: '000',
+        d: {
+          '0': { a: { '0': 1 }, t: { 'video-a': 11 } },
+          '1': { t: { 'video-b': 22 } }
+        }
+      })
+    ).toEqual({
+      pages: {
+        'page-one': { videos: { 'video-b': 2.2 } },
+        'page-two': { videos: { 'video-a': 1.1 } }
+      }
+    })
+  })
+
+  it('drops duplicate, unknown, unsafe, and malformed nested video data', () => {
+    const videoManifest = structuredClone(manifest)
+    videoManifest.videos = {
+      'video-a': { src: 'a.mp4', provider: 'native', pageId: 'page-one' }
+    }
+    expect(
+      decodeSuspendData(videoManifest, {
+        v: 1,
+        p: 0,
+        x: '00',
+        d: {
+          '0': { t: { 'video-a': 11, removed: 20, constructor: 30, fractional: 1.5 } },
+          '1': { t: { 'video-a': 12 } },
+          '2': { t: null }
+        }
+      })
+    ).toEqual({ pages: {} })
+  })
+
   it('nests single answers under each page so question indexes are page-local', () => {
     const singleChoiceManifest = structuredClone(manifest)
     Object.values(singleChoiceManifest.pages).forEach((page) => {

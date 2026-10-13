@@ -20,8 +20,14 @@ export interface PackageViewProps {
  */
 export function PackageView({ contentPackage }: PackageViewProps) {
   const { presentation } = contentPackage
-  const { state, markSeen, markCompleted, setAnswer, markQuestionnaireSubmitted } =
-    usePlayerSession(contentPackage)
+  const {
+    state,
+    markSeen,
+    markCompleted,
+    setAnswer,
+    markQuestionnaireSubmitted,
+    setVideoPosition
+  } = usePlayerSession(contentPackage)
 
   if (presentation.type === 'scroll') {
     if (presentation.pages.length === 0) {
@@ -42,6 +48,7 @@ export function PackageView({ contentPackage }: PackageViewProps) {
         onPageCompleted={markCompleted}
         onAnswer={setAnswer}
         onQuestionnaireSubmitted={markQuestionnaireSubmitted}
+        onVideoPosition={setVideoPosition}
       />
     )
   }
@@ -59,6 +66,7 @@ export function PackageView({ contentPackage }: PackageViewProps) {
       onItemOpened={markSeen}
       onAnswer={setAnswer}
       onQuestionnaireSubmitted={markQuestionnaireSubmitted}
+      onVideoPosition={setVideoPosition}
     />
   )
 }

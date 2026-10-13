@@ -1,5 +1,6 @@
 import type {
   AnswerValue,
+  ContentPackage,
   ItemNode,
   PageNode,
   PlayerPageState,
@@ -7,11 +8,16 @@ import type {
   QuestionNode,
   RootPresentation
 } from '../types'
-import { collectQuestionnaires } from './content-helpers'
+import { collectQuestionnaires, collectVideoNodes } from './content-helpers'
 
 /** A fresh player state with no location and no recorded pages. */
 export function emptyPlayerState(): PlayerState {
   return { pages: {} }
+}
+
+/** The semantic precision of a persisted video position: tenths of a second. */
+export function normalizeVideoPosition(seconds: number): number {
+  return Math.round(seconds * 10) / 10
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -44,7 +50,8 @@ function sanitizeAnswer(question: QuestionNode, value: unknown): AnswerValue | u
 function sanitizePageState(
   node: PageNode | ItemNode,
   raw: Record<string, unknown>,
-  completedImpliesSubmitted: boolean
+  completedImpliesSubmitted: boolean,
+  videoIds: ReadonlySet<string>
 ): PlayerPageState | undefined {
   const questionnaires = collectQuestionnaires(node.content)
   const questions = new Map<string, QuestionNode>()
@@ -71,6 +78,20 @@ function sanitizePageState(
     if (Object.keys(answers).length > 0) page.answers = answers
   }
 
+  // Video positions are scoped to the page/item that owns the video: only ids
+  // reachable in this node's nested AST are kept, so a video moved to another
+  // page never retains a position under the page that used to own it. Invalid
+  // values are dropped and the rest normalized to tenths of a second.
+  if (isRecord(raw.videos)) {
+    const videos: Record<string, number> = {}
+    for (const [videoId, value] of Object.entries(raw.videos)) {
+      if (!videoIds.has(videoId)) continue
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) continue
+      videos[videoId] = normalizeVideoPosition(value)
+    }
+    if (Object.keys(videos).length > 0) page.videos = videos
+  }
+
   // Normalise submissions against the questionnaires this page actually owns.
   // A completed scroll page implies every questionnaire on it was submitted, so
   // resume stays read-only and gated even when only the completion flag was
@@ -94,16 +115,21 @@ function sanitizePageState(
 }
 
 /**
- * Safely restores a persisted {@link PlayerState} against the current
- * presentation AST. Unknown page ids and locations are dropped, as are answers
- * to questions that no longer exist (or no longer have the recorded options),
- * and submission ids that no longer name a reachable questionnaire. A completed
- * scroll page is normalized to have all of its questionnaires submitted, so a
- * resume that only persisted completion stays read-only and gated. The result is
- * always a plain in-memory state — never the raw persisted object — so the
- * renderer can mutate it without touching whatever the bridge returned.
+ * Safely restores a persisted {@link PlayerState} against the current content
+ * package. Unknown page ids and locations are dropped, as are answers to
+ * questions that no longer exist (or no longer have the recorded options),
+ * submission ids that no longer name a reachable questionnaire, and video
+ * positions whose id no longer names a video authored on that page/item (or
+ * whose value is not a finite, non-negative number). Video positions are scoped
+ * to the page that owns the video, so a video moved to another page never
+ * retains a position under its old page. A completed scroll page is normalized
+ * to have all of its questionnaires submitted, so a resume that only persisted
+ * completion stays read-only and gated. The result is always a plain in-memory
+ * state — never the raw persisted object — so the renderer can mutate it without
+ * touching whatever the bridge returned.
  */
-export function sanitizePlayerState(presentation: RootPresentation, raw: unknown): PlayerState {
+export function sanitizePlayerState(contentPackage: ContentPackage, raw: unknown): PlayerState {
+  const { presentation } = contentPackage
   const nodes = presentation.type === 'scroll' ? presentation.pages : presentation.items
   const byId = new Map(nodes.map((node) => [node.id, node]))
   const state: PlayerState = { pages: {} }
@@ -123,11 +149,28 @@ export function sanitizePlayerState(presentation: RootPresentation, raw: unknown
   for (const [pageId, pageRaw] of Object.entries(raw.pages)) {
     const node = byId.get(pageId)
     if (!node || !isRecord(pageRaw)) continue
-    const page = sanitizePageState(node, pageRaw, presentation.type === 'scroll')
+    const page = sanitizePageState(
+      node,
+      pageRaw,
+      presentation.type === 'scroll',
+      nodeVideoIds(contentPackage, node)
+    )
     if (page) state.pages[pageId] = page
   }
 
   return state
+}
+
+/**
+ * The ids of every video authored inside a single page/item's nested AST.
+ * Reuses the canonical core traversal by scoping the package to that one node,
+ * so a page only accepts positions for the videos it actually owns.
+ */
+function nodeVideoIds(contentPackage: ContentPackage, node: PageNode | ItemNode): Set<string> {
+  const presentation: RootPresentation =
+    node.type === 'page' ? { type: 'scroll', pages: [node] } : { type: 'grid', items: [node] }
+  const videos = collectVideoNodes({ ...contentPackage, presentation })
+  return new Set(videos.map((video) => video.id))
 }
 
 /**

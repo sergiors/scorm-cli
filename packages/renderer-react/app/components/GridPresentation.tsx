@@ -36,6 +36,11 @@ export interface GridPresentationProps {
   onAnswer: (pageId: string, questionId: string, value: AnswerValue) => void
   /** Marks a questionnaire on the opened item as submitted. */
   onQuestionnaireSubmitted: (pageId: string, questionnaireId: string) => void
+  /**
+   * Persists a video's semantic playback position in seconds, scoped to the
+   * item that owns the video.
+   */
+  onVideoPosition?: (pageId: string, videoId: string, seconds: number) => void
 }
 
 /**
@@ -50,7 +55,8 @@ export function GridPresentation({
   initialItemId,
   onItemOpened,
   onAnswer,
-  onQuestionnaireSubmitted
+  onQuestionnaireSubmitted,
+  onVideoPosition
 }: GridPresentationProps) {
   const intl = useIntl()
   const [selected, setSelected] = useState<ItemNode | undefined>(() =>
@@ -100,6 +106,10 @@ export function GridPresentation({
                 submittedQuestionnaires={pageState?.submittedQuestionnaires}
                 onAnswer={(questionId, value) => onAnswer(selected.id, questionId, value)}
                 onQuestionnaireSubmitted={(id) => onQuestionnaireSubmitted(selected.id, id)}
+                videoPositions={pageState?.videos}
+                onVideoPosition={(videoId, seconds) =>
+                  onVideoPosition?.(selected.id, videoId, seconds)
+                }
               />
             </div>
           ) : null}

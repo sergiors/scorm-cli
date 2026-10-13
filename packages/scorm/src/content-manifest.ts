@@ -1,9 +1,11 @@
+import { collectVideoNodes } from '@scorm-cli/core'
 import type {
   ContentNode,
   ContentPackage,
   InlineContentNode,
   InlineNode,
-  QuestionNode
+  QuestionNode,
+  VideoProvider
 } from '@scorm-cli/core'
 
 export interface ContentManifest {
@@ -27,6 +29,7 @@ export interface ContentManifest {
       >
     }
   >
+  videos?: Record<string, { src: string; provider: VideoProvider; pageId: string }>
 }
 
 function inlineText(nodes: InlineNode[]): string {
@@ -151,11 +154,35 @@ export function createContentManifest(contentPackage: ContentPackage): ContentMa
     }
   })
 
+  const videos: NonNullable<ContentManifest['videos']> = {}
+  if (contentPackage.presentation.type === 'scroll') {
+    for (const node of contentPackage.presentation.pages) {
+      const ownerPackage: ContentPackage = {
+        ...contentPackage,
+        presentation: { type: 'scroll', pages: [node] }
+      }
+      for (const video of collectVideoNodes(ownerPackage)) {
+        videos[video.id] = { src: video.src, provider: video.provider, pageId: node.id }
+      }
+    }
+  } else {
+    for (const node of contentPackage.presentation.items) {
+      const ownerPackage: ContentPackage = {
+        ...contentPackage,
+        presentation: { type: 'grid', items: [node] }
+      }
+      for (const video of collectVideoNodes(ownerPackage)) {
+        videos[video.id] = { src: video.src, provider: video.provider, pageId: node.id }
+      }
+    }
+  }
+
   return {
     schemaVersion: 1,
     title: contentPackage.metadata.title,
     lang: contentPackage.metadata.lang ?? 'en',
     presentation: contentPackage.presentation.type,
-    pages
+    pages,
+    ...(Object.keys(videos).length > 0 ? { videos } : {})
   }
 }

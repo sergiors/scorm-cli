@@ -50,7 +50,7 @@ export async function assetReference(
 }
 
 export function sourceNodeId(
-  kind: 'question' | 'questionnaire',
+  kind: 'question' | 'questionnaire' | 'video',
   node: AstNode,
   file: string,
   root: string,
@@ -61,7 +61,7 @@ export function sourceNodeId(
     path.resolve(file),
     file,
     node,
-    `${kind === 'question' ? 'Question' : 'Questionnaire'} source`
+    `${kind === 'question' ? 'Question' : kind === 'questionnaire' ? 'Questionnaire' : 'Video'} source`
   )
   const line = sourceLineOffset + (node.position?.start?.line ?? 1)
   const column = node.position?.start?.column ?? 1

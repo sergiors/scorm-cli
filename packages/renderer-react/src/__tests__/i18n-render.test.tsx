@@ -25,6 +25,8 @@ function render(lang: string | undefined, ui: ReactNode): string {
 
 const videoNode = {
   type: 'video' as const,
+  id: 'video:lesson.mdx:1:1',
+  provider: 'native' as const,
   src: './lesson.mp4',
   captions: './lesson.vtt'
 }
@@ -101,10 +103,9 @@ function authoredPackage(lang: string): ContentPackage {
 }
 
 describe('player i18n: English', () => {
-  it('renders the generated video and caption labels', () => {
+  it('renders the generated video label', () => {
     const html = render(undefined, <ContentRenderer nodes={[videoNode]} />)
     expect(html).toContain('aria-label="Video"')
-    expect(html).toContain('label="Captions"')
   })
 
   it('renders the questionnaire wizard labels', () => {
@@ -164,10 +165,9 @@ describe('player i18n: English', () => {
 })
 
 describe('player i18n: Brazilian Portuguese', () => {
-  it('renders the generated video and caption labels', () => {
+  it('renders the generated video label', () => {
     const html = render('pt-BR', <ContentRenderer nodes={[videoNode]} />)
     expect(html).toContain('aria-label="Vídeo"')
-    expect(html).toContain('label="Legendas"')
   })
 
   it('renders the questionnaire wizard labels', () => {
@@ -223,7 +223,6 @@ describe('player i18n: unsupported languages fall back to English', () => {
   it('renders English chrome for a language with no dictionary', () => {
     const html = render('fr', <ContentRenderer nodes={[videoNode]} />)
     expect(html).toContain('aria-label="Video"')
-    expect(html).toContain('label="Captions"')
     expect(html).not.toContain('Vídeo')
   })
 

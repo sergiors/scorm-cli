@@ -474,6 +474,8 @@ describe('parsePackage', () => {
     expect(await lessonContent(root)).toMatchObject([
       {
         type: 'video',
+        id: 'video:lesson.mdx:4:1',
+        provider: 'native',
         src: 'https://cdn.example.test/lesson.mp4',
         title: 'Lesson',
         poster: 'assets/poster.svg',
@@ -517,6 +519,63 @@ describe('parsePackage', () => {
       },
       { type: 'code', value: 'const x: number = 1;', language: 'ts' }
     ])
+  })
+
+  it('infers video providers, preserves provider URLs, and includes frontmatter in stable IDs', async () => {
+    const root = await makeLesson(
+      '<Video src="assets/local.mp4" />\n\n' +
+        '<Video src="https://youtu.be/abc123" />\n\n' +
+        '<Video src="https://www.youtube.com/watch?v=xyz" />\n\n' +
+        '<Video src="https://www.youtube-nocookie.com/embed/xyz" />\n\n' +
+        '<Video src="https://player.vimeo.com/video/42" />\n\n' +
+        '<Video src="https://vimeo.com/99" />'
+    )
+    await asset(root, 'assets/local.mp4')
+    const videos = await lessonContent(root)
+    expect(videos).toEqual([
+      {
+        type: 'video',
+        id: 'video:lesson.mdx:4:1',
+        provider: 'native',
+        src: 'assets/local.mp4'
+      },
+      {
+        type: 'video',
+        id: 'video:lesson.mdx:6:1',
+        provider: 'youtube',
+        src: 'https://youtu.be/abc123'
+      },
+      {
+        type: 'video',
+        id: 'video:lesson.mdx:8:1',
+        provider: 'youtube',
+        src: 'https://www.youtube.com/watch?v=xyz'
+      },
+      {
+        type: 'video',
+        id: 'video:lesson.mdx:10:1',
+        provider: 'youtube',
+        src: 'https://www.youtube-nocookie.com/embed/xyz'
+      },
+      {
+        type: 'video',
+        id: 'video:lesson.mdx:12:1',
+        provider: 'vimeo',
+        src: 'https://player.vimeo.com/video/42'
+      },
+      {
+        type: 'video',
+        id: 'video:lesson.mdx:14:1',
+        provider: 'vimeo',
+        src: 'https://vimeo.com/99'
+      }
+    ])
+    expect(await lessonContent(root)).toEqual(videos)
+  })
+
+  it('does not accept an authored provider attribute', async () => {
+    const root = await makeLesson('<Video src="https://youtu.be/abc123" provider="youtube" />')
+    await expect(lessonContent(root)).rejects.toThrow(/unknown attribute "provider"/)
   })
 
   it('parses rich question prompts and options and preserves boolean false', async () => {

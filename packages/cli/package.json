@@ -59,6 +59,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-intl": "^12.1.4",
+    "react-player": "^2.16.1",
     "tailwind-merge": "^2.5.0",
     "tailwindcss": "^4.0.0",
     "vite": "^6.0.0",

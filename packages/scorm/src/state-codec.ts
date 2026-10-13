@@ -6,7 +6,13 @@ export interface CompactSuspendData {
   readonly p: number
   readonly x: string
   readonly d?: Readonly<
-    Record<string, { readonly a?: Readonly<Record<string, number | readonly number[]>> }>
+    Record<
+      string,
+      {
+        readonly a?: Readonly<Record<string, number | readonly number[]>>
+        readonly t?: Readonly<Record<string, number>>
+      }
+    >
   >
 }
 
@@ -26,6 +32,7 @@ function createSuspendDataCodec() {
     progress: number
   ): CompactSuspendData {
     const entries = Object.entries(manifest.pages)
+    const pageIds = new Set(entries.map(([, page]) => page.id).filter(safeKey))
     const normalizedProgress = Number.isFinite(progress)
       ? Math.max(0, Math.min(100, Math.round(progress)))
       : 0
@@ -38,7 +45,31 @@ function createSuspendDataCodec() {
         return pageState?.visited === true ? '1' : '0'
       })
       .join('')
-    const dataByPage: Record<string, { a: Record<string, number | number[]> }> = Object.create(null)
+    const dataByPage: Record<
+      string,
+      { a?: Record<string, number | number[]>; t?: Record<string, number> }
+    > = Object.create(null)
+
+    const pageIndexById = new Map(entries.map(([pageIndex, page]) => [page.id, pageIndex]))
+
+    if (manifest.videos) {
+      Object.entries(manifest.videos).forEach(([videoId, video]) => {
+        if (!safeKey(videoId) || !pageIds.has(video.pageId)) return
+        const pageIndex = pageIndexById.get(video.pageId)
+        if (pageIndex === undefined) return
+        const videoState = state.pages[video.pageId]?.videos
+        if (!isRecord(videoState) || !Object.prototype.hasOwnProperty.call(videoState, videoId)) {
+          return
+        }
+        const seconds = videoState[videoId]
+        if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) return
+        const deciseconds = Math.round(seconds * 10)
+        if (!Number.isSafeInteger(deciseconds)) return
+        const pageData = dataByPage[pageIndex] ?? (dataByPage[pageIndex] = {})
+        const videos = pageData.t ?? (pageData.t = Object.create(null))
+        videos[videoId] = deciseconds
+      })
+    }
 
     entries.forEach(([pageIndex, page]) => {
       if (!safeKey(page.id) || !Object.prototype.hasOwnProperty.call(state.pages, page.id)) {
@@ -69,7 +100,8 @@ function createSuspendDataCodec() {
         }
       })
       if (Object.keys(answers).length > 0) {
-        dataByPage[pageIndex] = { a: answers }
+        const pageData = dataByPage[pageIndex] ?? (dataByPage[pageIndex] = {})
+        pageData.a = answers
       }
     })
 
@@ -90,6 +122,7 @@ function createSuspendDataCodec() {
       }
       const { v, p, x } = parsed
       const entries = Object.entries(manifest.pages)
+      const pageIds = new Set(entries.map(([, page]) => page.id).filter(safeKey))
       if (
         v !== 1 ||
         typeof p !== 'number' ||
@@ -97,61 +130,98 @@ function createSuspendDataCodec() {
         p < 0 ||
         p > 100 ||
         typeof x !== 'string' ||
-        !/^[01]*$/.test(x) ||
-        x.length > entries.length
+        !/^[01]*$/.test(x)
       ) {
         return fresh
       }
 
-      const completedCount =
-        manifest.presentation === 'scroll'
-          ? Math.max(0, Math.min(entries.length, Math.round((p * entries.length) / 100)))
-          : 0
-      entries.forEach(([pageIndex, page], order) => {
-        if (!safeKey(page.id)) {
-          return
-        }
-        const pageState: PlayerState['pages'][string] = {}
-        const completed = order < completedCount
-        if (x[order] === '1' || completed) {
-          pageState.visited = true
-        }
-        if (completed) {
-          pageState.completed = true
-        }
-
-        const encodedPage = isRecord(parsed.d) ? parsed.d[pageIndex] : undefined
-        const encodedAnswers = isRecord(encodedPage) ? encodedPage.a : undefined
-        if (isRecord(encodedAnswers)) {
-          const answers: NonNullable<PlayerState['pages'][string]['answers']> = {}
-          Object.entries(page.questions).forEach(([questionIndex, question]) => {
-            if (!safeKey(question.id)) {
-              return
-            }
-            const selection = encodedAnswers[questionIndex]
-            const selections = Array.isArray(selection)
-              ? selection
-              : Number.isSafeInteger(selection)
-                ? [selection]
-                : []
-            const values = [...new Set(selections)]
-              .filter((index): index is number => Number.isSafeInteger(index) && index >= 0)
-              .sort((left, right) => left - right)
-              .map((index) => question.options[String(index)]?.value)
-              .filter((value): value is string => typeof value === 'string')
-            if (values.length > 0) {
-              answers[question.id] = question.type === 'multiple-choice' ? values : values[0]
-            }
-          })
-          if (Object.keys(answers).length > 0) {
-            pageState.answers = answers
+      // Page-indexed data is only meaningful when its visited bitmap is not
+      // oversized for the current page list. Stable-ID videos can still restore.
+      if (x.length <= entries.length) {
+        const completedCount =
+          manifest.presentation === 'scroll'
+            ? Math.max(0, Math.min(entries.length, Math.round((p * entries.length) / 100)))
+            : 0
+        entries.forEach(([pageIndex, page], order) => {
+          if (!safeKey(page.id)) {
+            return
           }
-        }
+          const pageState: PlayerState['pages'][string] = {}
+          const completed = order < completedCount
+          if (x[order] === '1' || completed) {
+            pageState.visited = true
+          }
+          if (completed) {
+            pageState.completed = true
+          }
 
-        if (Object.keys(pageState).length > 0) {
-          fresh.pages[page.id] = pageState
-        }
-      })
+          const encodedPage = isRecord(parsed.d) ? parsed.d[pageIndex] : undefined
+          const encodedAnswers = isRecord(encodedPage) ? encodedPage.a : undefined
+          if (isRecord(encodedAnswers)) {
+            const answers: NonNullable<PlayerState['pages'][string]['answers']> = {}
+            Object.entries(page.questions).forEach(([questionIndex, question]) => {
+              if (!safeKey(question.id)) {
+                return
+              }
+              const selection = encodedAnswers[questionIndex]
+              const selections = Array.isArray(selection)
+                ? selection
+                : Number.isSafeInteger(selection)
+                  ? [selection]
+                  : []
+              const values = [...new Set(selections)]
+                .filter((index): index is number => Number.isSafeInteger(index) && index >= 0)
+                .sort((left, right) => left - right)
+                .map((index) => question.options[String(index)]?.value)
+                .filter((value): value is string => typeof value === 'string')
+              if (values.length > 0) {
+                answers[question.id] = question.type === 'multiple-choice' ? values : values[0]
+              }
+            })
+            if (Object.keys(answers).length > 0) {
+              pageState.answers = answers
+            }
+          }
+
+          if (Object.keys(pageState).length > 0) {
+            fresh.pages[page.id] = pageState
+          }
+        })
+      }
+      const encodedPages = parsed.d
+      if (isRecord(encodedPages) && manifest.videos) {
+        const occurrences = new Map<string, number>()
+        Object.values(encodedPages).forEach((encodedPage) => {
+          const encodedVideos = isRecord(encodedPage) ? encodedPage.t : undefined
+          if (!isRecord(encodedVideos)) return
+          Object.keys(encodedVideos).forEach((videoId) => {
+            occurrences.set(videoId, (occurrences.get(videoId) ?? 0) + 1)
+          })
+        })
+
+        Object.entries(manifest.videos).forEach(([videoId, video]) => {
+          if (!safeKey(videoId) || !pageIds.has(video.pageId) || occurrences.get(videoId) !== 1) {
+            return
+          }
+          let deciseconds: unknown
+          Object.values(encodedPages).some((encodedPage) => {
+            const encodedVideos = isRecord(encodedPage) ? encodedPage.t : undefined
+            if (
+              isRecord(encodedVideos) &&
+              Object.prototype.hasOwnProperty.call(encodedVideos, videoId)
+            ) {
+              deciseconds = encodedVideos[videoId]
+              return true
+            }
+            return false
+          })
+          if (Number.isSafeInteger(deciseconds) && (deciseconds as number) >= 0) {
+            const pageState = fresh.pages[video.pageId] ?? (fresh.pages[video.pageId] = {})
+            const videos = pageState.videos ?? (pageState.videos = {})
+            videos[videoId] = (deciseconds as number) / 10
+          }
+        })
+      }
       return fresh
     } catch {
       return fresh
@@ -163,7 +233,7 @@ function createSuspendDataCodec() {
 
 const codec = createSuspendDataCodec()
 
-/** Encodes only manifest-indexed progress and answer selections. */
+/** Encodes manifest-indexed progress/answers and manifest-owned video positions. */
 export function encodeSuspendData(
   manifest: ContentManifest,
   state: PlayerState,
