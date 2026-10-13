@@ -257,6 +257,19 @@ function setEndIntersecting(index: number, isIntersecting: boolean): void {
 }
 
 /**
+ * Settles a smooth Path jump the way a browser does when its animated scroll
+ * completes. The component listens for `scrollend` on both the window and the
+ * document, so dispatching it on either releases the suppression
+ * deterministically; tests use the document, where a document scroll's
+ * `scrollend` is reported.
+ */
+function settleScrollJump(): void {
+  act(() => {
+    document.dispatchEvent(new Event('scrollend'))
+  })
+}
+
+/**
  * Drives the ResizeObserver watching a mounted scene, reporting `height` as its
  * rendered outer height — jsdom does no layout, so the measurement is supplied
  * explicitly, exactly as the observer would read it in a browser.
@@ -478,8 +491,9 @@ describe('PackageView scroll interactions', () => {
     expect(sceneIndices()).toEqual([0])
     expect(text()).toContain('Welcome')
     expect(text()).not.toContain('Setup instructions.')
-    // The remaining pages are locked and never mounted.
-    expect(container.querySelector('[data-scroll-locked]')).not.toBeNull()
+    // The remaining pages are locked and never mounted, and the boundary notice
+    // stays out of the way until the current page's end is actually reached.
+    expect(container.querySelector('[data-scroll-locked]')).toBeNull()
     expect(container.querySelector('[data-scroll-page="1"]')).toBeNull()
   })
 
@@ -538,6 +552,46 @@ describe('PackageView scroll interactions', () => {
   })
 })
 
+describe('PackageView scroll natural layout', () => {
+  it('keeps the page scene at its natural height with no viewport centering', () => {
+    act(() => root.render(<Player contentPackage={gatedPackage} />))
+
+    const scene = container.querySelector<HTMLElement>('[data-scene-index="0"]')
+    expect(scene).not.toBeNull()
+    expect(scene?.classList.contains('min-h-dvh')).toBe(false)
+    expect(scene?.classList.contains('justify-center')).toBe(false)
+    expect(scene?.className).toContain('max-w-3xl')
+    expect(scene?.className).toContain('px-6')
+    // Responsive block padding keeps the natural flow readable on small screens.
+    expect(scene?.className).toContain('py-12')
+    expect(scene?.className).toContain('sm:py-18')
+  })
+
+  it('does not give a virtualized placeholder a viewport-tall height', () => {
+    window.scormBridge = {
+      restoreState: () => ({
+        location: 'page:plain-3.mdx',
+        pages: {
+          'page:plain-1.mdx': { completed: true },
+          'page:plain-2.mdx': { completed: true },
+          'page:plain-3.mdx': { visited: true }
+        }
+      })
+    }
+
+    act(() => root.render(<Player contentPackage={progressPackage} />))
+
+    const placeholder = container.querySelector<HTMLElement>(
+      '[data-scroll-virtualized="page:plain-1.mdx"]'
+    )
+    expect(placeholder).not.toBeNull()
+    expect(placeholder?.classList.contains('min-h-dvh')).toBe(false)
+    // Never mounted, so it keeps a bounded, non-viewport box that is still a real
+    // region to scroll back to, rather than collapsing to zero height.
+    expect(placeholder?.style.minHeight).toBe('10rem')
+  })
+})
+
 describe('PackageView scroll completion gating', () => {
   it('completes a questionnaire-free page at its end and unlocks the next', () => {
     const saveState = vi.fn()
@@ -560,8 +614,17 @@ describe('PackageView scroll completion gating', () => {
     expect(sceneIndices()).toEqual([0])
     expect(container.querySelector('[data-scroll-page="1"]')).toBeNull()
 
+    // The end is reached but the page still has an unsubmitted questionnaire, so
+    // the page after it stays locked and the boundary notice shows at its bottom.
+    const boundary = container.querySelector('[data-scroll-locked]')
+    expect(boundary).not.toBeNull()
+    expect(container.querySelector('[data-scene-index="0"]')?.contains(boundary!)).toBe(true)
+    expect(boundary?.textContent).toContain('Complete this page to continue.')
+
     answerQuestionnaire()
     expect(sceneIndices()).toEqual([0, 1])
+    // Completing the page unlocked the next one, so the notice is gone.
+    expect(container.querySelector('[data-scroll-locked]')).toBeNull()
   })
 
   it('waits for the page end when the questionnaire is submitted first', () => {
@@ -605,9 +668,11 @@ describe('PackageView scroll virtualization and locking', () => {
     act(() => root.render(<Player contentPackage={progressPackage} />))
 
     // The active page mounts; a page outside the window renders a placeholder
-    // instead of its content.
+    // instead of its content. The locked page four stays unmounted, and the
+    // boundary notice waits until the frontier page's end is actually reached.
     expect(container.querySelector('[data-scroll-virtualized]')).not.toBeNull()
-    expect(container.querySelector('[data-scroll-locked]')).not.toBeNull()
+    expect(container.querySelector('[data-scroll-locked]')).toBeNull()
+    expect(container.querySelector('[data-scroll-page="3"]')).toBeNull()
   })
 
   it('activates and mounts a page when its placeholder region becomes visible', () => {
@@ -665,11 +730,12 @@ describe('PackageView scroll virtualization and locking', () => {
     expect(placeholder).not.toBeNull()
     expect(sceneIndices()).not.toContain(2)
 
-    // The whole placeholder region is observed, so a jump that lands past its
-    // start boundary—End, PageDown or a scrollbar drag that leaves its start
-    // above the viewport—still activates it.
+    // The whole placeholder region is observed against the upper viewport band,
+    // so a jump that lands past its start boundary—End, PageDown or a scrollbar
+    // drag that leaves its start above the viewport—still activates it.
     const state = observerFor(placeholder as Element)
-    expect(state.options?.rootMargin).toBe('0px 0px -50% 0px')
+    expect(state.options?.root).toBeNull()
+    expect(state.options?.rootMargin).toBe('0px 0px -75% 0px')
 
     setRegionIntersecting(2, true)
 
@@ -746,6 +812,48 @@ describe('PackageView scroll virtualization and locking', () => {
     expect(placeholder).not.toBeNull()
     // The placeholder keeps the measured height, so the pages below do not shift.
     expect(placeholder?.style.minHeight).toBe('1234px')
+  })
+})
+
+describe('PackageView scroll locked boundary', () => {
+  it('shows the boundary at the bottom of the current page only once its end is reached', () => {
+    act(() => root.render(<Player contentPackage={gatedPackage} />))
+
+    // Nothing is shown until the frontier page's end boundary is crossed.
+    expect(container.querySelector('[data-scroll-locked]')).toBeNull()
+
+    setEndIntersecting(0, true)
+
+    const boundary = container.querySelector('[data-scroll-locked]')
+    const scene = container.querySelector('[data-scene-index="0"]')
+    expect(boundary).not.toBeNull()
+    // It lives inside the current page and is its last element, so it reads as
+    // the bottom of that page rather than a separate screen.
+    expect(scene?.contains(boundary!)).toBe(true)
+    expect(scene?.lastElementChild).toBe(boundary)
+    expect(boundary?.textContent).toContain('Complete this page to continue.')
+  })
+
+  it('removes the boundary and mounts the next page once the frontier completes', () => {
+    act(() => root.render(<Player contentPackage={gatedPackage} />))
+
+    setEndIntersecting(0, true)
+    expect(container.querySelector('[data-scroll-locked]')).not.toBeNull()
+
+    answerQuestionnaire()
+
+    // Completion unlocked the next page, so the generic boundary is gone and the
+    // newly accessible page is the frontier, still untouched at its own start.
+    expect(container.querySelector('[data-scroll-locked]')).toBeNull()
+    expect(sceneIndices()).toEqual([0, 1])
+  })
+
+  it('never renders locked page content even while the boundary is shown', () => {
+    act(() => root.render(<Player contentPackage={gatedPackage} />))
+    setEndIntersecting(0, true)
+
+    expect(text()).not.toContain('Setup instructions.')
+    expect(container.querySelector('[data-scroll-page="1"]')).toBeNull()
   })
 })
 
@@ -857,6 +965,27 @@ describe('PackageView scroll persistence', () => {
     expect(sceneIndices()).toContain(1)
     expect(saveState).toHaveBeenCalledTimes(1)
   })
+
+  it('restores a saved location instantly rather than with a smooth scroll', () => {
+    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
+    window.scormBridge = {
+      restoreState: () => ({
+        location: 'page:plain-3.mdx',
+        pages: {
+          'page:plain-1.mdx': { completed: true },
+          'page:plain-2.mdx': { completed: true },
+          'page:plain-3.mdx': { visited: true }
+        }
+      })
+    }
+
+    act(() => root.render(<Player contentPackage={progressPackage} />))
+
+    expect(scrollIntoView).toHaveBeenCalled()
+    for (const [options] of scrollIntoView.mock.calls) {
+      expect(options).toMatchObject({ block: 'start', behavior: 'auto' })
+    }
+  })
 })
 
 describe('PackageView same-page Path navigation', () => {
@@ -922,6 +1051,15 @@ describe('PackageView non-adjacent Path navigation', () => {
     const contexts = scrollIntoView.mock.contexts as Element[]
     expect(contexts.some((element) => element.getAttribute('data-scene-index') === '3')).toBe(true)
     expect(contexts.some((element) => element.hasAttribute('data-scroll-virtualized'))).toBe(false)
+
+    // A deliberate Path jump animates to the target scene ...
+    const targetCall = contexts.findIndex(
+      (element) => element.getAttribute('data-scene-index') === '3'
+    )
+    expect(scrollIntoView.mock.calls[targetCall]?.[0]).toMatchObject({
+      block: 'start',
+      behavior: 'smooth'
+    })
   })
 
   it('keeps the intended destination over a stale neighbour activation', () => {
@@ -946,7 +1084,7 @@ describe('PackageView non-adjacent Path navigation', () => {
     expect(container.querySelector('[data-scene-index="3"]')).not.toBeNull()
   })
 
-  it('releases activation suppression once the staged jump settles', () => {
+  it('retains activation suppression through the jump and releases it on settle', () => {
     const saveState = vi.fn()
     window.scormBridge = { restoreState: restoreWithCompletedPrefix, saveState }
 
@@ -954,21 +1092,152 @@ describe('PackageView non-adjacent Path navigation', () => {
 
     act(() => container.querySelector<HTMLButtonElement>('[data-path-entry]')?.click())
 
-    // The staged jump committed: the destination scene mounted and the
-    // suppression it raised was released once the jump settled.
+    // The staged jump committed: the destination scene mounted.
     expect(container.querySelector('[data-scene-index="3"]')).not.toBeNull()
+    expect(lastSaved(saveState).location).toBe('page:plain-4.mdx')
 
-    // A page outside the re-centred window still renders as a placeholder, and
-    // its region activation is no longer ignored.
+    // A page outside the re-centred window still renders as a placeholder. While
+    // the smooth scroll animates, its region crossing the band must not steal the
+    // destination — the suppression is held until the jump really settles.
     const placeholder = container.querySelector('[data-scroll-virtualized="page:plain-2.mdx"]')
     expect(placeholder).not.toBeNull()
     expect(sceneIndices()).not.toContain(1)
 
     setRegionIntersecting(1, true)
+    expect(sceneIndices()).not.toContain(1)
+    expect(lastSaved(saveState).location).toBe('page:plain-4.mdx')
+
+    // The animation ends; the browser reports `scrollend`.
+    settleScrollJump()
+
+    // The observer only reports changes, so the intermediate page leaves the band
+    // and re-enters it as the learner scrolls back; activation now takes effect.
+    setRegionIntersecting(1, false)
+    setRegionIntersecting(1, true)
 
     expect(sceneIndices()).toContain(1)
     expect(container.querySelector('[data-scroll-virtualized="page:plain-2.mdx"]')).toBeNull()
     expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
+  })
+
+  it('releases suppression on the settle fallback when the scroll reports nothing', () => {
+    // jsdom's `scrollIntoView` is a stub, and under reduced motion a real one is a
+    // no-op too: neither `scroll` nor `scrollend` ever arrives, so the bounded
+    // fallback has to lift the suppression rather than leave it pending forever.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const saveState = vi.fn()
+      window.scormBridge = { restoreState: restoreWithCompletedPrefix, saveState }
+
+      act(() => root.render(<Player contentPackage={nonAdjacentPathPackage} />))
+      act(() => container.querySelector<HTMLButtonElement>('[data-path-entry]')?.click())
+
+      expect(container.querySelector('[data-scene-index="3"]')).not.toBeNull()
+      const placeholder = container.querySelector('[data-scroll-virtualized="page:plain-2.mdx"]')
+      expect(placeholder).not.toBeNull()
+
+      // Still suppressed before the fallback fires.
+      setRegionIntersecting(1, true)
+      expect(sceneIndices()).not.toContain(1)
+      expect(lastSaved(saveState).location).toBe('page:plain-4.mdx')
+
+      act(() => {
+        vi.advanceTimersByTime(5000)
+      })
+
+      setRegionIntersecting(1, false)
+      setRegionIntersecting(1, true)
+
+      expect(sceneIndices()).toContain(1)
+      expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('holds suppression past the quiet period until the animation reports a scroll', () => {
+    // A smooth animation can take longer than the quiet period to deliver its
+    // first `scroll` frame. The quiet period must not be armed at the moment the
+    // jump is staged, or suppression would end before the scroll even begins; the
+    // overall timeout, not the quiet period, is what bounds an eventless jump.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const saveState = vi.fn()
+      window.scormBridge = { restoreState: restoreWithCompletedPrefix, saveState }
+
+      act(() => root.render(<Player contentPackage={nonAdjacentPathPackage} />))
+      act(() => container.querySelector<HTMLButtonElement>('[data-path-entry]')?.click())
+
+      expect(container.querySelector('[data-scene-index="3"]')).not.toBeNull()
+      expect(container.querySelector('[data-scroll-virtualized="page:plain-2.mdx"]')).not.toBeNull()
+
+      // Past the quiet period with no scroll at all: still suppressed, because
+      // the suppression is only released once scrolling is observed to stop.
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
+      setRegionIntersecting(1, true)
+      expect(sceneIndices()).not.toContain(1)
+      expect(lastSaved(saveState).location).toBe('page:plain-4.mdx')
+
+      // The overall timeout still lifts it when nothing ever arrives.
+      act(() => {
+        vi.advanceTimersByTime(1000)
+      })
+      setRegionIntersecting(1, false)
+      setRegionIntersecting(1, true)
+
+      expect(sceneIndices()).toContain(1)
+      expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('releases suppression a quiet period after the last scroll event', () => {
+    // Without `scrollend`, suppression is released once scrolling has been quiet
+    // for the settle period. The period starts on the first event and each further
+    // event restarts it, so the release tracks the last frame, not the first.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const saveState = vi.fn()
+      window.scormBridge = { restoreState: restoreWithCompletedPrefix, saveState }
+
+      act(() => root.render(<Player contentPackage={nonAdjacentPathPackage} />))
+      act(() => container.querySelector<HTMLButtonElement>('[data-path-entry]')?.click())
+
+      expect(container.querySelector('[data-scene-index="3"]')).not.toBeNull()
+
+      // The animation reports its first frame; the quiet period starts now.
+      act(() => {
+        document.dispatchEvent(new Event('scroll'))
+        vi.advanceTimersByTime(100)
+      })
+      setRegionIntersecting(1, true)
+      expect(sceneIndices()).not.toContain(1)
+
+      // A further frame restarts the period, so it is not yet quiet long enough.
+      act(() => {
+        document.dispatchEvent(new Event('scroll'))
+        vi.advanceTimersByTime(100)
+      })
+      setRegionIntersecting(1, false)
+      setRegionIntersecting(1, true)
+      expect(sceneIndices()).not.toContain(1)
+      expect(lastSaved(saveState).location).toBe('page:plain-4.mdx')
+
+      // Quiet for the full settle period after the last frame: released.
+      act(() => {
+        vi.advanceTimersByTime(150)
+      })
+      setRegionIntersecting(1, false)
+      setRegionIntersecting(1, true)
+
+      expect(sceneIndices()).toContain(1)
+      expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

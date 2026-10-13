@@ -14,7 +14,7 @@ import type { PlayerLocale } from '../i18n/locale'
 export const en = {
   'slides.previousPage': 'Previous page',
   'slides.continueNextPage': 'Continue to next page',
-  'scroll.locked': 'Finish this page to unlock the rest.',
+  'scroll.locked': 'Complete this page to continue.',
   'tiles.locked': 'Locked',
   'path.label': 'Path',
   'path.visited': 'Visited',
@@ -44,7 +44,7 @@ export type MessageId = keyof typeof en
 export const ptBR: Record<MessageId, string> = {
   'slides.previousPage': 'Página anterior',
   'slides.continueNextPage': 'Continuar para a próxima página',
-  'scroll.locked': 'Conclua esta página para desbloquear o restante.',
+  'scroll.locked': 'Conclua esta página para continuar.',
   'tiles.locked': 'Bloqueado',
   'path.label': 'Trilha',
   'path.visited': 'Visitada',

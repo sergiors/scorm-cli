@@ -62,10 +62,16 @@ describe('PackageView scroll presentation', () => {
     }
   })
 
-  it('renders the current page as a full-height scene without paging controls', () => {
+  it('renders the current page as a natural-height scene without paging controls', () => {
     const html = renderView(scrollPackage)
-    // The displayed page fills the viewport; no adjacent page peeks in.
-    expect(html).toContain('min-h-dvh')
+    // Pages flow at their natural content height rather than filling the
+    // viewport, and no adjacent page peeks in.
+    expect(html).not.toContain('min-h-dvh')
+    const sceneTag = html.match(/<div data-scene-index="0"[^>]*>/)?.[0] ?? ''
+    expect(sceneTag).not.toContain('min-h-dvh')
+    expect(sceneTag).not.toContain('justify-center')
+    expect(sceneTag).toContain('max-w-3xl')
+    expect(sceneTag).toContain('sm:py-18')
     expect(html).not.toContain('snap-proximity')
     expect(html).not.toContain('snap-start')
     // The package never exposes scroll paging controls; the questionnaire's

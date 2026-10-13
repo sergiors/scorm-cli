@@ -11,9 +11,9 @@ import { clampPageIndex } from '../lib/sequence'
 import { ContentRenderer } from './ContentRenderer'
 
 /**
- * A page counts as active while its region overlaps the upper half of the scroll
- * viewport, so scrolling down hands activity to the page entering the top half
- * and the virtualization window follows the learner.
+ * A page counts as active while its region crosses the upper band of the scroll
+ * viewport, so the page the learner is reading — the one at the top of the
+ * viewport — owns activation and the virtualization window follows them.
  *
  * Observing the region rather than only its start boundary line means an instant
  * jump that lands anywhere inside a page—End, PageDown, a scrollbar drag or a
@@ -22,16 +22,16 @@ import { ContentRenderer } from './ContentRenderer'
  * viewport, so a start sentinel alone would never cross this band and the page
  * would stay a blank placeholder.
  *
- * The band is a half-open slice, not a line, so the boundary between two pages
- * can fall inside it and both neighbouring regions can intersect it at once —
- * pages are only guaranteed to be a viewport tall, which bounds the *starts* in
- * the band to one, not the regions. That single start means a scroll or jump
- * crosses at most one activation boundary per frame, so exactly one region flips
- * from not-visible to visible and the active page never flip-flops. The window of
- * one page each side keeps both regions around that boundary mounted (a scene or
- * its placeholder, both observed with this margin), so the hand-off is deliberate.
+ * Pages now keep their natural content height, so a page may be shorter than the
+ * band and its neighbours may overlap it. Anchoring the band to the viewport top
+ * (rather than its middle) keeps a page reachable the moment it appears, and
+ * keeping it a narrow slice bounds how many page regions can intersect it at
+ * once, so a boundary merely entering the viewport does not hand activation to a
+ * neighbour on a tiny scroll. The window of one page each side keeps both regions
+ * around a boundary mounted (a scene or its placeholder, both observed with this
+ * margin), so the hand-off is deliberate.
  */
-const PAGE_ACTIVE_MARGIN = '0px 0px -50% 0px'
+const PAGE_ACTIVE_MARGIN = '0px 0px -75% 0px'
 
 /**
  * A page's end boundary counts as reached once the end sentinel enters the
@@ -43,10 +43,38 @@ const PAGE_END_MARGIN = '0px 0px 64px 0px'
 
 /**
  * How many pages on each side of the active page keep their content mounted.
- * Pages outside the window render as height-preserving placeholders, so a long
- * continuous scroll never mounts the whole document at once.
+ * Pages outside the window render as placeholders: a page that has mounted keeps
+ * its measured height, while one that never has reserves the bounded fallback
+ * (see {@link PLACEHOLDER_FALLBACK_HEIGHT}) — so a long continuous scroll never
+ * mounts the whole document at once, and an unmeasured page is still a real,
+ * observable region rather than collapsing to nothing.
  */
 const VIRTUALIZATION_WINDOW = 1
+
+/**
+ * The height a placeholder reserves before its page has ever mounted and been
+ * measured. It is deliberately a bounded, non-viewport floor rather than the
+ * old full-viewport default: the placeholder is observed for activation, so it
+ * needs a real, non-zero box, but reserving a whole viewport made a short page's
+ * real content shrink the document by most of a screen when it mounted again
+ * above the viewport. A measured height always replaces this floor.
+ */
+const PLACEHOLDER_FALLBACK_HEIGHT = '10rem'
+
+/**
+ * How long the viewport must stay quiet after the last `scroll` event before a
+ * smooth jump is treated as settled on browsers that do not report `scrollend`.
+ */
+const SCROLL_SETTLE_MS = 150
+
+/**
+ * The longest a smooth jump keeps observer activation suppressed. `scrollend`
+ * never fires when the scroll position did not change, and a no-op
+ * `scrollIntoView` — reduced motion, an already-positioned target or a test
+ * stub — reports neither `scroll` nor `scrollend`, so this bound is what keeps
+ * the pending state from hanging.
+ */
+const SCROLL_JUMP_TIMEOUT_MS = 1200
 
 /** The nodes already opened or done, which the shared access policy treats as reached. */
 function reachedPageIds(
@@ -156,7 +184,7 @@ export function ScrollPresentation({
   // Measured outer heights of the scenes that have mounted, so a scene replaced
   // by a placeholder keeps its exact size and the document does not jump when
   // the window moves. Only pages that have actually mounted are measured; the
-  // rest fall back to the placeholder's own viewport-tall default.
+  // rest reserve the bounded placeholder fallback until they first mount.
   const [pageHeights, setPageHeights] = useState<Record<string, number>>({})
   const handlePageHeight = useCallback((pageId: string, height: number) => {
     setPageHeights((previous) =>
@@ -206,11 +234,14 @@ export function ScrollPresentation({
   )
 
   // Resume at the active page once, so a saved location opens where it was.
+  // The restore is deliberately instant (`behavior: 'auto'`): a resumed lesson
+  // should already be where it left off, not animate a long smooth scroll in
+  // from the top of the document.
   const activeRef = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     const element = activeRef.current
     if (element && typeof element.scrollIntoView === 'function') {
-      element.scrollIntoView({ block: 'start' })
+      element.scrollIntoView({ block: 'start', behavior: 'auto' })
     }
     // Only the initial active page matters; later activity is driven by scrolling.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -220,6 +251,11 @@ export function ScrollPresentation({
   // before paint. Querying `[data-scene-index]` (never `[data-scroll-page]`, which
   // a placeholder also carries) guarantees the mounted scene is the element moved,
   // so the jump lands on real content rather than the placeholder it replaced.
+  //
+  // Unlike the initial restore, a deliberate Path navigation scrolls smoothly, so
+  // the suppression it raised is held until that scroll actually settles — see
+  // `holdActivationUntilScrollSettles` — rather than released the moment the
+  // animation starts, which a mid-flight observer callback could otherwise exploit.
   useLayoutEffect(() => {
     if (pendingTargetId === null) {
       return
@@ -227,25 +263,30 @@ export function ScrollPresentation({
     const index = pages.findIndex((page) => page.id === pendingTargetId)
     const element = document.querySelector(`[data-scene-index="${index}"]`)
     if (element && typeof element.scrollIntoView === 'function') {
-      element.scrollIntoView({ block: 'start' })
+      element.scrollIntoView({ block: 'start', behavior: 'smooth' })
     }
-  }, [pendingTargetId, pages])
 
-  // Release the activation suppression only once the jump has settled, so any
-  // observer callback racing the re-centre is ignored and the destination wins.
-  useEffect(() => {
-    if (pendingTargetId === null) {
-      return
-    }
-    pendingTargetRef.current = null
-    setPendingTargetId(null)
-  }, [pendingTargetId])
+    return holdActivationUntilScrollSettles(() => {
+      pendingTargetRef.current = null
+      setPendingTargetId(null)
+    })
+  }, [pendingTargetId, pages])
 
   if (pages.length === 0) {
     return null
   }
 
-  const lockedCount = pages.length - accessibleIndices.length
+  // The frontier of the sequential progression: the last page the learner can
+  // currently reach. When its end is reached but the page after it is still
+  // locked, the boundary notice belongs at the bottom of *this* page — the one
+  // the learner is on — and disappears the moment completion unlocks the next.
+  const finalAccessibleIndex =
+    accessibleIndices.length > 0 ? accessibleIndices[accessibleIndices.length - 1]! : -1
+  const afterFinalIndex = finalAccessibleIndex + 1
+  const nextAfterFinalLocked =
+    afterFinalIndex > 0 &&
+    afterFinalIndex < pages.length &&
+    !accessible.has(pages[afterFinalIndex]!.id)
 
   return (
     <div data-scroll>
@@ -294,15 +335,96 @@ export function ScrollPresentation({
             onVideoPosition={onVideoPosition}
             complete={complete}
             onPageCompleted={onPageCompleted}
+            showLockedBoundary={
+              index === finalAccessibleIndex &&
+              nextAfterFinalLocked &&
+              endedIds.has(page.id) &&
+              !complete
+            }
           />
         )
       })}
 
       <PageSeenReporter pageId={activeId} onPageSeen={onPageSeen} />
-
-      {lockedCount > 0 ? <LockedBoundary /> : null}
     </div>
   )
+}
+
+/**
+ * Holds observer activation until a smooth jump has settled, then releases it.
+ *
+ * A smooth `scrollIntoView` animates for a few hundred milliseconds, during
+ * which the re-centred virtualization window mounts and unmounts page regions.
+ * Their `IntersectionObserver` callbacks would otherwise activate an
+ * intermediate page — moving the stored location and re-centring the window
+ * again — before the intended target lands. The suppression is released on the
+ * first of:
+ *
+ * - `scrollend`, where the browser reports it for a document scroll (an engine
+ *   without it simply never fires the listener, so no capability check is
+ *   needed);
+ * - a quiet period (`SCROLL_SETTLE_MS`) after the last `scroll` event, for
+ *   browsers that do not report `scrollend`. The period starts only once a
+ *   `scroll` event is observed and is extended by each further one, so an
+ *   animation whose first frame is slow cannot have its suppression released
+ *   before the scroll has even begun; or
+ * - an overall timeout (`SCROLL_JUMP_TIMEOUT_MS`), which bounds the wait from
+ *   the moment the jump is staged — because `scrollend` never fires when the
+ *   position did not change and a no-op scroll (reduced motion, an
+ *   already-positioned target or a test stub) reports nothing at all.
+ *
+ * The returned cleanup removes every listener and timer, so a further jump or an
+ * unmount cannot leave a stale release behind.
+ */
+function holdActivationUntilScrollSettles(release: () => void): () => void {
+  // A document scroll may be reported on the window or the document depending on
+  // the engine, so both are watched; `settle` is idempotent either way.
+  const targets: EventTarget[] = [window, document]
+  let settled = false
+  let settleTimer: ReturnType<typeof setTimeout> | undefined
+  let hardTimer: ReturnType<typeof setTimeout> | undefined
+
+  const cleanup = () => {
+    if (settleTimer !== undefined) {
+      clearTimeout(settleTimer)
+    }
+    if (hardTimer !== undefined) {
+      clearTimeout(hardTimer)
+    }
+    for (const target of targets) {
+      target.removeEventListener('scrollend', settle)
+      target.removeEventListener('scroll', onScroll)
+    }
+  }
+
+  const settle = () => {
+    if (settled) {
+      return
+    }
+    settled = true
+    cleanup()
+    release()
+  }
+
+  // Each `scroll` event restarts the quiet period, so suppression is lifted
+  // `SCROLL_SETTLE_MS` after the scroll actually stops. The period is *not*
+  // started up front: a smooth animation may take longer than that to deliver
+  // its first frame, and an eventless no-op jump is bounded by the overall
+  // timeout below rather than by a quiet period that nothing would extend.
+  const onScroll = () => {
+    if (settleTimer !== undefined) {
+      clearTimeout(settleTimer)
+    }
+    settleTimer = setTimeout(settle, SCROLL_SETTLE_MS)
+  }
+
+  for (const target of targets) {
+    target.addEventListener('scrollend', settle)
+    target.addEventListener('scroll', onScroll, { passive: true })
+  }
+  hardTimer = setTimeout(settle, SCROLL_JUMP_TIMEOUT_MS)
+
+  return cleanup
 }
 
 /**
@@ -404,7 +526,11 @@ function observeVisibility(
  *
  * Once the page has mounted at least once its measured height is applied, so
  * replacing the scene with this placeholder keeps the document's height and the
- * surrounding pages' offsets unchanged instead of collapsing to one viewport.
+ * surrounding pages' offsets unchanged. Before the first mount nothing is known,
+ * so a bounded, non-viewport floor keeps the region a real, observable box — a
+ * page the learner has never opened still has to be reachable when scrolling
+ * back to it — without reserving a whole viewport (see
+ * {@link PLACEHOLDER_FALLBACK_HEIGHT}).
  */
 function VirtualizedPlaceholder({
   index,
@@ -437,8 +563,8 @@ function VirtualizedPlaceholder({
       data-scroll-page={index}
       data-scroll-virtualized={pageId}
       aria-hidden="true"
-      style={height === undefined ? undefined : { minHeight: height }}
-      className="mx-auto min-h-dvh w-full max-w-3xl px-6"
+      style={{ minHeight: height ?? PLACEHOLDER_FALLBACK_HEIGHT }}
+      className="mx-auto w-full max-w-3xl px-6"
     />
   )
 }
@@ -465,12 +591,21 @@ interface PageSceneProps {
   complete: boolean
   /** Reports the page completion exactly once. */
   onPageCompleted: (id: string) => void
+  /**
+   * Whether this is the final accessible page, its end has been reached and the
+   * page after it is still locked, so the generic "complete this page to
+   * continue" boundary belongs at the bottom of this page.
+   */
+  showLockedBoundary: boolean
 }
 
 /**
- * One page in the continuous document. Its whole region reports when the page
- * becomes active and an end sentinel reports when its end is reached. It remounts
- * per page id, which resets both observers for the next page.
+ * One page in the continuous document. It keeps its natural content height —
+ * no forced viewport height and no vertical centering — with responsive block
+ * padding, so pages flow into one another and the document is the single scroll
+ * container. Its whole region reports when the page becomes active and an end
+ * sentinel reports when its end is reached. It remounts per page id, which
+ * resets both observers for the next page.
  */
 function PageScene({
   page,
@@ -487,7 +622,8 @@ function PageScene({
   onQuestionnaireSubmitted,
   onVideoPosition,
   complete,
-  onPageCompleted
+  onPageCompleted,
+  showLockedBoundary
 }: PageSceneProps) {
   const regionRef = useRef<HTMLDivElement>(null)
 
@@ -520,8 +656,8 @@ function PageScene({
   // Report the scene's outer height as its content settles, so when the window
   // later swaps this scene for a placeholder the replacement is the same size
   // and the pages below do not shift. `ResizeObserver` is unavailable under SSR
-  // and in some test environments, where the placeholder's viewport-tall default
-  // is used instead.
+  // and in some test environments, where the placeholder's bounded fallback
+  // height is used instead.
   useEffect(() => {
     const element = regionRef.current
     if (!element || typeof ResizeObserver === 'undefined') {
@@ -553,7 +689,7 @@ function PageScene({
       data-scene-index={index}
       data-scroll-page={index}
       aria-label={page.metadata.title}
-      className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col justify-center px-6 py-18"
+      className="mx-auto w-full max-w-3xl px-4 py-12"
     >
       <section className="prose prose-stone max-w-none! dark:prose-invert">
         <ContentRenderer
@@ -572,6 +708,8 @@ function PageScene({
 
       <div ref={endRef} data-scroll-end={index} aria-hidden="true" className="h-px w-full" />
 
+      {showLockedBoundary ? <LockedBoundary /> : null}
+
       <PageCompletionReporter
         pageId={page.id}
         complete={complete}
@@ -581,12 +719,18 @@ function PageScene({
   )
 }
 
-/** Marks that locked pages remain, without mounting or revealing their content. */
+/**
+ * Marks that the page after the current one remains locked, without mounting or
+ * revealing any locked content. It sits at the bottom of the final accessible
+ * page (see {@link PageScene}) and is a natural-height notice rather than a
+ * viewport-tall panel, so it reads as the end of that page, not a separate
+ * screen.
+ */
 function LockedBoundary() {
   return (
     <div
       data-scroll-locked
-      className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col items-center justify-center gap-2 px-6 text-muted-foreground"
+      className="flex items-center justify-center gap-2 pt-12 text-muted-foreground"
     >
       <Lock aria-hidden="true" className="size-5" />
       <p className="text-sm">

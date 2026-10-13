@@ -38,6 +38,11 @@ describe('player message catalogs', () => {
       )
     }
   })
+
+  it('wording for the scroll locked boundary is generic and locale-aligned', () => {
+    expect(en['scroll.locked']).toBe('Complete this page to continue.')
+    expect(ptBR['scroll.locked']).toBe('Conclua esta página para continuar.')
+  })
 })
 
 describe('custom i18n module removal', () => {
