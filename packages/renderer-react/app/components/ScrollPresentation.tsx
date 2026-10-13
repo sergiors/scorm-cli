@@ -11,27 +11,43 @@ import { clampPageIndex } from '../lib/sequence'
 import { ContentRenderer } from './ContentRenderer'
 
 /**
- * A page counts as active while its region crosses the upper band of the scroll
- * viewport, so the page the learner is reading — the one at the top of the
- * viewport — owns activation and the virtualization window follows them.
+ * The reading anchor, as a fraction of the viewport height. The page the learner
+ * is reading is the accessible page whose region contains this fixed line near
+ * the top of the viewport — not the page that is merely most visible, whose
+ * activation would flicker with the visibility ratio as pages of different
+ * heights cross the viewport.
  *
- * Observing the region rather than only its start boundary line means an instant
- * jump that lands anywhere inside a page—End, PageDown, a scrollbar drag or a
- * restored location—still activates the page the viewport now shows. A jump into
- * the middle or lower portion of a distant placeholder leaves its start above the
- * viewport, so a start sentinel alone would never cross this band and the page
- * would stay a blank placeholder.
- *
- * Pages now keep their natural content height, so a page may be shorter than the
- * band and its neighbours may overlap it. Anchoring the band to the viewport top
- * (rather than its middle) keeps a page reachable the moment it appears, and
- * keeping it a narrow slice bounds how many page regions can intersect it at
- * once, so a boundary merely entering the viewport does not hand activation to a
- * neighbour on a tiny scroll. The window of one page each side keeps both regions
- * around a boundary mounted (a scene or its placeholder, both observed with this
- * margin), so the hand-off is deliberate.
+ * A point test is stable for a tall page (the anchor stays inside it while the
+ * learner reads) and for a short page (the anchor enters it the moment its start
+ * crosses the line and leaves the moment its end does). Unlike a narrow
+ * intersection band, a single point can only ever be inside one stacked region,
+ * so a boundary can never hand activation to two neighbours at once.
  */
-const PAGE_ACTIVE_MARGIN = '0px 0px -75% 0px'
+const PAGE_ANCHOR_RATIO = 0.35
+
+/**
+ * The boundary deadband, in pixels, either side of a shared page boundary within
+ * which the page the learner is already on keeps the anchor. A plain containment
+ * test is unique at any instant, but a learner resting a few pixels either side
+ * of the exact boundary would still flip the current page on every scroll event;
+ * the deadband turns that instant into a small band the current page survives
+ * until the neighbour is clearly entered — in either direction. It is capped by
+ * half the shorter of the two adjacent regions (see
+ * {@link retainCurrentAcrossDeadband}) so a very short page can still become
+ * current once the anchor is well inside it.
+ */
+const PAGE_HANDOFF_DEADBAND = 48
+
+/**
+ * How many accessible pages before and after the viewport stay mounted. The
+ * mounted set is derived from the *viewport*, never from the active page, so
+ * moving the active page alone cannot recycle a scene: only scrolling far enough
+ * that a page leaves the retained window does. Two pages of overscan above keep
+ * a recently read page real when scrolling back, and the single page below
+ * preloads the next accessible (unlocked) page.
+ */
+const PREVIOUS_PAGES_KEPT = 2
+const NEXT_PAGES_KEPT = 1
 
 /**
  * A page's end boundary counts as reached once the end sentinel enters the
@@ -42,22 +58,12 @@ const PAGE_ACTIVE_MARGIN = '0px 0px -75% 0px'
 const PAGE_END_MARGIN = '0px 0px 64px 0px'
 
 /**
- * How many pages on each side of the active page keep their content mounted.
- * Pages outside the window render as placeholders: a page that has mounted keeps
- * its measured height, while one that never has reserves the bounded fallback
- * (see {@link PLACEHOLDER_FALLBACK_HEIGHT}) — so a long continuous scroll never
- * mounts the whole document at once, and an unmeasured page is still a real,
- * observable region rather than collapsing to nothing.
- */
-const VIRTUALIZATION_WINDOW = 1
-
-/**
  * The height a placeholder reserves before its page has ever mounted and been
  * measured. It is deliberately a bounded, non-viewport floor rather than the
- * old full-viewport default: the placeholder is observed for activation, so it
- * needs a real, non-zero box, but reserving a whole viewport made a short page's
- * real content shrink the document by most of a screen when it mounted again
- * above the viewport. A measured height always replaces this floor.
+ * old full-viewport default: the placeholder keeps the page's scroll position
+ * real, but reserving a whole viewport made a short page's real content shrink
+ * the document by most of a screen when it mounted again above the viewport. A
+ * measured height always replaces this floor.
  */
 const PLACEHOLDER_FALLBACK_HEIGHT = '10rem'
 
@@ -68,11 +74,11 @@ const PLACEHOLDER_FALLBACK_HEIGHT = '10rem'
 const SCROLL_SETTLE_MS = 150
 
 /**
- * The longest a smooth jump keeps observer activation suppressed. `scrollend`
- * never fires when the scroll position did not change, and a no-op
- * `scrollIntoView` — reduced motion, an already-positioned target or a test
- * stub — reports neither `scroll` nor `scrollend`, so this bound is what keeps
- * the pending state from hanging.
+ * The longest a smooth jump keeps activation suppressed. `scrollend` never fires
+ * when the scroll position did not change, and a no-op `scrollIntoView` —
+ * reduced motion, an already-positioned target or a test stub — reports neither
+ * `scroll` nor `scrollend`, so this bound is what keeps the pending state from
+ * hanging.
  */
 const SCROLL_JUMP_TIMEOUT_MS = 1200
 
@@ -99,6 +105,117 @@ function donePageIds(
   return new Set(
     pages.filter((page) => pageStates[page.id]?.completed === true).map((page) => page.id)
   )
+}
+
+/** A page's rendered region, measured against the current scroll viewport. */
+interface PageRegion {
+  index: number
+  id: string
+  top: number
+  bottom: number
+}
+
+/** The contiguous run of accessible page indices the viewport currently shows. */
+interface ViewportRange {
+  first: number
+  last: number
+}
+
+/**
+ * Measures the rendered region of every accessible page, in document order.
+ * Scenes and placeholders both carry `data-scroll-page`, so an accessible page
+ * that is currently a placeholder still contributes a real box — which is what
+ * lets an instant jump into an unmounted page be detected from geometry alone.
+ */
+function measurePageRegions(root: HTMLElement, pages: readonly PageNode[]): PageRegion[] {
+  const regions: PageRegion[] = []
+  for (const element of root.querySelectorAll<HTMLElement>('[data-scroll-page]')) {
+    const index = Number(element.getAttribute('data-scroll-page'))
+    const page = pages[index]
+    if (page === undefined || Number.isNaN(index)) {
+      continue
+    }
+    const rect = element.getBoundingClientRect()
+    regions.push({ index, id: page.id, top: rect.top, bottom: rect.bottom })
+  }
+  regions.sort((a, b) => a.index - b.index)
+  return regions
+}
+
+/**
+ * Whether the anchor is still close enough to the boundary shared with the
+ * current page that the current page should keep it. Returns the current page to
+ * retain, or `null` when the neighbour has clearly won: the anchor is past the
+ * deadband, or the boundary is not between two adjacent pages (so a jump to a
+ * distant region is never held back). The deadband is capped by half the shorter
+ * of the two regions, so a page no taller than the base deadband can still be
+ * reached once the anchor is clearly inside it.
+ */
+function retainCurrentAcrossDeadband(
+  target: PageRegion,
+  current: PageRegion | null,
+  anchor: number
+): PageRegion | null {
+  if (current === null || Math.abs(current.index - target.index) !== 1) {
+    return null
+  }
+  const boundary = target.index > current.index ? target.top : target.bottom
+  const shorter = Math.min(current.bottom - current.top, target.bottom - target.top)
+  const deadband = Math.min(PAGE_HANDOFF_DEADBAND, shorter / 2)
+  return Math.abs(anchor - boundary) < deadband ? current : null
+}
+
+/**
+ * The page at the reading anchor. The region that contains the anchor wins, but
+ * a hand-off to an adjacent page is softened by a small deadband (see
+ * {@link PAGE_HANDOFF_DEADBAND}): while the anchor is within it the page the
+ * learner is already on is retained, so a few pixels of scroll around the exact
+ * boundary cannot oscillate the current page. A non-adjacent page — a jump
+ * landing deep inside another region — still wins immediately, and once the
+ * anchor clearly crosses the deadband the neighbour takes over in either
+ * direction.
+ *
+ * When no region contains the anchor (the anchor sits above the first page or
+ * below a document shorter than the viewport) the nearest region that is
+ * actually within the viewport is chosen, and only then the nearest overall, so
+ * an instant jump still resolves to a sensible accessible page.
+ */
+function pickAnchorPage(
+  regions: readonly PageRegion[],
+  anchor: number,
+  viewportHeight: number,
+  current: PageRegion | null
+): PageRegion | null {
+  for (const region of regions) {
+    if (region.top <= anchor && anchor < region.bottom) {
+      return retainCurrentAcrossDeadband(region, current, anchor) ?? region
+    }
+  }
+
+  let nearest: PageRegion | null = null
+  let nearestDistance = Number.POSITIVE_INFINITY
+  for (const region of regions) {
+    if (region.bottom <= 0 || region.top >= viewportHeight) {
+      continue
+    }
+    const distance = anchor < region.top ? region.top - anchor : anchor - region.bottom
+    if (distance < nearestDistance) {
+      nearestDistance = distance
+      nearest = region
+    }
+  }
+  if (nearest !== null) {
+    return nearest
+  }
+
+  for (const region of regions) {
+    const distance = anchor < region.top ? region.top - anchor : Math.max(0, anchor - region.bottom)
+    if (distance < nearestDistance) {
+      nearestDistance = distance
+      nearest = region
+    }
+  }
+  return nearest
 }
 
 export interface ScrollPresentationProps {
@@ -130,10 +247,25 @@ export interface ScrollPresentationProps {
  * A continuous, virtualized document of pages. Every page the shared sequential
  * progression policy reports as accessible renders in reading order; locked
  * future pages are never mounted, so their content cannot be reached until the
- * preceding page completes. Only pages inside the virtualization window mount
- * their content, keeping a long scroll cheap. Each accessible page completes
- * once its end boundary is reached and every questionnaire on it is submitted,
- * which in turn unlocks the next page.
+ * preceding page completes.
+ *
+ * The current page is the one under a fixed viewport anchor (see
+ * {@link PAGE_ANCHOR_RATIO}), resolved from page geometry on scroll. A plain
+ * containment test is unique at any instant, so a hand-off to an adjacent page is
+ * held until the anchor clearly crosses a small boundary deadband (see
+ * {@link PAGE_HANDOFF_DEADBAND}): a few pixels of scroll around the exact
+ * boundary cannot oscillate the current page, while a clear crossing still moves
+ * it in either direction. Locked pages never render, so they cannot participate.
+ * The semantic current page stays `activeId`; no parallel index is tracked.
+ *
+ * Only the pages around the viewport mount their content. The mounted window is
+ * derived from the viewport range — two pages of overscan above and the next
+ * page below — rather than from the active page, so changing the current page
+ * never immediately recycles a scene; a page becomes a placeholder only once it
+ * has scrolled far enough out of the retained window. A page that has mounted
+ * keeps its measured outer height, so the swap never shifts the document. Each
+ * accessible page completes once its end boundary is reached and every
+ * questionnaire on it is submitted, which in turn unlocks the next page.
  */
 export function ScrollPresentation({
   pages,
@@ -165,21 +297,97 @@ export function ScrollPresentation({
     return accessibleIndices[0] !== undefined ? pages[accessibleIndices[0]]!.id : ''
   })
 
-  const activeIndex = accessibleIndices.find((index) => pages[index]!.id === activeId) ?? -1
+  // The synchronous mirror of `activeId`, so the scroll handler closes over a
+  // stable callback yet always compares against the current page.
+  const activeIdRef = useRef(activeId)
+  const setActive = useCallback((pageId: string) => {
+    activeIdRef.current = pageId
+    setActiveId(pageId)
+  }, [])
 
-  // Observer activations are normally driven straight into `activeId`. A Path
-  // jump suppresses them until it settles (see `navigateToPageId`), so the
-  // intended destination cannot be stolen by a neighbour crossing the band as
-  // the virtualization window re-centres.
+  // The viewport range the mounted window follows. It starts as the single
+  // resume page — geometry is not available until the first real measurement —
+  // and the first scroll or resize refines it from the rendered regions.
+  const [viewportRange, setViewportRange] = useState<ViewportRange>(() => {
+    const index = Math.max(
+      0,
+      pages.findIndex((page) => page.id === activeId)
+    )
+    return { first: index, last: index }
+  })
+
+  // Scroll detection normally drives `activeId` directly. A Path jump suppresses
+  // it until the jump settles (see `navigateToPageId`), so the intended
+  // destination cannot be stolen by a neighbour crossing the anchor as the
+  // virtualization window re-centres.
   const [pendingTargetId, setPendingTargetId] = useState<string | null>(null)
   const pendingTargetRef = useRef<string | null>(null)
 
-  const activate = useCallback((pageId: string) => {
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  // Reads the rendered page regions and moves both the semantic current page and
+  // the mounted window to match the scroll position. It runs on `scroll` and
+  // `resize`, and once more when a staged jump releases its suppression, so a
+  // change is only ever driven by where the viewport actually is. Returns whether
+  // the viewport geometry was actually read and applied: a suppressed call, or a
+  // layout with nothing to measure (SSR, jsdom, an eventless no-op jump), reports
+  // `false` so a caller can fall back to a known page instead.
+  const detect = useCallback((): boolean => {
     if (pendingTargetRef.current !== null) {
+      return false
+    }
+    const root = rootRef.current
+    if (root === null) {
+      return false
+    }
+    const regions = measurePageRegions(root, pages)
+    // SSR and jsdom report a zero-size box for every region; with no geometry to
+    // read, the semantic state is kept and the caller-driven test/restore state
+    // stands in until a real layout exists.
+    if (regions.length === 0 || !regions.some((region) => region.bottom > region.top)) {
+      return false
+    }
+
+    const viewportHeight = window.innerHeight
+    const anchor = viewportHeight * PAGE_ANCHOR_RATIO
+    const current = regions.find((region) => region.id === activeIdRef.current) ?? null
+    const target = pickAnchorPage(regions, anchor, viewportHeight, current)
+
+    if (target !== null && target.id !== activeIdRef.current) {
+      setActive(target.id)
+    }
+
+    const visible = regions.filter((region) => region.bottom > 0 && region.top < viewportHeight)
+    let first = visible.length > 0 ? visible[0]!.index : -1
+    let last = visible.length > 0 ? visible[visible.length - 1]!.index : -1
+    if (target !== null) {
+      if (first === -1 || target.index < first) {
+        first = target.index
+      }
+      if (last === -1 || target.index > last) {
+        last = target.index
+      }
+    }
+    if (first !== -1 && last !== -1) {
+      setViewportRange((previous) =>
+        previous.first === first && previous.last === last ? previous : { first, last }
+      )
+    }
+    return true
+  }, [pages, setActive])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
       return
     }
-    setActiveId(pageId)
-  }, [])
+    detect()
+    window.addEventListener('scroll', detect, { passive: true })
+    window.addEventListener('resize', detect)
+    return () => {
+      window.removeEventListener('scroll', detect)
+      window.removeEventListener('resize', detect)
+    }
+  }, [detect])
 
   // Measured outer heights of the scenes that have mounted, so a scene replaced
   // by a placeholder keeps its exact size and the document does not jump when
@@ -212,14 +420,12 @@ export function ScrollPresentation({
   // A Path jumps to a referenced page. The reference only resolves when the
   // shared policy reports the page as accessible; a locked page is ignored.
   //
-  // The target can sit outside the virtualization window, where only a
-  // height-preserving placeholder is mounted. Scrolling that placeholder now
-  // would move the viewport to a stale box that the real scene replaces a moment
-  // later, and the placeholder's (or a neighbour's) observer could win the
-  // activation as the window re-centres. So the jump is staged instead: the
-  // target is recorded and activated, React re-centres the window around it, and
-  // only the freshly mounted scene is scrolled (see the layout effect below),
-  // while observer activation stays suppressed until the jump has settled.
+  // Only the pending target is recorded here: React mounts the target scene
+  // (the mounted window always includes the pending page) and the layout effect
+  // below scrolls it. The semantic current page is *not* moved ahead of the
+  // physical scroll — `activeId` follows the viewport, so once the smooth scroll
+  // settles the target is stored as current only if the viewport actually came to
+  // rest on it (see the settle handler below).
   const navigateToPageId = useCallback(
     (pageId: string) => {
       const index = pages.findIndex((page) => page.id === pageId)
@@ -228,7 +434,6 @@ export function ScrollPresentation({
       }
       pendingTargetRef.current = pageId
       setPendingTargetId(pageId)
-      setActiveId(pageId)
     },
     [accessible, pages]
   )
@@ -247,15 +452,16 @@ export function ScrollPresentation({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // A staged Path jump scrolls the target scene after the window has re-centred,
-  // before paint. Querying `[data-scene-index]` (never `[data-scroll-page]`, which
-  // a placeholder also carries) guarantees the mounted scene is the element moved,
-  // so the jump lands on real content rather than the placeholder it replaced.
+  // A staged Path jump scrolls the target scene after the window has mounted it,
+  // before paint. Querying `[data-scene-index]` (never `[data-scroll-page]`,
+  // which a placeholder also carries) guarantees the mounted scene is the element
+  // moved, so the jump lands on real content rather than the placeholder it
+  // replaced.
   //
   // Unlike the initial restore, a deliberate Path navigation scrolls smoothly, so
   // the suppression it raised is held until that scroll actually settles — see
   // `holdActivationUntilScrollSettles` — rather than released the moment the
-  // animation starts, which a mid-flight observer callback could otherwise exploit.
+  // animation starts, which a mid-flight detection could otherwise exploit.
   useLayoutEffect(() => {
     if (pendingTargetId === null) {
       return
@@ -267,10 +473,32 @@ export function ScrollPresentation({
     }
 
     return holdActivationUntilScrollSettles(() => {
+      const target = pendingTargetRef.current
       pendingTargetRef.current = null
       setPendingTargetId(null)
+      if (target === null) {
+        return
+      }
+      // The physical scroll has settled, so reconcile the semantic current page
+      // and the mounted window with where the viewport actually is — the same
+      // geometry detection that drives ordinary scrolling — rather than blindly
+      // forcing the staged destination. If the learner interrupted the jump, or
+      // the destination is short enough that neighbours share the screen, the
+      // viewport, not the intended target, decides both the current page and the
+      // range of mounted pages.
+      if (detect()) {
+        return
+      }
+      // No layout geometry to read (SSR/jsdom, or an eventless no-op scroll), so
+      // fall back to the intended target as the current page and re-anchor the
+      // mounted window to it.
+      setActive(target)
+      const targetIndex = pages.findIndex((page) => page.id === target)
+      if (targetIndex >= 0) {
+        setViewportRange({ first: targetIndex, last: targetIndex })
+      }
     })
-  }, [pendingTargetId, pages])
+  }, [pendingTargetId, pages, setActive, detect])
 
   if (pages.length === 0) {
     return null
@@ -288,14 +516,19 @@ export function ScrollPresentation({
     afterFinalIndex < pages.length &&
     !accessible.has(pages[afterFinalIndex]!.id)
 
+  const mountedFirst = viewportRange.first - PREVIOUS_PAGES_KEPT
+  const mountedLast = viewportRange.last + NEXT_PAGES_KEPT
+  const pendingIndex =
+    pendingTargetId === null ? -1 : pages.findIndex((page) => page.id === pendingTargetId)
+
   return (
-    <div data-scroll>
+    <div data-scroll ref={rootRef}>
       {accessibleIndices.map((index) => {
         const page = pages[index]!
         const mounted =
           !observerSupported ||
-          activeIndex < 0 ||
-          Math.abs(index - activeIndex) <= VIRTUALIZATION_WINDOW
+          index === pendingIndex ||
+          (index >= mountedFirst && index <= mountedLast)
 
         if (!mounted) {
           return (
@@ -304,7 +537,6 @@ export function ScrollPresentation({
               index={index}
               pageId={page.id}
               height={pageHeights[page.id]}
-              onActivate={activate}
             />
           )
         }
@@ -327,7 +559,6 @@ export function ScrollPresentation({
             pageStates={pageStates}
             onNavigatePathPage={navigateToPageId}
             pageState={pageState}
-            onActivate={activate}
             onMeasure={handlePageHeight}
             onEndChange={handleEndChange}
             onAnswer={onAnswer}
@@ -355,10 +586,9 @@ export function ScrollPresentation({
  *
  * A smooth `scrollIntoView` animates for a few hundred milliseconds, during
  * which the re-centred virtualization window mounts and unmounts page regions.
- * Their `IntersectionObserver` callbacks would otherwise activate an
- * intermediate page — moving the stored location and re-centring the window
- * again — before the intended target lands. The suppression is released on the
- * first of:
+ * Their detection callbacks would otherwise activate an intermediate page —
+ * moving the stored location and re-centring the window again — before the
+ * intended target lands. The suppression is released on the first of:
  *
  * - `scrollend`, where the browser reports it for a document scroll (an engine
  *   without it simply never fires the listener, so no capability check is
@@ -486,8 +716,8 @@ function PageCompletionReporter({
  * Watches an element against the scroll viewport (`root: null`, the document the
  * player scrolls) and reports changes. Returns the disconnect cleanup; when
  * `IntersectionObserver` is unavailable this is an inert cleanup. Repeated
- * callbacks with an unchanged visibility are dropped, so a page region and an
- * end boundary each report at most one change per crossing and never loop.
+ * callbacks with an unchanged visibility are dropped, so a boundary reports at
+ * most one change per crossing and never loops.
  */
 function observeVisibility(
   element: Element,
@@ -516,50 +746,25 @@ function observeVisibility(
 }
 
 /**
- * A height-preserving placeholder for an accessible page outside the window.
- * Its whole region is observed with the same activation margin as a mounted
- * page, so scrolling or an instant jump (e.g. restoring a saved location, End or
- * PageDown) that lands anywhere inside the placeholder—not only across its start
- * boundary—activates that page, which mounts its content and synchronizes the
- * reported location. Unmounting disconnects the observer, so no stale watcher is
- * left behind.
- *
- * Once the page has mounted at least once its measured height is applied, so
- * replacing the scene with this placeholder keeps the document's height and the
- * surrounding pages' offsets unchanged. Before the first mount nothing is known,
- * so a bounded, non-viewport floor keeps the region a real, observable box — a
- * page the learner has never opened still has to be reachable when scrolling
- * back to it — without reserving a whole viewport (see
- * {@link PLACEHOLDER_FALLBACK_HEIGHT}).
+ * A height-preserving placeholder for an accessible page outside the mounted
+ * window. Once the page has mounted at least once its measured height is
+ * applied, so replacing the scene with this placeholder keeps the document's
+ * height and the surrounding pages' offsets unchanged — including when the page
+ * is recycled above the viewport. Before the first mount nothing is known, so a
+ * bounded, non-viewport floor keeps the region a real, measurable box that an
+ * instant jump can land in and activate.
  */
 function VirtualizedPlaceholder({
   index,
   pageId,
-  height,
-  onActivate
+  height
 }: {
   index: number
   pageId: string
   height?: number
-  onActivate: (pageId: string) => void
 }) {
-  const regionRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const element = regionRef.current
-    if (!element) {
-      return
-    }
-    return observeVisibility(element, PAGE_ACTIVE_MARGIN, (visible) => {
-      if (visible) {
-        onActivate(pageId)
-      }
-    })
-  }, [onActivate, pageId])
-
   return (
     <div
-      ref={regionRef}
       data-scroll-page={index}
       data-scroll-virtualized={pageId}
       aria-hidden="true"
@@ -580,7 +785,6 @@ interface PageSceneProps {
   /** Opens a referenced page through the presentation's switching. */
   onNavigatePathPage: (pageId: string) => void
   pageState?: PlayerPageState
-  onActivate: (pageId: string) => void
   /** Reports the scene's rendered outer height so a placeholder can match it. */
   onMeasure: (pageId: string, height: number) => void
   onEndChange: (pageId: string, reached: boolean) => void
@@ -603,9 +807,9 @@ interface PageSceneProps {
  * One page in the continuous document. It keeps its natural content height —
  * no forced viewport height and no vertical centering — with responsive block
  * padding, so pages flow into one another and the document is the single scroll
- * container. Its whole region reports when the page becomes active and an end
- * sentinel reports when its end is reached. It remounts per page id, which
- * resets both observers for the next page.
+ * container. Its region is measured for the window, and an end sentinel reports
+ * when its end is reached. It remounts per page id, which resets both observers
+ * for the next page.
  */
 function PageScene({
   page,
@@ -615,7 +819,6 @@ function PageScene({
   pageStates,
   onNavigatePathPage,
   pageState,
-  onActivate,
   onMeasure,
   onEndChange,
   onAnswer,
@@ -627,8 +830,8 @@ function PageScene({
 }: PageSceneProps) {
   const regionRef = useRef<HTMLDivElement>(null)
 
-  // The scene's own region drives activation; the parent's ref is only set on the
-  // active page for resume scrolling, so both must share the same element.
+  // The parent's ref is only set on the active page for resume scrolling, so it
+  // and the scene's own region share the same element.
   const assignRegionRef = useCallback(
     (node: HTMLDivElement | null) => {
       regionRef.current = node
@@ -641,34 +844,28 @@ function PageScene({
     [ref]
   )
 
+  // Report the scene's outer height so when the window later swaps this scene
+  // for a placeholder the replacement is the same size and the pages below do
+  // not shift. The initial measurement is taken even where `ResizeObserver` is
+  // unavailable — and before it can be swapped out — so a page that mounted
+  // always leaves its exact height behind; the observer then tracks any later
+  // content or reflow change.
   useEffect(() => {
     const element = regionRef.current
     if (!element) {
       return
     }
-    return observeVisibility(element, PAGE_ACTIVE_MARGIN, (visible) => {
-      if (visible) {
-        onActivate(page.id)
-      }
-    })
-  }, [onActivate, page.id])
-
-  // Report the scene's outer height as its content settles, so when the window
-  // later swaps this scene for a placeholder the replacement is the same size
-  // and the pages below do not shift. `ResizeObserver` is unavailable under SSR
-  // and in some test environments, where the placeholder's bounded fallback
-  // height is used instead.
-  useEffect(() => {
-    const element = regionRef.current
-    if (!element || typeof ResizeObserver === 'undefined') {
-      return
-    }
-    const observer = new ResizeObserver(() => {
+    const measure = () => {
       const height = Math.ceil(element.getBoundingClientRect().height)
       if (height > 0) {
         onMeasure(page.id, height)
       }
-    })
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') {
+      return
+    }
+    const observer = new ResizeObserver(measure)
     observer.observe(element)
     return () => observer.disconnect()
   }, [onMeasure, page.id])

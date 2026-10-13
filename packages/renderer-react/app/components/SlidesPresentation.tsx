@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
-import { ArrowDown, ArrowUp } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight
+} from 'lucide-react'
 import type { AnswerValue, PageNode, PlayerPageState } from '../types'
 import {
   areQuestionnairesSubmitted,
@@ -272,7 +280,7 @@ function PreviousControl({ onClick }: { onClick: () => void }) {
   return (
     <div
       data-slides-previous
-      className="pointer-events-none fixed inset-x-0 top-0 z-10 flex justify-center bg-background/5 py-2.5 backdrop-blur-sm"
+      className="pointer-events-none fixed inset-y-0 left-0 z-10 flex items-center bg-foreground/5 px-2.5 backdrop-blur-sm"
     >
       <Button
         type="button"
@@ -280,8 +288,7 @@ function PreviousControl({ onClick }: { onClick: () => void }) {
         onClick={onClick}
         className="pointer-events-auto cursor-pointer rounded-full"
       >
-        <ArrowUp aria-hidden="true" />
-        <FormattedMessage id="slides.previousPage" />
+        <ChevronLeft aria-hidden="true" />
       </Button>
     </div>
   )
@@ -292,16 +299,15 @@ function NextControl({ onClick }: { onClick: () => void }) {
   return (
     <div
       data-slides-next
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center bg-background/5 py-2.5 backdrop-blur-sm"
+      className="pointer-events-none fixed inset-y-0 right-0 z-10 flex items-center bg-foreground/5 px-2.5 backdrop-blur-sm"
     >
       <Button
         type="button"
         variant="secondary"
         onClick={onClick}
-        className="pointer-events-auto cursor-pointer rounded-full px-4"
+        className="pointer-events-auto cursor-pointer rounded-full"
       >
-        <FormattedMessage id="slides.continueNextPage" />
-        <ArrowDown aria-hidden="true" />
+        <ChevronRight aria-hidden="true" />
       </Button>
     </div>
   )

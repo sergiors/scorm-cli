@@ -140,6 +140,17 @@ function lastSaved(saveState: { mock: { calls: unknown[][] } }): PlayerState {
   return calls[calls.length - 1]?.[0] as PlayerState
 }
 
+/**
+ * Settles a smooth Path jump the way a browser does when its animated scroll
+ * completes. The target is only stored as the current page once the jump has
+ * physically settled, so the tests release the suppression explicitly.
+ */
+function settleScrollJump(): void {
+  act(() => {
+    document.dispatchEvent(new Event('scrollend'))
+  })
+}
+
 describe('PathView status vectors', () => {
   const vectors: Array<[string, boolean[], string[]]> = [
     ['0000', [false, false, false, false], ['available', 'locked', 'locked', 'locked']],
@@ -458,9 +469,11 @@ describe('PackageView Path navigation', () => {
     act(() => entries()[1]?.click())
     expect(lastSaved(saveState)).toBeUndefined()
 
-    // Opening the available reference stores it as the location through the
-    // existing page switching, adding only its visited flag.
+    // Opening the available reference stages a jump to it; the target is stored
+    // as the location once the smooth scroll settles, through the existing page
+    // switching, adding only its visited flag.
     act(() => entries()[0]?.click())
+    settleScrollJump()
     const saved = lastSaved(saveState)
     expect(saved.location).toBe('page:target.mdx')
     expect(saved.pages['page:target.mdx']).toEqual({ visited: true })
@@ -487,6 +500,7 @@ describe('PackageView Path navigation', () => {
     expect(entries().map((entry) => entry.dataset.pathStatus)).toEqual(['visited', 'available'])
 
     act(() => entries()[1]?.click())
+    settleScrollJump()
     expect(lastSaved(saveState).location).toBe('page:later.mdx')
     expect(lastSaved(saveState).pages['page:later.mdx']).toEqual({ visited: true })
   })

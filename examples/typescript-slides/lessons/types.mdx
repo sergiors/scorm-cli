@@ -1,7 +1,16 @@
 ---
-title: Types
+title: Everyday types
 ---
 
-# Types
+# Describe your data
 
-Use `string` for text and `number` for numeric values, and give each value a type that matches how your program uses it.
+Use primitive types such as `string` and `number`, then combine them to model the values your application uses.
+
+```ts
+type Learner = {
+  name: string
+  completedLessons: number
+}
+```
+
+An object type documents the expected fields and lets your editor offer accurate suggestions.
