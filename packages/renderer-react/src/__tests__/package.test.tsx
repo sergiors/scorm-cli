@@ -62,16 +62,26 @@ describe('PackageView scroll presentation', () => {
     }
   })
 
-  it('renders the current page as a natural-height scene without paging controls', () => {
+  it('renders the current page as a min-viewport, natural-height scene without paging controls', () => {
     const html = renderView(scrollPackage)
-    // Pages flow at their natural content height rather than filling the
-    // viewport, and no adjacent page peeks in.
-    expect(html).not.toContain('min-h-dvh')
+    // Pages reserve at least one small viewport and grow naturally beyond it —
+    // never a dynamic viewport height and never vertically centered — and no
+    // adjacent page peeks in.
+    expect(html).not.toContain('dvh')
     const sceneTag = html.match(/<div data-scene-index="0"[^>]*>/)?.[0] ?? ''
-    expect(sceneTag).not.toContain('min-h-dvh')
-    expect(sceneTag).not.toContain('justify-center')
+    const sceneClasses = sceneTag.match(/class="([^"]*)"/)?.[1].split(/\s+/) ?? []
+    expect(sceneClasses).toContain('min-h-svh')
+    expect(sceneClasses).not.toContain('h-svh')
+    expect(sceneClasses).not.toContain('max-h-svh')
+    expect(sceneClasses).not.toContain('justify-center')
     expect(sceneTag).toContain('max-w-3xl')
-    expect(sceneTag).toContain('sm:py-18')
+    expect(sceneTag).toContain('py-12')
+    // The current page is marked with a subtle, reduced-motion-aware transition
+    // on an inner content wrapper, so the measured region stays transform-free.
+    expect(sceneTag).toContain('data-active="true"')
+    expect(html).toContain('data-scroll-page-content')
+    expect(html).toContain('duration-200')
+    expect(html).toContain('motion-reduce:transition-none')
     expect(html).not.toContain('snap-proximity')
     expect(html).not.toContain('snap-start')
     // The package never exposes scroll paging controls; the questionnaire's
