@@ -12,6 +12,7 @@ export interface RecordedPlayer {
   progressInterval?: number
   config?: Config
   onReady?: () => void
+  onDuration?: (duration: number) => void
   onPlay?: () => void
   onProgress?: (progress: { playedSeconds: number }) => void
   onPause?: () => void
@@ -20,7 +21,13 @@ export interface RecordedPlayer {
 }
 
 const records: RecordedPlayer[] = []
-const seekTo = vi.fn()
+/**
+ * Mirrors ReactPlayer v2's runtime `seekTo`, which forwards a third
+ * `keepPlaying` argument to the provider even though the public type omits it.
+ * Recording it here lets tests assert the restore demands a paused seek rather
+ * than inheriting the provider's default.
+ */
+const seekTo = vi.fn<(amount: number, type?: 'seconds' | 'fraction', keepPlaying?: boolean) => void>()
 const getCurrentTime = vi.fn<() => number | null>(() => null)
 
 /**

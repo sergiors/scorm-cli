@@ -170,7 +170,7 @@ describe('Video provider inputs', () => {
 })
 
 describe('Video resume and persistence', () => {
-  it('waits for ready before seeking to the restored position and never autoplays', async () => {
+  it('waits for a usable duration before seeking to the restored position and never autoplays', async () => {
     const onPosition = vi.fn()
     const record = await mountVideo(nativeNode, 12.3, onPosition)
 
@@ -178,12 +178,23 @@ describe('Video resume and persistence', () => {
     expect(players.seekTo).not.toHaveBeenCalled()
     expect(onPosition).not.toHaveBeenCalled()
 
+    // Ready alone is only a probe — without a duration the player is not
+    // seekable, so nothing is issued.
     await act(async () => {
       record.onReady?.()
     })
+    expect(players.seekTo).not.toHaveBeenCalled()
 
-    // The seek is typed so ReactPlayer never treats a sub-second value as a fraction.
-    expect(players.seekTo).toHaveBeenCalledWith(12.3, 'seconds')
+    // The duration report is the gate, and the seek lands exactly once.
+    await act(async () => {
+      record.onDuration?.(120)
+    })
+
+    // The seek is typed so ReactPlayer never treats a sub-second value as a
+    // fraction, and carries `keepPlaying: false` so the restore pauses across
+    // every provider rather than relying on the provider-specific default.
+    expect(players.seekTo).toHaveBeenCalledTimes(1)
+    expect(players.seekTo).toHaveBeenCalledWith(12.3, 'seconds', false)
     expect(record.playing).toBeFalsy()
     // The restored position is already persisted, so ready writes nothing back.
     expect(onPosition).not.toHaveBeenCalled()
@@ -193,6 +204,9 @@ describe('Video resume and persistence', () => {
     const record = await mountVideo(nativeNode, 0, () => {})
     await act(async () => {
       record.onReady?.()
+    })
+    await act(async () => {
+      record.onDuration?.(120)
     })
     expect(players.seekTo).not.toHaveBeenCalled()
   })
@@ -350,12 +364,147 @@ describe('Video resume and persistence', () => {
     expect(records.length).toBeGreaterThanOrEqual(2)
     for (const record of records) {
       act(() => record.onReady?.())
+      act(() => record.onDuration?.(100))
     }
 
     expect(players.seekTo).toHaveBeenCalledTimes(records.length)
     for (const call of players.seekTo.mock.calls) {
-      expect(call).toEqual([9.5, 'seconds'])
+      expect(call).toEqual([9.5, 'seconds', false])
     }
+  })
+})
+
+describe('Video provider ready timing', () => {
+  const youtubeNode: VideoNode = {
+    ...nativeNode,
+    provider: 'youtube',
+    src: providerSources.youtube
+  }
+
+  /**
+   * Reports ready the way a provider does. Native and Vimeo report once; YouTube
+   * reports twice, first when the iframe API is ready (before the video is cued
+   * and its duration is known) and again once the video is cued.
+   */
+  async function reportReady(record: RecordedPlayer, times = 1): Promise<void> {
+    for (let i = 0; i < times; i += 1) {
+      await act(async () => {
+        record.onReady?.()
+      })
+    }
+  }
+
+  /** Reports the media duration, the signal a seek can actually land after. */
+  async function reportDuration(record: RecordedPlayer, duration: number): Promise<void> {
+    await act(async () => {
+      record.onDuration?.(duration)
+    })
+  }
+
+  it('does not seek on an early YouTube ready before the duration exists', async () => {
+    const record = await mountVideo(youtubeNode, 12.3, () => {})
+
+    // The first ready is the iframe API, before the video is cued, so
+    // `getDuration` is still 0/undefined and a seek would be dropped (or wedge
+    // the player on a black frame); the second ready is the cued state change.
+    await reportReady(record, 2)
+    expect(players.seekTo).not.toHaveBeenCalled()
+    expect(record.playing).toBeFalsy()
+  })
+
+  it('seeks exactly once when the duration arrives after the early ready', async () => {
+    const onPosition = vi.fn()
+    const record = await mountVideo(youtubeNode, 12.3, onPosition)
+
+    await reportReady(record, 2)
+    expect(players.seekTo).not.toHaveBeenCalled()
+
+    await reportDuration(record, 213)
+    expect(players.seekTo).toHaveBeenCalledTimes(1)
+    expect(players.seekTo).toHaveBeenCalledWith(12.3, 'seconds', false)
+    // Still never autoplays, and the restored position was already persisted.
+    expect(record.playing).toBeFalsy()
+    expect(onPosition).not.toHaveBeenCalled()
+
+    // A stray repeat of the duration signal must not re-apply the seek.
+    await reportDuration(record, 213)
+    expect(players.seekTo).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores a zero, negative or non-finite duration', async () => {
+    const record = await mountVideo(youtubeNode, 12.3, () => {})
+    await reportReady(record)
+
+    await reportDuration(record, 0)
+    await reportDuration(record, -5)
+    await reportDuration(record, Number.NaN)
+    await reportDuration(record, Number.POSITIVE_INFINITY)
+    expect(players.seekTo).not.toHaveBeenCalled()
+
+    await reportDuration(record, 90)
+    expect(players.seekTo).toHaveBeenCalledTimes(1)
+    expect(players.seekTo).toHaveBeenCalledWith(12.3, 'seconds', false)
+  })
+
+  it('clamps a restored position at or beyond the duration to just before the end', async () => {
+    const record = await mountVideo(youtubeNode, 300, () => {})
+    await reportDuration(record, 200)
+
+    expect(players.seekTo).toHaveBeenCalledTimes(1)
+    expect(players.seekTo).toHaveBeenCalledWith(199, 'seconds', false)
+  })
+
+  it('rests a position past the end of very short media at the start', async () => {
+    const record = await mountVideo(youtubeNode, 5, () => {})
+    await reportDuration(record, 0.5)
+
+    expect(players.seekTo).toHaveBeenCalledWith(0, 'seconds', false)
+  })
+
+  it('closes the restore window once playback takes over', async () => {
+    const record = await mountVideo(youtubeNode, 12.3, () => {})
+    await reportDuration(record, 200)
+    expect(players.seekTo).toHaveBeenCalledTimes(1)
+
+    act(() => record.onPlay?.())
+    players.seekTo.mockClear()
+    await reportReady(record)
+    await reportDuration(record, 200)
+    expect(players.seekTo).not.toHaveBeenCalled()
+  })
+
+  it('closes the restore window when the learner seeks before the duration arrives', async () => {
+    const record = await mountVideo(youtubeNode, 12.3, () => {})
+    await reportReady(record)
+
+    act(() => record.onSeek?.(3))
+    await reportDuration(record, 200)
+    expect(players.seekTo).not.toHaveBeenCalled()
+  })
+
+  it.each<VideoProvider>(['native', 'vimeo'])(
+    'restores the position once a %s provider reports its duration',
+    async (provider) => {
+      const record = await mountVideo(
+        { ...nativeNode, provider, src: providerSources[provider] },
+        30,
+        () => {}
+      )
+
+      await reportReady(record)
+      expect(players.seekTo).not.toHaveBeenCalled()
+
+      await reportDuration(record, 120)
+      expect(players.seekTo).toHaveBeenCalledTimes(1)
+      expect(players.seekTo).toHaveBeenCalledWith(30, 'seconds', false)
+    }
+  )
+
+  it('does not seek without a restored position, even once the duration arrives', async () => {
+    const record = await mountVideo(nativeNode, 0, () => {})
+    await reportReady(record, 2)
+    await reportDuration(record, 200)
+    expect(players.seekTo).not.toHaveBeenCalled()
   })
 })
 

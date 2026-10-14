@@ -187,7 +187,7 @@ function CodeView({ node }: ContentNodeViewProps<'code'>) {
 
 function QuoteView({ node, context }: ContentNodeViewProps<'quote'>) {
   return (
-    <blockquote className="border-l-4 border-primary/50 bg-secondary/50 py-2 px-6 rounded-2xl">
+    <blockquote className="border-l-4 border-primary/50 bg-secondary/50 py-2 px-6">
       <ContentRenderer nodes={node.children} {...context} />
     </blockquote>
   )

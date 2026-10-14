@@ -101,6 +101,7 @@ export function Video({ node, position, onPosition }: VideoProps) {
           progressInterval={PROGRESS_INTERVAL_MS}
           config={playerConfig(node, label, captionsLabel)}
           onReady={player.onReady}
+          onDuration={player.onDuration}
           onPlay={player.onPlay}
           onProgress={player.onProgress}
           onPause={player.onPause}
