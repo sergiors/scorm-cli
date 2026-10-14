@@ -153,19 +153,45 @@ describe('Video provider inputs', () => {
     expect(record.config?.file?.tracks?.[0]?.label).toBe('Legendas')
   })
 
-  it('reserves a stable embed box and keeps the accessible label', () => {
-    const html = renderToStaticMarkup(
-      <PlayerI18nProvider>
-        <Video
-          node={{ ...nativeNode, provider: 'youtube', src: providerSources.youtube }}
-          position={5}
-        />
-      </PlayerI18nProvider>
-    )
+  it.each<VideoProvider>(['native', 'youtube', 'vimeo'])(
+    'reserves the same stable 16:9 placeholder frame for %s until it is ready',
+    (provider) => {
+      const html = renderToStaticMarkup(
+        <PlayerI18nProvider>
+          <Video node={{ ...nativeNode, provider, src: providerSources[provider] }} position={5} />
+        </PlayerI18nProvider>
+      )
 
-    expect(html).toContain('aspect-video')
-    expect(html).toContain('aria-label="Lesson video"')
-    expect(html).toContain('data-url="https://youtu.be/abc123"')
+      // The frame reserves the media geometry through the AspectRatio primitive
+      // before the provider player mounts, so the placeholder occupies exactly
+      // the box the media will.
+      expect(html).toContain('data-slot="media-frame"')
+      expect(html).toContain('data-radix-aspect-ratio-wrapper')
+      expect(html).toContain('padding-bottom:56.25%')
+      expect(html).toContain('data-slot="skeleton"')
+      expect(html).toContain('animate-none')
+      expect(html).toContain('aria-label="Lesson video"')
+      expect(html).toContain(`data-url="${providerSources[provider]}"`)
+    }
+  )
+
+  it('reveals the player frame on the first usable duration, not on ready', async () => {
+    const record = await mountVideo(nativeNode, undefined, () => {})
+
+    // Mounted but not yet playing media: the static placeholder fills the frame.
+    expect(container.querySelector('[data-slot="skeleton"]')).not.toBeNull()
+
+    // `ready` is only the binding's restore probe, so the frame stays reserved.
+    await act(async () => {
+      record.onReady?.()
+    })
+    expect(container.querySelector('[data-slot="skeleton"]')).not.toBeNull()
+
+    // The first usable duration is the earliest the media is genuinely rendered.
+    await act(async () => {
+      record.onDuration?.(120)
+    })
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeNull()
   })
 })
 
@@ -363,8 +389,12 @@ describe('Video resume and persistence', () => {
     const records = players.records
     expect(records.length).toBeGreaterThanOrEqual(2)
     for (const record of records) {
-      act(() => record.onReady?.())
-      act(() => record.onDuration?.(100))
+      await act(async () => {
+        record.onReady?.()
+      })
+      await act(async () => {
+        record.onDuration?.(100)
+      })
     }
 
     expect(players.seekTo).toHaveBeenCalledTimes(records.length)
@@ -412,6 +442,20 @@ describe('Video provider ready timing', () => {
     expect(record.playing).toBeFalsy()
   })
 
+  it('keeps the placeholder over YouTube’s early ready until the duration arrives', async () => {
+    const record = await mountVideo(youtubeNode, undefined, () => {})
+
+    // YouTube fires `onReady` when the iframe API loads, before the video is
+    // cued; revealing the frame there would expose the provider's black iframe.
+    await reportReady(record, 2)
+    expect(container.querySelector('[data-slot="skeleton"]')).not.toBeNull()
+
+    // The duration only arrives once the video is cued, which is when the media
+    // is genuinely rendered and the placeholder may yield.
+    await reportDuration(record, 213)
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeNull()
+  })
+
   it('seeks exactly once when the duration arrives after the early ready', async () => {
     const onPosition = vi.fn()
     const record = await mountVideo(youtubeNode, 12.3, onPosition)
@@ -431,19 +475,31 @@ describe('Video provider ready timing', () => {
     expect(players.seekTo).toHaveBeenCalledTimes(1)
   })
 
-  it('ignores a zero, negative or non-finite duration', async () => {
+  it('ignores a zero, negative or NaN duration', async () => {
     const record = await mountVideo(youtubeNode, 12.3, () => {})
     await reportReady(record)
 
     await reportDuration(record, 0)
     await reportDuration(record, -5)
     await reportDuration(record, Number.NaN)
-    await reportDuration(record, Number.POSITIVE_INFINITY)
     expect(players.seekTo).not.toHaveBeenCalled()
 
     await reportDuration(record, 90)
     expect(players.seekTo).toHaveBeenCalledTimes(1)
     expect(players.seekTo).toHaveBeenCalledWith(12.3, 'seconds', false)
+  })
+
+  it('reveals a live stream with an infinite duration without seeking', async () => {
+    const record = await mountVideo(nativeNode, 12.3, () => {})
+
+    // A live stream reports a positive `Infinity`. ReactPlayer treats any truthy
+    // duration as ready and emits `onDuration` only once, so the reading must
+    // reveal the frame rather than leaving the placeholder up forever — but it
+    // offers no finite seekable duration, so no restore is attempted.
+    await reportDuration(record, Number.POSITIVE_INFINITY)
+
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeNull()
+    expect(players.seekTo).not.toHaveBeenCalled()
   })
 
   it('clamps a restored position at or beyond the duration to just before the end', async () => {
@@ -505,6 +561,46 @@ describe('Video provider ready timing', () => {
     await reportReady(record, 2)
     await reportDuration(record, 200)
     expect(players.seekTo).not.toHaveBeenCalled()
+  })
+})
+
+describe('Media failure fallbacks', () => {
+  it('replaces the video placeholder with a static error state when the player errors', async () => {
+    const record = await mountVideo(nativeNode, 12.3, () => {})
+    expect(container.querySelector('[data-slot="skeleton"]')).not.toBeNull()
+
+    await act(async () => {
+      record.onError?.()
+    })
+
+    // The placeholder stops and the provider player is gone, so the frame shows
+    // a small readable error rather than a player stuck on a black frame.
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeNull()
+    expect(container.querySelector('[data-testid="react-player"]')).toBeNull()
+    const error = container.querySelector('[data-slot="media-frame-error"]')
+    expect(error?.getAttribute('role')).toBe('alert')
+    expect(error?.textContent).toBe('This video could not be played.')
+  })
+
+  it('reveals the broken image and its alt when the source fails to load', async () => {
+    await act(async () => {
+      root.render(
+        <PlayerI18nProvider>
+          <ContentRenderer nodes={[{ type: 'image', src: './missing.png', alt: 'A picture' }]} />
+        </PlayerI18nProvider>
+      )
+    })
+    expect(container.querySelector('[data-slot="skeleton"]')).not.toBeNull()
+
+    const image = container.querySelector('img')
+    await act(async () => {
+      image?.dispatchEvent(new Event('error'))
+    })
+
+    // The placeholder yields so the browser's own broken-image indicator and the
+    // authored alt text are visible, instead of a placeholder that never resolves.
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeNull()
+    expect(container.querySelector('img')?.getAttribute('alt')).toBe('A picture')
   })
 })
 

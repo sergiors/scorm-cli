@@ -13,6 +13,7 @@ export interface RecordedPlayer {
   config?: Config
   onReady?: () => void
   onDuration?: (duration: number) => void
+  onError?: (error?: unknown) => void
   onPlay?: () => void
   onProgress?: (progress: { playedSeconds: number }) => void
   onPause?: () => void

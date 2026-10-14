@@ -50,7 +50,15 @@ export interface VideoPlayerOptions {
 export interface VideoPlayerBinding {
   ref: RefObject<ReactPlayer | null>
   onReady: () => void
-  onDuration: (duration: number) => void
+  /**
+   * Reports the media duration and returns whether the reading marked the media
+   * as rendered (positive finite duration or a live stream's positive infinity)
+   * and so should reveal the frame. The caller uses that instead of the
+   * provider's `onReady`, which for YouTube fires before the video is cued. A
+   * live stream has no finite seekable duration, so it is a ready signal only —
+   * the restored position is never applied for it.
+   */
+  onDuration: (duration: number) => boolean
   onPlay: () => void
   onProgress: (progress: VideoProgress) => void
   onPause: () => void
@@ -70,8 +78,11 @@ export interface VideoPlayerBinding {
  * YouTube (and can leave the player wedged on a black frame). ReactPlayer emits
  * `onDuration` exactly once, after `onReady`, as soon as `getDuration()` returns
  * a non-zero value (it polls every 100ms until then), which is the first moment a
- * seek can reliably land. The position is therefore applied a single time on the
- * first valid duration, and a persisted position at or beyond the duration is
+ * seek can reliably land. A live stream is the exception: it reports a positive
+ * infinity, which still marks the media as rendered but leaves no finite position
+ * to seek to, so the frame is revealed without a restore. The position is
+ * therefore applied a single time on the first valid duration, and a persisted
+ * position at or beyond the duration is
  * clamped to just before the end so it can never seek past the media. The restore
  * window closes as soon as playback, a learner seek or the end takes over, and
  * the video never autoplays: the restoring seek passes `keepPlaying: false`
@@ -200,12 +211,22 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
   }, [restore])
 
   const onDuration = useCallback(
-    (duration: number) => {
-      if (typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0) {
-        return
+    (duration: number): boolean => {
+      // Reject only unusable readings: zero, negative and NaN. A live stream
+      // reports a positive `Infinity`, which ReactPlayer treats as a truthy
+      // duration and — since it emits `onDuration` exactly once — must be taken
+      // as the media being rendered, or the placeholder would never yield.
+      if (typeof duration !== 'number' || Number.isNaN(duration) || duration <= 0) {
+        return false
       }
-      durationRef.current = duration
+      // There is no finite seekable duration for a live stream, so it is not
+      // recorded: the restore below would be dropped anyway, and the caller only
+      // needs the ready signal.
+      if (Number.isFinite(duration)) {
+        durationRef.current = duration
+      }
       restore()
+      return true
     },
     [restore]
   )

@@ -1,8 +1,8 @@
-import { Fragment } from 'react'
+import { Fragment, useState } from 'react'
 import type { ComponentType, ReactNode } from 'react'
 import type { AnswerValue, ContentNode, PageNode, PlayerPageState } from '../types'
-import { cn } from '../lib/utils'
 import { InlineContent } from './InlineContent'
+import { MediaFrame } from './MediaFrame'
 import { PathView } from './PathView'
 import { QuestionnaireView } from './QuestionnaireView'
 import { Video } from './Video'
@@ -193,24 +193,41 @@ function QuoteView({ node, context }: ContentNodeViewProps<'quote'>) {
   )
 }
 
+/**
+ * A block image in the shared {@link MediaFrame}: the AST carries no intrinsic
+ * dimensions, so the frame reserves a stable 16:9 box and `object-contain` keeps
+ * arbitrary or portrait images uncropped (letterboxed) inside it. The image
+ * itself keeps native `loading="lazy"` for deferral, and a static placeholder
+ * fills the frame until `onLoad` fires.
+ *
+ * A failed source settles the frame too: the placeholder yields so the browser's
+ * own broken-image indicator and the authored `alt` text are visible, rather than
+ * a placeholder that waits on an image that will never arrive.
+ *
+ * The frame is wrapped in a `figure` and marked `not-prose` for the same reason
+ * the video frame is: `prose` gives a `figure` its block spacing while resetting
+ * the margins of its direct children, so the framed image sits in the flow
+ * without the prose image margins leaking into the reserved box.
+ */
 function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
-  const image = (
-    <img
-      src={node.src}
-      alt={node.alt}
-      loading="lazy"
-      className={cn('h-auto max-w-full rounded-2xl overflow-hidden', node.caption ? undefined : '')}
-    />
-  )
-
-  if (!node.caption) {
-    return image
-  }
+  const [loaded, setLoaded] = useState(false)
+  const [failed, setFailed] = useState(false)
 
   return (
-    <figure className="space-y-2.5">
-      {image}
-      <figcaption className="text-sm text-muted-foreground">{node.caption}</figcaption>
+    <figure className={node.caption ? 'space-y-2.5' : undefined}>
+      <MediaFrame ready={loaded || failed} className="rounded-2xl not-prose">
+        <img
+          src={node.src}
+          alt={node.alt}
+          loading="lazy"
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+          className="h-full w-full object-contain"
+        />
+      </MediaFrame>
+      {node.caption ? (
+        <figcaption className="text-sm text-muted-foreground">{node.caption}</figcaption>
+      ) : null}
     </figure>
   )
 }

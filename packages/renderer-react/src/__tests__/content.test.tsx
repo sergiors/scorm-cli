@@ -200,8 +200,14 @@ describe('ContentRenderer paragraphs and inline semantics', () => {
     expect(html).toContain('<img')
     expect(html).toContain('src="./inline.svg"')
     expect(html).toContain('alt="Inline icon"')
+    expect(html).toContain('loading="lazy"')
     expect(html).not.toContain('<figure')
     expect(html).not.toContain('<figcaption')
+    // An inline image stays phrasing content: no reserved block frame, and so no
+    // placeholder, is forced into the paragraph.
+    expect(html).not.toContain('data-slot="media-frame"')
+    expect(html).not.toContain('data-radix-aspect-ratio-wrapper')
+    expect(html).not.toContain('data-slot="skeleton"')
   })
 
   it('renders an inline image caption inside an inline span', () => {
@@ -209,6 +215,7 @@ describe('ContentRenderer paragraphs and inline semantics', () => {
     expect(html).toContain('<span')
     expect(html).toContain('An icon')
     expect(html).not.toContain('<figcaption')
+    expect(html).not.toContain('data-slot="media-frame"')
   })
 
   it('renders a thematic break as a horizontal rule between blocks', () => {
@@ -572,10 +579,28 @@ describe('ContentRenderer images and video', () => {
     expect(html).toContain('A caption')
   })
 
-  it('renders a block image without a caption as a bare img', () => {
+  it('reserves a stable frame for a block image with a static placeholder until it loads', () => {
+    const html = render([{ type: 'image', src: './a.png', alt: 'A picture' }])
+
+    // No intrinsic dimensions are authored, so the image reserves a stable 16:9
+    // frame through the AspectRatio primitive and `object-contain` keeps
+    // arbitrary or portrait content uncropped.
+    expect(html).toContain('data-slot="media-frame"')
+    expect(html).toContain('data-radix-aspect-ratio-wrapper')
+    expect(html).toContain('padding-bottom:56.25%')
+    expect(html).toContain('object-contain')
+    // Native lazy loading still defers the fetch...
+    expect(html).toContain('loading="lazy"')
+    // ...and a static (non-animated) placeholder fills the frame until onLoad.
+    expect(html).toContain('data-slot="skeleton"')
+    expect(html).toContain('animate-none')
+  })
+
+  it('renders a block image without a caption in the shared frame, with no figcaption', () => {
     const html = render([{ type: 'image', src: './a.png', alt: 'A picture' }])
     expect(html).toContain('<img')
-    expect(html).not.toContain('<figure')
+    expect(html).toContain('data-slot="media-frame"')
+    expect(html).toContain('data-radix-aspect-ratio-wrapper')
     expect(html).not.toContain('<figcaption')
   })
 
@@ -595,6 +620,9 @@ describe('ContentRenderer images and video', () => {
     ])
     expect(html).toContain('role="group"')
     expect(html).toContain('aria-label="Intro video"')
+    // The video reserves the same 16:9 frame as a block image.
+    expect(html).toContain('data-radix-aspect-ratio-wrapper')
+    expect(html).toContain('padding-bottom:56.25%')
     expect(html).toContain('<figcaption')
     expect(html).toContain('Intro video')
   })

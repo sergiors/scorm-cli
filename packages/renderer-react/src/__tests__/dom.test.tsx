@@ -9,7 +9,8 @@ import type {
   PageNode,
   PlayerState,
   QuestionnaireNode,
-  ItemNode
+  ItemNode,
+  VideoProvider
 } from '../../app/types'
 import type { ContentProvider } from '../../app/lib/content-loader'
 import { getPresentationNodes } from '@scorm-cli/core'
@@ -635,6 +636,61 @@ describe('PackageView scroll interactions', () => {
     expect(Number.isNaN(bottomMargin)).toBe(false)
     expect(bottomMargin).toBeGreaterThanOrEqual(0)
   })
+})
+
+describe('PackageView media loading', () => {
+  const providers: Array<{ provider: VideoProvider; src: string }> = [
+    { provider: 'youtube', src: 'https://youtu.be/abc123' },
+    { provider: 'native', src: './clip.mp4' },
+    { provider: 'vimeo', src: 'https://vimeo.com/42' }
+  ]
+
+  /** A single page whose only content is a video for the given provider. */
+  function videoPackage(provider: VideoProvider, src: string): ContentPackage {
+    return {
+      metadata: { title: 'Video package' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'page:video.mdx',
+            source: 'video.mdx',
+            metadata: { title: 'Video' },
+            content: [{ type: 'video', id: 'video:video.mdx:1:1', provider, src, title: 'Clip' }]
+          }
+        ]
+      }
+    }
+  }
+
+  it.each(providers)(
+    'mounts the $provider player only once its frame approaches the viewport',
+    ({ provider, src }) => {
+      act(() => root.render(<Player contentPackage={videoPackage(provider, src)} />))
+
+      // The frame reserves the media geometry up front through the AspectRatio
+      // primitive, with a static placeholder standing in while the heavy
+      // provider player is deferred.
+      const frame = container.querySelector<HTMLElement>('[data-slot="media-frame"]')
+      expect(frame).not.toBeNull()
+      const ratio = frame?.parentElement
+      expect(ratio?.getAttribute('data-radix-aspect-ratio-wrapper')).not.toBeNull()
+      expect(ratio?.style.paddingBottom).toBe('56.25%')
+      expect(frame?.querySelector('[data-slot="skeleton"]')).not.toBeNull()
+      expect(container.querySelector('[data-testid="react-player"]')).toBeNull()
+
+      // The observer is media-only and positive: it watches the frame against
+      // the viewport with a leading margin, and never positions the page.
+      const options = observerFor(frame as Element).options
+      expect(options?.root).toBeNull()
+      expect(Number.parseFloat(options?.rootMargin ?? '0')).toBeGreaterThan(0)
+
+      // Approaching the viewport mounts the player inside the reserved frame.
+      driveObserver(frame as Element, true)
+      expect(container.querySelector('[data-testid="react-player"]')).not.toBeNull()
+    }
+  )
 })
 
 describe('PackageView scroll natural layout', () => {

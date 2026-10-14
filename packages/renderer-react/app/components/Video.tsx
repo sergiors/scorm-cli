@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import { useIntl } from 'react-intl'
 import ReactPlayer from 'react-player'
 import type { Config } from 'react-player'
 import type { VideoNode } from '../types'
 import { cn } from '../lib/utils'
+import { useMediaInView } from '../lib/use-media-in-view'
 import { useVideoPlayer } from '../lib/use-video-player'
+import { MediaFrame } from './MediaFrame'
 
 export interface VideoProps {
   node: VideoNode
@@ -70,45 +73,69 @@ function playerConfig(node: VideoNode, label: string, captionsLabel: string): Co
  * chrome is duplicated here. Only restore/persist behaviour is added, through
  * the semantic {@link useVideoPlayer} binding, never by reading the source URL.
  *
- * The container reserves a stable 16:9 box for embedded providers so their
- * iframe never causes a layout shift; native playback keeps its intrinsic
- * aspect ratio.
+ * The provider player is mounted only once its frame approaches the viewport, so
+ * a heavy iframe/player never loads on first paint; until the provider reports a
+ * usable media duration a static placeholder fills the same reserved 16:9 box, so
+ * the media never causes a layout shift. Native playback letterboxes inside that
+ * box (`object-contain`) rather than being stretched, and embedded providers fill
+ * it as before.
  */
 export function Video({ node, position, onPosition }: VideoProps) {
   const intl = useIntl()
   const label = node.title ?? intl.formatMessage({ id: 'video.label' })
   const captionsLabel = intl.formatMessage({ id: 'video.captions' })
+  const errorMessage = intl.formatMessage({ id: 'video.error' })
   const player = useVideoPlayer({ position, onPosition })
+  const { ref, inView } = useMediaInView<HTMLDivElement>()
+  const [ready, setReady] = useState(false)
+  const [failed, setFailed] = useState(false)
   const isEmbedded = node.provider !== 'native'
+
+  // `onReady` is only the binding's restore probe: for YouTube it fires when the
+  // iframe API loads, before the video is cued, so revealing the frame there
+  // would expose the provider's black iframe. The first usable duration is the
+  // earliest the media is genuinely rendered, so that is what reveals the frame.
+  const onDuration = (duration: number) => {
+    if (player.onDuration(duration)) {
+      setReady(true)
+    }
+  }
 
   return (
     <figure>
-      <div
+      <MediaFrame
+        ref={ref}
         role="group"
         aria-label={label}
+        ready={ready}
+        error={failed ? errorMessage : undefined}
         className={cn(
-          'w-full overflow-hidden rounded-2xl border not-prose',
-          isEmbedded && 'aspect-video [&_iframe]:h-full [&_iframe]:w-full'
+          'rounded-2xl border not-prose',
+          isEmbedded && '[&_iframe]:h-full [&_iframe]:w-full',
+          !isEmbedded && '[&_video]:object-contain'
         )}
       >
-        <ReactPlayer
-          ref={player.ref}
-          url={node.src}
-          controls
-          playsinline
-          width="100%"
-          height={isEmbedded ? '100%' : 'auto'}
-          progressInterval={PROGRESS_INTERVAL_MS}
-          config={playerConfig(node, label, captionsLabel)}
-          onReady={player.onReady}
-          onDuration={player.onDuration}
-          onPlay={player.onPlay}
-          onProgress={player.onProgress}
-          onPause={player.onPause}
-          onSeek={player.onSeek}
-          onEnded={player.onEnded}
-        />
-      </div>
+        {inView && !failed ? (
+          <ReactPlayer
+            ref={player.ref}
+            url={node.src}
+            controls
+            playsinline
+            width="100%"
+            height="100%"
+            progressInterval={PROGRESS_INTERVAL_MS}
+            config={playerConfig(node, label, captionsLabel)}
+            onReady={player.onReady}
+            onDuration={onDuration}
+            onError={() => setFailed(true)}
+            onPlay={player.onPlay}
+            onProgress={player.onProgress}
+            onPause={player.onPause}
+            onSeek={player.onSeek}
+            onEnded={player.onEnded}
+          />
+        ) : null}
+      </MediaFrame>
       {node.title ? <figcaption>{node.title}</figcaption> : null}
     </figure>
   )
