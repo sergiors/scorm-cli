@@ -422,12 +422,12 @@ const progressPackage: ContentPackage = {
 }
 
 /**
- * Four pages whose third page carries a questionnaire. Restoring the third page
- * as merely visited then leaves a locked gap at page two and a locked successor
- * at page four, so the accessible run is non-contiguous.
+ * Four pages whose third page carries a questionnaire. With pages one and two
+ * complete, page three is the frontier — the first not-done page — and page four
+ * is still locked.
  */
-const gappedVisitPackage: ContentPackage = {
-  metadata: { title: 'Gapped visit' },
+const lockedSuccessorPackage: ContentPackage = {
+  metadata: { title: 'Locked successor' },
   presentation: {
     type: 'scroll',
     pages: [
@@ -814,12 +814,12 @@ describe('PackageView scroll natural layout', () => {
 
     // The uniform gap between pages is a single wrapper class around each
     // Virtuoso item, so the loaded scene reads with the same spacing as any other.
-    // The wrapper class must be *exactly* `pb-6`: the gap is internal padding
-    // inside the item content, which Virtuoso measures into the item's height, so
-    // no unmeasured margin may be added alongside it.
+    // The wrapper class must be *exactly* `py-4 sm:py-6`: the gap is internal
+    // padding inside the item content, which Virtuoso measures into the item's
+    // height, so no unmeasured margin may be added alongside it.
     const item = container.querySelector<HTMLElement>('[data-scroll-item]')
     expect(item).not.toBeNull()
-    expect(item?.className).toBe('pb-6')
+    expect(item?.className).toBe('py-4 sm:py-6')
 
     // The spacing lives only on that wrapper: the measured page and its prose
     // carry no vertical padding of their own, so the gap is never doubled.
@@ -843,11 +843,11 @@ describe('PackageView scroll natural layout', () => {
 
     // While the page module is still resolving, its slot sits in the same item
     // wrapper as a loaded page, so the gap between pages does not change on load.
-    // The class is *exactly* `pb-6`: internal padding is the sole spacing
+    // The class is *exactly* `py-4 sm:py-6`: internal padding is the sole spacing
     // mechanism, measured by Virtuoso as part of the item height.
     const loadingItem = container.querySelector<HTMLElement>('[data-scroll-item]')
     expect(loadingItem).not.toBeNull()
-    expect(loadingItem?.className).toBe('pb-6')
+    expect(loadingItem?.className).toBe('py-4 sm:py-6')
     expect(loadingItem?.querySelector('[data-scroll-loading]')).not.toBeNull()
 
     await act(async () => {
@@ -856,11 +856,12 @@ describe('PackageView scroll natural layout', () => {
     await flushLoads()
 
     // The failed slot keeps the identical wrapper and gap; only the content inside
-    // the slot changes. The class is *exactly* `pb-6`: internal padding is the
-    // sole spacing mechanism, measured by Virtuoso as part of the item height.
+    // the slot changes. The class is *exactly* `py-4 sm:py-6`: internal padding
+    // is the sole spacing mechanism, measured by Virtuoso as part of the item
+    // height.
     const errorItem = container.querySelector<HTMLElement>('[data-scroll-item]')
     expect(errorItem).not.toBeNull()
-    expect(errorItem?.className).toBe('pb-6')
+    expect(errorItem?.className).toBe('py-4 sm:py-6')
     expect(errorItem?.querySelector('[data-scroll-error]')).not.toBeNull()
   })
 
@@ -1054,8 +1055,9 @@ describe('PackageView scroll accessible list and locking', () => {
 
   it('activates a distant accessible page once the visible window reaches it', () => {
     const saveState = vi.fn()
-    // A reached accessible tail: pages one and two are done and page three was
-    // opened, so page three is accessible and in the list from the first paint.
+    // Pages one and two are done, so page three is the immediate first not-done
+    // successor — accessible and in the list from the first paint — while page
+    // four stays locked.
     window.scormBridge = {
       restoreState: () => ({
         location: 'page:plain-1.mdx',
@@ -1095,6 +1097,91 @@ describe('PackageView scroll accessible list and locking', () => {
     expect(virtualizedTotal()).toBe(1)
     expect(container.querySelector('[data-slot="skeleton"]')).toBeNull()
     expect(container.textContent).not.toContain('Body 4.')
+  })
+})
+
+describe('PackageView strict sequential access from restored state', () => {
+  it('exposes only the completed prefix and its immediate successor, preserving stored state', () => {
+    const saveState = vi.fn()
+    // An inconsistent restore: later pages are already completed while page one
+    // is untouched. The stored state is kept, but the accessible run stops at
+    // page one, so no later page is rendered.
+    window.scormBridge = {
+      restoreState: () => ({
+        pages: {
+          'page:plain-3.mdx': { visited: true, completed: true },
+          'page:plain-4.mdx': { completed: true }
+        }
+      }),
+      saveState
+    }
+
+    act(() => root.render(<Player contentPackage={progressPackage} />))
+
+    expect(virtualizedTotal()).toBe(1)
+    expect(sceneIndices()).toEqual([0])
+    for (const index of [1, 2, 3]) {
+      expect(renderedPage(index)).toBeNull()
+    }
+    expect(text()).not.toContain('Body 3.')
+    expect(text()).not.toContain('Body 4.')
+
+    // The later stored progress is preserved even though those pages are not
+    // reachable.
+    const saved = lastSaved(saveState)
+    expect(saved.pages['page:plain-3.mdx']).toEqual({ visited: true, completed: true })
+    expect(saved.pages['page:plain-4.mdx']).toEqual({ completed: true })
+  })
+
+  it('never loads or prefetches a page beyond the immediate successor', () => {
+    const { provider, calls } = deferredProvider(progressPackage)
+    // Page two is the immediate successor of the completed first page; the later
+    // completed pages three and four stay locked.
+    window.scormBridge = {
+      restoreState: () => ({
+        location: 'page:plain-1.mdx',
+        pages: {
+          'page:plain-1.mdx': { completed: true },
+          'page:plain-3.mdx': { completed: true },
+          'page:plain-4.mdx': { completed: true }
+        }
+      })
+    }
+
+    act(() =>
+      root.render(<LazyPlayer contentPackage={progressPackage} contentProvider={provider} />)
+    )
+
+    expect(virtualizedTotal()).toBe(2)
+    // Only the restored page mounts and its immediate successor is prefetched; a
+    // page beyond the accessible run is never requested.
+    expect(calls).toEqual(['page:plain-1.mdx', 'page:plain-2.mdx'])
+    expect(renderedPage(2)).toBeNull()
+    expect(renderedPage(3)).toBeNull()
+  })
+
+  it('does not let restored later completion make a Path target navigable', () => {
+    const saveState = vi.fn()
+    window.scormBridge = {
+      restoreState: () => ({
+        location: 'page:path.mdx',
+        // Page four is completed in the restored state, but page one is not done,
+        // so the Path target is still locked.
+        pages: { 'page:plain-4.mdx': { completed: true } }
+      }),
+      saveState
+    }
+
+    act(() => root.render(<Player contentPackage={nonAdjacentPathPackage} />))
+
+    const entry = container.querySelector<HTMLButtonElement>('[data-path-entry]')
+    expect(entry?.dataset.pathStatus).toBe('locked')
+    expect(entry?.disabled).toBe(true)
+    act(() => entry?.click())
+    expect(virtuosoMock.scrollToIndexCalls).toHaveLength(0)
+
+    // The inconsistent restored completion is preserved, not dropped.
+    expect(lastSaved(saveState).pages['page:plain-4.mdx']).toEqual({ completed: true })
   })
 })
 
@@ -1589,40 +1676,39 @@ describe('PackageView scroll locked boundary', () => {
     expect(boundary?.textContent).toContain('Complete this page to continue.')
   })
 
-  it('places the boundary on a restored visited page whose document successor is locked', () => {
+  it('places the boundary on the frontier page whose document successor is locked', () => {
     window.scormBridge = {
       restoreState: () => ({
         location: 'page:plain-1.mdx',
-        pages: { 'page:plain-3.mdx': { visited: true } }
+        pages: {
+          'page:plain-1.mdx': { completed: true },
+          'page:plain-2.mdx': { completed: true }
+        }
       })
     }
 
-    act(() => root.render(<Player contentPackage={gappedVisitPackage} />))
+    act(() => root.render(<Player contentPackage={lockedSuccessorPackage} />))
 
-    // Page one is the first not-done page and page three stays reachable as a
-    // restored visited page, so the accessible run is [1, 3] and skips the
-    // still-locked page two.
-    expect(virtualizedTotal()).toBe(2)
+    // Pages one and two are done, so page three is the first not-done accessible
+    // page and page four is locked: the accessible run is [1, 2, 3].
+    expect(virtualizedTotal()).toBe(3)
     expect(text()).toContain('Body 1.')
-    expect(text()).not.toContain('Body 2.')
 
     // Nothing is shown until the frontier page's end is reached.
     expect(container.querySelector('[data-scroll-locked]')).toBeNull()
 
-    // The frontier is page three, at accessible index one. Its document successor
-    // is the locked page four — not its successor in the accessible run, which is
-    // absent — so the boundary belongs at the bottom of page three.
-    showScrollPage(1)
+    // The frontier is page three, at accessible index two. Its document successor
+    // is the locked page four, so the boundary belongs at the bottom of page three.
+    showScrollPage(2)
     expect(text()).toContain('Shared prompt')
-    setEndIntersecting(1, true)
+    setEndIntersecting(2, true)
 
     const boundary = container.querySelector('[data-scroll-locked]')
     expect(boundary).not.toBeNull()
-    expect(container.querySelector('[data-scene-index="1"]')?.contains(boundary!)).toBe(true)
+    expect(container.querySelector('[data-scene-index="2"]')?.contains(boundary!)).toBe(true)
     expect(boundary?.textContent).toContain('Complete this page to continue.')
 
-    // Neither locked page is mounted or reveals its content.
-    expect(text()).not.toContain('Body 2.')
+    // The locked page four is not mounted or revealed.
     expect(text()).not.toContain('Body 4.')
   })
 
@@ -1812,6 +1898,31 @@ describe('PackageView scroll persistence', () => {
     expect(virtuosoMock.lastInitialIndex()).toBe(0)
     expect(sceneIndices()).toEqual([0])
     expect(virtuosoMock.scrollToIndexCalls).toHaveLength(0)
+  })
+
+  it('falls back to the first accessible page when the saved location is a locked visited page', () => {
+    const saveState = vi.fn()
+    // Page three was visited in an earlier session but page one is not done, so
+    // the visited page is now locked: the reload opens at the first accessible
+    // page instead of restoring to it.
+    window.scormBridge = {
+      restoreState: () => ({
+        location: 'page:plain-3.mdx',
+        pages: { 'page:plain-3.mdx': { visited: true } }
+      }),
+      saveState
+    }
+
+    act(() => root.render(<Player contentPackage={progressPackage} />))
+
+    expect(virtuosoMock.lastInitialIndex()).toBe(0)
+    expect(sceneIndices()).toEqual([0])
+    expect(virtuosoMock.scrollToIndexCalls).toHaveLength(0)
+
+    // The stored visit is preserved even though it is not restored to.
+    const saved = lastSaved(saveState)
+    expect(saved.location).toBe('page:plain-1.mdx')
+    expect(saved.pages['page:plain-3.mdx']).toEqual({ visited: true })
   })
 
   it('restores the saved page while keeping its earlier restored answers and submissions', () => {

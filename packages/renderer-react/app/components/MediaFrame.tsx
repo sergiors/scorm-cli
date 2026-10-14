@@ -96,10 +96,6 @@ function VideoPlaceholder() {
           <Play className="size-5 fill-muted-foreground/50 stroke-none" />
         </div>
       </div>
-      <div className="absolute inset-x-0 bottom-0 flex items-center gap-2 px-3 pb-3">
-        <Skeleton className="h-1 flex-1 animate-none rounded-full bg-muted-foreground/25" />
-        <Skeleton className="size-3.5 animate-none rounded-sm bg-muted-foreground/25" />
-      </div>
     </div>
   )
 }

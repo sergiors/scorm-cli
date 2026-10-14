@@ -14,61 +14,26 @@ import { ContentLoadError } from './ContentLoadError'
 import { Skeleton } from './ui/skeleton'
 
 /**
- * A page's end boundary counts as reached once its end sentinel enters the
- * scroll viewport, extended by a small positive bottom margin so it fires just
- * before the very bottom. The viewport is the document, which is also the
- * Virtuoso scroller in window-scroll mode, so a non-negative margin keeps the
- * signal reachable at the maximum scroll offset, including for pages no taller
- * than the viewport.
- *
- * The observed sentinel is purely a *completion* signal — the moment the learner
- * has read to the end of a page — never a positioning input. React Virtuoso
- * remains the sole owner of scroll position and geometry.
+ * A page's end sentinel counts as reached once it enters the viewport, extended
+ * by a small positive bottom margin so it fires just before the very bottom. It
+ * is a completion signal only, never a positioning input.
  */
 const PAGE_END_MARGIN = '0px 0px 64px 0px'
 
 /**
- * The single shared column that frames the whole reading list: a consistent,
- * responsive width and horizontal content padding applied once around the
- * virtualizer instead of being repeated on every page slot. It carries no
- * overflow, height, vertical padding, centering, margin or gap, so it neither
- * introduces a second scroll container nor opens artificial space between
- * pages; the responsive horizontal padding just keeps content off the viewport
- * edges. The document stays the only scroller.
- *
- * Content, its loading indication and its error state all sit inside it, so
- * swapping one for another never changes the page's width or its spacing.
+ * The single shared column framing the reading list: one responsive width and
+ * horizontal padding around the virtualizer, with no overflow, height or
+ * vertical spacing, so the document stays the only scroller.
  */
 const PAGE_COLUMN = 'mx-auto w-full max-w-3xl px-4 sm:px-6'
 
 /**
- * The one spacing wrapper around every page slot in the virtualized document. It
- * gives consecutive pages a single, uniform visible gap regardless of whether the
- * slot currently holds loaded content, its loading indication or its error state.
- *
- * The padding lives *inside* the Virtuoso item content, so each item's measured
- * height already includes it: unlocking the next page never retroactively changes
- * the previous item's geometry, and no Virtuoso `gap` prop (which would leave the
- * reported item offsets non-contiguous) is needed. It is stable and identical for
- * every item, so the list stays measured with natural, per-page heights and the
- * exact active-page resolution is unaffected.
+ * The spacing wrapper around every page slot. The padding lives inside the
+ * Virtuoso item content, so each item's measured height already includes it and
+ * no `gap` prop (which would leave the reported item offsets non-contiguous) is
+ * needed.
  */
-const PAGE_ITEM = 'py-6'
-
-/** The nodes already opened or done, which the shared access policy treats as reached. */
-function reachedPageIds(
-  pages: readonly PageNode[],
-  pageStates: Record<string, PlayerPageState>
-): Set<string> {
-  return new Set(
-    pages
-      .filter((page) => {
-        const state = pageStates[page.id]
-        return state?.visited === true || state?.completed === true
-      })
-      .map((page) => page.id)
-  )
-}
+const PAGE_ITEM = 'py-4 sm:py-6'
 
 /** The nodes whose own completion rule has been met, which advance the done prefix. */
 function donePageIds(
@@ -81,22 +46,16 @@ function donePageIds(
 }
 
 /**
- * The page under the viewport top, resolved exactly from the rendered items and
- * the list-relative scroll offset. `itemsRendered` reports each item's `offset`
- * and `size` measured from the start of the list, and in window-scroll mode
- * `VirtuosoHandle.getState()` reports `scrollTop` against that same origin, so the
- * item under the top is the one whose half-open interval `[offset, offset + size)`
- * contains `scrollTop` — a boundary belongs to the following item, i.e. the first
- * item whose end is strictly past `scrollTop`.
+ * The page under the viewport top, resolved from the rendered items and the
+ * list-relative scroll offset: `itemsRendered` reports each item's `offset` and
+ * `size` from the start of the list, and in window-scroll mode
+ * `VirtuosoHandle.getState()` reports `scrollTop` against that same origin, so
+ * the page under the top is the first item whose end is strictly past
+ * `scrollTop`. The intervals are contiguous because the list sets no `gap` prop.
  *
- * The item intervals are assumed contiguous: a zero gap between consecutive
- * items is what makes the "first item whose end is strictly past `scrollTop`"
- * rule exact, and it holds because the list sets no Virtuoso `gap` prop.
- *
- * Returns `null` when `scrollTop` falls outside the reported span: the rendered
- * window has not caught up with a just-issued scroll, or a re-render is still
- * pending. The caller then leaves the location unchanged and reconciles once
- * Virtuoso reports the covering list, so a transient window never moves it.
+ * Returns `null` when `scrollTop` falls outside the reported span (the rendered
+ * window has not caught up with the scroll yet); the caller then leaves the
+ * location unchanged and reconciles once the covering list arrives.
  */
 function activePageIdAt(
   items: readonly ListItem<unknown>[],
@@ -123,19 +82,15 @@ export interface ScrollPresentationProps {
   pages: PageNode[]
   /**
    * The single runtime source of each page's authored content. Every page is an
-   * independent lazily loaded module; the page after the current one is requested
-   * once the shared policy reports it accessible, and a locked page's module is
-   * never fetched.
+   * independent lazily loaded module; a locked page's module is never fetched.
    */
   contentProvider: ContentProvider
   /** Persisted state per page id, for restored answers and submitted state. */
   pageStates: Record<string, PlayerPageState>
   /**
-   * Page id named by the saved lesson location (`PlayerState.location`), so a
-   * refresh resumes on the bookmarked page instead of the first one. It is read
-   * only once, to seed the initial reading position; it falls back to the first
-   * accessible page when the id is absent, unknown, or still locked under the
-   * shared progression policy.
+   * Page id named by the saved lesson location, read once to seed the initial
+   * reading position. It falls back to the first accessible page when the id is
+   * absent, unknown, or still locked.
    */
   initialPageId?: string
   /** Invoked once per page the learner reaches, storing it as the location. */
@@ -156,84 +111,34 @@ export interface ScrollPresentationProps {
 
 /**
  * The reading presentation: a single native document scroller owned by React
- * Virtuoso, which exclusively handles virtualization, dynamic page geometry,
- * positioning and mounting.
+ * Virtuoso, which exclusively handles virtualization, page geometry and
+ * positioning. Every page keeps its natural height, so the document is exactly
+ * as tall as the authored content.
  *
- * Every page keeps its *natural* content height — no minimum viewport, no
- * centering, no artificial spacing — so the document is exactly as tall as the
- * authored content and Virtuoso measures each page as it renders. The whole
- * reading list is framed once by a single shared column — one responsive max
- * width and horizontal padding around the virtualizer, never repeated on a page
- * slot — and that column adds no overflow, height or vertical padding, so it
- * never becomes a second scroll container. The list holds exactly the
- * *accessible* pages, in document order, with locked pages simply absent: a
- * locked future page is not a list item at all, so it can never be mounted,
- * imported or prefetched. The accessible set is not necessarily contiguous —
- * beyond the done prefix and the first not-done page, the shared policy also
- * keeps every previously reached (visited) page accessible — so the run may skip
- * a still-locked page that sits between two accessible ones.
+ * The list holds exactly the accessible pages, in document order: the completed
+ * prefix plus its immediate first not-done successor. A locked future page is not
+ * a list item at all, so it can never be mounted, imported or prefetched. The
+ * page after the reading anchor is requested once the shared policy reports it
+ * accessible; the further tail is left to Virtuoso, which requests a page's
+ * module when it mounts its slot.
  *
- * A page's module is requested one page ahead of the reading anchor — the page
- * after the current one, once the shared policy reports it accessible — and again
- * whenever Virtuoso mounts a slot, so a page the learner has not reached starts
- * resolving just before it is needed. A locked page is not in the accessible run,
- * so it can never be requested, and the tail beyond that next page is never
- * prefetched. The document (window) is the only scroller; Virtuoso uses it
- * directly (`useWindowScroll`), so there is no inner viewport and no second
- * geometry system.
+ * The semantic current page is the page under the viewport top, resolved by
+ * `activePageIdAt` from the rendered item offsets and the list-relative
+ * scrollTop. The location only moves on a real scroll: one passive `scroll`
+ * listener reads the list-relative offset through `getState` and resolves it
+ * against the latest rendered items. A scroll that arrives before the rendered
+ * items have caught up is marked pending and reconciled on the next
+ * `itemsRendered`, so a transient window never moves the location. Nothing here
+ * is an input to scrolling — no measurement or scroll API is called to derive or
+ * apply the location — so state updates can never feed back into scrolling.
  *
- * The semantic current page is the *exact* page under the viewport top. Virtuoso
- * exposes the two public signals that make that exact: `itemsRendered` reports
- * each rendered item with its measured `offset` and `size`, both in pixels from
- * the start of the list, and `VirtuosoHandle.getState()` reports the list-relative
- * `scrollTop` — in window-scroll mode Virtuoso subtracts the list's own document
- * offset, so `scrollTop` and the item offsets share the same origin (see the
- * installed source: `getState` computes `scrollTop = windowScrollContainerState
- * .scrollTop - windowViewportRect.offsetTop - headerHeight`, and `Item.offset` is
- * "the offset position of the item from the start of the list"). The current page
- * is therefore the rendered item whose half-open interval `[offset, offset + size)`
- * contains `scrollTop` — a boundary belongs to the following item — resolved by
- * `activePageIdAt`. This is exact even for a page shorter than its predecessor and
- * even when the *gated* rendered range would skip it: the offsets are absolute, so
- * the first rendered item no longer has to be the page at the top.
- *
- * The location only moves when the learner actually scrolls. One passive `scroll`
- * listener is attached to the real window scroller handed over by `scrollerRef`;
- * each scroll reads the list-relative `scrollTop` through `getState` and resolves
- * it against the latest rendered items, held in a ref. No snapshot before any
- * scroll — on mount, or when items merely render — ever establishes a position, so
- * a page that is merely mounted or visible below the top, including one a lazy load
- * has just filled in, never moves it. When a scroll arrives before the rendered
- * items have caught up, that scroll is marked pending and reconciled once
- * `itemsRendered` reports the covering list, so a transient window never produces a
- * wrong page. A normal scroll resolves immediately and clears the mark, so a later
- * *measurement-only* re-report — a lazy load changing item offsets, with no scroll
- * — can never re-resolve the remembered scrollTop and move the location; the id
- * guard makes an unchanged page a no-op. Nothing here is an
- * input to scrolling: no IntersectionObserver, no DOM measurement, no height
- * estimate, no scroll correction, and no scrolling API is called to derive or
- * apply the location, so state updates can never feed back into scrolling.
- * Explicit navigation (a Path jump) first ensures the target's module is
- * resolving — a user-explicit load attempt that reattempts a page whose earlier
- * prefetch failed — then goes straight through `scrollToIndex`, with no mounted
- * DOM required and no animation; a newer jump supersedes an older one still
- * loading.
- * Because a jump target is an unmeasured page, Virtuoso owns where it lands: it
- * positions from its own size estimates and refines them as pages measure, with
- * no custom height compensation and no viewport-sized default (see the list
- * props below).
- *
- * A reload resumes the saved reading position. The runtime exposes the lesson
- * location as a sanitized `PlayerState.location` — SCORM 1.2 stores it in
- * `cmi.core.lesson_location`, SCORM 2004 in `cmi.location`, and the runtime
- * normalizes both into the same semantic id — and the presentation seeds its
- * initial position from it: the accessible page that id names, or the first
- * accessible page when it is absent, unknown, or still locked. The index is
- * computed once on first mount and handed straight to Virtuoso as its initial
- * item, so the list opens directly at that page with no scripted scroll. The
- * semantic current page is initialized to the same restored page, so the first
- * seen report matches it rather than transiently overwriting the saved location
- * with page zero. Restored answers, submissions and progress are unaffected.
+ * A reload resumes the saved reading position: the accessible page named by the
+ * sanitized `PlayerState.location`, or the first accessible page when it is
+ * absent, unknown or still locked. The index is computed once on first mount and
+ * handed to Virtuoso as its initial item, so the list opens there with no
+ * scripted scroll, and the semantic current page is initialized to the same page
+ * so the first seen report matches it rather than overwriting the saved location
+ * with page zero.
  */
 export function ScrollPresentation({
   pages,
@@ -247,17 +152,11 @@ export function ScrollPresentation({
   onVideoPosition
 }: ScrollPresentationProps) {
   const ids = pages.map((page) => page.id)
-  const { accessible } = getSequentialAccess(
-    ids,
-    donePageIds(pages, pageStates),
-    reachedPageIds(pages, pageStates)
-  )
+  const { accessible } = getSequentialAccess(ids, donePageIds(pages, pageStates))
 
-  // The accessible pages, in document order. The shared policy exposes the done
-  // prefix plus the first not-done page, and also keeps any previously reached
-  // (visited) page accessible, so the set can be non-contiguous; filtering the
-  // ordered pages preserves their document order and keeps list positions
-  // aligned with the pages the learner can actually reach.
+  // The accessible pages, in document order: the completed prefix plus its
+  // immediate first not-done successor. Filtering the ordered pages keeps list
+  // positions aligned with the pages the learner can actually reach.
   const accessiblePages = pages.filter((page) => accessible.has(page.id))
 
   const loader = useContentLoader(contentProvider)
@@ -269,21 +168,19 @@ export function ScrollPresentation({
   const accessiblePagesRef = useRef(accessiblePages)
   accessiblePagesRef.current = accessiblePages
 
-  // The reading position the list opens at, computed once on first mount: the
-  // accessible page named by the saved lesson location, or the first accessible
-  // page when the location is absent, unknown, or still locked. It is captured
-  // here — before `activeId` or any later location change — so it is a stable
-  // constant handed to Virtuoso as the initial item, never re-derived from state
-  // that the presentation itself writes. A later `PlayerState.location` change
-  // (a scroll or a Path jump) therefore never repositions the list.
+  // The reading position the list opens at, computed once on first mount and
+  // handed to Virtuoso as its initial item: the accessible page named by the
+  // saved lesson location, or the first accessible page when the location is
+  // absent, unknown, or still locked. Captured before any later location change,
+  // so a scroll or Path jump never repositions the list.
   const [initialIndex] = useState(() => {
     const index = accessiblePages.findIndex((page) => page.id === initialPageId)
     return index >= 0 ? index : 0
   })
 
   // The semantic current page starts at the restored item, so the first seen
-  // report matches the restored location instead of transiently writing page
-  // zero over it. It then follows the visible range exactly as before.
+  // report matches the restored location rather than overwriting it with page
+  // zero.
   const [activeId, setActiveId] = useState(() => accessiblePages[initialIndex]?.id ?? '')
 
   // The synchronous mirror of `activeId`, so a range update can no-op on an
@@ -299,12 +196,10 @@ export function ScrollPresentation({
 
   const virtuosoRef = useRef<VirtuosoHandle>(null)
 
-  // The immediate next accessible page after the reading anchor. It is requested
-  // ahead of time so it is already resolving before the learner reaches it — the
-  // page a completion just unlocked, or, on a resumed session, the next already
-  // accessible page. Only ever one page ahead: a locked page is never in the
-  // accessible run, and the further tail is left to Virtuoso, which requests a
-  // page's module when it actually mounts its slot. No scroll is issued here.
+  // The immediate next accessible page after the reading anchor, requested ahead
+  // so it is already resolving before the learner reaches it. Only ever one page
+  // ahead; the further tail is left to Virtuoso, which requests a page's module
+  // when it mounts its slot. No scroll is issued here.
   const activeIndex = accessiblePages.findIndex((page) => page.id === activeId)
   const nextPage = activeIndex >= 0 ? accessiblePages[activeIndex + 1] : undefined
   const prefetchId = nextPage?.id ?? null
@@ -314,18 +209,11 @@ export function ScrollPresentation({
     }
   }, [prefetchId, request])
 
-  // A Path jump to a referenced page. The reference only resolves when the
-  // shared policy reports the page accessible; a locked page is ignored. The
-  // target's module is ensured to be resolving first — a user-explicit load
-  // attempt, issued here because the learner deliberately jumped, so it also
-  // reattempts a page whose earlier prefetch failed instead of waiting for a
-  // remount to retry it — then the jump is an immediate `scrollToIndex` on the
-  // virtualizer, so it needs no mounted scene, no animation and no smoothing.
-  // Virtuoso mounts the item on the next commit, so a freshly resolved module
-  // may still show its small loading slot for a commit before the content is on
-  // screen — the jump does not guarantee the content is already painted. A later
-  // jump bumps the token, so a slower earlier target can never supersede a newer
-  // one.
+  // A Path jump to a referenced page. A locked page is ignored. The target's
+  // module is ensured to be resolving first (a user-explicit load attempt that
+  // also retries a failed prefetch), then the jump is an immediate
+  // `scrollToIndex`, needing no mounted scene and no animation. A later jump
+  // bumps the token, so a slower earlier target can never supersede a newer one.
   const navigationRef = useRef(0)
   function navigateToPageId(pageId: string) {
     if (accessiblePagesRef.current.findIndex((page) => page.id === pageId) < 0) {
@@ -356,27 +244,22 @@ export function ScrollPresentation({
   }
 
   // The latest rendered window, with each item's measured offset and size from
-  // the start of the list. `itemsRendered` refreshes it on every render, and the
-  // single scroll listener resolves the viewport top against it exactly.
+  // the start of the list.
   const renderedItemsRef = useRef<readonly ListItem<unknown>[]>([])
 
-  // The last list-relative scroll offset Virtuoso reported, or `null` before any
-  // scroll. A `null` baseline is what keeps mount and item-render updates from
-  // moving the location: only an actual scroll establishes a position.
+  // The last list-relative scroll offset, or `null` before any scroll: only an
+  // actual scroll establishes a position.
   const scrollTopRef = useRef<number | null>(null)
 
   // Whether a scroll arrived before the rendered items could resolve it, so the
   // next `itemsRendered` must reconcile it. It is set only when a scroll snapshot
-  // cannot resolve against the currently rendered items, and cleared as soon as
-  // it resolves — by a later scroll, or by the covering list arriving. A normal
-  // scroll therefore leaves no pending mark, so a *measurement-only* re-report (a
-  // lazy load changing item offsets, with no scroll) never re-resolves a stale
-  // scrollTop and moves the location.
+  // cannot resolve against the currently rendered items, so a measurement-only
+  // re-report (a lazy load changing offsets, with no scroll) never re-resolves a
+  // stale scrollTop and moves the location.
   const pendingReconcileRef = useRef(false)
 
-  // The actual window scroller, handed over by Virtuoso's `scrollerRef` in
-  // window-scroll mode. Held in state so the passive listener is attached once,
-  // when it arrives, and removed when it changes or the presentation unmounts.
+  // The actual window scroller handed over by Virtuoso's `scrollerRef`, held in
+  // state so the passive listener is attached once it arrives.
   const [scroller, setScroller] = useState<EventTarget | null>(null)
 
   // Guards a snapshot that raced an unmount, or that a later scroll superseded.
@@ -389,12 +272,10 @@ export function ScrollPresentation({
     }
   }, [])
 
-  // Resolve the semantic current page from a known list-relative scroll offset
-  // against the latest rendered window. A resolution clears any pending
-  // reconciliation; a `null` — the window has not caught up with this scroll yet
-  // — marks one pending instead, leaving the location unchanged until the
-  // covering list arrives. The id guard in `setActive` makes an unchanged page a
-  // no-op. Kept in a ref so the single scroll listener always calls the current
+  // Resolve the semantic current page from a list-relative scroll offset. A
+  // `null` resolution (the window has not caught up with this scroll yet) marks
+  // one pending instead, leaving the location unchanged until the covering list
+  // arrives. Kept in a ref so the single listener always calls the current
   // closure without being re-attached on every render.
   function applyScrollTop(scrollTop: number) {
     scrollTopRef.current = scrollTop
@@ -409,11 +290,9 @@ export function ScrollPresentation({
   const applyScrollTopRef = useRef(applyScrollTop)
   applyScrollTopRef.current = applyScrollTop
 
-  // ONE passive listener on the real scroller. Each scroll reads the
-  // list-relative scrollTop through Virtuoso's public `getState` — never a DOM
-  // measurement of a page — and resolves it exactly against the rendered items.
-  // No scrolling API is called here, so the location can never reposition the
-  // list.
+  // One passive listener on the real scroller. Each scroll reads the
+  // list-relative scrollTop through Virtuoso's `getState` and resolves it against
+  // the rendered items. No scrolling API is called here.
   useEffect(() => {
     if (scroller === null) {
       return
@@ -434,11 +313,8 @@ export function ScrollPresentation({
   }, [scroller])
 
   // Refresh the rendered window. A render alone never moves the location: it is
-  // only reconciled while a scroll is pending — one that arrived before the
-  // rendered items could resolve it — so a page that merely mounts, or a lazy
-  // load that re-measures an item's offset below or above the top, cannot change
-  // it. When a scroll arrived before this update, the new window is what lets its
-  // remembered scrollTop resolve, closing the gap safely.
+  // reconciled only while a scroll is pending, so a page that merely mounts or a
+  // lazy load that re-measures an offset cannot change it.
   function handleItemsRendered(items: ListItem<unknown>[]) {
     renderedItemsRef.current = items
     if (!pendingReconcileRef.current) {
@@ -460,18 +336,13 @@ export function ScrollPresentation({
     return null
   }
 
-  // The frontier of the sequential progression: the last page the learner can
-  // currently reach. When its end is reached but the page after it is still
-  // locked, the boundary notice belongs at the bottom of *that* page and
-  // disappears the moment completion unlocks the next.
+  // The frontier of the sequential progression: the last accessible page. The
+  // shared policy makes `accessiblePages` a prefix of `pages`, so the frontier's
+  // document successor is locked exactly when the accessible run is shorter than
+  // the document. The boundary notice then belongs at the bottom of the frontier
+  // and disappears once completion unlocks the next page.
   const finalAccessibleIndex = accessiblePages.length - 1
-  // The frontier's position in the accessible run is not a `pages` index: the
-  // run can skip a locked page, so the page that actually follows the frontier
-  // is found in document order rather than at `finalAccessibleIndex + 1`.
-  const finalAccessiblePage = accessiblePages[finalAccessibleIndex]!
-  const finalPageIndex = pages.findIndex((page) => page.id === finalAccessiblePage.id)
-  const nextAfterFinalLocked =
-    finalPageIndex + 1 < pages.length && !accessible.has(pages[finalPageIndex + 1]!.id)
+  const nextAfterFinalLocked = accessiblePages.length < pages.length
 
   return (
     <div data-scroll-column className={PAGE_COLUMN}>
@@ -479,32 +350,25 @@ export function ScrollPresentation({
         ref={virtuosoRef}
         useWindowScroll
         totalCount={accessiblePages.length}
-        // The list opens directly at the restored reading position — the
-        // accessible page named by the saved lesson location, or item zero when
-        // there is none — with no scripted scroll. The index is a stable
-        // constant, so a later location change never repositions the list.
+        // The list opens at the restored reading position with no scripted
+        // scroll; the index is a stable constant, so a later location change
+        // never repositions the list.
         initialTopMostItemIndex={initialIndex}
         // Only a server-rendered shell (the app renders client-side) needs a
         // forced initial item; on the client Virtuoso opens at the initial index.
         initialItemCount={typeof window === 'undefined' ? 1 : undefined}
-        // Render no overscan band and no increased viewport, so the rendered
-        // window is not inflated beyond what the viewport needs; the exact page
-        // is resolved from the reported item offsets and the list-relative
-        // scrollTop, not from the window's first item, so a page shorter than its
-        // predecessor is never skipped. No `defaultItemHeight`, `heightEstimates`
-        // or `fixedItemHeight` is given: pages keep their natural, measured
-        // heights and Virtuoso owns geometry. Before a page is measured Virtuoso
-        // derives its own default size by probing the first rendered page, then
-        // refines every position as pages measure — so a deep Path jump may settle
-        // briefly, but it is never positioned by a custom or viewport-sized
-        // height estimate.
+        // No overscan band and no increased viewport, so the rendered window is
+        // not inflated; the exact page is resolved from the reported item offsets
+        // and the list-relative scrollTop, not from the window's first item. No
+        // custom height compensation is given, so pages keep their natural
+        // measured heights and Virtuoso owns geometry.
         overscan={0}
         increaseViewportBy={0}
         computeItemKey={(index) => accessiblePages[index]?.id ?? index}
         // The exact semantic signal: every rendered item with its measured offset
         // and size from the start of the list.
         itemsRendered={handleItemsRendered}
-        // The real window scroller, so ONE passive listener can read the
+        // The real window scroller, so the passive listener can read the
         // list-relative scrollTop from Virtuoso's own `getState`.
         scrollerRef={setScroller}
         itemContent={(index) => {
@@ -545,11 +409,9 @@ export function ScrollPresentation({
 }
 
 /**
- * Stores the active page as the current location and marks it visited, once per
- * activation. The ref holds the *last reported* id, not a set of every id ever
- * seen, so a genuine change reports again — including revisiting A after B, which
- * moves the location back to A — while StrictMode's doubled effect for the same
- * id is a no-op.
+ * Stores the active page as the current location once per activation. The ref
+ * holds the last reported id, so a genuine change reports again while
+ * StrictMode's doubled effect for the same id is a no-op.
  */
 function PageSeenReporter({
   pageId,
@@ -571,11 +433,7 @@ function PageSeenReporter({
   return null
 }
 
-/**
- * Reports a page completion exactly once. The ref guard keeps repeated observer
- * callbacks and StrictMode's doubled effects from reporting the same page more
- * than once.
- */
+/** Reports a page completion exactly once, guarding repeated callbacks and StrictMode. */
 function PageCompletionReporter({
   pageId,
   complete,
@@ -618,20 +476,16 @@ interface PageSlotProps {
   onVideoPosition?: (pageId: string, videoId: string, seconds: number) => void
   /** Reports the page completion exactly once. */
   onPageCompleted: (id: string) => void
-  /**
-   * Whether the page after this one is still locked, so the generic "complete
-   * this page to continue" boundary belongs at the bottom of this page once its
-   * end is reached.
-   */
+  /** Whether the page after this one is still locked, so the boundary notice belongs here. */
   showLockedBoundary: boolean
 }
 
 /**
- * One mounted page in the virtualized document. Mounting is what requests the
- * page's module, so content is loaded exactly when Virtuoso needs the page and
- * never for a page outside the rendered window. A page whose module is still
- * resolving renders a small, static loading slot; a failed load renders a small
- * retry affordance.
+ * One mounted page in the virtualized document. Mounting requests the page's
+ * module, so content loads exactly when Virtuoso needs it. The slot carries no
+ * size of its own: its `PAGE_ITEM` padding is measured by Virtuoso as part of
+ * the item height, so a loading or error slot spaces identically to loaded
+ * content.
  */
 function PageSlot({
   page,
@@ -682,12 +536,9 @@ function PageSlot({
 }
 
 /**
- * The slot for an accessible page whose module is still loading. It is a small,
- * static, natural-height indication rather than a viewport-tall panel: it never
- * reserves or fakes a page's size, so the document stays exactly as tall as the
- * content that actually exists. Its shadcn skeletons are static (no pulse), so
- * the presentation has no motion of its own; a visually hidden status keeps the
- * pending state available to assistive technology.
+ * The slot for an accessible page whose module is still loading: a small, static,
+ * natural-height indication that never fakes a page's size. A visually hidden
+ * status keeps the pending state available to assistive technology.
  */
 function PageSkeleton({ index }: { index: number }) {
   return (
@@ -705,9 +556,8 @@ function PageSkeleton({ index }: { index: number }) {
 }
 
 /**
- * A page whose module failed to load. It adds no size or spacing of its own
- * inside the shared column, so the document layout stays small and unchanged
- * and it offers a single retry action rather than hiding the failure.
+ * A page whose module failed to load: a small, natural-height slot offering a
+ * single retry action rather than hiding the failure.
  */
 function PageLoadError({ index, onRetry }: { index: number; onRetry: () => void }) {
   return (
@@ -724,11 +574,7 @@ interface PageSceneProps {
   index: number
   /** The page's resolved content nodes (lazily loaded, or inline). */
   nodes: ContentNode[]
-  /**
-   * Whether this is the page under the reading anchor. It marks the scene so the
-   * current page is observable; it never affects whether the content is present
-   * or its geometry.
-   */
+  /** Whether this is the page under the reading anchor; it never affects geometry. */
   active: boolean
   /** Root pages, so a Path on this page can resolve its references. */
   pathPages: readonly PageNode[]
@@ -742,28 +588,16 @@ interface PageSceneProps {
   onVideoPosition?: (pageId: string, videoId: string, seconds: number) => void
   /** Reports the page completion exactly once. */
   onPageCompleted: (id: string) => void
-  /**
-   * Whether the page after this one is still locked, so the generic "complete
-   * this page to continue" boundary belongs at the bottom of this page once its
-   * end is reached.
-   */
+  /** Whether the page after this one is still locked, so the boundary notice belongs here. */
   showLockedBoundary: boolean
 }
 
 /**
- * One page in the virtualized document. It keeps its natural content height —
- * no minimum or fixed viewport, no vertical centering, no clipping and no
- * vertical padding — so a short page is exactly as tall as its content and a
- * long page simply grows, while consecutive pages meet with only their natural
- * typography spacing between them. Virtuoso measures the rendered height and
- * owns the surrounding geometry.
- *
- * A page's end sentinel reports when its end is reached, and the page completes
- * once that end was reached *and* every questionnaire it contains was submitted.
- * The observer is used only as a completion signal; it never positions the list
- * — Virtuoso alone owns scroll position. The completion state is local to the
- * page, so the presentation holds no cross-page observer state and a page never
- * has to be re-measured.
+ * One page in the virtualized document. It keeps its natural content height, so
+ * Virtuoso measures the rendered height and owns the surrounding geometry. Its
+ * end sentinel is a completion signal only — the page completes once its end was
+ * reached and every questionnaire it contains was submitted — and never
+ * positions the list.
  */
 function PageScene({
   page,
@@ -849,10 +683,8 @@ function PageScene({
 
 /**
  * Marks that the page after the current one remains locked, without mounting or
- * revealing any locked content. It sits at the bottom of the final accessible
- * page (see {@link PageScene}) and is a natural-height notice rather than a
- * viewport-tall panel, so it reads as the end of that page, not a separate
- * screen.
+ * revealing any locked content. A natural-height notice at the bottom of the
+ * final accessible page.
  */
 function LockedBoundary() {
   return (

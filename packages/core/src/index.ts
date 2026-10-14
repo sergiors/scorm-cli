@@ -257,11 +257,12 @@ export function getPresentationNodes(contentPackage: ContentPackage): Presentati
 
 /**
  * Whether a saved node counts as done for its presentation. Done nodes count
- * toward progress and unlock the next node. Page presentations (Scroll and
- * Slides) complete a page when its own completion rule has been met and every
- * questionnaire on it has been submitted; an item is done once it has been
- * opened. The rule is presentation-owned, but it lives here so every caller
- * agrees on one definition.
+ * toward progress; sequential access advances through the contiguous done
+ * prefix. Page presentations (Scroll and Slides) complete a page when its own
+ * completion rule has been met and every questionnaire on it has been
+ * submitted; an item is done once it has been opened. The rule is
+ * presentation-owned, but it lives here so every caller agrees on one
+ * definition.
  */
 export function isPresentationNodeDone(
   contentPackage: ContentPackage,
@@ -276,12 +277,10 @@ export function isPresentationNodeDone(
 
 /**
  * The shared sequential progression policy, expressed purely over ordered ids
- * and the set of already-done ids. It decides *what* can be accessed: the done
- * prefix advances one node at a time, so the first not-done node after the
- * prefix is accessible and every node beyond it is locked. A node in `reached`
- * (typically already visited) stays accessible too, so a resumed node remains
- * reachable even when it is not done. Presentations apply the result to control
- * *how* they expose nodes.
+ * and the set of already-done ids. It exposes the completed prefix and its
+ * immediate first not-done successor; every later node is locked, even if its
+ * state inconsistently says it is done. Presentations apply the result to
+ * control *how* they expose nodes.
  */
 export interface SequentialAccess {
   accessible: ReadonlySet<string>
@@ -290,21 +289,20 @@ export interface SequentialAccess {
 
 export function getSequentialAccess(
   ids: readonly string[],
-  doneNodeIds: ReadonlySet<string>,
-  reachedNodeIds: ReadonlySet<string> = doneNodeIds
+  doneNodeIds: ReadonlySet<string>
 ): SequentialAccess {
   const accessible = new Set<string>()
   const locked = new Set<string>()
-  let prefixDone = true
+  let firstNotDoneFound = false
 
   for (const id of ids) {
-    if (prefixDone || reachedNodeIds.has(id)) {
+    if (!firstNotDoneFound) {
       accessible.add(id)
+      if (!doneNodeIds.has(id)) {
+        firstNotDoneFound = true
+      }
     } else {
       locked.add(id)
-    }
-    if (!doneNodeIds.has(id)) {
-      prefixDone = false
     }
   }
 
@@ -318,36 +316,13 @@ export function getDoneNodeIds(contentPackage: ContentPackage, playerState: Play
     .map((node) => node.id)
 }
 
-/**
- * Nodes that may be revisited: any node the learner has already opened, plus
- * every done node. Revisiting an opened node must stay possible even when the
- * node is not yet done (for example a resumed Scroll page whose end was never
- * reached), so access is a superset of the strict done prefix.
- */
-function reachedNodeIds(contentPackage: ContentPackage, playerState: PlayerState): Set<string> {
-  const reached = new Set<string>()
-  for (const node of getPresentationNodes(contentPackage)) {
-    if (playerState.pages[node.id]?.visited === true) {
-      reached.add(node.id)
-    }
-  }
-  for (const id of getDoneNodeIds(contentPackage, playerState)) {
-    reached.add(id)
-  }
-  return reached
-}
-
 /** Presentation-node IDs accessible under the shared sequential progression policy. */
 export function getAccessibleNodeIds(
   contentPackage: ContentPackage,
   playerState: PlayerState
 ): string[] {
   const ids = getPresentationNodes(contentPackage).map((node) => node.id)
-  const access = getSequentialAccess(
-    ids,
-    new Set(getDoneNodeIds(contentPackage, playerState)),
-    reachedNodeIds(contentPackage, playerState)
-  )
+  const access = getSequentialAccess(ids, new Set(getDoneNodeIds(contentPackage, playerState)))
   return ids.filter((id) => access.accessible.has(id))
 }
 

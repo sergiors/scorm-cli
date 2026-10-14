@@ -706,13 +706,13 @@ describe('shared sequential progression policy', () => {
     expect([...accessible]).toEqual(['a', 'b'])
   })
 
-  it('keeps already-done nodes accessible even after a gap', () => {
+  it('locks nodes beyond the first not-done node, even if later nodes are done', () => {
     const { accessible, locked } = getSequentialAccess(['a', 'b', 'c'], new Set(['a', 'c']))
-    expect([...accessible]).toEqual(['a', 'b', 'c'])
-    expect([...locked]).toEqual([])
+    expect([...accessible]).toEqual(['a', 'b'])
+    expect([...locked]).toEqual(['c'])
   })
 
-  it('treats each presentation node as reached once visited or done', () => {
+  it('keeps the first incomplete node accessible without unlocking later nodes', () => {
     const content = pages(['a', 'b', 'c'])
     // Nothing reached: only the first page is accessible.
     expect(getAccessibleNodeIds(content, { pages: {} })).toEqual(['a'])
@@ -729,6 +729,21 @@ describe('shared sequential progression policy', () => {
     expect(isNodeAccessible(content, resumed, 'a')).toBe(true)
     expect(isNodeAccessible(content, resumed, 'b')).toBe(false)
     expect(isNodeAccessible(content, resumed, 'c')).toBe(false)
+  })
+
+  it('does not let restored visited or completed state beyond a gap bypass Scroll progression', () => {
+    const content = pages(['a', 'b', 'c', 'd'])
+    const restored: PlayerState = {
+      pages: {
+        a: { completed: true },
+        c: { visited: true, completed: true },
+        d: { visited: true, completed: true }
+      }
+    }
+
+    expect(getAccessibleNodeIds(content, restored)).toEqual(['a', 'b'])
+    expect(isNodeAccessible(content, restored, 'c')).toBe(false)
+    expect(isNodeAccessible(content, restored, 'd')).toBe(false)
   })
 
   it('applies the same policy to tiles, where opening a tile is what counts', () => {

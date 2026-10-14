@@ -21,21 +21,6 @@ import { Skeleton } from './ui/skeleton'
 import { ContentLoadError } from './ContentLoadError'
 import { ContentRenderer } from './ContentRenderer'
 
-/** The nodes already opened or done, which the shared access policy treats as reached. */
-function reachedPageIds(
-  pages: readonly PageNode[],
-  pageStates: Record<string, PlayerPageState>
-): Set<string> {
-  return new Set(
-    pages
-      .filter((page) => {
-        const state = pageStates[page.id]
-        return state?.visited === true || state?.completed === true
-      })
-      .map((page) => page.id)
-  )
-}
-
 /** The nodes whose own completion rule has been met, which advance the done prefix. */
 function donePageIds(
   pages: readonly PageNode[],
@@ -107,11 +92,7 @@ export function SlidesPresentation({
   onVideoPosition
 }: SlidesPresentationProps) {
   const ids = pages.map((page) => page.id)
-  const { accessible } = getSequentialAccess(
-    ids,
-    donePageIds(pages, pageStates),
-    reachedPageIds(pages, pageStates)
-  )
+  const { accessible } = getSequentialAccess(ids, donePageIds(pages, pageStates))
   const { content, isLoaded, hasError, request, retry } = useContentLoader(contentProvider)
 
   const [currentIndex, setCurrentIndex] = useState(() => {

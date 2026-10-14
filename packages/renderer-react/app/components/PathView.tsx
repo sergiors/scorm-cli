@@ -7,10 +7,10 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle }
 
 /**
  * The state of a single Path entry, derived from the shared sequential access
- * policy applied to the root page order. A visited entry is `visited`, the
- * first not-done entry after the done prefix is `available`, and everything
- * beyond it is `locked`, so a learner can revisit or advance one step but never
- * skip ahead.
+ * policy applied to the root page order. Within the accessible run a visited
+ * entry is `visited` and the first not-done one is `available`; every entry
+ * beyond it is `locked`, even a previously visited one, so a learner can revisit
+ * or advance one step but never skip ahead.
  */
 export type PathPageStatus = 'visited' | 'available' | 'locked'
 
@@ -36,8 +36,9 @@ export interface PathViewProps {
   pathPages?: readonly PageNode[]
 
   /**
-   * Persisted state per page id. Only `visited` is consulted, so Path adds no
-   * state of its own and never persists anything.
+   * Persisted state per page id. `completed` decides the accessible run and
+   * `visited` labels an accessible entry, so Path adds no state of its own and
+   * never persists anything.
    */
   pageStates?: Record<string, PlayerPageState>
 
@@ -66,20 +67,18 @@ export function PathView({
   const pagesById = new Map(pathPages.map((page) => [page.id, page]))
 
   // Status is derived from the shared sequential access policy over the root
-  // page order, so a Path entry is only available once the presentation itself
-  // would allow reaching it.
+  // page order, so a Path entry is only reachable once the presentation itself
+  // would allow reaching it. A visited but currently locked entry is still
+  // locked: visited status never makes a page navigable on its own.
   const pageIds = pathPages.map((page) => page.id)
   const done = new Set(pageIds.filter((id) => pageStates[id]?.completed === true))
-  const reached = new Set(
-    pageIds.filter((id) => pageStates[id]?.completed === true || pageStates[id]?.visited === true)
-  )
-  const { accessible } = getSequentialAccess(pageIds, done, reached)
+  const { accessible } = getSequentialAccess(pageIds, done)
 
   const statusOf = (id: string): PathPageStatus => {
-    if (pageStates[id]?.visited === true) {
-      return 'visited'
+    if (!accessible.has(id)) {
+      return 'locked'
     }
-    return accessible.has(id) ? 'available' : 'locked'
+    return pageStates[id]?.visited === true ? 'visited' : 'available'
   }
 
   return (

@@ -72,10 +72,10 @@ export interface PlayerSession {
  *   reopens that item's dialog on mount.
  *
  * All three presentations share one sequential progression policy from the core
- * model: the done prefix and the first not-done node are accessible, and any
- * previously visited node stays accessible so it can be revisited — but a node
- * that was never reached stays locked until every preceding node is done, so the
- * learner can never skip forward to fresh content.
+ * model: the completed (done) prefix and its immediate first not-done successor
+ * are accessible, and every later node stays locked — even one whose stored
+ * state inconsistently says it is done — so the learner can never skip forward
+ * to fresh content.
  */
 export function usePlayerSession(contentPackage: ContentPackage): PlayerSession {
   // Validate the saved state once, on first mount. Reading the bridge is a pure

@@ -168,9 +168,9 @@ describe('PathView status vectors', () => {
     ['1000', [true, false, false, false], ['visited', 'available', 'locked', 'locked']],
     ['1100', [true, true, false, false], ['visited', 'visited', 'available', 'locked']],
     ['1110', [true, true, true, false], ['visited', 'visited', 'visited', 'available']],
-    // A gap in the prefix locks every entry after the first, even the entries
-    // around an already visited one.
-    ['0010', [false, false, true, false], ['available', 'locked', 'visited', 'locked']]
+    // A gap in the prefix locks every entry after the first, even a later
+    // completed (and therefore visited) one: visited status alone never unlocks.
+    ['0010', [false, false, true, false], ['available', 'locked', 'locked', 'locked']]
   ]
 
   for (const [label, visited, expected] of vectors) {
@@ -315,6 +315,35 @@ describe('PathView navigation', () => {
     expect(entries()).toHaveLength(4)
 
     act(() => locked.click())
+    expect(onNavigate).not.toHaveBeenCalled()
+  })
+
+  it('keeps a previously visited but now locked entry inert', () => {
+    const onNavigate = vi.fn()
+    act(() =>
+      root.render(
+        <ContentRenderer
+          nodes={[pathNode]}
+          pathPages={refPages}
+          // Page three is completed (and so visited), but page one is not done,
+          // so the completed prefix stops at page one and page three is locked.
+          pageStates={{ 'page:three.mdx': { visited: true, completed: true } }}
+          onNavigatePathPage={onNavigate}
+        />
+      )
+    )
+
+    expect(entries().map((entry) => entry.dataset.pathStatus)).toEqual([
+      'available',
+      'locked',
+      'locked',
+      'locked'
+    ])
+
+    // Visited status must not make a locked page navigable.
+    const visitedLocked = entries()[2]!
+    expect(visitedLocked.disabled).toBe(true)
+    act(() => visitedLocked.click())
     expect(onNavigate).not.toHaveBeenCalled()
   })
 
