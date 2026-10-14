@@ -53,7 +53,7 @@ export function ScormDevToolsToolbar({
     <div className="fixed right-3 top-3 z-40 print:hidden">
       <Popover>
         <PopoverTrigger asChild>
-          <Button type="button" variant="outline" size="sm" className="shadow-md">
+          <Button type="button" variant="secondary" size="sm" className="shadow-md">
             <Settings2 aria-hidden="true" />
             Dev tools
           </Button>

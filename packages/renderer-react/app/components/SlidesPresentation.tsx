@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useIntl } from 'react-intl'
 import {
   ArrowDown,
   ArrowLeft,
@@ -20,6 +21,30 @@ import { Button } from './ui/button'
 import { Skeleton } from './ui/skeleton'
 import { ContentLoadError } from './ContentLoadError'
 import { ContentRenderer } from './ContentRenderer'
+
+/**
+ * The single shared column framing a slide's content: one responsive width and
+ * horizontal padding, identical to the Scroll presentation's reading column, so
+ * both presentations read with the same gutters.
+ */
+const PAGE_COLUMN = 'mx-auto w-full max-w-3xl px-4 sm:px-6'
+
+/**
+ * The vertical spacing around a slide's content, matching the Scroll
+ * presentation's page slot so a slide keeps the same rhythm.
+ */
+const PAGE_ITEM = 'py-4 sm:py-6'
+
+/**
+ * The full-viewport slot framing a slide. It keeps the slide's shared column
+ * centred on both axes; below `md` it reserves the fixed bottom nav's height
+ * plus the device safe-area inset, and at `md` and up it narrows its content box
+ * by the fixed edge rails' width (56px each side) so the centred column clears
+ * them. Both clearances live here, never on the shared column, so the column's
+ * own responsive padding stays exactly the Scroll column's.
+ */
+const SLIDE_SLOT =
+  'flex min-h-dvh w-full flex-col justify-center md:px-14 max-md:pb-[calc(3rem_+_env(safe-area-inset-bottom))]'
 
 /** The nodes whose own completion rule has been met, which advance the done prefix. */
 function donePageIds(
@@ -160,10 +185,32 @@ export function SlidesPresentation({
   )
   const hasNext = currentIndex < pages.length - 1
   const hasPrevious = currentIndex > 0
+  const showNext = hasNext && pageComplete && loaded
 
   return (
     <>
-      {hasPrevious ? <PreviousControl onClick={() => goToPage(currentIndex - 1)} /> : null}
+      {/*
+        Both controls share one responsive nav, so there is no second copy of
+        the navigation. Below `md` it is a fixed, chrome-free bottom row —
+        previous left, next right — that stays put while the document scrolls.
+        Each control is a compact pill: its arrow plus a visible text label, so
+        the two fit the row without a full-width bar. The row itself stays
+        `pointer-events-none` (its own box adds nothing), so the space between
+        and around the pills is inert and the page shows through; the pills stay
+        `pointer-events-auto`. The row's bottom padding carries the device's
+        safe-area inset. At `md` and up the box drops out of layout
+        (`md:contents`) and each control becomes its own narrow, full-height
+        edge rail.
+      */}
+      {hasPrevious || showNext ? (
+        <nav
+          data-slides-nav
+          className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex items-center gap-3 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:contents"
+        >
+          {hasPrevious ? <PreviousControl onClick={() => goToPage(currentIndex - 1)} /> : null}
+          {showNext ? <NextControl onClick={() => goToPage(currentIndex + 1)} /> : null}
+        </nav>
+      ) : null}
 
       {!loaded ? (
         hasError(currentPage.id) ? (
@@ -201,10 +248,6 @@ export function SlidesPresentation({
             onPageCompleted={onPageCompleted}
           />
         </>
-      ) : null}
-
-      {hasNext && pageComplete && loaded ? (
-        <NextControl onClick={() => goToPage(currentIndex + 1)} />
       ) : null}
     </>
   )
@@ -276,7 +319,9 @@ interface PageSceneProps {
   onVideoPosition?: (pageId: string, videoId: string, seconds: number) => void
 }
 
-/** The single displayed slide, full-height so it fills the viewport. */
+/** The single displayed slide, full-height so it fills the viewport. The slot
+ * clears the fixed edge rails and the mobile bottom nav; the shared column then
+ * applies the same responsive gutters and vertical spacing as Scroll. */
 function PageScene({
   page,
   index,
@@ -290,25 +335,23 @@ function PageScene({
   onVideoPosition
 }: PageSceneProps) {
   return (
-    <div
-      data-scene-index={index}
-      aria-label={page.metadata.title}
-      className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col justify-center px-6 py-18"
-    >
-      <section className="prose prose-stone max-w-none! dark:prose-invert">
-        <ContentRenderer
-          nodes={nodes}
-          pathPages={pathPages}
-          pageStates={pageStates}
-          onNavigatePathPage={onNavigatePathPage}
-          answers={pageState?.answers}
-          submittedQuestionnaires={pageState?.submittedQuestionnaires}
-          onAnswer={(questionId, value) => onAnswer(page.id, questionId, value)}
-          onQuestionnaireSubmitted={(id) => onQuestionnaireSubmitted(page.id, id)}
-          videoPositions={pageState?.videos}
-          onVideoPosition={(videoId, seconds) => onVideoPosition?.(page.id, videoId, seconds)}
-        />
-      </section>
+    <div data-scene-index={index} aria-label={page.metadata.title} className={SLIDE_SLOT}>
+      <div className={`${PAGE_COLUMN} ${PAGE_ITEM}`}>
+        <section className="prose prose-stone max-w-none! dark:prose-invert">
+          <ContentRenderer
+            nodes={nodes}
+            pathPages={pathPages}
+            pageStates={pageStates}
+            onNavigatePathPage={onNavigatePathPage}
+            answers={pageState?.answers}
+            submittedQuestionnaires={pageState?.submittedQuestionnaires}
+            onAnswer={(questionId, value) => onAnswer(page.id, questionId, value)}
+            onQuestionnaireSubmitted={(id) => onQuestionnaireSubmitted(page.id, id)}
+            videoPositions={pageState?.videos}
+            onVideoPosition={(videoId, seconds) => onVideoPosition?.(page.id, videoId, seconds)}
+          />
+        </section>
+      </div>
     </div>
   )
 }
@@ -321,16 +364,14 @@ function PageScene({
  */
 function SlideSkeleton() {
   return (
-    <div
-      data-slide-loading
-      aria-hidden="true"
-      className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col justify-center px-6 py-18"
-    >
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-2/3" />
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-5/6" />
-        <Skeleton className="h-4 w-4/6" />
+    <div data-slide-loading aria-hidden="true" className={SLIDE_SLOT}>
+      <div className={`${PAGE_COLUMN} ${PAGE_ITEM}`}>
+        <div className="space-y-4">
+          <Skeleton className="h-8 w-2/3" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+          <Skeleton className="h-4 w-4/6" />
+        </div>
       </div>
     </div>
   )
@@ -343,27 +384,34 @@ function SlideSkeleton() {
  */
 function SlideLoadError({ onRetry }: { onRetry: () => void }) {
   return (
-    <div
-      data-slide-error
-      className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col items-start justify-center gap-3 px-6 py-18"
-    >
-      <ContentLoadError onRetry={onRetry} />
+    <div data-slide-error className={SLIDE_SLOT}>
+      <div className={`${PAGE_COLUMN} ${PAGE_ITEM} flex flex-col items-start gap-3`}>
+        <ContentLoadError onRetry={onRetry} />
+      </div>
     </div>
   )
 }
 
-/** Floating control that returns to the previous page. */
+/**
+ * The previous-page control. Below `md` it is a compact pill — arrow plus its
+ * visible label — aligned to the left of the fixed bottom row, so it stays on
+ * the left even when it is the only control. At `md` and up it becomes its own
+ * narrow, full-height rail pinned to the left edge: the button *is* the rail,
+ * so the whole tall strip is clickable, its icon centred on both axes, with no
+ * border or radius. The rail carries a horizontal wash from the muted token at
+ * the viewport edge into the page background toward the content; the tokens
+ * flip with the colour scheme, so dark mode needs no separate styling.
+ */
 function PreviousControl({ onClick }: { onClick: () => void }) {
+  const intl = useIntl()
   return (
-    <div
-      data-slides-previous
-      className="pointer-events-none fixed inset-y-0 left-0 z-10 flex items-center bg-foreground/5 px-2.5 backdrop-blur-sm"
-    >
+    <div data-slides-previous className="pointer-events-none mr-auto md:contents">
       <Button
         type="button"
         variant="secondary"
+        aria-label={intl.formatMessage({ id: 'slides.previousPage' })}
         onClick={onClick}
-        className="pointer-events-auto cursor-pointer rounded-full"
+        className="pointer-events-auto cursor-pointer rounded-full max-md:min-w-0 max-md:shrink md:fixed md:inset-y-0 md:left-0 md:z-10 md:h-auto md:w-14 md:rounded-none md:border-0 md:px-0 md:bg-linear-to-r md:from-muted/15 md:to-background"
       >
         <ChevronLeft aria-hidden="true" />
       </Button>
@@ -371,18 +419,27 @@ function PreviousControl({ onClick }: { onClick: () => void }) {
   )
 }
 
-/** Floating control that advances to the next page once the current one is complete. */
+/**
+ * The next-page control, shown once the current page is complete. Below `md` it
+ * is a compact pill — arrow plus its visible label — aligned to the right of
+ * the fixed bottom row, so it stays on the right even when it is the only
+ * control. At `md` and up it becomes its own narrow, full-height rail pinned to
+ * the right edge: the button *is* the rail, so the whole tall strip is
+ * clickable, its icon centred on both axes, with no border or radius. The rail
+ * carries the mirror of the previous rail's wash — page background toward the
+ * content, easing into the muted token at the viewport edge — again from
+ * flip-with-scheme tokens, so dark mode needs no separate styling.
+ */
 function NextControl({ onClick }: { onClick: () => void }) {
+  const intl = useIntl()
   return (
-    <div
-      data-slides-next
-      className="pointer-events-none fixed inset-y-0 right-0 z-10 flex items-center bg-foreground/5 px-2.5 backdrop-blur-sm"
-    >
+    <div data-slides-next className="pointer-events-none ml-auto md:contents">
       <Button
         type="button"
         variant="secondary"
+        aria-label={intl.formatMessage({ id: 'slides.continueNextPage' })}
         onClick={onClick}
-        className="pointer-events-auto cursor-pointer rounded-full"
+        className="pointer-events-auto cursor-pointer rounded-full max-md:min-w-0 max-md:shrink md:fixed md:inset-y-0 md:right-0 md:z-10 md:h-auto md:w-14 md:rounded-none md:border-0 md:px-0 md:bg-linear-to-l md:from-muted/15 md:to-background"
       >
         <ChevronRight aria-hidden="true" />
       </Button>
