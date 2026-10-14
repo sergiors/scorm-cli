@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 import { Lock } from 'lucide-react'
-import { Virtuoso, type ListRange, type VirtuosoHandle } from 'react-virtuoso'
+import { Virtuoso, type ListItem, type VirtuosoHandle } from 'react-virtuoso'
 import type { AnswerValue, ContentNode, PageNode, PlayerPageState } from '../types'
 import {
   areQuestionnairesSubmitted,
@@ -64,6 +64,45 @@ function donePageIds(
   return new Set(
     pages.filter((page) => pageStates[page.id]?.completed === true).map((page) => page.id)
   )
+}
+
+/**
+ * The page under the viewport top, resolved exactly from the rendered items and
+ * the list-relative scroll offset. `itemsRendered` reports each item's `offset`
+ * and `size` measured from the start of the list, and in window-scroll mode
+ * `VirtuosoHandle.getState()` reports `scrollTop` against that same origin, so the
+ * item under the top is the one whose half-open interval `[offset, offset + size)`
+ * contains `scrollTop` — a boundary belongs to the following item, i.e. the first
+ * item whose end is strictly past `scrollTop`.
+ *
+ * The item intervals are assumed contiguous: a zero gap between consecutive
+ * items is what makes the "first item whose end is strictly past `scrollTop`"
+ * rule exact, and it holds because the list sets no Virtuoso `gap` prop.
+ *
+ * Returns `null` when `scrollTop` falls outside the reported span: the rendered
+ * window has not caught up with a just-issued scroll, or a re-render is still
+ * pending. The caller then leaves the location unchanged and reconciles once
+ * Virtuoso reports the covering list, so a transient window never moves it.
+ */
+function activePageIdAt(
+  items: readonly ListItem<unknown>[],
+  scrollTop: number,
+  pages: readonly PageNode[]
+): string | null {
+  if (items.length === 0) {
+    return null
+  }
+  const first = items[0]!
+  const last = items[items.length - 1]!
+  if (scrollTop < first.offset || scrollTop >= last.offset + last.size) {
+    return null
+  }
+  for (const item of items) {
+    if (scrollTop < item.offset + item.size) {
+      return pages[item.index]?.id ?? null
+    }
+  }
+  return null
 }
 
 export interface ScrollPresentationProps {
@@ -129,10 +168,37 @@ export interface ScrollPresentationProps {
  * directly (`useWindowScroll`), so there is no inner viewport and no second
  * geometry system.
  *
- * The semantic current page is the top edge page: the first page the virtualizer
- * reports as visible. Virtuoso changes only when the learner scrolls, and a
- * change only updates the location and marks the page visited — it never
- * repositions the list, so state updates can never feed back into scrolling.
+ * The semantic current page is the *exact* page under the viewport top. Virtuoso
+ * exposes the two public signals that make that exact: `itemsRendered` reports
+ * each rendered item with its measured `offset` and `size`, both in pixels from
+ * the start of the list, and `VirtuosoHandle.getState()` reports the list-relative
+ * `scrollTop` — in window-scroll mode Virtuoso subtracts the list's own document
+ * offset, so `scrollTop` and the item offsets share the same origin (see the
+ * installed source: `getState` computes `scrollTop = windowScrollContainerState
+ * .scrollTop - windowViewportRect.offsetTop - headerHeight`, and `Item.offset` is
+ * "the offset position of the item from the start of the list"). The current page
+ * is therefore the rendered item whose half-open interval `[offset, offset + size)`
+ * contains `scrollTop` — a boundary belongs to the following item — resolved by
+ * `activePageIdAt`. This is exact even for a page shorter than its predecessor and
+ * even when the *gated* rendered range would skip it: the offsets are absolute, so
+ * the first rendered item no longer has to be the page at the top.
+ *
+ * The location only moves when the learner actually scrolls. One passive `scroll`
+ * listener is attached to the real window scroller handed over by `scrollerRef`;
+ * each scroll reads the list-relative `scrollTop` through `getState` and resolves
+ * it against the latest rendered items, held in a ref. No snapshot before any
+ * scroll — on mount, or when items merely render — ever establishes a position, so
+ * a page that is merely mounted or visible below the top, including one a lazy load
+ * has just filled in, never moves it. When a scroll arrives before the rendered
+ * items have caught up, that scroll is marked pending and reconciled once
+ * `itemsRendered` reports the covering list, so a transient window never produces a
+ * wrong page. A normal scroll resolves immediately and clears the mark, so a later
+ * *measurement-only* re-report — a lazy load changing item offsets, with no scroll
+ * — can never re-resolve the remembered scrollTop and move the location; the id
+ * guard makes an unchanged page a no-op. Nothing here is an
+ * input to scrolling: no IntersectionObserver, no DOM measurement, no height
+ * estimate, no scroll correction, and no scrolling API is called to derive or
+ * apply the location, so state updates can never feed back into scrolling.
  * Explicit navigation (a Path jump) first ensures the target's module is
  * resolving — a user-explicit load attempt that reattempts a page whose earlier
  * prefetch failed — then goes straight through `scrollToIndex`, with no mounted
@@ -275,15 +341,105 @@ export function ScrollPresentation({
     ensure(pageId).then(settleJump, settleJump)
   }
 
-  // The semantic current page is the top edge page: the first page Virtuoso
-  // reports as visible. Its rendered range excludes overscan, so a change is
-  // driven only by where the viewport actually is; it updates the location and
-  // never repositions the list.
-  function handleRangeChanged(range: ListRange) {
-    const page = accessiblePages[range.startIndex]
-    if (page !== undefined) {
-      setActive(page.id)
+  // The latest rendered window, with each item's measured offset and size from
+  // the start of the list. `itemsRendered` refreshes it on every render, and the
+  // single scroll listener resolves the viewport top against it exactly.
+  const renderedItemsRef = useRef<readonly ListItem<unknown>[]>([])
+
+  // The last list-relative scroll offset Virtuoso reported, or `null` before any
+  // scroll. A `null` baseline is what keeps mount and item-render updates from
+  // moving the location: only an actual scroll establishes a position.
+  const scrollTopRef = useRef<number | null>(null)
+
+  // Whether a scroll arrived before the rendered items could resolve it, so the
+  // next `itemsRendered` must reconcile it. It is set only when a scroll snapshot
+  // cannot resolve against the currently rendered items, and cleared as soon as
+  // it resolves — by a later scroll, or by the covering list arriving. A normal
+  // scroll therefore leaves no pending mark, so a *measurement-only* re-report (a
+  // lazy load changing item offsets, with no scroll) never re-resolves a stale
+  // scrollTop and moves the location.
+  const pendingReconcileRef = useRef(false)
+
+  // The actual window scroller, handed over by Virtuoso's `scrollerRef` in
+  // window-scroll mode. Held in state so the passive listener is attached once,
+  // when it arrives, and removed when it changes or the presentation unmounts.
+  const [scroller, setScroller] = useState<EventTarget | null>(null)
+
+  // Guards a snapshot that raced an unmount, or that a later scroll superseded.
+  const mountedRef = useRef(true)
+  const scrollTokenRef = useRef(0)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
     }
+  }, [])
+
+  // Resolve the semantic current page from a known list-relative scroll offset
+  // against the latest rendered window. A resolution clears any pending
+  // reconciliation; a `null` — the window has not caught up with this scroll yet
+  // — marks one pending instead, leaving the location unchanged until the
+  // covering list arrives. The id guard in `setActive` makes an unchanged page a
+  // no-op. Kept in a ref so the single scroll listener always calls the current
+  // closure without being re-attached on every render.
+  function applyScrollTop(scrollTop: number) {
+    scrollTopRef.current = scrollTop
+    const pageId = activePageIdAt(renderedItemsRef.current, scrollTop, accessiblePagesRef.current)
+    if (pageId === null) {
+      pendingReconcileRef.current = true
+      return
+    }
+    pendingReconcileRef.current = false
+    setActive(pageId)
+  }
+  const applyScrollTopRef = useRef(applyScrollTop)
+  applyScrollTopRef.current = applyScrollTop
+
+  // ONE passive listener on the real scroller. Each scroll reads the
+  // list-relative scrollTop through Virtuoso's public `getState` — never a DOM
+  // measurement of a page — and resolves it exactly against the rendered items.
+  // No scrolling API is called here, so the location can never reposition the
+  // list.
+  useEffect(() => {
+    if (scroller === null) {
+      return
+    }
+    const onScroll = () => {
+      const token = (scrollTokenRef.current += 1)
+      virtuosoRef.current?.getState((snapshot) => {
+        // A snapshot from a superseded scroll, or one delivered after unmount,
+        // must not move the location.
+        if (!mountedRef.current || token !== scrollTokenRef.current) {
+          return
+        }
+        applyScrollTopRef.current(snapshot.scrollTop)
+      })
+    }
+    scroller.addEventListener('scroll', onScroll, { passive: true })
+    return () => scroller.removeEventListener('scroll', onScroll)
+  }, [scroller])
+
+  // Refresh the rendered window. A render alone never moves the location: it is
+  // only reconciled while a scroll is pending — one that arrived before the
+  // rendered items could resolve it — so a page that merely mounts, or a lazy
+  // load that re-measures an item's offset below or above the top, cannot change
+  // it. When a scroll arrived before this update, the new window is what lets its
+  // remembered scrollTop resolve, closing the gap safely.
+  function handleItemsRendered(items: ListItem<unknown>[]) {
+    renderedItemsRef.current = items
+    if (!pendingReconcileRef.current) {
+      return
+    }
+    const scrollTop = scrollTopRef.current
+    if (scrollTop === null) {
+      return
+    }
+    const pageId = activePageIdAt(items, scrollTop, accessiblePagesRef.current)
+    if (pageId === null) {
+      return
+    }
+    pendingReconcileRef.current = false
+    setActive(pageId)
   }
 
   if (pages.length === 0 || accessiblePages.length === 0) {
@@ -317,17 +473,26 @@ export function ScrollPresentation({
         // Only a server-rendered shell (the app renders client-side) needs a
         // forced initial item; on the client Virtuoso opens at the initial index.
         initialItemCount={typeof window === 'undefined' ? 1 : undefined}
-        // Render exactly the visible window, so `rangeChanged` reports the pages
-        // the viewport actually shows rather than a pre-rendered overscan band.
-        // No `defaultItemHeight`, `heightEstimates` or `fixedItemHeight` is
-        // given: pages keep their natural, measured heights and Virtuoso owns
-        // geometry. Before a page is measured Virtuoso derives its own default
-        // size by probing the first rendered page, then refines every position
-        // as pages measure — so a deep Path jump may settle briefly, but it is
-        // never positioned by a custom or viewport-sized height estimate.
+        // Render no overscan band and no increased viewport, so the rendered
+        // window is not inflated beyond what the viewport needs; the exact page
+        // is resolved from the reported item offsets and the list-relative
+        // scrollTop, not from the window's first item, so a page shorter than its
+        // predecessor is never skipped. No `defaultItemHeight`, `heightEstimates`
+        // or `fixedItemHeight` is given: pages keep their natural, measured
+        // heights and Virtuoso owns geometry. Before a page is measured Virtuoso
+        // derives its own default size by probing the first rendered page, then
+        // refines every position as pages measure — so a deep Path jump may settle
+        // briefly, but it is never positioned by a custom or viewport-sized
+        // height estimate.
         overscan={0}
+        increaseViewportBy={0}
         computeItemKey={(index) => accessiblePages[index]?.id ?? index}
-        rangeChanged={handleRangeChanged}
+        // The exact semantic signal: every rendered item with its measured offset
+        // and size from the start of the list.
+        itemsRendered={handleItemsRendered}
+        // The real window scroller, so ONE passive listener can read the
+        // list-relative scrollTop from Virtuoso's own `getState`.
+        scrollerRef={setScroller}
         itemContent={(index) => {
           const page = accessiblePages[index]
           if (page === undefined) {

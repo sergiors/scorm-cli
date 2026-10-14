@@ -291,12 +291,13 @@ function setEndIntersecting(index: number, isIntersecting: boolean): void {
 }
 
 /**
- * Moves React Virtuoso's rendered window to an item index, modelling a learner
- * scroll that leaves the window's top edge on that page. The double reports the
- * new range, so the semantic current page follows the visible range.
+ * Scrolls the reading list so a page's top sits at the viewport top, modelling a
+ * learner scroll to that page. The double moves the list-relative scroll offset
+ * to the page's offset and dispatches a `scroll` on the window scroller, so the
+ * presentation's passive listener resolves the exact current page.
  */
 function showScrollPage(index: number): void {
-  act(() => virtuosoMock.setAnchor?.(index))
+  act(() => virtuosoMock.scrollToOffset?.(virtuosoMock.offsetOfIndex(index)))
 }
 
 /** Indices of the mounted scenes, in document order. */
@@ -811,7 +812,11 @@ describe('PackageView scroll Virtuoso-owned geometry', () => {
     expect(virtuosoMock.lastProps?.defaultItemHeight).toBeUndefined()
     expect(virtuosoMock.lastProps?.heightEstimates).toBeUndefined()
     expect(virtuosoMock.lastProps?.fixedItemHeight).toBeUndefined()
+    // Both the overscan band and the increased viewport are pinned to zero, so
+    // the reported range is not inflated and its first item is the closest the
+    // library's gated range gets to the viewport top.
     expect(virtuosoMock.lastProps?.overscan).toBe(0)
+    expect(virtuosoMock.lastProps?.increaseViewportBy).toBe(0)
     // The document is the single scroller, so Virtuoso uses window scroll.
     expect(virtuosoMock.lastProps?.useWindowScroll).toBe(true)
   })
@@ -1190,6 +1195,235 @@ describe('PackageView scroll current page tracking', () => {
 
     expect(virtuosoMock.scrollToIndexCalls).toHaveLength(0)
     expect(lastSaved(saveState).location).toBe('page:plain-4.mdx')
+  })
+})
+
+describe('PackageView scroll top-item location', () => {
+  /**
+   * Renders four reachable pages with a viewport tall enough to show several at
+   * once, so the "next" page is mounted and visible below the top before it
+   * becomes the top item.
+   */
+  function renderWithTallViewport(visibleCount: number, saveState = vi.fn()) {
+    virtuosoMock.visibleCount = visibleCount
+    window.scormBridge = { restoreState: restoreAllFourPages, saveState }
+    act(() => root.render(<Player contentPackage={progressPackage} />))
+    return { saveState }
+  }
+
+  it('changes the location only when the next page reaches the viewport top', () => {
+    const { saveState } = renderWithTallViewport(2)
+
+    // Two pages are mounted and visible at once, but the location is the page at
+    // the viewport top — the next page is rendered below it, not current.
+    expect(sceneIndices()).toEqual([0, 1])
+    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
+
+    // Only when page two's top reaches the viewport top does the location move.
+    showScrollPage(1)
+    expect(sceneIndices()).toEqual([1, 2])
+    expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
+
+    // Returning to page one's top reports it again.
+    showScrollPage(0)
+    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
+  })
+
+  it('keeps the location on the top page while later pages are merely visible', () => {
+    const { saveState } = renderWithTallViewport(3)
+
+    // Three pages share the viewport, but only the top item is the location.
+    expect(sceneIndices()).toEqual([0, 1, 2])
+    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
+
+    // The window's top edge moving to page two makes it current, not page three
+    // which is still only visible below it.
+    showScrollPage(1)
+    expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
+  })
+
+  it('does not move the location when a below-top page mounts and its module loads', async () => {
+    virtuosoMock.visibleCount = 2
+    const { provider, calls, resolve } = deferredProvider(progressPackage)
+    const saveState = vi.fn()
+    window.scormBridge = { restoreState: restoreAllFourPages, saveState }
+
+    act(() =>
+      root.render(<LazyPlayer contentPackage={progressPackage} contentProvider={provider} />)
+    )
+
+    // Both visible pages mount and request their modules, but the location is
+    // still only the top page's.
+    expect(calls).toEqual(['page:plain-1.mdx', 'page:plain-2.mdx'])
+    expect(lastSaved(saveState)).toBeUndefined()
+
+    await act(async () => {
+      resolve('page:plain-1.mdx')
+    })
+    await flushLoads()
+    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
+
+    // Resolving the below-top page's module mounts its content but does not move
+    // the location: a lazy load is not a reading-position change.
+    await act(async () => {
+      resolve('page:plain-2.mdx')
+    })
+    await flushLoads()
+    expect(renderedPage(1)?.querySelector('.prose')).not.toBeNull()
+    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
+  })
+
+  it('tracks the reported range across pages of differing lengths', () => {
+    // Short pages that share a viewport and a long page that fills it alone both
+    // resolve their current page from the same range signal, with no height
+    // input from the presentation. The double reports the range's first item;
+    // the real library's gated range can lag the viewport top for short pages.
+    virtuosoMock.visibleCount = 3
+    const saveState = vi.fn()
+    window.scormBridge = { restoreState: restoreShortPages, saveState }
+
+    act(() => root.render(<Player contentPackage={shortPagesPackage} />))
+
+    expect(sceneIndices()).toEqual([0, 1, 2])
+    expect(lastSaved(saveState).location).toBe('page:short-path.mdx')
+
+    showScrollPage(2)
+    expect(lastSaved(saveState).location).toBe('page:plain-3.mdx')
+  })
+
+  it('never scrolls the list when the location changes', () => {
+    const { saveState } = renderWithTallViewport(2)
+
+    showScrollPage(1)
+    showScrollPage(0)
+    showScrollPage(2)
+
+    // The location is an output of the viewport, never an input: moving it issues
+    // no scroll and no feedback loop can form.
+    expect(virtuosoMock.scrollToIndexCalls).toHaveLength(0)
+    expect(lastSaved(saveState).location).toBe('page:plain-3.mdx')
+  })
+})
+
+describe('PackageView scroll exact location tracking', () => {
+  /** Four reachable pages whose heights differ, so a short page can be skipped. */
+  function renderVariableHeights(saveState = vi.fn()) {
+    virtuosoMock.itemHeights = [1000, 50, 1000, 1000]
+    window.scormBridge = { restoreState: restoreAllFourPages, saveState }
+    act(() => root.render(<Player contentPackage={progressPackage} />))
+    return { saveState }
+  }
+
+  it('tracks the exact page at the viewport top even when the gated range skips a short page', () => {
+    const { saveState } = renderVariableHeights()
+    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
+
+    // The viewport top reaches the short second page's offset (1000). It is
+    // exactly current from the item offsets and the list-relative scrollTop, even
+    // though the gated range's first item has not advanced past page one.
+    showScrollPage(1)
+    expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
+
+    // Crossing into the third page's offset (1050) moves the location again.
+    act(() => virtuosoMock.scrollToOffset?.(1050))
+    expect(lastSaved(saveState).location).toBe('page:plain-3.mdx')
+
+    // The gated first-item signal lagged above the short page and then jumped
+    // straight past it — it never reported the short page as its first item —
+    // while the exact tracker resolves it from the item offsets regardless.
+    expect(virtuosoMock.rangeChangedCalls.map((range) => range.startIndex)).not.toContain(1)
+
+    // No semantic change ever scrolled the list.
+    expect(virtuosoMock.scrollToIndexCalls).toHaveLength(0)
+  })
+
+  it('returns to a page when the viewport top scrolls back to it', () => {
+    const { saveState } = renderVariableHeights()
+
+    showScrollPage(1)
+    expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
+
+    act(() => virtuosoMock.scrollToOffset?.(1050))
+    expect(lastSaved(saveState).location).toBe('page:plain-3.mdx')
+
+    // Scrolling back up lands on the short page, then the first page, again.
+    showScrollPage(1)
+    expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
+
+    showScrollPage(0)
+    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
+    expect(virtuosoMock.scrollToIndexCalls).toHaveLength(0)
+  })
+
+  it('does not move the location when a below-top page mounts and loads without a scroll', async () => {
+    virtuosoMock.visibleCount = 2
+    const { provider, resolve } = deferredProvider(progressPackage)
+    const saveState = vi.fn()
+    window.scormBridge = { restoreState: restoreAllFourPages, saveState }
+
+    act(() =>
+      root.render(<LazyPlayer contentPackage={progressPackage} contentProvider={provider} />)
+    )
+
+    // Both visible pages mount — the window includes a page below the top — but no
+    // scroll has established a position, so nothing is reported yet.
+    expect(saveState).not.toHaveBeenCalled()
+
+    await act(async () => {
+      resolve('page:plain-1.mdx')
+    })
+    await flushLoads()
+    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
+
+    // The below-top page's module resolving mounts its content but does not move
+    // the location: a lazy load is not a reading-position change.
+    await act(async () => {
+      resolve('page:plain-2.mdx')
+    })
+    await flushLoads()
+    expect(renderedPage(1)?.querySelector('.prose')).not.toBeNull()
+    expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
+    expect(virtuosoMock.scrollToIndexCalls).toHaveLength(0)
+  })
+
+  it('does not move the location when items re-measure without a scroll', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { restoreState: restoreAllFourPages, saveState }
+
+    act(() => root.render(<Player contentPackage={progressPackage} />))
+
+    // A real scroll establishes page two as the location.
+    showScrollPage(1)
+    expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
+    const writesAfterScroll = saveState.mock.calls.length
+
+    // A measurement-only re-report arrives with no scroll: the first page grew,
+    // so every later offset shifted down and the viewport top now falls inside
+    // page one's enlarged span. Re-resolving the remembered scrollTop against the
+    // new offsets would wrongly select page one; the location must not move,
+    // because only an actual scroll may change it.
+    act(() => virtuosoMock.measure?.([3000, 1000, 1000, 1000]))
+
+    expect(lastSaved(saveState).location).toBe('page:plain-2.mdx')
+    expect(saveState).toHaveBeenCalledTimes(writesAfterScroll)
+    expect(virtuosoMock.scrollToIndexCalls).toHaveLength(0)
+  })
+
+  it('tracks the location with no IntersectionObserver or animation of its own', () => {
+    const { saveState } = renderVariableHeights()
+
+    // One observer per rendered page end sentinel — the completion signal only;
+    // the location tracker creates none.
+    expect(observers).toHaveLength(sceneIndices().length)
+
+    showScrollPage(2)
+
+    const content = container.querySelector<HTMLElement>('[data-scroll-page-content]')
+    expect(content).not.toBeNull()
+    expect(content?.className).not.toContain('transition')
+    expect(content?.className).not.toContain('animate')
+    expect(virtuosoMock.scrollToIndexCalls).toHaveLength(0)
+    expect(lastSaved(saveState).location).toBe('page:plain-3.mdx')
   })
 })
 

@@ -115,7 +115,7 @@ type ContentNodeRenderers = {
 function HeadingView({ node }: ContentNodeViewProps<'heading'>) {
   const Tag = HEADING_TAGS[clampHeading(node.depth)]
   return (
-    <Tag className="scroll-mt-24">
+    <Tag>
       <InlineContent nodes={node.children} />
     </Tag>
   )
@@ -175,15 +175,19 @@ function ListView({ node, context }: ContentNodeViewProps<'list'>) {
 
 function CodeView({ node }: ContentNodeViewProps<'code'>) {
   return (
-    <pre className="text-sm font-mono not-prose overflow-x-auto rounded-2xl border border-border bg-secondary p-6">
-      <code className={node.language ? `language-${node.language}` : undefined}>{node.value}</code>
-    </pre>
+    <div className="rounded-2xl border border-border bg-secondary overflow-hidden">
+      <pre className="text-sm font-mono not-prose overflow-x-auto p-6">
+        <code className={node.language ? `language-${node.language}` : undefined}>
+          {node.value}
+        </code>
+      </pre>
+    </div>
   )
 }
 
 function QuoteView({ node, context }: ContentNodeViewProps<'quote'>) {
   return (
-    <blockquote className="border-l-4 border-primary/50 bg-secondary/50 px-4 py-3 italic text-foreground/90">
+    <blockquote className="border-l-4 border-primary/50 bg-secondary/50 py-2 px-6 rounded-2xl">
       <ContentRenderer nodes={node.children} {...context} />
     </blockquote>
   )
@@ -198,11 +202,13 @@ function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
       className={cn('h-auto max-w-full rounded-2xl overflow-hidden', node.caption ? undefined : '')}
     />
   )
+
   if (!node.caption) {
     return image
   }
+
   return (
-    <figure className="space-y-2">
+    <figure className="space-y-2.5">
       {image}
       <figcaption className="text-sm text-muted-foreground">{node.caption}</figcaption>
     </figure>
