@@ -643,12 +643,19 @@ describe('ContentRenderer images and video', () => {
     // The video placeholder is its own variant of the shared frame...
     expect(html).toContain('data-slot="media-frame-placeholder"')
     expect(html).toContain('data-kind="video"')
-    // ...with a subdued center play glyph drawn from the existing lucide icon...
+    // ...filled by exactly one static shadcn Skeleton over the whole reserved
+    // box (no bottom progress/control row)...
+    expect((html.match(/data-slot="skeleton"/g) ?? []).length).toBe(1)
+    // ...with a single subdued play glyph drawn from the existing lucide icon,
+    // centered in the frame...
+    expect(html).toContain('items-center justify-center')
     expect(html).toContain('<svg')
-    // ...and a bottom progress/control row built from the shadcn Skeleton.
-    expect((html.match(/data-slot="skeleton"/g) ?? []).length).toBeGreaterThanOrEqual(2)
-    // It is decorative only, so it is hidden from assistive tech.
+    // ...and it is decorative only: hidden from assistive tech and carrying no
+    // interactive control of its own.
     expect(html).toContain('aria-hidden="true"')
+    expect(html).not.toContain('<button')
+    expect(html).not.toContain('role="button"')
+    expect(html).not.toContain('tabindex')
   })
 
   it('keeps the video placeholder free of any animation', () => {
@@ -660,10 +667,10 @@ describe('ContentRenderer images and video', () => {
     expect(html).not.toContain('animate-pulse')
     expect(html).not.toContain('transition')
     expect(html).not.toContain('duration-')
-    // Every skeleton in the silhouette disables its own default pulse.
-    expect((html.match(/data-slot="skeleton"/g) ?? []).length).toBe(
-      (html.match(/animate-none/g) ?? []).length
-    )
+    // The single skeleton disables its own default pulse, so the placeholder
+    // holds perfectly still.
+    expect((html.match(/data-slot="skeleton"/g) ?? []).length).toBe(1)
+    expect((html.match(/animate-none/g) ?? []).length).toBe(1)
   })
 
   it('keeps the image placeholder generic with no player silhouette', () => {

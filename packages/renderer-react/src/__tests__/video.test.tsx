@@ -200,16 +200,20 @@ describe('Video provider inputs', () => {
     const placeholder = container.querySelector('[data-slot="media-frame-placeholder"]')
     expect(placeholder).not.toBeNull()
     expect(placeholder?.getAttribute('data-kind')).toBe('video')
-    // Decorative only: no focusable control, and hidden from assistive tech.
+    // Decorative only: hidden from assistive tech and carrying no focusable or
+    // interactive control of its own.
     expect(placeholder?.getAttribute('aria-hidden')).toBe('true')
     expect(placeholder?.querySelector('button')).toBeNull()
-    // A player silhouette: a play glyph plus a progress/control row.
+    expect(placeholder?.querySelector('[role="button"]')).toBeNull()
+    expect(placeholder?.querySelector('[tabindex]')).toBeNull()
+    // A player silhouette: exactly one static skeleton fills the frame, with a
+    // single play glyph centered over it — no bottom progress/control row.
+    expect(placeholder?.querySelectorAll('[data-slot="skeleton"]').length).toBe(1)
     expect(placeholder?.querySelector('svg')).not.toBeNull()
-    expect(
-      placeholder?.querySelectorAll('[data-slot="skeleton"]').length ?? 0
-    ).toBeGreaterThanOrEqual(2)
+    expect(placeholder?.querySelector('.items-center.justify-center')).not.toBeNull()
     // Static: nothing in the silhouette carries the skeleton's default pulse.
     expect(placeholder?.querySelector('.animate-pulse')).toBeNull()
+    expect(placeholder?.querySelector('.animate-none')).not.toBeNull()
 
     // Once the media genuinely renders, the silhouette yields with the frame.
     await act(async () => {
