@@ -634,6 +634,47 @@ describe('ContentRenderer images and video', () => {
     expect(html).toContain('aria-label="Video"')
     expect(html).not.toContain('<figcaption')
   })
+
+  it('gives a video placeholder a low-fidelity player silhouette, not a bare box', () => {
+    const html = render([
+      { type: 'video', id: 'video:test.mdx:1:1', provider: 'native', src: './v.mp4' }
+    ])
+
+    // The video placeholder is its own variant of the shared frame...
+    expect(html).toContain('data-slot="media-frame-placeholder"')
+    expect(html).toContain('data-kind="video"')
+    // ...with a subdued center play glyph drawn from the existing lucide icon...
+    expect(html).toContain('<svg')
+    // ...and a bottom progress/control row built from the shadcn Skeleton.
+    expect((html.match(/data-slot="skeleton"/g) ?? []).length).toBeGreaterThanOrEqual(2)
+    // It is decorative only, so it is hidden from assistive tech.
+    expect(html).toContain('aria-hidden="true"')
+  })
+
+  it('keeps the video placeholder free of any animation', () => {
+    const html = render([
+      { type: 'video', id: 'video:test.mdx:1:1', provider: 'native', src: './v.mp4' }
+    ])
+
+    // No shimmer/pulse, no fade or transition: the silhouette is static.
+    expect(html).not.toContain('animate-pulse')
+    expect(html).not.toContain('transition')
+    expect(html).not.toContain('duration-')
+    // Every skeleton in the silhouette disables its own default pulse.
+    expect((html.match(/data-slot="skeleton"/g) ?? []).length).toBe(
+      (html.match(/animate-none/g) ?? []).length
+    )
+  })
+
+  it('keeps the image placeholder generic with no player silhouette', () => {
+    const html = render([{ type: 'image', src: './a.png', alt: 'A picture' }])
+
+    // The image keeps the bare static skeleton and gains no player chrome.
+    expect(html).toContain('data-slot="skeleton"')
+    expect(html).not.toContain('data-slot="media-frame-placeholder"')
+    expect(html).not.toContain('data-kind="video"')
+    expect(html).not.toContain('<svg')
+  })
 })
 
 describe('ContentRenderer questionnaires', () => {

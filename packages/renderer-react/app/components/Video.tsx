@@ -108,6 +108,7 @@ export function Video({ node, position, onPosition }: VideoProps) {
         role="group"
         aria-label={label}
         ready={ready}
+        kind="video"
         error={failed ? errorMessage : undefined}
         className={cn(
           'rounded-2xl border not-prose',

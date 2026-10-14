@@ -193,6 +193,30 @@ describe('Video provider inputs', () => {
     })
     expect(container.querySelector('[data-slot="skeleton"]')).toBeNull()
   })
+
+  it('shows a decorative player silhouette until the media is ready, then yields it', async () => {
+    const record = await mountVideo(nativeNode, undefined, () => {})
+
+    const placeholder = container.querySelector('[data-slot="media-frame-placeholder"]')
+    expect(placeholder).not.toBeNull()
+    expect(placeholder?.getAttribute('data-kind')).toBe('video')
+    // Decorative only: no focusable control, and hidden from assistive tech.
+    expect(placeholder?.getAttribute('aria-hidden')).toBe('true')
+    expect(placeholder?.querySelector('button')).toBeNull()
+    // A player silhouette: a play glyph plus a progress/control row.
+    expect(placeholder?.querySelector('svg')).not.toBeNull()
+    expect(
+      placeholder?.querySelectorAll('[data-slot="skeleton"]').length ?? 0
+    ).toBeGreaterThanOrEqual(2)
+    // Static: nothing in the silhouette carries the skeleton's default pulse.
+    expect(placeholder?.querySelector('.animate-pulse')).toBeNull()
+
+    // Once the media genuinely renders, the silhouette yields with the frame.
+    await act(async () => {
+      record.onDuration?.(120)
+    })
+    expect(container.querySelector('[data-slot="media-frame-placeholder"]')).toBeNull()
+  })
 })
 
 describe('Video resume and persistence', () => {
