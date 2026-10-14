@@ -753,6 +753,61 @@ describe('PackageView scroll natural layout', () => {
     expect(column?.contains(error)).toBe(true)
   })
 
+  it('applies the shared page gap once on the item wrapper, never on the page prose', () => {
+    act(() => root.render(<Player contentPackage={gatedPackage} />))
+
+    // The uniform gap between pages is a single wrapper class around each
+    // Virtuoso item, so the loaded scene reads with the same spacing as any other.
+    // The wrapper class must be *exactly* `pb-6`: the gap is internal padding
+    // inside the item content, which Virtuoso measures into the item's height, so
+    // no unmeasured margin may be added alongside it.
+    const item = container.querySelector<HTMLElement>('[data-scroll-item]')
+    expect(item).not.toBeNull()
+    expect(item?.className).toBe('pb-6')
+
+    // The spacing lives only on that wrapper: the measured page and its prose
+    // carry no vertical padding of their own, so the gap is never doubled.
+    const scene = item?.querySelector<HTMLElement>('[data-scene-index]')
+    const content = item?.querySelector<HTMLElement>('[data-scroll-page-content]')
+    const prose = item?.querySelector<HTMLElement>('.prose')
+    expect(scene).not.toBeNull()
+    expect(content).not.toBeNull()
+    expect(prose).not.toBeNull()
+    for (const element of [scene, content, prose]) {
+      expect(baseClasses(element).some((name) => name.startsWith('pb-'))).toBe(false)
+    }
+  })
+
+  it('gives the loading and error slots the same spacing wrapper as a loaded page', async () => {
+    const { provider, rejectLoad } = deferredProvider(plainOnePagePackage)
+
+    act(() =>
+      root.render(<LazyPlayer contentPackage={plainOnePagePackage} contentProvider={provider} />)
+    )
+
+    // While the page module is still resolving, its slot sits in the same item
+    // wrapper as a loaded page, so the gap between pages does not change on load.
+    // The class is *exactly* `pb-6`: internal padding is the sole spacing
+    // mechanism, measured by Virtuoso as part of the item height.
+    const loadingItem = container.querySelector<HTMLElement>('[data-scroll-item]')
+    expect(loadingItem).not.toBeNull()
+    expect(loadingItem?.className).toBe('pb-6')
+    expect(loadingItem?.querySelector('[data-scroll-loading]')).not.toBeNull()
+
+    await act(async () => {
+      rejectLoad('page:plain-1.mdx')
+    })
+    await flushLoads()
+
+    // The failed slot keeps the identical wrapper and gap; only the content inside
+    // the slot changes. The class is *exactly* `pb-6`: internal padding is the
+    // sole spacing mechanism, measured by Virtuoso as part of the item height.
+    const errorItem = container.querySelector<HTMLElement>('[data-scroll-item]')
+    expect(errorItem).not.toBeNull()
+    expect(errorItem?.className).toBe('pb-6')
+    expect(errorItem?.querySelector('[data-scroll-error]')).not.toBeNull()
+  })
+
   it('lets a page longer than the viewport grow without clipping or centering', () => {
     // jsdom performs no layout, so the guarantee is asserted at the style level:
     // the wrapper sets no viewport height at all and clips nothing, so content

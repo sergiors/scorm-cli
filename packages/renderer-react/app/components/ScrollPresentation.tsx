@@ -41,6 +41,20 @@ const PAGE_END_MARGIN = '0px 0px 64px 0px'
  */
 const PAGE_COLUMN = 'mx-auto w-full max-w-3xl px-4 sm:px-6'
 
+/**
+ * The one spacing wrapper around every page slot in the virtualized document. It
+ * gives consecutive pages a single, uniform visible gap regardless of whether the
+ * slot currently holds loaded content, its loading indication or its error state.
+ *
+ * The padding lives *inside* the Virtuoso item content, so each item's measured
+ * height already includes it: unlocking the next page never retroactively changes
+ * the previous item's geometry, and no Virtuoso `gap` prop (which would leave the
+ * reported item offsets non-contiguous) is needed. It is stable and identical for
+ * every item, so the list stays measured with natural, per-page heights and the
+ * exact active-page resolution is unaffected.
+ */
+const PAGE_ITEM = 'py-6'
+
 /** The nodes already opened or done, which the shared access policy treats as reached. */
 function reachedPageIds(
   pages: readonly PageNode[],
@@ -499,21 +513,23 @@ export function ScrollPresentation({
             return null
           }
           return (
-            <PageSlot
-              page={page}
-              index={index}
-              contentLoader={loader}
-              active={page.id === activeId}
-              pathPages={pages}
-              pageStates={pageStates}
-              onNavigatePathPage={navigateToPageId}
-              pageState={pageStates[page.id]}
-              onAnswer={onAnswer}
-              onQuestionnaireSubmitted={onQuestionnaireSubmitted}
-              onVideoPosition={onVideoPosition}
-              onPageCompleted={onPageCompleted}
-              showLockedBoundary={index === finalAccessibleIndex && nextAfterFinalLocked}
-            />
+            <div data-scroll-item className={PAGE_ITEM}>
+              <PageSlot
+                page={page}
+                index={index}
+                contentLoader={loader}
+                active={page.id === activeId}
+                pathPages={pages}
+                pageStates={pageStates}
+                onNavigatePathPage={navigateToPageId}
+                pageState={pageStates[page.id]}
+                onAnswer={onAnswer}
+                onQuestionnaireSubmitted={onQuestionnaireSubmitted}
+                onVideoPosition={onVideoPosition}
+                onPageCompleted={onPageCompleted}
+                showLockedBoundary={index === finalAccessibleIndex && nextAfterFinalLocked}
+              />
+            </div>
           )
         }}
       />
@@ -842,7 +858,7 @@ function LockedBoundary() {
   return (
     <div
       data-scroll-locked
-      className="flex items-center justify-center gap-2 py-6 text-muted-foreground"
+      className="flex items-center justify-center gap-2 pt-6 text-muted-foreground"
     >
       <Lock aria-hidden="true" className="size-5" />
       <p className="text-sm">
