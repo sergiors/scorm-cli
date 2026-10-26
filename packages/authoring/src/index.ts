@@ -125,10 +125,15 @@ export interface QuestionProps extends ContainerProps {
 }
 
 /** Props for `<Prompt>`, the question text. */
-export type PromptProps = ContainerProps
+export interface PromptProps {
+  /** Plain-text question prompt. */
+  children?: string
+}
 
 /** Props for `<Option value="..." />`, an answer choice. */
-export interface OptionProps extends ContainerProps {
+export interface OptionProps {
+  /** Plain-text answer choice. */
+  children?: string
   /** Unique value identifying this option within its question. */
   value: string
   /** Whether this option is part of the correct answer. */

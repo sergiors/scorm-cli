@@ -5,7 +5,6 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ContentRenderer as ContentRendererBase } from '../../app/components/ContentRenderer'
 import { PackageView as PackageViewBase } from '../../app/components/PackageView'
-import { QuestionnaireView as QuestionnaireViewBase } from '../../app/components/QuestionnaireView'
 import type { ContentProvider } from '../../app/lib/content-loader'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
 import type {
@@ -14,8 +13,7 @@ import type {
   PageNode,
   PathNode,
   PlayerPageState,
-  PlayerState,
-  QuestionnaireNode
+  PlayerState
 } from '../../app/types'
 import { inlineContentProvider } from './fixtures'
 import { virtuosoMock } from './virtuoso-mock'
@@ -33,14 +31,6 @@ function ContentRenderer(props: ComponentProps<typeof ContentRendererBase>) {
   return (
     <PlayerI18nProvider>
       <ContentRendererBase {...props} />
-    </PlayerI18nProvider>
-  )
-}
-
-function QuestionnaireView(props: ComponentProps<typeof QuestionnaireViewBase>) {
-  return (
-    <PlayerI18nProvider>
-      <QuestionnaireViewBase {...props} />
     </PlayerI18nProvider>
   )
 }
@@ -355,101 +345,6 @@ describe('PathView navigation', () => {
     const first = entries()[0]!
     expect(first.dataset.pathStatus).toBe('available')
     expect(first.disabled).toBe(true)
-  })
-})
-
-describe('QuestionnaireView nested Path', () => {
-  const nestedQuestionnaire: QuestionnaireNode = {
-    type: 'questionnaire',
-    id: 'questionnaire:nested.mdx:1:1',
-    contributesToScore: true,
-    questions: [
-      {
-        type: 'question',
-        id: 'question:nested.mdx:1:1',
-        questionType: 'single-choice',
-        prompt: [pathNode],
-        options: [
-          { value: 'yes', correct: true, content: [pathNode] },
-          { value: 'no', correct: false, content: [pathNode] }
-        ]
-      }
-    ]
-  }
-
-  function pathEntries(): HTMLButtonElement[] {
-    return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-path-entry]'))
-  }
-
-  it('resolves reference status and navigation in prompt and option content', () => {
-    const onNavigate = vi.fn()
-    act(() =>
-      root.render(
-        <QuestionnaireView
-          node={nestedQuestionnaire}
-          pathPages={refPages}
-          pageStates={{ 'page:one.mdx': { visited: true, completed: true } }}
-          onNavigatePathPage={onNavigate}
-        />
-      )
-    )
-
-    // The Path authored in the active prompt and in each option resolves its
-    // references through the questionnaire's forwarded context: titles come
-    // from the root pages, statuses from the persisted page state.
-    const all = pathEntries()
-    expect(all).toHaveLength(12)
-
-    const prompt = all.slice(0, 4)
-    expect(prompt[0]?.textContent).toContain('One')
-    expect(prompt.map((entry) => entry.dataset.pathStatus)).toEqual([
-      'visited',
-      'available',
-      'locked',
-      'locked'
-    ])
-
-    const firstOption = all.slice(4, 8)
-    expect(firstOption[0]?.textContent).toContain('One')
-    expect(firstOption.map((entry) => entry.dataset.pathStatus)).toEqual([
-      'visited',
-      'available',
-      'locked',
-      'locked'
-    ])
-
-    // Navigation is forwarded to the presentation's page switching.
-    act(() => prompt[0]?.click())
-    expect(onNavigate).toHaveBeenCalledWith('page:one.mdx')
-  })
-
-  it('resolves reference status in submitted rendering', () => {
-    act(() =>
-      root.render(
-        <QuestionnaireView
-          node={nestedQuestionnaire}
-          submitted
-          pathPages={refPages}
-          pageStates={{
-            'page:one.mdx': { visited: true, completed: true },
-            'page:two.mdx': { visited: true, completed: true }
-          }}
-          onNavigatePathPage={() => {}}
-        />
-      )
-    )
-
-    // Submitted rendering shows every question at once; the nested Paths still
-    // resolve their references and visited status from the same context.
-    const all = pathEntries()
-    expect(all).toHaveLength(12)
-    expect(all[0]?.textContent).toContain('One')
-    expect(all.slice(0, 4).map((entry) => entry.dataset.pathStatus)).toEqual([
-      'visited',
-      'visited',
-      'available',
-      'locked'
-    ])
   })
 })
 

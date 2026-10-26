@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ContentNode, ContentPackage, QuestionOption } from '@scorm-cli/core'
 import { createContentManifest } from '../content-manifest'
 
-const question = (id: string, prompt: ContentNode[], options: QuestionOption[] = []) => ({
+const question = (id: string, prompt: string, options: QuestionOption[] = []) => ({
   type: 'question' as const,
   id,
   questionType: 'single-choice' as const,
@@ -36,47 +36,23 @@ describe('content manifest', () => {
                 contributesToScore: true,
                 questions: [
                   {
-                    ...question(
-                      'multi',
-                      [
-                        {
-                          type: 'paragraph',
-                          children: [
-                            { type: 'text', value: 'Pick ' },
-                            { type: 'strong', children: [{ type: 'text', value: 'two' }] }
-                          ]
-                        }
-                      ],
-                      [
-                        {
-                          value: 'semantic-z',
-                          correct: true,
-                          content: [
-                            {
-                              type: 'paragraph',
-                              children: [{ type: 'text', value: 'First label' }]
-                            }
-                          ]
-                        },
-                        {
-                          value: 'semantic-a',
-                          correct: false,
-                          content: [
-                            {
-                              type: 'paragraph',
-                              children: [{ type: 'text', value: 'Wrong label' }]
-                            }
-                          ]
-                        },
-                        {
-                          value: 'semantic-y',
-                          correct: true,
-                          content: [
-                            { type: 'paragraph', children: [{ type: 'text', value: 'Last label' }] }
-                          ]
-                        }
-                      ]
-                    ),
+                    ...question('multi', 'Pick **two**', [
+                      {
+                        value: 'semantic-z',
+                        correct: true,
+                        content: 'First label'
+                      },
+                      {
+                        value: 'semantic-a',
+                        correct: false,
+                        content: 'Wrong label'
+                      },
+                      {
+                        value: 'semantic-y',
+                        correct: true,
+                        content: 'Last label'
+                      }
+                    ]),
                     questionType: 'multiple-choice' as const
                   }
                 ]
@@ -102,22 +78,13 @@ describe('content manifest', () => {
                 id: 'quiz-2',
                 contributesToScore: false,
                 questions: [
-                  question(
-                    'single',
-                    [],
-                    [
-                      {
-                        value: 'semantic-value',
-                        correct: true,
-                        content: [
-                          {
-                            type: 'paragraph',
-                            children: [{ type: 'text', value: 'Visible label' }]
-                          }
-                        ]
-                      }
-                    ]
-                  )
+                  question('single', '', [
+                    {
+                      value: 'semantic-value',
+                      correct: true,
+                      content: 'Visible label'
+                    }
+                  ])
                 ]
               }
             ]
@@ -130,7 +97,7 @@ describe('content manifest', () => {
     expect(manifest.pages['1']!.videos).toBeUndefined()
     expect(manifest.pages['1']!.questions!['0']).toMatchObject({
       id: 'multi',
-      prompt: 'Pick two',
+      prompt: 'Pick **two**',
       type: 'multiple-choice',
       correctAnswers: ['semantic-z', 'semantic-y'],
       options: {
@@ -185,49 +152,19 @@ describe('content manifest', () => {
                             id: 'quiz-a',
                             contributesToScore: true,
                             questions: [
-                              question(
-                                'q1',
-                                [
-                                  {
-                                    type: 'paragraph',
-                                    children: [
-                                      { type: 'text', value: 'Choose ' },
-                                      {
-                                        type: 'emphasis',
-                                        children: [{ type: 'text', value: 'one' }]
-                                      }
-                                    ]
-                                  }
-                                ],
-                                [
-                                  {
-                                    value: 'a',
-                                    correct: true,
-                                    content: [
-                                      {
-                                        type: 'paragraph',
-                                        children: [{ type: 'text', value: 'Alpha' }]
-                                      }
-                                    ]
-                                  },
-                                  {
-                                    value: 'b',
-                                    correct: false,
-                                    content: [
-                                      {
-                                        type: 'paragraph',
-                                        children: [
-                                          {
-                                            type: 'strong',
-                                            children: [{ type: 'text', value: 'Beta' }]
-                                          }
-                                        ]
-                                      }
-                                    ]
-                                  }
-                                ]
-                              ),
-                              question('q2', [{ type: 'code', value: 'Second prompt' }], [])
+                              question('q1', 'Choose *one*', [
+                                {
+                                  value: 'a',
+                                  correct: true,
+                                  content: 'Alpha'
+                                },
+                                {
+                                  value: 'b',
+                                  correct: false,
+                                  content: '**Beta**'
+                                }
+                              ]),
+                              question('q2', 'Second prompt', [])
                             ]
                           }
                         ]
@@ -240,14 +177,7 @@ describe('content manifest', () => {
                 type: 'questionnaire',
                 id: 'quiz-b',
                 contributesToScore: true,
-                questions: [
-                  question('q3', [
-                    {
-                      type: 'paragraph',
-                      children: [{ type: 'text', value: 'Third' }]
-                    }
-                  ])
-                ]
+                questions: [question('q3', 'Third')]
               }
             ]
           },
@@ -275,11 +205,11 @@ describe('content manifest', () => {
           questions: {
             '0': {
               id: 'q1',
-              prompt: 'Choose one',
+              prompt: 'Choose *one*',
               correctAnswers: ['a'],
               options: {
                 '0': { value: 'a', label: 'Alpha' },
-                '1': { value: 'b', label: 'Beta' }
+                '1': { value: 'b', label: '**Beta**' }
               }
             },
             '1': { id: 'q2', prompt: 'Second prompt', options: {}, correctAnswers: [] },
@@ -293,7 +223,7 @@ describe('content manifest', () => {
     expect(first).not.toHaveProperty('videos')
   })
 
-  it('indexes videos and static metadata through nested content without playback state', () => {
+  it('indexes videos from content blocks without playback state', () => {
     const video = (
       id: string,
       provider: 'native' | 'youtube' | 'vimeo',
@@ -326,23 +256,13 @@ describe('content manifest', () => {
                             id: 'quiz',
                             contributesToScore: false,
                             questions: [
-                              question(
-                                'q',
-                                [video('video:videos.mdx:3:1', 'vimeo', 'https://vimeo.com/42')],
-                                [
-                                  {
-                                    value: 'option',
-                                    correct: false,
-                                    content: [
-                                      video(
-                                        'video:videos.mdx:4:1',
-                                        'native',
-                                        'https://cdn.example.test/clip.mp4'
-                                      )
-                                    ]
-                                  }
-                                ]
-                              )
+                              question('q', 'video prompt', [
+                                {
+                                  value: 'option',
+                                  correct: false,
+                                  content: 'video option'
+                                }
+                              ])
                             ]
                           }
                         ]
@@ -375,16 +295,6 @@ describe('content manifest', () => {
         id: 'video:videos.mdx:2:1',
         src: 'https://youtu.be/abc',
         provider: 'youtube'
-      },
-      '2': {
-        id: 'video:videos.mdx:3:1',
-        src: 'https://vimeo.com/42',
-        provider: 'vimeo'
-      },
-      '3': {
-        id: 'video:videos.mdx:4:1',
-        src: 'https://cdn.example.test/clip.mp4',
-        provider: 'native'
       }
     })
     expect(manifest.pages['1']!.videos).toEqual({
@@ -394,7 +304,7 @@ describe('content manifest', () => {
         provider: 'native'
       }
     })
-    expect(Object.keys(manifest.pages['0']!.videos ?? {})).toEqual(['0', '1', '2', '3'])
+    expect(Object.keys(manifest.pages['0']!.videos ?? {})).toEqual(['0', '1'])
     expect(manifest).not.toHaveProperty('videos')
     expect(JSON.stringify(manifest)).not.toMatch(/pageId|playback|position|seconds/)
   })
@@ -458,7 +368,7 @@ describe('content manifest', () => {
                 type: 'questionnaire',
                 id: 'quiz',
                 contributesToScore: true,
-                questions: [question('stable-question-id', [])]
+                questions: [question('stable-question-id', '')]
               }
             ]
           }
@@ -474,7 +384,7 @@ describe('content manifest', () => {
     })
   })
 
-  it('reads tight list inline runs for question prompt text', () => {
+  it('preserves raw Markdown in question prompt text', () => {
     const content: ContentPackage = {
       metadata: { title: 'Tight' },
       presentation: {
@@ -490,32 +400,7 @@ describe('content manifest', () => {
                 type: 'questionnaire',
                 id: 'quiz-tight',
                 contributesToScore: true,
-                questions: [
-                  question('q-tight', [
-                    {
-                      type: 'list',
-                      ordered: false,
-                      spread: false,
-                      items: [
-                        {
-                          children: [
-                            {
-                              type: 'inlineContent',
-                              children: [
-                                { type: 'text', value: 'See ' },
-                                {
-                                  type: 'image',
-                                  src: 'assets/prompt.svg',
-                                  alt: 'Prompt diagram'
-                                }
-                              ]
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  ])
-                ]
+                questions: [question('q-tight', 'See `raw` **Markdown**')]
               }
             ]
           }
@@ -524,7 +409,7 @@ describe('content manifest', () => {
     }
     expect(createContentManifest(content).pages['0']!.questions!['0']).toMatchObject({
       id: 'q-tight',
-      prompt: 'See Prompt diagram'
+      prompt: 'See `raw` **Markdown**'
     })
   })
 
@@ -555,14 +440,7 @@ describe('content manifest', () => {
                         type: 'questionnaire',
                         id: 'quiz-nested',
                         contributesToScore: true,
-                        questions: [
-                          question('q-nested', [
-                            {
-                              type: 'paragraph',
-                              children: [{ type: 'text', value: 'Nested' }]
-                            }
-                          ])
-                        ]
+                        questions: [question('q-nested', 'Nested')]
                       }
                     ]
                   }

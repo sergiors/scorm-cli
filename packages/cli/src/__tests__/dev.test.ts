@@ -150,23 +150,17 @@ describe('CLI dev orchestration', () => {
                     type: 'question',
                     id: 'question:intro.mdx:1:1',
                     questionType: 'single-choice',
-                    prompt: [
-                      { type: 'paragraph', children: [{ type: 'text', value: 'Pick one' }] }
-                    ],
+                    prompt: 'Pick one',
                     options: [
                       {
                         value: 'a',
                         correct: true,
-                        content: [
-                          { type: 'paragraph', children: [{ type: 'text', value: 'Option A' }] }
-                        ]
+                        content: 'Option A'
                       },
                       {
                         value: 'b',
                         correct: false,
-                        content: [
-                          { type: 'paragraph', children: [{ type: 'text', value: 'Option B' }] }
-                        ]
+                        content: 'Option B'
                       }
                     ]
                   }
@@ -223,10 +217,12 @@ describe('CLI dev orchestration', () => {
 
     // The injected scripts carry only the semantic content manifest (question
     // ids, prompts and correctness) the runtime needs to score, never a page
-    // body. Content stays owned by the renderer's lazy content modules, so a
-    // version switch and reload cannot change what the preview serves.
+    // body. Prompt and option labels travel as plain strings inside the
+    // manifest, while page content stays owned by the renderer's lazy modules,
+    // so a version switch and reload cannot change what the preview serves.
     expect(runtime).toContain('question:intro.mdx:1:1')
-    expect(runtime).toContain('Pick one')
+    expect(runtime).toContain('"prompt":"Pick one"')
+    expect(runtime).toContain('"label":"Option A"')
     expect(runtime).not.toContain('Page body text.')
   })
 

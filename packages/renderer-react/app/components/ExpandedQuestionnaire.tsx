@@ -5,7 +5,6 @@ import { Card, CardContent } from './ui/card'
 import {
   activatesQuestionnaireAction,
   isEventFromNestedQuestionnaire,
-  nestedContentContext,
   QuestionnaireQuestion,
   useQuestionnaireAnswers,
   useQuestionnaireSubmission,
@@ -38,7 +37,6 @@ export function ExpandedQuestionnaire(props: QuestionnaireViewProps) {
     onAnswer
   })
   const submitQuestionnaire = useQuestionnaireSubmission(node.id, submitted, onSubmitted)
-  const contentContext = nestedContentContext(props)
   const canSubmit = !submitted && allAnswered
 
   const handleKeyDownCapture = (event: KeyboardEvent<HTMLFormElement>) => {
@@ -78,8 +76,6 @@ export function ExpandedQuestionnaire(props: QuestionnaireViewProps) {
               value={currentAnswers[question.id]}
               submitted={submitted}
               onAnswer={answerQuestion}
-              onQuestionnaireSubmitted={onSubmitted}
-              contentContext={contentContext}
             />
           ))}
 

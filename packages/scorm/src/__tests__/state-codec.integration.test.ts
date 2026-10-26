@@ -15,12 +15,7 @@ function option(value: string, label: string): QuestionOption {
   return {
     value,
     correct: false,
-    content: [
-      {
-        type: 'paragraph',
-        children: [{ type: 'text', value: label }]
-      }
-    ]
+    content: label
   }
 }
 
@@ -33,7 +28,7 @@ function question(
     type: 'question',
     id,
     questionType,
-    prompt: [],
+    prompt: '',
     options: options.map(([value, label]) => option(value, label))
   }
 }

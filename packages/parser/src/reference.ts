@@ -101,7 +101,8 @@ export async function parseReference(
         sourcePath,
         root,
         kind === 'page' ? rootPageSources : undefined,
-        lineOffset
+        lineOffset,
+        tree.sourceText
       ))
     )
   }

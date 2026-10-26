@@ -11,7 +11,8 @@
  */
 
 export interface AstPosition {
-  start?: { line?: number; column?: number }
+  start?: { line?: number; column?: number; offset?: number }
+  end?: { line?: number; column?: number; offset?: number }
 }
 
 /**
@@ -239,6 +240,7 @@ export function meaningfulChildren(nodes: AstNode[]): AstNode[] {
 export interface ContentSource {
   sourceFile: string
   root: string
+  sourceText: string
   sourceLineOffset?: number
   rootPageSources?: Set<string>
 }

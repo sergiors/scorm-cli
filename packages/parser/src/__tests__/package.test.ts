@@ -578,7 +578,7 @@ describe('parsePackage', () => {
     await expect(lessonContent(root)).rejects.toThrow(/unknown attribute "provider"/)
   })
 
-  it('parses rich question prompts and options and preserves boolean false', async () => {
+  it('preserves question Markdown and normalizes multiline whitespace', async () => {
     const root = await makeLesson(
       `<Questionnaire>\n<Question type="single-choice">\n` +
         `  <Prompt>\nWhat does \`string\` represent?\n\nChoose **one**.\n</Prompt>\n` +
@@ -598,55 +598,85 @@ describe('parsePackage', () => {
             type: 'question',
             id: 'question:lesson.mdx:5:1',
             questionType: 'single-choice',
-            prompt: [
-              {
-                type: 'paragraph',
-                children: [
-                  { type: 'text', value: 'What does ' },
-                  { type: 'inlineCode', value: 'string' },
-                  { type: 'text', value: ' represent?' }
-                ]
-              },
-              {
-                type: 'paragraph',
-                children: [
-                  { type: 'text', value: 'Choose ' },
-                  {
-                    type: 'strong',
-                    children: [{ type: 'text', value: 'one' }]
-                  },
-                  { type: 'text', value: '.' }
-                ]
-              }
-            ],
+            prompt: 'What does `string` represent? Choose **one**.',
             options: [
               {
                 value: 'number',
                 correct: false,
-                content: [
-                  {
-                    type: 'paragraph',
-                    children: [
-                      { type: 'text', value: 'A ' },
-                      {
-                        type: 'emphasis',
-                        children: [{ type: 'text', value: 'numeric' }]
-                      },
-                      { type: 'text', value: ' value' }
-                    ]
-                  },
-                  { type: 'code', value: '42' }
-                ]
+                content: 'A *numeric* value ``` 42 ```'
               },
               {
                 value: 'text',
                 correct: true,
-                content: [
+                content: 'Text ``` "hello" ```'
+              }
+            ]
+          }
+        ]
+      }
+    ])
+  })
+
+  it('extracts prompt and option text across bare-CR line breaks', async () => {
+    const root = await makeLesson(
+      '<Questionnaire>\r' +
+        '<Question type="single-choice">\r' +
+        '<Prompt>Which value is `text`?\rChoose **one**.</Prompt>\r' +
+        '<Option value="number" correct={false}>A *number*\rvalue</Option>\r' +
+        '<Option value="text" correct={true}>A `text` value</Option>\r' +
+        '</Question>\r</Questionnaire>'
+    )
+
+    const content = await lessonContent(root)
+    expect(content).toMatchObject([
+      {
+        type: 'questionnaire',
+        questions: [
+          {
+            prompt: 'Which value is `text`? Choose **one**.',
+            options: [
+              { value: 'number', content: 'A *number* value' },
+              { value: 'text', content: 'A `text` value' }
+            ]
+          }
+        ]
+      }
+    ])
+  })
+
+  it('extracts raw prompt and option text for a questionnaire nested in a list item', async () => {
+    const root = await makeLesson(
+      '- Check your setup\n\n  <Questionnaire>\n' +
+        '    <Question type="single-choice">\n' +
+        '      <Prompt>Does `nesting` work in\n      **lists**?</Prompt>\n' +
+        '      <Option value="yes" correct>Yes, after **checks**.</Option>\n' +
+        '      <Option value="no">No</Option>\n' +
+        '    </Question>\n  </Questionnaire>'
+    )
+    const content = await lessonContent(root)
+    // The questionnaire sits inside a Markdown list item, yet its prompt and
+    // option strings are extracted from the page source with the same
+    // whitespace normalization as a top-level questionnaire.
+    expect(content).toMatchObject([
+      {
+        type: 'list',
+        items: [
+          {
+            children: [
+              {
+                type: 'inlineContent',
+                children: [{ type: 'text', value: 'Check your setup' }]
+              },
+              {
+                type: 'questionnaire',
+                questions: [
                   {
-                    type: 'paragraph',
-                    children: [{ type: 'text', value: 'Text' }]
-                  },
-                  { type: 'code', value: '"hello"' }
+                    prompt: 'Does `nesting` work in **lists**?',
+                    options: [
+                      { value: 'yes', correct: true, content: 'Yes, after **checks**.' },
+                      { value: 'no', correct: false, content: 'No' }
+                    ]
+                  }
                 ]
               }
             ]
@@ -942,55 +972,22 @@ describe('parsePackage', () => {
     expect((await lessonContent(root))[0]).toEqual(questionnaire)
   })
 
-  it('collects assets nested in questionnaire prompts and options', async () => {
+  it.each([
+    ['Prompt', '<Video src="clip.mp4" />'],
+    ['Prompt', '<Path><Page ref="next" /></Path>'],
+    ['Prompt', '<Questionnaire><Question type="single-choice" /></Questionnaire>'],
+    ['Option', '<Image src="diagram.svg" alt="diagram" />'],
+    ['Option', '<b>HTML</b>'],
+    ['Option', '{dynamicValue}']
+  ] as const)('rejects nested markup in %s: %s', async (field, markup) => {
+    const prompt = field === 'Prompt' ? markup : 'Question text'
+    const option = field === 'Option' ? markup : 'Option text'
     const root = await makeLesson(
-      '<Questionnaire><Question type="single-choice"><Prompt>Pick the diagram <Image src="assets/prompt.svg" alt="Prompt" /></Prompt><Option value="a" correct><Image src="assets/option.svg" alt="Option" /></Option><Option value="b">Text</Option></Question></Questionnaire>'
+      `<Questionnaire><Question type="single-choice"><Prompt>${prompt}</Prompt><Option value="a" correct>${option}</Option><Option value="b">Other</Option></Question></Questionnaire>`
     )
-    await asset(root, 'assets/prompt.svg')
-    await asset(root, 'assets/option.svg')
-    const content = await lessonContent(root)
-    expect(content).toMatchObject([
-      {
-        type: 'questionnaire',
-        questions: [
-          {
-            prompt: [
-              {
-                type: 'paragraph',
-                children: [
-                  { type: 'text', value: 'Pick the diagram ' },
-                  { type: 'image', src: 'assets/prompt.svg', alt: 'Prompt' }
-                ]
-              }
-            ],
-            options: [
-              {
-                content: [
-                  {
-                    type: 'paragraph',
-                    children: [
-                      {
-                        type: 'image',
-                        src: 'assets/option.svg',
-                        alt: 'Option'
-                      }
-                    ]
-                  }
-                ]
-              },
-              {
-                content: [
-                  {
-                    type: 'paragraph',
-                    children: [{ type: 'text', value: 'Text' }]
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    ])
+    await expect(parsePackage(root)).rejects.toThrow(
+      /Prompt and Option content cannot contain nested JSX, HTML, or MDX expressions/
+    )
   })
 
   it('rejects standalone Prompt, Option, and removed or unknown components', async () => {

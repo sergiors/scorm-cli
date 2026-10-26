@@ -367,32 +367,17 @@ function sharedQuestionnaire(source: string): QuestionnaireNode {
         type: 'question',
         id: 'question:shared',
         questionType: 'single-choice',
-        prompt: [
-          {
-            type: 'paragraph',
-            children: [{ type: 'text', value: 'Shared prompt' }]
-          }
-        ],
+        prompt: 'Shared prompt',
         options: [
           {
             value: 'yes',
             correct: true,
-            content: [
-              {
-                type: 'paragraph',
-                children: [{ type: 'text', value: 'Yes' }]
-              }
-            ]
+            content: 'Yes'
           },
           {
             value: 'no',
             correct: false,
-            content: [
-              {
-                type: 'paragraph',
-                children: [{ type: 'text', value: 'No' }]
-              }
-            ]
+            content: 'No'
           }
         ]
       }

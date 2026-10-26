@@ -3,7 +3,6 @@ import type {
   ContentNode,
   ContentPackage,
   InlineContentNode,
-  InlineNode,
   QuestionNode,
   VideoProvider
 } from '@scorm-cli/core'
@@ -33,66 +32,6 @@ export interface ContentManifest {
   >
 }
 
-function inlineText(nodes: InlineNode[]): string {
-  return nodes
-    .map((node) => {
-      switch (node.type) {
-        case 'text':
-        case 'inlineCode':
-          return node.value
-        case 'break':
-          return ' '
-        case 'image':
-          return [node.alt, node.caption].filter(Boolean).join(' ')
-        case 'emphasis':
-        case 'strong':
-        case 'link':
-          return inlineText(node.children)
-      }
-    })
-    .join('')
-}
-
-function plainText(nodes: ContentNode[]): string {
-  const chunks: string[] = []
-  const visit = (items: Array<ContentNode | InlineContentNode>) => {
-    for (const node of items) {
-      switch (node.type) {
-        case 'heading':
-        case 'paragraph':
-          chunks.push(inlineText(node.children))
-          break
-        case 'inlineContent':
-          chunks.push(inlineText(node.children))
-          break
-        case 'code':
-          chunks.push(node.value)
-          break
-        case 'image':
-          chunks.push([node.alt, node.caption].filter(Boolean).join(' '))
-          break
-        case 'video':
-          if (node.title) chunks.push(node.title)
-          break
-        case 'list':
-          for (const item of node.items) visit(item.children)
-          break
-        case 'quote':
-          visit(node.children)
-          break
-        case 'questionnaire':
-          for (const question of node.questions) {
-            chunks.push(plainText(question.prompt))
-            for (const option of question.options) chunks.push(plainText(option.content))
-          }
-          break
-      }
-    }
-  }
-  visit(nodes)
-  return chunks.join(' ').replace(/\s+/g, ' ').trim()
-}
-
 function collectQuestions(
   nodes: Array<ContentNode | InlineContentNode>,
   output: QuestionNode[]
@@ -107,10 +46,6 @@ function collectQuestions(
         break
       case 'questionnaire':
         output.push(...node.questions)
-        for (const question of node.questions) {
-          collectQuestions(question.prompt, output)
-          for (const option of question.options) collectQuestions(option.content, output)
-        }
         break
       case 'inlineContent':
         // Inline runs cannot hold a questionnaire block; skip them while still
@@ -138,12 +73,12 @@ export function createContentManifest(contentPackage: ContentPackage): ContentMa
       question.options.forEach((option, optionIndex) => {
         options[String(optionIndex)] = {
           value: option.value,
-          label: plainText(option.content)
+          label: option.content
         }
       })
       questions[String(questionIndex)] = {
         id: question.id,
-        prompt: plainText(question.prompt),
+        prompt: question.prompt,
         type: question.questionType,
         options,
         correctAnswers: question.options

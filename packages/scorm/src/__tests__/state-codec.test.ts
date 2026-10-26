@@ -38,42 +38,22 @@ const packageContent: ContentPackage = {
               type: 'question',
               id: 'q1',
               questionType: 'multiple-choice',
-              prompt: [
-                {
-                  type: 'paragraph',
-                  children: [{ type: 'text', value: 'Private prompt' }]
-                }
-              ],
+              prompt: 'Private prompt',
               options: [
                 {
                   value: 'red',
                   correct: true,
-                  content: [
-                    {
-                      type: 'paragraph',
-                      children: [{ type: 'text', value: 'Red label' }]
-                    }
-                  ]
+                  content: 'Red label'
                 },
                 {
                   value: 'blue',
                   correct: false,
-                  content: [
-                    {
-                      type: 'paragraph',
-                      children: [{ type: 'text', value: 'Blue label' }]
-                    }
-                  ]
+                  content: 'Blue label'
                 },
                 {
                   value: 'green',
                   correct: false,
-                  content: [
-                    {
-                      type: 'paragraph',
-                      children: [{ type: 'text', value: 'Green label' }]
-                    }
-                  ]
+                  content: 'Green label'
                 }
               ]
             }
@@ -432,10 +412,10 @@ describe('compact suspend-data codec', () => {
                     type: 'question',
                     id: 'str-q',
                     questionType: 'single-choice',
-                    prompt: [],
+                    prompt: '',
                     options: [
-                      { value: 'yes', correct: true, content: [] },
-                      { value: 'no', correct: false, content: [] }
+                      { value: 'yes', correct: true, content: '' },
+                      { value: 'no', correct: false, content: '' }
                     ]
                   }
                 ]

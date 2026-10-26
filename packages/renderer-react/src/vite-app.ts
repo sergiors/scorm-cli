@@ -60,9 +60,8 @@ function presentationNodes(contentPackage: ContentPackage): Array<PageNode | Ite
  * means no page or item body lands in the entry chunk, while the shared core
  * helpers keep operating on ordinary content nodes.
  *
- * Nested questionnaires and videos — traversed by the core helpers even though
- * the authoring parser forbids them inside prompts and options — are flattened
- * into the summary in document order, so the traversal results are unchanged.
+ * Prompt and option strings are omitted from this semantic summary because
+ * they remain part of the lazily loaded page or item module.
  */
 function semanticNodeContent(content: readonly ContentNode[]): ContentNode[] {
   const summary: ContentNode[] = []
@@ -78,20 +77,14 @@ function semanticNodeContent(content: readonly ContentNode[]): ContentNode[] {
               type: 'question',
               id: question.id,
               questionType: question.questionType,
-              prompt: [],
+              prompt: '',
               options: question.options.map((option) => ({
                 value: option.value,
                 correct: option.correct,
-                content: []
+                content: ''
               }))
             }))
           })
-          for (const question of node.questions) {
-            visit(question.prompt)
-            for (const option of question.options) {
-              visit(option.content)
-            }
-          }
           break
         case 'video':
           summary.push({ type: 'video', id: node.id, provider: node.provider, src: node.src })

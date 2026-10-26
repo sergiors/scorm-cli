@@ -16,22 +16,17 @@ export const singleChoiceQuestion: QuestionNode = {
   type: 'question',
   id: 'question:intro.mdx:1:1',
   questionType: 'single-choice',
-  prompt: [
-    {
-      type: 'paragraph',
-      children: [{ type: 'text', value: 'Which option is correct?' }]
-    }
-  ],
+  prompt: 'Which option is correct?',
   options: [
     {
       value: 'first',
       correct: true,
-      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Option A' }] }]
+      content: 'Option A'
     },
     {
       value: 'second',
       correct: false,
-      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Option B' }] }]
+      content: 'Option B'
     }
   ]
 }
@@ -41,29 +36,25 @@ export const multipleChoiceQuestion: QuestionNode = {
   type: 'question',
   id: 'question:intro.mdx:1:2',
   questionType: 'multiple-choice',
-  prompt: [
-    {
-      type: 'paragraph',
-      children: [{ type: 'text', value: 'Which options apply?' }]
-    }
-  ],
+  prompt: 'Which options apply?',
   options: [
     {
       value: 'alpha',
       correct: true,
-      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Alpha' }] }]
+      content: 'Alpha'
     },
     {
       value: 'beta',
       correct: false,
-      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'Beta' }] }]
+      content: 'Beta'
     }
   ]
 }
 
 /**
- * A grouped questionnaire (single- then multiple-choice) with rich prompts and
- * options. Shared by the questionnaire component and presentation tests.
+ * A grouped questionnaire (single- then multiple-choice) with plain-text
+ * prompts and options. Shared by the questionnaire component and presentation
+ * tests.
  */
 export const questionnaireNode: QuestionnaireNode = {
   type: 'questionnaire',

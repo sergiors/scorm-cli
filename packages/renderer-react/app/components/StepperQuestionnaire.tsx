@@ -26,12 +26,9 @@ import {
 } from './ui/questionnaire'
 import {
   isEventFromNestedQuestionnaire,
-  nestedContentContext,
   QuestionnaireQuestion,
-  QuestionnaireRichContent,
   useQuestionnaireAnswers,
   useQuestionnaireSubmission,
-  type NestedContentContext,
   type QuestionnaireViewProps
 } from './QuestionnaireShared'
 import type { AnswerValue, QuestionNode } from '../types'
@@ -40,8 +37,6 @@ interface StepperQuestionProps {
   node: QuestionNode
   value: AnswerValue | undefined
   onAnswer: (questionId: string, value: AnswerValue) => void
-  onQuestionnaireSubmitted?: (id: string) => void
-  contentContext: NestedContentContext
 }
 
 /**
@@ -49,25 +44,13 @@ interface StepperQuestionProps {
  * Root owns which item is active, hiding and inerting the rest, so this only
  * describes the question and reports its choice interactions.
  */
-function StepperQuestion({
-  node,
-  value,
-  onAnswer,
-  onQuestionnaireSubmitted,
-  contentContext
-}: StepperQuestionProps) {
+function StepperQuestion({ node, value, onAnswer }: StepperQuestionProps) {
   const titleId = useId()
   const multiple = node.questionType === 'multiple-choice'
 
   return (
     <QuestionnaireItem name={node.id} required multiple={multiple} aria-labelledby={titleId}>
-      <QuestionnaireTitle id={titleId}>
-        <QuestionnaireRichContent
-          nodes={node.prompt}
-          onQuestionnaireSubmitted={onQuestionnaireSubmitted}
-          contentContext={contentContext}
-        />
-      </QuestionnaireTitle>
+      <QuestionnaireTitle id={titleId}>{node.prompt}</QuestionnaireTitle>
       <QuestionnaireChoices>
         {node.options.map((option) => {
           const selected = isOptionSelected(node, value, option.value)
@@ -83,11 +66,7 @@ function StepperQuestion({
                 )
               }}
             >
-              <QuestionnaireRichContent
-                nodes={option.content}
-                onQuestionnaireSubmitted={onQuestionnaireSubmitted}
-                contentContext={contentContext}
-              />
+              {option.content}
             </QuestionnaireChoice>
           )
         })}
@@ -101,8 +80,8 @@ function StepperQuestion({
 
 /**
  * Whether an arrow key belongs to a text-editing control. Submitted review has
- * no editable answers, but rich prompt or option content may still contain
- * native text fields whose arrows must keep their caret behavior.
+ * no editable answers, but preserve native caret behavior if a text-editing
+ * control is ever rendered inside the questionnaire.
  */
 function navigatesReviewWithArrowKeys(target: EventTarget | null): boolean {
   if (
@@ -149,7 +128,6 @@ export function StepperQuestionnaire(props: QuestionnaireViewProps) {
     onAnswer
   })
   const submitQuestionnaire = useQuestionnaireSubmission(node.id, submitted, onSubmitted)
-  const contentContext = nestedContentContext(props)
 
   // The live wizard Root owns the active item. Mirror its reported item in a
   // ref only so the Enter-shortcut guard can tell whether the action that
@@ -221,8 +199,6 @@ export function StepperQuestionnaire(props: QuestionnaireViewProps) {
                 value={currentAnswers[question.id]}
                 submitted
                 onAnswer={answerQuestion}
-                onQuestionnaireSubmitted={onSubmitted}
-                contentContext={contentContext}
                 hidden={index !== resolvedReviewIndex}
                 inert={index !== resolvedReviewIndex}
               />
@@ -351,8 +327,6 @@ export function StepperQuestionnaire(props: QuestionnaireViewProps) {
                 node={question}
                 value={currentAnswers[question.id]}
                 onAnswer={answerQuestion}
-                onQuestionnaireSubmitted={onSubmitted}
-                contentContext={contentContext}
               />
             ))}
           </div>

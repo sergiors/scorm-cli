@@ -26,9 +26,9 @@ export type { PresentationNode, SequentialAccess } from '../types'
 
 /**
  * Collects every questionnaire reachable from a set of block nodes, in document
- * order. Block nesting (lists, quotes, and a question's own prompt or option
- * content) is traversed the same way {@link ContentRenderer} renders it, so
- * callers can reason about exactly the questionnaires the learner can reach.
+ * order. Block nesting (lists and quotes) is traversed the same way
+ * {@link ContentRenderer} renders it, so callers can reason about exactly the
+ * questionnaires the learner can reach.
  *
  * The switch below names every block discriminant explicitly and ends in
  * {@link assertNever}, so adding a new nested block container to `ContentNode`
@@ -48,10 +48,6 @@ export function collectQuestionnaires(nodes: ContentNode[]): QuestionnaireNode[]
           break
         case 'questionnaire':
           found.push(node)
-          for (const question of node.questions) {
-            visit(question.prompt)
-            for (const option of question.options) visit(option.content)
-          }
           break
         // Leaf blocks hold no nested block content, and an `inlineContent` run
         // holds inline nodes only, so neither can contain a questionnaire.

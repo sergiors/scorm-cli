@@ -280,7 +280,7 @@ describe('sanitizePlayerState videos', () => {
     expect(state.pages['page:b.mdx']?.videos).toEqual({ [pageBVideo.id]: 7.5 })
   })
 
-  it('keeps a video authored inside a nested questionnaire prompt or option', () => {
+  it('does not treat questionnaire prompt and option strings as video nodes', () => {
     const nestedVideo: VideoNode = {
       type: 'video',
       id: 'video:nested.mdx:1:1',
@@ -307,12 +307,12 @@ describe('sanitizePlayerState videos', () => {
                     type: 'question',
                     id: 'question:nested.mdx:1:1',
                     questionType: 'single-choice',
-                    prompt: [nestedVideo],
+                    prompt: 'video prompt',
                     options: [
                       {
                         value: 'a',
                         correct: true,
-                        content: [{ type: 'paragraph', children: [{ type: 'text', value: 'A' }] }]
+                        content: 'A'
                       }
                     ]
                   }
@@ -327,7 +327,7 @@ describe('sanitizePlayerState videos', () => {
     const state = sanitizePlayerState(nestedPackage, {
       pages: { 'page:nested.mdx': { videos: { [nestedVideo.id]: 3.14 } } }
     })
-    expect(state.pages['page:nested.mdx']?.videos).toEqual({ [nestedVideo.id]: 3.1 })
+    expect(state.pages['page:nested.mdx']?.videos).toBeUndefined()
   })
 
   it('omits the videos key when nothing survives and never adds a top-level map', () => {

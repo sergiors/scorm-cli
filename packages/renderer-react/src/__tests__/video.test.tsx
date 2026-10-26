@@ -379,7 +379,7 @@ describe('Video resume and persistence', () => {
     expect(onPosition).not.toHaveBeenCalled()
   })
 
-  it('threads the restored position into nested quote and questionnaire content', async () => {
+  it('threads the restored position into nested quote content only', async () => {
     const quote: ContentNode = { type: 'quote', children: [nativeNode] }
     const questionnaire: ContentNode = {
       type: 'questionnaire',
@@ -390,12 +390,12 @@ describe('Video resume and persistence', () => {
           type: 'question',
           id: 'question:lesson.mdx:1:1',
           questionType: 'single-choice',
-          prompt: [nativeNode],
+          prompt: 'A video prompt',
           options: [
             {
               value: 'a',
               correct: true,
-              content: [{ type: 'paragraph', children: [{ type: 'text', value: 'A' }] }]
+              content: 'A'
             }
           ]
         }
@@ -415,7 +415,7 @@ describe('Video resume and persistence', () => {
     })
 
     const records = players.records
-    expect(records.length).toBeGreaterThanOrEqual(2)
+    expect(records).toHaveLength(1)
     for (const record of records) {
       await act(async () => {
         record.onReady?.()

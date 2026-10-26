@@ -178,7 +178,7 @@ export interface QuestionNode {
   type: 'question'
   id: string
   questionType: QuestionType
-  prompt: ContentNode[]
+  prompt: string
   options: QuestionOption[]
 }
 
@@ -217,7 +217,7 @@ export interface PlayerState {
 export interface QuestionOption {
   value: string
   correct: boolean
-  content: ContentNode[]
+  content: string
 }
 
 export interface RenderOptions {
@@ -437,12 +437,6 @@ export function getAggregateQuestionnaireScore(
           const questionnaireScore = scoreQuestionnaire(node, answers)
           earned += questionnaireScore.earned
           possible += questionnaireScore.possible
-          // The parser currently prohibits questionnaires in prompts/options,
-          // but traverse them so hand-authored canonical ASTs remain complete.
-          for (const question of node.questions) {
-            visit(question.prompt, answers)
-            for (const option of question.options) visit(option.content, answers)
-          }
           break
         case 'heading':
         case 'paragraph':
@@ -514,13 +508,6 @@ export function collectAssetReferences(contentPackage: ContentPackage): string[]
           visitContent(node.children)
           break
         case 'questionnaire':
-          for (const question of node.questions) {
-            visitContent(question.prompt)
-
-            for (const option of question.options) {
-              visitContent(option.content)
-            }
-          }
           break
         case 'path':
         case 'code':
@@ -555,10 +542,6 @@ export function collectVideoNodes(
           visit(node.children)
           break
         case 'questionnaire':
-          for (const question of node.questions) {
-            visit(question.prompt)
-            for (const option of question.options) visit(option.content)
-          }
           break
         case 'heading':
         case 'paragraph':

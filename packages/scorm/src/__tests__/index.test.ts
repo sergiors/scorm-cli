@@ -41,32 +41,17 @@ const content: ContentPackage = {
                 type: 'question',
                 id: 'question-id',
                 questionType: 'single-choice',
-                prompt: [
-                  {
-                    type: 'paragraph',
-                    children: [{ type: 'text', value: 'Do not persist prompt' }]
-                  }
-                ],
+                prompt: 'Do not persist prompt',
                 options: [
                   {
                     value: 'known-answer',
                     correct: true,
-                    content: [
-                      {
-                        type: 'paragraph',
-                        children: [{ type: 'text', value: 'Known' }]
-                      }
-                    ]
+                    content: 'Known'
                   },
                   {
                     value: 'other-answer',
                     correct: false,
-                    content: [
-                      {
-                        type: 'paragraph',
-                        children: [{ type: 'text', value: 'Other' }]
-                      }
-                    ]
+                    content: 'Other'
                   }
                 ]
               }

@@ -463,8 +463,8 @@ describe('ContentRenderer lists', () => {
     expect(html).toContain('Answer this:')
     expect(html).toContain('data-slot="questionnaire"')
     expect(html).toContain('Which option is correct?')
-    // The item's inline run stays unwrapped; only the nested questionnaire's
-    // own prompt/option blocks keep their paragraph wrappers.
+    // The item's inline run stays unwrapped, and so does the nested
+    // questionnaire's own lone prompt/option paragraph.
     expect(html).not.toContain('<p>Answer this:</p>')
   })
 
@@ -738,32 +738,17 @@ describe('ContentRenderer questionnaires', () => {
             type: 'question',
             id: 'question:check.mdx:1:1',
             questionType: 'true-false',
-            prompt: [
-              {
-                type: 'paragraph',
-                children: [{ type: 'text', value: 'Is it true?' }]
-              }
-            ],
+            prompt: 'Is it true?',
             options: [
               {
                 value: 'true',
                 correct: true,
-                content: [
-                  {
-                    type: 'paragraph',
-                    children: [{ type: 'text', value: 'True' }]
-                  }
-                ]
+                content: 'True'
               },
               {
                 value: 'false',
                 correct: false,
-                content: [
-                  {
-                    type: 'paragraph',
-                    children: [{ type: 'text', value: 'False' }]
-                  }
-                ]
+                content: 'False'
               }
             ]
           }
@@ -776,7 +761,7 @@ describe('ContentRenderer questionnaires', () => {
     expect(html).toContain('value="false"')
   })
 
-  it('supports rich prompt and option content', () => {
+  it('renders raw Markdown prompts and options as text', () => {
     const html = render([
       {
         type: 'questionnaire',
@@ -787,104 +772,29 @@ describe('ContentRenderer questionnaires', () => {
             type: 'question',
             id: 'question:check.mdx:1:1',
             questionType: 'single-choice',
-            prompt: [
-              {
-                type: 'heading',
-                depth: 3,
-                children: [{ type: 'text', value: 'Context' }]
-              },
-              {
-                type: 'paragraph',
-                children: [
-                  { type: 'text', value: 'Read the ' },
-                  {
-                    type: 'strong',
-                    children: [{ type: 'text', value: 'details' }]
-                  },
-                  { type: 'text', value: '.' }
-                ]
-              }
-            ],
+            prompt: '### Context Read the **details**.',
             options: [
               {
                 value: 'a',
                 correct: true,
-                content: [
-                  {
-                    type: 'paragraph',
-                    children: [
-                      { type: 'text', value: 'An ' },
-                      {
-                        type: 'emphasis',
-                        children: [{ type: 'text', value: 'emphasised' }]
-                      },
-                      { type: 'text', value: ' option' }
-                    ]
-                  }
-                ]
+                content: 'An *emphasised* option'
               },
               {
                 value: 'b',
                 correct: false,
-                content: [{ type: 'code', value: 'codeOption()' }]
+                content: '`codeOption()`'
               }
             ]
           }
         ]
       }
     ])
-    expect(html).toContain('<h3')
-    expect(html).toContain('<strong')
-    expect(html).toContain('<em')
-    expect(html).toContain('<pre')
-    expect(html).toContain('codeOption()')
-  })
-
-  it('maps authored depths 1-6 inside questionnaire prompts and options', () => {
-    const html = render([
-      {
-        type: 'questionnaire',
-        id: 'questionnaire:headings.mdx:1:1',
-        contributesToScore: true,
-        questions: [
-          {
-            type: 'question',
-            id: 'question:headings.mdx:1:1',
-            questionType: 'single-choice',
-            prompt: headingDepths,
-            options: [
-              {
-                value: 'a',
-                correct: true,
-                content: [
-                  {
-                    type: 'heading',
-                    depth: 4,
-                    children: [{ type: 'text', value: 'Option four' }]
-                  }
-                ]
-              },
-              {
-                value: 'b',
-                correct: false,
-                content: [
-                  {
-                    type: 'paragraph',
-                    children: [{ type: 'text', value: 'Option B' }]
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    ])
-    for (let level = 1; level <= 6; level += 1) {
-      expect(html).toContain(`<h${level}`)
-      expect(html).toContain(`Level ${level}`)
-    }
-    expect(html).toContain('<h4')
-    expect(html).toContain('Option four')
+    expect(html).toContain('### Context Read the **details**.')
+    expect(html).toContain('An *emphasised* option')
+    expect(html).toContain('`codeOption()`')
+    expect(html).not.toContain('<strong')
+    expect(html).not.toContain('<em')
+    expect(html).not.toContain('<code')
   })
 
   it('renders questionnaires nested in list items', () => {

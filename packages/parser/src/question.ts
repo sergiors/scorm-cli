@@ -1,17 +1,10 @@
-import type {
-  ContentNode,
-  QuestionNode,
-  QuestionOption,
-  QuestionType,
-  QuestionnaireNode
-} from '@scorm-cli/core'
+import type { QuestionNode, QuestionOption, QuestionType, QuestionnaireNode } from '@scorm-cli/core'
 import { sourceNodeId } from './io'
+import type { ContentSource } from './ast'
 import { componentName } from './component-name'
 import type { AstNode } from './ast'
 import { isJsx, rawComponentName, whitespace } from './ast'
 import { assertAttributes, attrs, requiredString, sourceLocation } from './shared'
-
-export type ParseQuestionContentChildren = (nodes: AstNode[]) => Promise<ContentNode[]>
 
 interface AnswerCountRule {
   count: 'options' | 'correct'
@@ -122,10 +115,70 @@ function isQuestionType(value: unknown): value is QuestionType {
   return value === 'single-choice' || value === 'multiple-choice' || value === 'true-false'
 }
 
+function sourceOffset(
+  source: string,
+  position: { line?: number; column?: number; offset?: number } | undefined
+): number | undefined {
+  if (
+    typeof position?.offset === 'number' &&
+    Number.isInteger(position.offset) &&
+    position.offset >= 0 &&
+    position.offset <= source.length
+  ) {
+    return position.offset
+  }
+  if (!position?.line || !position.column) return undefined
+  let offset = 0
+  for (let line = 1; line < position.line; line += 1) {
+    let newline = offset
+    while (newline < source.length && source[newline] !== '\n' && source[newline] !== '\r') {
+      newline += 1
+    }
+    if (newline === source.length) return undefined
+    offset = newline + (source[newline] === '\r' && source[newline + 1] === '\n' ? 2 : 1)
+  }
+  return offset + position.column - 1
+}
+
+function rawFieldText(node: AstNode, context: ContentSource): string {
+  const children = node.children ?? []
+  for (const child of children) {
+    const stack = [child]
+    while (stack.length) {
+      const nested = stack.pop()!
+      if (
+        nested.type === 'html' ||
+        nested.type === 'mdxjsEsm' ||
+        nested.type.startsWith('mdxJsx') ||
+        nested.type === 'mdxFlowExpression' ||
+        nested.type === 'mdxTextExpression'
+      ) {
+        const name = rawComponentName(nested)
+        const detail = name ? ` (<${name}>)` : ` (${nested.type})`
+        throw new Error(
+          `${sourceLocation(context.sourceFile, nested)}: Prompt and Option content cannot contain nested JSX, HTML, or MDX expressions${detail}`
+        )
+      }
+      stack.push(...(nested.children ?? []))
+    }
+  }
+
+  if (!children.length) return ''
+  const start = sourceOffset(context.sourceText, children[0]?.position?.start)
+  const end = sourceOffset(context.sourceText, children.at(-1)?.position?.end)
+  if (start === undefined || end === undefined || end < start) {
+    throw new Error(
+      `${sourceLocation(context.sourceFile, node)}: unable to extract raw Prompt or Option text from the MDX source`
+    )
+  }
+  const raw = context.sourceText.slice(start, Math.max(start, end))
+  return raw.replace(/\r\n?/g, '\n').replace(/\s+/g, ' ').trim()
+}
+
 async function parseOptions(
   nodes: AstNode[],
   file: string,
-  parseContentChildren: ParseQuestionContentChildren
+  context: ContentSource
 ): Promise<QuestionOption[]> {
   const seenValues = new Set<string>()
   const options: QuestionOption[] = []
@@ -143,19 +196,14 @@ async function parseOptions(
     options.push({
       value,
       correct: values.correct === true,
-      content: await parseContentChildren(node.children ?? [])
+      content: rawFieldText(node, context)
     })
   }
   return options
 }
 
-export async function parseQuestion(
-  node: AstNode,
-  file: string,
-  root: string,
-  parseContentChildren: ParseQuestionContentChildren,
-  sourceLineOffset = 0
-): Promise<QuestionNode> {
+export async function parseQuestion(node: AstNode, context: ContentSource): Promise<QuestionNode> {
+  const { sourceFile: file, root, sourceLineOffset = 0 } = context
   const values = attrs(node, file)
   assertAttributes(values, ['type'], file, node)
   const type = values.type
@@ -168,8 +216,8 @@ export async function parseQuestion(
   const { prompt: promptNode, options: optionNodes } = questionParts(node, file)
   const promptAttrs = attrs(promptNode, file)
   assertAttributes(promptAttrs, [], file, promptNode)
-  const prompt = await parseContentChildren(promptNode.children ?? [])
-  const options = await parseOptions(optionNodes, file, parseContentChildren)
+  const prompt = rawFieldText(promptNode, context)
+  const options = await parseOptions(optionNodes, file, context)
   const correctCount = options.filter((option) => option.correct).length
   const ruleError = questionAnswerRuleError(type, options.length, correctCount)
   if (ruleError) {
@@ -187,11 +235,9 @@ export async function parseQuestion(
 
 export async function parseQuestionnaire(
   node: AstNode,
-  file: string,
-  root: string,
-  parseContentChildren: ParseQuestionContentChildren,
-  sourceLineOffset = 0
+  context: ContentSource
 ): Promise<QuestionnaireNode> {
+  const { sourceFile: file, root, sourceLineOffset = 0 } = context
   const values = attrs(node, file)
   assertAttributes(values, ['contributesToScore', 'expanded'], file, node)
   if (values.contributesToScore !== undefined && typeof values.contributesToScore !== 'boolean') {
@@ -219,7 +265,7 @@ export async function parseQuestionnaire(
         `${sourceLocation(file, child)}: Questionnaire may contain only direct <Question> children; found ${found}`
       )
     }
-    questions.push(await parseQuestion(child, file, root, parseContentChildren, sourceLineOffset))
+    questions.push(await parseQuestion(child, context))
   }
 
   return {

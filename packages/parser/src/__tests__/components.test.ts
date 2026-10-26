@@ -146,6 +146,7 @@ describe('Path child normalization', () => {
       parsePath(path, {
         sourceFile: '/package/lessons/start.mdx',
         root: '/package',
+        sourceText: '',
         rootPageSources: new Set(['lessons/next.mdx'])
       })
     ).toEqual({ type: 'path', pageIds: ['page:lessons/next.mdx'] })

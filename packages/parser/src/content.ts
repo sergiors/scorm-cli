@@ -48,10 +48,7 @@ function unsupportedNodeError(
 }
 
 function componentParseContext(source: ContentSource): ComponentParseContext {
-  return {
-    source,
-    convertChildren: (nodes) => convertSiblingNodes(nodes, source, 'content')
-  }
+  return { source }
 }
 
 function markdownConversion(source: ContentSource): MarkdownConversion {
@@ -223,9 +220,16 @@ export async function parseContentNodes(
   sourceFile: string,
   root: string,
   rootPageSources?: Set<string>,
-  sourceLineOffset = 0
+  sourceLineOffset = 0,
+  sourceText = ''
 ): Promise<ContentNode[]> {
-  const source: ContentSource = { sourceFile, root, rootPageSources, sourceLineOffset }
+  const source: ContentSource = {
+    sourceFile,
+    root,
+    sourceText,
+    rootPageSources,
+    sourceLineOffset
+  }
 
   if (isMarkdownInline(node)) {
     return [{ type: 'paragraph', children: await convertInlineNodes([node], source) }]

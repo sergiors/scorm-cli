@@ -41,11 +41,11 @@ const content: ContentPackage = {
                 type: 'question',
                 id: 'types-question',
                 questionType: 'multiple-choice',
-                prompt: [],
+                prompt: '',
                 options: [
-                  { value: 'string', correct: true, content: [] },
-                  { value: 'array', correct: true, content: [] },
-                  { value: 'number', correct: false, content: [] }
+                  { value: 'string', correct: true, content: '' },
+                  { value: 'array', correct: true, content: '' },
+                  { value: 'number', correct: false, content: '' }
                 ]
               }
             ]
@@ -137,10 +137,10 @@ const scrollContent: ContentPackage = {
                 type: 'question',
                 id: 'two-question',
                 questionType: 'single-choice',
-                prompt: [],
+                prompt: '',
                 options: [
-                  { value: 'yes', correct: true, content: [] },
-                  { value: 'no', correct: false, content: [] }
+                  { value: 'yes', correct: true, content: '' },
+                  { value: 'no', correct: false, content: '' }
                 ]
               }
             ]

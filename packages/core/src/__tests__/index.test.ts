@@ -57,8 +57,8 @@ function question(
     type: 'question',
     id,
     questionType,
-    prompt: [],
-    options: values.map((value) => ({ value, correct: correctValues.includes(value), content: [] }))
+    prompt: '',
+    options: values.map((value) => ({ value, correct: correctValues.includes(value), content: '' }))
   }
 }
 
@@ -339,37 +339,17 @@ describe('core package helpers', () => {
                     type: 'question',
                     id: 'question:nested.mdx:2:1',
                     questionType: 'single-choice',
-                    prompt: [
-                      {
-                        type: 'image',
-                        src: 'inline/prompt.svg',
-                        alt: 'prompt'
-                      }
-                    ],
+                    prompt: 'Prompt image',
                     options: [
                       {
                         value: 'local',
                         correct: true,
-                        content: [
-                          {
-                            type: 'image',
-                            src: 'inline/option.svg',
-                            alt: 'option'
-                          }
-                        ]
+                        content: 'Option image'
                       },
                       {
                         value: 'remote',
                         correct: false,
-                        content: [
-                          {
-                            type: 'video',
-                            id: 'video:nested.mdx:1:1',
-                            provider: 'native',
-                            src: 'https://example.test/remote.mp4',
-                            poster: 'inline/remote-poster.svg'
-                          }
-                        ]
+                        content: 'Remote video'
                       }
                     ]
                   }
@@ -393,11 +373,8 @@ describe('core package helpers', () => {
       'inline/heading.svg',
       'inline/list-nested.svg',
       'inline/list.svg',
-      'inline/option.svg',
-      'inline/prompt.svg',
       'inline/quote-nested.svg',
       'inline/quote.svg',
-      'inline/remote-poster.svg',
       'media/lesson-captions.vtt',
       'media/lesson-poster.svg',
       'media/lesson.mp4'
@@ -406,7 +383,7 @@ describe('core package helpers', () => {
 })
 
 describe('collectVideoNodes', () => {
-  it('collects videos from nested lists, quotes, prompts, and options in order', () => {
+  it('collects videos from nested lists and quotes, not plain questionnaire strings', () => {
     const content: ContentPackage = {
       metadata: { title: 'Videos' },
       presentation: {
@@ -442,26 +419,12 @@ describe('collectVideoNodes', () => {
                                 type: 'question',
                                 id: 'q',
                                 questionType: 'single-choice',
-                                prompt: [
-                                  {
-                                    type: 'video',
-                                    id: 'video:page.mdx:2:1',
-                                    provider: 'youtube',
-                                    src: 'https://youtu.be/abc'
-                                  }
-                                ],
+                                prompt: 'Video prompt',
                                 options: [
                                   {
                                     value: 'a',
                                     correct: false,
-                                    content: [
-                                      {
-                                        type: 'video',
-                                        id: 'video:page.mdx:3:1',
-                                        provider: 'vimeo',
-                                        src: 'https://vimeo.com/123'
-                                      }
-                                    ]
+                                    content: 'Video option'
                                   }
                                 ]
                               }
@@ -481,11 +444,7 @@ describe('collectVideoNodes', () => {
 
     const sourceNodes =
       content.presentation.type === 'scroll' ? content.presentation.pages[0]!.content : []
-    expect(collectVideoNodes(sourceNodes).map((video) => video.id)).toEqual([
-      'video:page.mdx:1:1',
-      'video:page.mdx:2:1',
-      'video:page.mdx:3:1'
-    ])
+    expect(collectVideoNodes(sourceNodes).map((video) => video.id)).toEqual(['video:page.mdx:1:1'])
   })
 })
 

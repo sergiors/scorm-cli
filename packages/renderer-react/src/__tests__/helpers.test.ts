@@ -29,10 +29,10 @@ function questionnaire(id: string): QuestionnaireNode {
         type: 'question',
         id: `question:${id}`,
         questionType: 'single-choice',
-        prompt: [{ type: 'paragraph', children: [{ type: 'text', value: 'Prompt' }] }],
+        prompt: 'Prompt',
         options: [
-          { value: 'yes', correct: true, content: [] },
-          { value: 'no', correct: false, content: [] }
+          { value: 'yes', correct: true, content: '' },
+          { value: 'no', correct: false, content: '' }
         ]
       }
     ]
@@ -216,9 +216,7 @@ describe('collectQuestionnaireIds', () => {
     expect(collectQuestionnaireIds(nodes)).toEqual(['deep-list', 'nested-quote'])
   })
 
-  it('descends into a questionnaire prompt and option content', () => {
-    const inPrompt = questionnaire('prompt')
-    const inOption = questionnaire('option')
+  it('does not traverse prompt or option strings as nested content', () => {
     const outer: QuestionnaireNode = {
       type: 'questionnaire',
       id: 'outer',
@@ -228,13 +226,13 @@ describe('collectQuestionnaireIds', () => {
           type: 'question',
           id: 'question:outer',
           questionType: 'single-choice',
-          prompt: [inPrompt],
-          options: [{ value: 'a', correct: true, content: [inOption] }]
+          prompt: 'Prompt',
+          options: [{ value: 'a', correct: true, content: 'Option' }]
         }
       ]
     }
 
-    expect(collectQuestionnaireIds([outer])).toEqual(['outer', 'prompt', 'option'])
+    expect(collectQuestionnaireIds([outer])).toEqual(['outer'])
   })
 
   it('ignores leaf blocks that cannot contain a questionnaire', () => {

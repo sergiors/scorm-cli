@@ -132,7 +132,10 @@ function resolveComponentNames(
   })
 }
 
-export function parseMdx(source: string, file: string): { children: AstNode[] } {
+export function parseMdx(
+  source: string,
+  file: string
+): { children: AstNode[]; sourceText: string } {
   let tree: { children: AstNode[] }
   try {
     tree = processor.parse(source) as { children: AstNode[] }
@@ -183,6 +186,7 @@ export function parseMdx(source: string, file: string): { children: AstNode[] } 
   // bindings; imports are removed before content validation. Non-import ESM
   // (for example `export` statements) is left in place and rejected below.
   return {
+    sourceText: source,
     children: normalizedChildren.filter(
       (node) => !isDefinition(node) && !(isMdxjsEsm(node) && isImportOnlyEsm(node))
     )

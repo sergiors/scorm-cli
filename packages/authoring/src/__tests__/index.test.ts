@@ -1,10 +1,12 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
+import type { ReactElement } from 'react'
 import * as authoring from '../index'
 import type {
   AuthoringComponentName,
   ItemProps,
   OptionProps,
   PageProps,
+  PromptProps,
   QuestionProps,
   QuestionnaireProps,
   QuestionType,
@@ -116,5 +118,27 @@ describe('@scorm-cli/authoring', () => {
       missingValue,
       invalidScoreContribution
     ]).toHaveLength(19)
+  })
+
+  it('restricts Prompt and Option children to plain text', () => {
+    expectTypeOf<PromptProps['children']>().toEqualTypeOf<string | undefined>()
+    expectTypeOf<OptionProps['children']>().toEqualTypeOf<string | undefined>()
+
+    const prompt = { children: 'Choose an answer' } satisfies PromptProps
+    const option = { value: 'yes', children: 'Yes' } satisfies OptionProps
+    const reactElement = {} as ReactElement
+
+    // @ts-expect-error <Prompt> children must be plain text.
+    const promptElement: PromptProps = { children: reactElement }
+    // @ts-expect-error <Prompt> children must be plain text.
+    const promptNumber: PromptProps = { children: 42 }
+    // @ts-expect-error <Option> children must be plain text.
+    const optionElement: OptionProps = { value: 'no', children: reactElement }
+    // @ts-expect-error <Option> children must be plain text.
+    const optionNumber: OptionProps = { value: 'no', children: 42 }
+
+    expect([prompt, option, promptElement, promptNumber, optionElement, optionNumber]).toHaveLength(
+      6
+    )
   })
 })

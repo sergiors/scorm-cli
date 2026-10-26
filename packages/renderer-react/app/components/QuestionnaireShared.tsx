@@ -1,13 +1,6 @@
 import { useId, useRef, useState, type KeyboardEvent } from 'react'
 import { CheckIcon } from 'lucide-react'
-import type {
-  AnswerValue,
-  ContentNode,
-  PageNode,
-  PlayerPageState,
-  QuestionnaireNode,
-  QuestionNode
-} from '../types'
+import type { AnswerValue, QuestionnaireNode, QuestionNode } from '../types'
 import {
   allQuestionsAnswered,
   answerAfterChange,
@@ -16,7 +9,6 @@ import {
   type SubmittedOptionResult
 } from '../lib/questionnaire'
 import { cn } from '../lib/utils'
-import { ContentRenderer } from './ContentRenderer'
 
 export interface QuestionnaireViewProps {
   node: QuestionnaireNode
@@ -50,53 +42,6 @@ export interface QuestionnaireViewProps {
    * green and a wrong option the learner selected is marked red.
    */
   onSubmitted?: (id: string) => void
-  /**
-   * The root presentation's pages, so a Path authored inside a question prompt
-   * or option resolves its references to display metadata. Forwarded unchanged
-   * to every nested {@link ContentRenderer}.
-   */
-  pathPages?: readonly PageNode[]
-  /**
-   * Persisted state per root page id, so a nested Path can read which referenced
-   * pages are already visited. Forwarded unchanged to every nested
-   * {@link ContentRenderer}.
-   */
-  pageStates?: Record<string, PlayerPageState>
-  /**
-   * Opens a referenced root page through the presentation's existing page
-   * switching, so a nested Path can offer navigation. Forwarded unchanged to
-   * every nested {@link ContentRenderer}.
-   */
-  onNavigatePathPage?: (pageId: string) => void
-  /**
-   * Restored playback positions for the owning page/item, in seconds, keyed by
-   * stable video node id, so a video authored in a prompt or option resumes like
-   * one at the page top level. Forwarded unchanged to every nested
-   * {@link ContentRenderer}.
-   */
-  videoPositions?: Record<string, number>
-  /**
-   * Persists a video's semantic playback position in seconds, already scoped to
-   * the owning page/item. Forwarded unchanged to every nested
-   * {@link ContentRenderer}.
-   */
-  onVideoPosition?: (videoId: string, seconds: number) => void
-}
-
-/**
- * The nested content rendering context forwarded verbatim to every nested
- * {@link ContentRenderer}, so a Path or video authored inside a questionnaire
- * prompt or option behaves exactly like one authored at the page top level.
- */
-export type NestedContentContext = Pick<
-  QuestionnaireViewProps,
-  'pathPages' | 'pageStates' | 'onNavigatePathPage' | 'videoPositions' | 'onVideoPosition'
->
-
-/** Builds the nested rendering context once for a presentation. */
-export function nestedContentContext(props: QuestionnaireViewProps): NestedContentContext {
-  const { pathPages, pageStates, onNavigatePathPage, videoPositions, onVideoPosition } = props
-  return { pathPages, pageStates, onNavigatePathPage, videoPositions, onVideoPosition }
 }
 
 /**
@@ -155,8 +100,8 @@ export function useQuestionnaireSubmission(
 
 /**
  * Whether a keyboard event belongs to a questionnaire nested inside this one,
- * such as one authored in a prompt or option. The nested questionnaire owns its
- * own keyboard behavior, so the surrounding presentation must not intercept it.
+ * such as one authored in nested page content. The nested questionnaire owns
+ * its own keyboard behavior, so the surrounding presentation must not intercept it.
  */
 export function isEventFromNestedQuestionnaire(event: KeyboardEvent<Element>): boolean {
   const target = event.target
@@ -227,36 +172,11 @@ export function submittedChoiceClassName(result: SubmittedOptionResult): string 
   return undefined
 }
 
-/**
- * Rich prompt or option content shared by both presentations. Every nested
- * Path, video and questionnaire receives the same rendering context and submit
- * callback as one authored at the page top level.
- */
-export function QuestionnaireRichContent({
-  nodes,
-  onQuestionnaireSubmitted,
-  contentContext
-}: {
-  nodes: ContentNode[]
-  onQuestionnaireSubmitted?: (id: string) => void
-  contentContext: NestedContentContext
-}) {
-  return (
-    <ContentRenderer
-      nodes={nodes}
-      onQuestionnaireSubmitted={onQuestionnaireSubmitted}
-      {...contentContext}
-    />
-  )
-}
-
 interface QuestionnaireQuestionProps {
   node: QuestionNode
   value: AnswerValue | undefined
   submitted: boolean
   onAnswer: (questionId: string, value: AnswerValue) => void
-  onQuestionnaireSubmitted?: (id: string) => void
-  contentContext: NestedContentContext
   hidden?: boolean
   inert?: boolean
 }
@@ -269,17 +189,14 @@ interface QuestionnaireQuestionProps {
  * wizard excludes from its answer status; neither can use the compound Root's
  * validation or navigation.
  *
- * Both callers share the rich prompt and option content, answer derivation,
- * result styling, and nested content context, so presentation differences stay
- * limited to visibility and navigation.
+ * Both callers share the prompt and option strings, answer derivation, and result
+ * styling, so presentation differences stay limited to visibility and navigation.
  */
 export function QuestionnaireQuestion({
   node,
   value,
   submitted,
   onAnswer,
-  onQuestionnaireSubmitted,
-  contentContext,
   hidden = false,
   inert = false
 }: QuestionnaireQuestionProps) {
@@ -296,11 +213,7 @@ export function QuestionnaireQuestion({
       className={questionnaireItemClassName}
     >
       <legend id={titleId} data-slot="questionnaire-title" className={questionnaireTitleClassName}>
-        <QuestionnaireRichContent
-          nodes={node.prompt}
-          onQuestionnaireSubmitted={onQuestionnaireSubmitted}
-          contentContext={contentContext}
-        />
+        {node.prompt}
       </legend>
       <div data-slot="questionnaire-choices" className={questionnaireChoicesClassName}>
         {node.options.map((option) => {
@@ -359,11 +272,7 @@ export function QuestionnaireQuestion({
                 data-slot="questionnaire-choice-label"
                 className={questionnaireChoiceLabelClassName}
               >
-                <QuestionnaireRichContent
-                  nodes={option.content}
-                  onQuestionnaireSubmitted={onQuestionnaireSubmitted}
-                  contentContext={contentContext}
-                />
+                {option.content}
               </span>
             </label>
           )

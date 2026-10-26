@@ -12,11 +12,11 @@ const threeOptions: QuestionNode = {
   type: 'question',
   id: 'question:order.mdx:1:1',
   questionType: 'multiple-choice',
-  prompt: [{ type: 'paragraph', children: [{ type: 'text', value: 'Pick some' }] }],
+  prompt: 'Pick some',
   options: ['one', 'two', 'three'].map((value) => ({
     value,
     correct: value === 'one',
-    content: [{ type: 'paragraph', children: [{ type: 'text', value }] }]
+    content: value
   }))
 }
 
@@ -84,8 +84,8 @@ describe('answerAfterChange', () => {
 })
 
 describe('submittedOptionResult', () => {
-  const correct = { value: 'first', correct: true, content: [] }
-  const wrong = { value: 'second', correct: false, content: [] }
+  const correct = { value: 'first', correct: true, content: '' }
+  const wrong = { value: 'second', correct: false, content: '' }
 
   it('is correct for a correct option whether or not it was selected', () => {
     expect(submittedOptionResult(correct, true)).toBe('correct')

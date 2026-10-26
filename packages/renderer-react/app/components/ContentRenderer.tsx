@@ -244,9 +244,7 @@ function VideoView({ node, context }: ContentNodeViewProps<'video'>) {
 
 /**
  * Delegates a questionnaire block to {@link QuestionnaireView}, translating the
- * threaded context into its props. The Path context is forwarded too, because a
- * questionnaire prompt or option may itself contain a Path block, which then
- * resolves its references and navigation through the same presentation.
+ * threaded answer and submission state into its props.
  */
 function QuestionnaireBlockView({ node, context }: ContentNodeViewProps<'questionnaire'>) {
   return (
@@ -256,11 +254,6 @@ function QuestionnaireBlockView({ node, context }: ContentNodeViewProps<'questio
       submitted={context.submittedQuestionnaires?.includes(node.id) ?? false}
       onAnswer={context.onAnswer}
       onSubmitted={context.onQuestionnaireSubmitted}
-      pathPages={context.pathPages}
-      pageStates={context.pageStates}
-      onNavigatePathPage={context.onNavigatePathPage}
-      videoPositions={context.videoPositions}
-      onVideoPosition={context.onVideoPosition}
     />
   )
 }

@@ -30,17 +30,17 @@ const trueFalse: QuestionNode = {
   type: 'question',
   id: 'question:check.mdx:1:1',
   questionType: 'true-false',
-  prompt: [{ type: 'paragraph', children: [{ type: 'text', value: 'Is it true?' }] }],
+  prompt: 'Is it true?',
   options: [
     {
       value: 'true',
       correct: true,
-      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'True' }] }]
+      content: 'True'
     },
     {
       value: 'false',
       correct: false,
-      content: [{ type: 'paragraph', children: [{ type: 'text', value: 'False' }] }]
+      content: 'False'
     }
   ]
 }
@@ -392,7 +392,7 @@ describe('QuestionnaireView', () => {
     expect(input('true').checked).toBe(false)
   })
 
-  it('names the fieldset from the rich prompt without result highlighting', () => {
+  it('names the fieldset from the plain-text prompt without result highlighting', () => {
     act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     const fieldset = activeItem()

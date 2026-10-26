@@ -71,12 +71,10 @@ export type InlineComponentName = ComponentNamesIn<'inline'>
 
 /**
  * The source context and callbacks a component parser needs. Only the
- * questionnaire grammar needs `convertChildren`, which converts its nested
- * block content through the shared sibling converter.
+ * questionnaire grammar reads raw prompt/option text from the source context.
  */
 export interface ComponentParseContext {
   source: ContentSource
-  convertChildren(nodes: AstNode[]): Promise<ContentNode[]>
 }
 
 export type FlowComponentParser = (
@@ -111,14 +109,7 @@ export const flowComponentHandlers = {
       context.source.root,
       context.source.sourceLineOffset
     ),
-  Questionnaire: (node, context) =>
-    parseQuestionnaire(
-      node,
-      context.source.sourceFile,
-      context.source.root,
-      context.convertChildren,
-      context.source.sourceLineOffset
-    ),
+  Questionnaire: (node, context) => parseQuestionnaire(node, context.source),
   Path: (node, context) => parsePath(node, context.source)
 } satisfies Record<FlowComponentName, FlowComponentParser>
 

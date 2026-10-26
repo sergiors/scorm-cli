@@ -30,10 +30,10 @@ const optOutQuestionnaire: QuestionnaireNode = {
       type: 'question',
       id: OPT_OUT,
       questionType: 'single-choice',
-      prompt: [],
+      prompt: '',
       options: [
-        { value: 'yes', correct: true, content: [] },
-        { value: 'no', correct: false, content: [] }
+        { value: 'yes', correct: true, content: '' },
+        { value: 'no', correct: false, content: '' }
       ]
     }
   ]
@@ -64,21 +64,21 @@ const scoredPackage: ContentPackage = {
                 type: 'question',
                 id: SCORED_SINGLE,
                 questionType: 'single-choice',
-                prompt: [],
+                prompt: '',
                 options: [
-                  { value: 'yes', correct: true, content: [] },
-                  { value: 'no', correct: false, content: [] }
+                  { value: 'yes', correct: true, content: '' },
+                  { value: 'no', correct: false, content: '' }
                 ]
               },
               {
                 type: 'question',
                 id: SCORED_MULTIPLE,
                 questionType: 'multiple-choice',
-                prompt: [],
+                prompt: '',
                 options: [
-                  { value: 'a', correct: true, content: [] },
-                  { value: 'b', correct: true, content: [] },
-                  { value: 'c', correct: false, content: [] }
+                  { value: 'a', correct: true, content: '' },
+                  { value: 'b', correct: true, content: '' },
+                  { value: 'c', correct: false, content: '' }
                 ]
               }
             ]
