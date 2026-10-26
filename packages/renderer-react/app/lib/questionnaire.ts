@@ -1,4 +1,4 @@
-import type { AnswerValue, QuestionNode, QuestionOption } from '../types'
+import type { AnswerValue, QuestionnaireNode, QuestionNode, QuestionOption } from '../types'
 
 /**
  * Whether a learner's saved answer selects a given option. Multiple-choice
@@ -74,6 +74,61 @@ export function allQuestionsAnswered(
   answers: Record<string, AnswerValue>
 ): boolean {
   return questions.every((question) => isQuestionAnswered(question, answers))
+}
+
+/**
+ * Whether a question's saved answer earns its one point. Single-choice and
+ * true-false answers match a correct option by value. A multiple-choice answer
+ * requires exact set equality: every correct option selected and no incorrect
+ * option selected, so a partial or extra selection earns nothing. Missing and
+ * wrong-shaped answers never earn a point.
+ */
+function isQuestionCorrect(question: QuestionNode, value: AnswerValue | undefined): boolean {
+  if (question.questionType === 'multiple-choice') {
+    if (!Array.isArray(value)) {
+      return false
+    }
+    const selected = new Set(value)
+    const correct = new Set(
+      question.options.filter((option) => option.correct).map((option) => option.value)
+    )
+    return (
+      correct.size > 0 &&
+      selected.size === correct.size &&
+      [...correct].every((optionValue) => selected.has(optionValue))
+    )
+  }
+
+  return (
+    typeof value === 'string' &&
+    question.options.some((option) => option.correct && option.value === value)
+  )
+}
+
+/** The authored question count and how many earned a point. */
+export interface QuestionnaireResult {
+  correct: number
+  total: number
+}
+
+/**
+ * Derives a questionnaire's result from its authored questions and currently
+ * saved answers: one point per correct question, with every question counted in
+ * the total. Only authored correctness and answers are consulted, so the result
+ * never depends on persisted scores and is available for opted-out
+ * questionnaires as well.
+ */
+export function getQuestionnaireResult(
+  questionnaire: QuestionnaireNode,
+  answers: Record<string, AnswerValue> | undefined
+): QuestionnaireResult {
+  let correct = 0
+  for (const question of questionnaire.questions) {
+    if (isQuestionCorrect(question, answers?.[question.id])) {
+      correct += 1
+    }
+  }
+  return { correct, total: questionnaire.questions.length }
 }
 
 /**

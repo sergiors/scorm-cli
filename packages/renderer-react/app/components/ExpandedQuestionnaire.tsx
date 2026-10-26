@@ -1,11 +1,17 @@
-import { useId, type KeyboardEvent, Fragment } from 'react'
+import { useId, Fragment } from 'react'
 import { FormattedMessage, useIntl } from 'react-intl'
 import { CheckIcon } from 'lucide-react'
-import { answerAfterChange, isOptionSelected, submittedOptionResult } from '../lib/questionnaire'
+import {
+  answerAfterChange,
+  getQuestionnaireResult,
+  isOptionSelected,
+  submittedOptionResult
+} from '../lib/questionnaire'
 import { cn } from '../lib/utils'
 import type { AnswerValue, QuestionNode, QuestionnaireNode } from '../types'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
+import { QuestionnaireSummary } from './QuestionnaireSummary'
 import {
   submittedChoiceClassName,
   useQuestionnaireAnswers,
@@ -141,51 +147,56 @@ export function ExpandedQuestionnaire({ node }: { node: QuestionnaireNode }) {
   })
   const submitQuestionnaire = useQuestionnaireSubmission(node.id, submitted, onSubmitted)
   const canSubmit = !submitted && allAnswered
+  const result = getQuestionnaireResult(node, currentAnswers)
 
   return (
-    <Card>
-      <CardContent>
-        <form
-          data-slot="questionnaire"
-          noValidate
-          className="grid gap-6"
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (canSubmit) {
-              submitQuestionnaire()
-            }
-          }}
-        >
-          {node.questions.map((question, index) => {
-            const label = intl.formatMessage(
-              { id: 'questionnaire.progress' },
-              { current: index + 1, total: node.questions.length }
-            )
+    <>
+      <Card>
+        <CardContent>
+          <form
+            data-slot="questionnaire"
+            noValidate
+            className="grid gap-6"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (canSubmit) {
+                submitQuestionnaire()
+              }
+            }}
+          >
+            {node.questions.map((question, index) => {
+              const label = intl.formatMessage(
+                { id: 'questionnaire.progress' },
+                { current: index + 1, total: node.questions.length }
+              )
 
-            return (
-              <Fragment key={question.id}>
-                {index > 0 && <Separator />}
+              return (
+                <Fragment key={question.id}>
+                  {index > 0 && <Separator />}
 
-                <div className="text-xs font-medium text-muted-foreground">{label}</div>
+                  <div className="text-xs font-medium text-muted-foreground">{label}</div>
 
-                <QuestionnaireQuestion
-                  key={question.id}
-                  node={question}
-                  value={currentAnswers[question.id]}
-                  submitted={submitted}
-                  onAnswer={answerQuestion}
-                />
-              </Fragment>
-            )
-          })}
+                  <QuestionnaireQuestion
+                    key={question.id}
+                    node={question}
+                    value={currentAnswers[question.id]}
+                    submitted={submitted}
+                    onAnswer={answerQuestion}
+                  />
+                </Fragment>
+              )
+            })}
 
-          <div className="flex justify-end">
-            <Button type="submit" data-slot="questionnaire-submit" disabled={!canSubmit}>
-              <FormattedMessage id="questionnaire.submit" />
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+            <div className="flex justify-end">
+              <Button type="submit" data-slot="questionnaire-submit" disabled={!canSubmit}>
+                <FormattedMessage id="questionnaire.submit" />
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      {submitted && <QuestionnaireSummary {...result} />}
+    </>
   )
 }

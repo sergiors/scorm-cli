@@ -32,6 +32,9 @@ export const en = {
   'questionnaire.progressLabel': 'Questionnaire progress',
   'questionnaire.progress': 'Question {current} of {total}',
   'questionnaire.answerRequired': 'Choose an answer to continue.',
+  'questionnaire.summaryTitle': 'Questionnaire completed',
+  'questionnaire.summaryCorrect': '{correct} of {total} correct answers',
+  'questionnaire.summaryProgressLabel': 'Correct answers',
   'dialog.close': 'Close',
   'package.empty': 'This package does not contain any content.',
   'content.for': 'Content for {title}'
@@ -66,6 +69,9 @@ export const ptBR: Record<MessageId, string> = {
   'questionnaire.progressLabel': 'Progresso do questionário',
   'questionnaire.progress': 'Pergunta {current} de {total}',
   'questionnaire.answerRequired': 'Escolha uma resposta para continuar.',
+  'questionnaire.summaryTitle': 'Questionário concluído',
+  'questionnaire.summaryCorrect': '{correct} de {total} respostas corretas',
+  'questionnaire.summaryProgressLabel': 'Respostas corretas',
   'dialog.close': 'Fechar',
   'package.empty': 'Este pacote não contém nenhum conteúdo.',
   'content.for': 'Conteúdo de {title}'
@@ -94,6 +100,7 @@ declare global {
      */
     interface MessageArguments {
       'questionnaire.progress': { current: number; total: number }
+      'questionnaire.summaryCorrect': { correct: number; total: number }
       'content.for': { title: string }
     }
 

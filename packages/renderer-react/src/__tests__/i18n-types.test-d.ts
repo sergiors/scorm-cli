@@ -16,11 +16,15 @@ intl.formatMessage({ id: 'path.label' })
 intl.formatMessage({ id: 'package.empty' })
 intl.formatMessage({ id: 'content.for' }, { title: 'A title' })
 intl.formatMessage({ id: 'questionnaire.progress' }, { current: 1, total: 2 })
+intl.formatMessage({ id: 'questionnaire.summaryCorrect' }, { correct: 2, total: 2 })
+intl.formatMessage({ id: 'questionnaire.summaryProgressLabel' })
 
 // @ts-expect-error an unknown message id is rejected.
 intl.formatMessage({ id: 'not.a.real.message' })
 // @ts-expect-error interpolation values are type-checked.
 intl.formatMessage({ id: 'content.for' }, { title: 42 })
+// @ts-expect-error summary counts must be numbers and both are required.
+intl.formatMessage({ id: 'questionnaire.summaryCorrect' }, { correct: 2 })
 
 // Both catalogs expose exactly the canonical key set.
 const canonicalEnglish: Record<MessageId, string> = en

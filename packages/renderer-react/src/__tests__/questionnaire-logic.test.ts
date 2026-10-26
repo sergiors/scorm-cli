@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   answerAfterChange,
+  getQuestionnaireResult,
   isOptionSelected,
   submittedOptionResult
 } from '../../app/lib/questionnaire'
-import type { QuestionNode } from '../../app/types'
-import { multipleChoiceQuestion, singleChoiceQuestion } from './fixtures'
+import type { QuestionNode, QuestionnaireNode } from '../../app/types'
+import { multipleChoiceQuestion, questionnaireNode, singleChoiceQuestion } from './fixtures'
 
 /** A multiple-choice question with three options to exercise authored order. */
 const threeOptions: QuestionNode = {
@@ -18,6 +19,36 @@ const threeOptions: QuestionNode = {
     correct: value === 'one',
     content: value
   }))
+}
+
+/** A multiple-choice question with two correct and one incorrect option. */
+const multipleCorrectQuestion: QuestionNode = {
+  type: 'question',
+  id: 'question:multiple-correct.mdx:1:1',
+  questionType: 'multiple-choice',
+  prompt: 'Pick every correct option',
+  options: [
+    { value: 'a', correct: true, content: 'A' },
+    { value: 'b', correct: true, content: 'B' },
+    { value: 'c', correct: false, content: 'C' }
+  ]
+}
+
+const trueFalseQuestion: QuestionNode = {
+  type: 'question',
+  id: 'question:true-false.mdx:1:1',
+  questionType: 'true-false',
+  prompt: 'True or false?',
+  options: [
+    { value: 'true', correct: true, content: 'True' },
+    { value: 'false', correct: false, content: 'False' }
+  ]
+}
+
+/** Single-choice, multiple-choice and true-false in one questionnaire. */
+const evaluationQuestionnaire: QuestionnaireNode = {
+  ...questionnaireNode,
+  questions: [singleChoiceQuestion, multipleCorrectQuestion, trueFalseQuestion]
 }
 
 describe('isOptionSelected', () => {
@@ -80,6 +111,91 @@ describe('answerAfterChange', () => {
     const saved = ['alpha']
     answerAfterChange(multipleChoiceQuestion, saved, 'beta', true)
     expect(saved).toEqual(['alpha'])
+  })
+})
+
+describe('getQuestionnaireResult', () => {
+  it('awards one point per correctly answered question and totals every question', () => {
+    const result = getQuestionnaireResult(evaluationQuestionnaire, {
+      [singleChoiceQuestion.id]: 'first',
+      [multipleCorrectQuestion.id]: ['a', 'b'],
+      [trueFalseQuestion.id]: 'true'
+    })
+
+    expect(result).toEqual({ correct: 3, total: 3 })
+  })
+
+  it('counts wrong answers and unanswered questions without a point', () => {
+    const result = getQuestionnaireResult(evaluationQuestionnaire, {
+      [singleChoiceQuestion.id]: 'second',
+      [multipleCorrectQuestion.id]: ['a']
+    })
+
+    expect(result).toEqual({ correct: 0, total: 3 })
+  })
+
+  it('scores single-choice and true-false only when a correct option is selected', () => {
+    expect(
+      getQuestionnaireResult(evaluationQuestionnaire, {
+        [singleChoiceQuestion.id]: 'first',
+        [trueFalseQuestion.id]: 'false'
+      }).correct
+    ).toBe(1)
+
+    expect(
+      getQuestionnaireResult(evaluationQuestionnaire, {
+        [singleChoiceQuestion.id]: 'second',
+        [trueFalseQuestion.id]: 'true'
+      }).correct
+    ).toBe(1)
+  })
+
+  it('requires exact multiple-choice set equality regardless of selection order', () => {
+    const resultFor = (value: string[]) =>
+      getQuestionnaireResult(evaluationQuestionnaire, {
+        [multipleCorrectQuestion.id]: value
+      }).correct
+
+    // Every correct option and nothing else, even when stored in another order.
+    expect(resultFor(['a', 'b'])).toBe(1)
+    expect(resultFor(['b', 'a'])).toBe(1)
+
+    // A missing correct option, an extra incorrect option, or both earn nothing.
+    expect(resultFor(['a'])).toBe(0)
+    expect(resultFor(['b'])).toBe(0)
+    expect(resultFor(['a', 'b', 'c'])).toBe(0)
+    expect(resultFor(['c'])).toBe(0)
+    expect(resultFor([])).toBe(0)
+  })
+
+  it('never credits a wrong-shaped or unknown answer', () => {
+    expect(
+      getQuestionnaireResult(evaluationQuestionnaire, {
+        [singleChoiceQuestion.id]: ['first'],
+        [multipleCorrectQuestion.id]: 'a',
+        [trueFalseQuestion.id]: 'missing'
+      })
+    ).toEqual({ correct: 0, total: 3 })
+
+    expect(getQuestionnaireResult(evaluationQuestionnaire, undefined)).toEqual({
+      correct: 0,
+      total: 3
+    })
+  })
+
+  it('derives the result for questionnaires that do not contribute to score', () => {
+    const optedOut: QuestionnaireNode = {
+      ...evaluationQuestionnaire,
+      contributesToScore: false
+    }
+
+    expect(
+      getQuestionnaireResult(optedOut, {
+        [singleChoiceQuestion.id]: 'first',
+        [multipleCorrectQuestion.id]: ['a', 'b'],
+        [trueFalseQuestion.id]: 'true'
+      })
+    ).toEqual({ correct: 3, total: 3 })
   })
 })
 

@@ -1,7 +1,13 @@
 import { useId, type HTMLAttributes, type SubmitEventHandler } from 'react'
 import { FormattedMessage, useIntl } from 'react-intl'
 import type { QuestionnaireItemDefinition } from '@shadcn/react/questionnaire'
-import { answerAfterChange, isOptionSelected, submittedOptionResult } from '../lib/questionnaire'
+import {
+  answerAfterChange,
+  getQuestionnaireResult,
+  isOptionSelected,
+  submittedOptionResult
+} from '../lib/questionnaire'
+import { QuestionnaireSummary } from './QuestionnaireSummary'
 import { Card, CardContent } from './ui/card'
 import {
   Questionnaire,
@@ -133,6 +139,7 @@ export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
     onAnswer
   })
   const submitQuestionnaire = useQuestionnaireSubmission(node.id, submitted, onSubmitted)
+  const result = getQuestionnaireResult(node, currentAnswers)
 
   if (node.questions.length === 0) {
     return null
@@ -156,53 +163,57 @@ export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
   }
 
   return (
-    <Card>
-      <CardContent>
-        <Questionnaire
-          defaultItem={submitted ? lastQuestionId : firstQuestionId}
-          items={items}
-          onSubmit={handleSubmit}
-        >
-          <QuestionnaireProgress
-            aria-label={intl.formatMessage({ id: 'questionnaire.progressLabel' })}
-            render={(renderProps, state) => {
-              const label = intl.formatMessage(
-                { id: 'questionnaire.progress' },
-                { current: state.current, total: state.total }
-              )
-              return (
-                <div {...(renderProps as HTMLAttributes<HTMLDivElement>)} aria-valuetext={label}>
-                  {label}
-                </div>
-              )
-            }}
-          />
-
-          {node.questions.map((question) => (
-            <StepperQuestion
-              key={question.id}
-              node={question}
-              value={currentAnswers[question.id]}
-              submitted={submitted}
-              onAnswer={answerQuestion}
+    <>
+      <Card>
+        <CardContent>
+          <Questionnaire
+            defaultItem={submitted ? lastQuestionId : firstQuestionId}
+            items={items}
+            onSubmit={handleSubmit}
+          >
+            <QuestionnaireProgress
+              aria-label={intl.formatMessage({ id: 'questionnaire.progressLabel' })}
+              render={(renderProps, state) => {
+                const label = intl.formatMessage(
+                  { id: 'questionnaire.progress' },
+                  { current: state.current, total: state.total }
+                )
+                return (
+                  <div {...(renderProps as HTMLAttributes<HTMLDivElement>)} aria-valuetext={label}>
+                    {label}
+                  </div>
+                )
+              }}
             />
-          ))}
 
-          <QuestionnaireActions>
-            <QuestionnairePrevious>
-              <FormattedMessage id="questionnaire.previous" />
-            </QuestionnairePrevious>
+            {node.questions.map((question) => (
+              <StepperQuestion
+                key={question.id}
+                node={question}
+                value={currentAnswers[question.id]}
+                submitted={submitted}
+                onAnswer={answerQuestion}
+              />
+            ))}
 
-            <QuestionnaireNext>
-              <FormattedMessage id="questionnaire.next" />
-            </QuestionnaireNext>
+            <QuestionnaireActions>
+              <QuestionnairePrevious>
+                <FormattedMessage id="questionnaire.previous" />
+              </QuestionnairePrevious>
 
-            <QuestionnaireSubmit disabled={submitted}>
-              <FormattedMessage id="questionnaire.submit" />
-            </QuestionnaireSubmit>
-          </QuestionnaireActions>
-        </Questionnaire>
-      </CardContent>
-    </Card>
+              <QuestionnaireNext>
+                <FormattedMessage id="questionnaire.next" />
+              </QuestionnaireNext>
+
+              <QuestionnaireSubmit disabled={submitted}>
+                <FormattedMessage id="questionnaire.submit" />
+              </QuestionnaireSubmit>
+            </QuestionnaireActions>
+          </Questionnaire>
+        </CardContent>
+      </Card>
+
+      {submitted && <QuestionnaireSummary {...result} />}
+    </>
   )
 }

@@ -312,26 +312,18 @@ function SlideLoadError({ onRetry }: { onRetry: () => void }) {
   )
 }
 
-/**
- * The previous-page control. Below `md` it is a compact pill — arrow plus its
- * visible label — aligned to the left of the fixed bottom row, so it stays on
- * the left even when it is the only control. At `md` and up it becomes its own
- * narrow, full-height rail pinned to the left edge: the button *is* the rail,
- * so the whole tall strip is clickable, its icon centred on both axes, with no
- * border or radius. The rail carries a horizontal wash from the muted token at
- * the viewport edge into the page background toward the content; the tokens
- * flip with the colour scheme, so dark mode needs no separate styling.
- */
 function PreviousControl({ onClick }: { onClick: () => void }) {
   const intl = useIntl()
+
   return (
     <div data-slides-previous className="pointer-events-none mr-auto md:contents">
       <Button
         type="button"
         variant="secondary"
+        size="icon"
         aria-label={intl.formatMessage({ id: 'slides.previousPage' })}
         onClick={onClick}
-        className="pointer-events-auto cursor-pointer rounded-full max-md:min-w-0 max-md:shrink md:fixed md:inset-y-0 md:left-0 md:z-10 md:h-auto md:w-14 md:rounded-none md:border-0 md:px-0 md:bg-linear-to-r md:from-muted/15 md:to-background"
+        className="pointer-events-auto cursor-pointer rounded-full md:fixed md:top-1/2 md:left-4 md:z-10"
       >
         <ChevronLeft aria-hidden="true" />
       </Button>
@@ -339,27 +331,18 @@ function PreviousControl({ onClick }: { onClick: () => void }) {
   )
 }
 
-/**
- * The next-page control, shown once the current page is complete. Below `md` it
- * is a compact pill — arrow plus its visible label — aligned to the right of
- * the fixed bottom row, so it stays on the right even when it is the only
- * control. At `md` and up it becomes its own narrow, full-height rail pinned to
- * the right edge: the button *is* the rail, so the whole tall strip is
- * clickable, its icon centred on both axes, with no border or radius. The rail
- * carries the mirror of the previous rail's wash — page background toward the
- * content, easing into the muted token at the viewport edge — again from
- * flip-with-scheme tokens, so dark mode needs no separate styling.
- */
 function NextControl({ onClick }: { onClick: () => void }) {
   const intl = useIntl()
+
   return (
     <div data-slides-next className="pointer-events-none ml-auto md:contents">
       <Button
         type="button"
         variant="secondary"
+        size="icon"
         aria-label={intl.formatMessage({ id: 'slides.continueNextPage' })}
         onClick={onClick}
-        className="pointer-events-auto cursor-pointer rounded-full max-md:min-w-0 max-md:shrink md:fixed md:inset-y-0 md:right-0 md:z-10 md:h-auto md:w-14 md:rounded-none md:border-0 md:px-0 md:bg-linear-to-l md:from-muted/15 md:to-background"
+        className="pointer-events-auto cursor-pointer rounded-full md:fixed md:top-1/2 md:right-4 md:z-10"
       >
         <ChevronRight aria-hidden="true" />
       </Button>
