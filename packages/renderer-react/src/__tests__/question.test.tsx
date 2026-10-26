@@ -109,6 +109,44 @@ function submittedChoiceIsIncorrect(value: string): boolean {
   return submittedChoiceResult(value) === 'incorrect'
 }
 
+/**
+ * The class list a submitted option is styled with, so the feedback palette is
+ * asserted through the colors the learner actually sees.
+ */
+function submittedChoiceClass(value: string): string {
+  const choice = submittedControl(value).closest('[data-slot="questionnaire-choice"]')
+  if (!choice) {
+    throw new Error(`Submitted choice not found for value: ${value}`)
+  }
+  return choice.className
+}
+
+/**
+ * Whether one class-list token belongs to the submitted result palette. Result
+ * feedback tints correct options emerald and selected wrong options
+ * destructive, so the palette paints through an emerald utility in any variant
+ * chain, a destructive background tint, an opacity-modified destructive border
+ * (e.g. `border-destructive/60`), or a destructive utility keyed to the checked
+ * state. The interactive classes also carry the required-answer validation
+ * variant, which keys off learner state (`data-invalid:border-destructive`) and
+ * renders nothing for an answered choice, so such inert tokens do not count.
+ */
+function paintsResultFeedback(token: string): boolean {
+  // The result green only exists in the submitted palette.
+  if (token.includes('emerald')) {
+    return true
+  }
+  // A destructive background paints however the state sits, and an
+  // opacity-modified destructive border is the submitted incorrect tint;
+  // validation styling only outlines with plain destructive borders.
+  if (token.includes('bg-destructive') || token.includes('border-destructive/')) {
+    return true
+  }
+  // A destructive utility under the checked state recolors the current
+  // selection, so it is result feedback rather than validation.
+  return token.includes('data-checked:') && token.includes('destructive')
+}
+
 /** Visible button whose label matches exactly; hidden wizard controls are skipped. */
 function button(label: string): HTMLButtonElement {
   const element = Array.from(container.querySelectorAll('button')).find(
@@ -170,7 +208,13 @@ describe('QuestionnaireView', () => {
     act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     expect(container.querySelectorAll('[data-slot="questionnaire-item"]')).toHaveLength(2)
+    // The wizard shows exactly one question at a time: the second stays in the
+    // layout but hidden and inert, and the progress reads the first authored
+    // question.
     expect(activeItem().textContent).toContain('Which option is correct?')
+    expect(hiddenItems()).toHaveLength(1)
+    expect(hiddenItems().every((item) => item.hasAttribute('inert'))).toBe(true)
+    expect(container.textContent).toContain('Question 1 of 2')
 
     act(() => input('first').click())
     expect(input('first').checked).toBe(true)
@@ -205,7 +249,7 @@ describe('QuestionnaireView', () => {
     act(() => button('Next question').click())
 
     // On the final question the submit action is offered, but while the
-    // multiple-choice item is unanswered it stays natively disabled, so
+    // multiple-choice item is unanswered it stays disabled, so
     // clicking it neither submits nor surfaces a validation message.
     expect(button('Submit questionnaire').disabled).toBe(true)
     act(() => button('Submit questionnaire').click())
@@ -223,17 +267,27 @@ describe('QuestionnaireView', () => {
   it('gates the wizard actions behind the current answer', () => {
     act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
-    // Given the first question unanswered, Next is the only visible action and
-    // it cannot advance until the question has an answer.
-    expect(hasVisibleButton('Previous question')).toBe(false)
+    // Given the first question unanswered, Previous and Next remain visible in
+    // the layout but disabled, no Submit is offered yet, and clicking either
+    // disabled action neither navigates nor surfaces a required message.
+    expect(button('Previous question').disabled).toBe(true)
+    act(() => button('Previous question').click())
     expect(button('Next question').disabled).toBe(true)
+    act(() => button('Next question').click())
+    expect(activeItem().textContent).toContain('Which option is correct?')
+    expect(hasVisibleButton('Submit questionnaire')).toBe(false)
+    expect(revealedErrors()).toHaveLength(0)
     act(() => input('first').click())
     expect(button('Next question').disabled).toBe(false)
 
-    // The final question replaces Next with Submit, gated on the same terms.
+    // The last question keeps every action on screen: Previous unlocks, but
+    // Next stays disabled at the boundary, and Submit stays gated on the same
+    // terms until every question has an answer.
     act(() => button('Next question').click())
-    expect(hasVisibleButton('Next question')).toBe(false)
-    expect(hasVisibleButton('Previous question')).toBe(true)
+    expect(button('Previous question').disabled).toBe(false)
+    expect(button('Next question').disabled).toBe(true)
+    act(() => button('Next question').click())
+    expect(activeItem().textContent).toContain('Which options apply?')
     expect(button('Submit questionnaire').disabled).toBe(true)
     act(() => input('alpha').click())
     expect(button('Submit questionnaire').disabled).toBe(false)
@@ -279,14 +333,28 @@ describe('QuestionnaireView', () => {
     act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     // Selecting even the wrong option while unsubmitted stays an ordinary
-    // primary selection: no result hint is painted on any choice.
+    // primary selection: no result classification is attached to the answered
+    // item, and the submitted feedback palette (emerald green, destructive
+    // red) never paints any choice. The destructive tokens the interactive
+    // classes carry stay confined to the inert required-answer validation
+    // variant, which is keyed off learner state and does not apply to an
+    // answered item.
     act(() => input('second').click())
     const choice = input('second').closest<HTMLElement>('[data-slot="questionnaire-choice"]')
     expect(choice).not.toBeNull()
+    expect(choice?.hasAttribute('data-invalid')).toBe(false)
+    const choiceClass = choice?.className ?? ''
+    expect(choiceClass).toContain('data-checked:border-primary/40')
+    expect(choiceClass).toContain('data-checked:bg-primary/10')
+
+    // Across every choice: neither a `data-result` classification anywhere,
+    // nor any token of the submitted feedback palette, however it is keyed.
     expect(choice?.getAttribute('data-result')).toBeNull()
-    expect(choice?.className).not.toContain('emerald')
-    expect(choice?.className).not.toContain('destructive')
-    expect(choice?.className).toContain('data-checked:border-primary/40')
+    expect(
+      Array.from(container.querySelectorAll('[data-slot="questionnaire-choice"]')).flatMap(
+        (element) => element.className.split(/\s+/).filter(paintsResultFeedback)
+      )
+    ).toEqual([])
     expect(container.querySelector('[data-result]')).toBeNull()
   })
 
@@ -339,12 +407,13 @@ describe('QuestionnaireView', () => {
     expect(container.querySelector('[data-correct]')).toBeNull()
   })
 
-  it('declares the authored questions as the Root item collection', () => {
+  it("keys every question's choices by its authored question id", () => {
     act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
-    // The Root receives `items`, so each question is keyed by its stable id
-    // (surfaced as the native input name) and the active question renders
-    // without waiting for a layout effect, keeping the markup server-renderable.
+    // Each question renders one fieldset whose choices share the question's
+    // stable id as the native input name, so restoring an answer is a lookup
+    // by id rather than position, and the active question renders immediately
+    // without waiting for an effect.
     expect(input('first').getAttribute('name')).toBe(singleChoiceQuestion.id)
     expect(activeItem().hasAttribute('hidden')).toBe(false)
 
@@ -357,16 +426,21 @@ describe('QuestionnaireView required-answer message suppression', () => {
   it('stays hidden while the learner tries disabled wizard actions', () => {
     act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
-    // Given the first question unanswered, the disabled Next cannot advance
-    // and cannot trigger the required-answer validation.
+    // Given the first question unanswered, the disabled Previous and Next
+    // cannot navigate and cannot trigger the required-answer validation.
+    expect(button('Previous question').disabled).toBe(true)
+    act(() => button('Previous question').click())
     expect(button('Next question').disabled).toBe(true)
     act(() => button('Next question').click())
     expect(activeItem().textContent).toContain('Which option is correct?')
     expect(revealedErrors()).toHaveLength(0)
 
-    // On the final question the unanswered multiple-choice item keeps Submit
-    // disabled: clicking it neither submits nor reveals the message.
+    // On the final question the unanswered multiple-choice item keeps both
+    // Next and Submit disabled: clicking them neither navigates, submits,
+    // nor reveals the message.
     act(() => input('first').click())
+    act(() => button('Next question').click())
+    expect(button('Next question').disabled).toBe(true)
     act(() => button('Next question').click())
     expect(button('Submit questionnaire').disabled).toBe(true)
     act(() => button('Submit questionnaire').click())
@@ -406,6 +480,14 @@ describe('QuestionnaireView Enter shortcut gating', () => {
     expect(activeItem().textContent).toContain('Which option is correct?')
     pressKey(input('first'), { key: 'Enter', ctrlKey: true })
     expect(activeItem().textContent).toContain('Which option is correct?')
+    expect(revealedErrors()).toHaveLength(0)
+
+    // The primitive changes its active item without rerendering the owner.
+    // Its Ctrl+Enter shortcut must still be gated by the newly active item.
+    act(() => input('first').click())
+    act(() => button('Next question').click())
+    pressKey(input('alpha'), { key: 'Enter', ctrlKey: true })
+    expect(activeItem().textContent).toContain('Which options apply?')
     expect(revealedErrors()).toHaveLength(0)
   })
 
@@ -613,12 +695,14 @@ describe('QuestionnaireView persistence', () => {
     expect(submittedControl('beta').disabled).toBe(true)
 
     // Submission cannot repeat: the Submit action stays rendered but disabled,
-    // while the wizard navigation remains available for reviewing every
-    // answer.
+    // while the wizard navigation remains visible for reviewing every answer.
+    // Next sits at the last review boundary, so it stays disabled there.
     const submit = button('Submit questionnaire')
     expect(submit.type).toBe('submit')
     expect(submit.disabled).toBe(true)
     expect(hasVisibleButton('Previous question')).toBe(true)
+    expect(hasVisibleButton('Next question')).toBe(true)
+    expect(button('Next question').disabled).toBe(true)
 
     // A submitted questionnaire never surfaces a required-answer message for
     // its read-only choices.
@@ -644,6 +728,12 @@ describe('QuestionnaireView persistence', () => {
     act(() => button('Previous question').click())
     expect(activeItem().textContent).toContain('Which option is correct?')
 
+    // The first review question is the start boundary: Previous stays visible
+    // but disabled there, while Next unlocks the return path.
+    expect(button('Previous question').disabled).toBe(true)
+    expect(hasVisibleButton('Next question')).toBe(true)
+    expect(button('Next question').disabled).toBe(false)
+
     // The answer stays read-only and the result is classified: the saved
     // 'second' pick was wrong, the unselected correct option stays correct.
     expect(submittedChecked('second')).toBe(true)
@@ -661,7 +751,7 @@ describe('QuestionnaireView persistence', () => {
     expect(submittedChoiceIsCorrect('alpha')).toBe(true)
   })
 
-  it('renders submitted answers through the shadcn questionnaire parts', () => {
+  it('renders submitted answers through the shared questionnaire parts', () => {
     act(() =>
       root.render(
         <QuestionnaireView
@@ -689,8 +779,8 @@ describe('QuestionnaireView persistence', () => {
     expect(multiple.disabled).toBe(true)
     expect(submittedControl('beta').checked).toBe(false)
 
-    // One root form still drives the restored wizard: every question is part
-    // of the Root's item collection, the earlier one hidden while the last is
+    // One shared form still drives the restored wizard: every question renders
+    // a fieldset in the same form, the earlier one hidden while the last is
     // active, and each exposes its choices as accessible choice parts.
     expect(container.querySelectorAll('[data-slot="questionnaire"]')).toHaveLength(1)
     expect(container.querySelectorAll('[data-slot="questionnaire-title"]')).toHaveLength(2)
@@ -732,14 +822,19 @@ describe('QuestionnaireView persistence', () => {
     )
 
     // A correct option the learner selected is confirmed correct and must not
-    // also carry the "selected wrong" classification.
+    // also carry the "selected wrong" classification. The result styling paints
+    // it with the green feedback palette instead of the primary selection.
     expect(submittedChecked('first')).toBe(true)
     expect(submittedChoiceIsCorrect('first')).toBe(true)
     expect(submittedChoiceIsIncorrect('first')).toBe(false)
+    expect(submittedChoiceClass('first')).toContain('emerald')
+    expect(submittedChoiceClass('first')).not.toContain('destructive')
 
     expect(submittedChecked('alpha')).toBe(true)
     expect(submittedChoiceIsCorrect('alpha')).toBe(true)
     expect(submittedChoiceIsIncorrect('alpha')).toBe(false)
+    expect(submittedChoiceClass('alpha')).toContain('emerald')
+    expect(submittedChoiceClass('alpha')).not.toContain('destructive')
   })
 
   it('classifies a selected wrong single-choice option as incorrect', () => {
@@ -756,6 +851,10 @@ describe('QuestionnaireView persistence', () => {
     expect(submittedChoiceIsCorrect('first')).toBe(true)
     expect(submittedChoiceIsIncorrect('second')).toBe(true)
     expect(submittedChecked('second')).toBe(true)
+    // The selected wrong pick is painted with the destructive feedback
+    // palette, never the green correct one.
+    expect(submittedChoiceClass('second')).toContain('destructive')
+    expect(submittedChoiceClass('second')).not.toContain('emerald')
   })
 
   it('classifies selected wrong multiple-choice options as incorrect', () => {
@@ -788,9 +887,14 @@ describe('QuestionnaireView persistence', () => {
       )
     )
 
-    // The wrong options were not selected, so they are classified neutral.
+    // The wrong options were not selected, so they are classified neutral and
+    // stay outside both feedback palettes.
     expect(submittedChoiceResult('second')).toBe('neutral')
     expect(submittedChoiceResult('beta')).toBe('neutral')
+    expect(submittedChoiceClass('second')).not.toContain('emerald')
+    expect(submittedChoiceClass('second')).not.toContain('destructive')
+    expect(submittedChoiceClass('beta')).not.toContain('emerald')
+    expect(submittedChoiceClass('beta')).not.toContain('destructive')
     expect(submittedChecked('second')).toBe(false)
     expect(submittedChecked('beta')).toBe(false)
   })
@@ -813,10 +917,12 @@ describe('QuestionnaireView submitted wizard flow', () => {
     expect(hiddenItems()).toHaveLength(1)
 
     // The Submit action stays visible but disabled so a submission cannot
-    // repeat, while Previous/Next remain for reviewing every result.
+    // repeat, and the navigation actions stay visible: Next is disabled at the
+    // last boundary, while Previous remains enabled for reviewing results.
     expect(button('Submit questionnaire').disabled).toBe(true)
     expect(hasVisibleButton('Previous question')).toBe(true)
-    expect(hasVisibleButton('Next question')).toBe(false)
+    expect(hasVisibleButton('Next question')).toBe(true)
+    expect(button('Next question').disabled).toBe(true)
 
     // The answered questions read as results: read-only with their feedback.
     expect(submittedControl('alpha').disabled).toBe(true)
@@ -846,10 +952,13 @@ describe('QuestionnaireView submitted wizard flow', () => {
     expect(submittedControl('first').disabled).toBe(true)
     expect(submittedChoiceIsCorrect('first')).toBe(true)
 
+    // The start review boundary keeps Previous visible but disabled, while
     // Next returns to the last question's feedback. This is the two-way
     // review the submitted wizard must support: if it fails with the
     // required-answer message shown on the earlier question, the wizard
     // validation is treating the submitted (disabled) choices as unanswered.
+    expect(button('Previous question').disabled).toBe(true)
+    expect(button('Next question').disabled).toBe(false)
     act(() => button('Next question').click())
     expect(activeItem().textContent).toContain('Which options apply?')
     expect(submittedChoiceIsCorrect('alpha')).toBe(true)
@@ -880,7 +989,17 @@ describe('QuestionnaireView submitted wizard flow', () => {
     })
     expect(activeItem().textContent).toContain('Which option is correct?')
 
-    // A held ArrowRight matches the primitive: it is canceled but does not
+    // ArrowLeft at the start review boundary is inert, like the disabled
+    // Previous, and never reveals required-answer feedback.
+    act(() => {
+      activeItem().dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true })
+      )
+    })
+    expect(activeItem().textContent).toContain('Which option is correct?')
+    expect(revealedErrors()).toHaveLength(0)
+
+    // A held ArrowRight matches the browser: it is canceled but does not
     // navigate or trigger required validation while the key repeats.
     act(() => {
       activeItem().dispatchEvent(
@@ -912,13 +1031,20 @@ describe('QuestionnaireView expanded presentation', () => {
 
     const items = container.querySelectorAll('[data-slot="questionnaire-item"]')
     expect(items).toHaveLength(2)
-    // Authored order is kept and no question is hidden away.
+    // Authored order is kept and no question is hidden away or inert.
     expect(items[0]?.textContent).toContain('Which option is correct?')
     expect(items[1]?.textContent).toContain('Which options apply?')
-    for (const item of items) expect(item.hasAttribute('hidden')).toBe(false)
+    for (const item of items) {
+      expect(item.hasAttribute('hidden')).toBe(false)
+      expect(item.hasAttribute('inert')).toBe(false)
+    }
 
-    // The per-question wizard progress and Previous/Next do not apply; every
-    // question is answered in place with one bottom Submit.
+    // The per-question wizard progress and Previous/Next do not exist in this
+    // presentation at all; every question is answered in place with one
+    // bottom Submit.
+    expect(container.querySelector('[data-slot="questionnaire-progress"]')).toBeNull()
+    expect(container.querySelector('[data-slot="questionnaire-previous"]')).toBeNull()
+    expect(container.querySelector('[data-slot="questionnaire-next"]')).toBeNull()
     expect(container.textContent).not.toContain('Question 1 of 2')
     expect(container.textContent).not.toContain('Previous question')
     expect(container.textContent).not.toContain('Next question')
@@ -965,11 +1091,14 @@ describe('QuestionnaireView expanded presentation', () => {
     act(() => button('Submit questionnaire').click())
 
     // The expanded presentation is retained: no wizard chrome appears and
-    // every question stays visible with its feedback.
+    // every question stays visible and read-only, with its feedback.
     expect(container.querySelectorAll('[data-slot="questionnaire"]')).toHaveLength(1)
     const items = container.querySelectorAll('[data-slot="questionnaire-item"]')
     expect(items).toHaveLength(2)
-    for (const item of items) expect(item.hasAttribute('hidden')).toBe(false)
+    for (const item of items) {
+      expect(item.hasAttribute('hidden')).toBe(false)
+      expect(item.hasAttribute('inert')).toBe(false)
+    }
     expect(hasVisibleButton('Previous question')).toBe(false)
     expect(hasVisibleButton('Next question')).toBe(false)
 

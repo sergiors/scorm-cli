@@ -41,6 +41,42 @@ export function answerAfterChange(
 }
 
 /**
+ * Whether a saved answer selects at least one option. An empty string or an
+ * empty array is an unanswered question, so clearing every choice disables
+ * progression and submission again.
+ */
+export function hasAnswerValue(value: AnswerValue | undefined): boolean {
+  if (Array.isArray(value)) {
+    return value.length > 0
+  }
+  return typeof value === 'string' && value.length > 0
+}
+
+/**
+ * Whether a question has a saved answer of its authored shape. A multiple-choice
+ * question needs a non-empty array; single-choice and true-false need a non-empty
+ * string. A wrong-shaped saved value never counts as answered.
+ */
+export function isQuestionAnswered(
+  question: QuestionNode,
+  answers: Record<string, AnswerValue>
+): boolean {
+  const value = answers[question.id]
+  if (question.questionType === 'multiple-choice') {
+    return Array.isArray(value) && hasAnswerValue(value)
+  }
+  return !Array.isArray(value) && hasAnswerValue(value)
+}
+
+/** Whether every authored question has a saved answer. */
+export function allQuestionsAnswered(
+  questions: readonly QuestionNode[],
+  answers: Record<string, AnswerValue>
+): boolean {
+  return questions.every((question) => isQuestionAnswered(question, answers))
+}
+
+/**
  * How a submitted option's result should read: a correct option is `correct`
  * whether or not the learner selected it, a selected wrong option is
  * `incorrect`, and a wrong option left unselected stays `neutral`. Only the
