@@ -587,4 +587,71 @@ describe('ScormDevToolsToolbar', () => {
     expect(cmiPre()).toBeNull()
     expect(document.body.textContent).toContain('CMI data is not available')
   })
+
+  it('rebinds the inspector to a replacement dev bridge without remounting', () => {
+    const first = installBridge(true)
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+    togglePopover()
+
+    expect(first.subscribeToCmi).toHaveBeenCalledTimes(1)
+    expect(cmiSnapshot()).toEqual(CMI_12_SNAPSHOT)
+
+    // React Fast Refresh can swap the injected bridge. Re-rendering resolves
+    // the current global per render, so the effect re-keys on the new identity.
+    const second = installBridge(true, { version: '2004', cmi: CMI_2004_SNAPSHOT })
+    expect(window.scormDevTools).not.toBeNull()
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+
+    // The refreshed inspector releases the captured bridge and hydrates a
+    // complete snapshot from the replacement, carrying nothing over.
+    expect(first.unsubscribe).toHaveBeenCalledTimes(1)
+    expect(first.listeners.size).toBe(0)
+    expect(second.subscribeToCmi).toHaveBeenCalledTimes(1)
+    expect(second.listeners.size).toBe(1)
+    expect(cmiSnapshot()).toEqual(CMI_2004_SNAPSHOT)
+    expect(Object.keys(cmiSnapshot()).some((key) => key.startsWith('cmi.core.'))).toBe(false)
+
+    // The subscription is live against the new bridge, not the stale one.
+    act(() => second.emitCmi({ 'cmi.location': 'page-three' }))
+    expect(cmiSnapshot()).toEqual({ 'cmi.location': 'page-three' })
+  })
+
+  it('rebinds onto a read-only dev bridge and replaces the stale snapshot', () => {
+    const first = installBridge(true)
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+    togglePopover()
+
+    expect(cmiSnapshot()).toEqual(CMI_12_SNAPSHOT)
+
+    // A refreshed dev client without the subscription contract still owns a
+    // snapshot, so rebinding must hydrate from it instead of leaving the
+    // previous mock's data on screen.
+    window.scormDevTools = {
+      getCmiPersistenceEnabled: () => true,
+      setCmiPersistenceEnabled: () => {},
+      getCmiSnapshot: () => ({ 'cmi.location': '3' })
+    }
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+
+    expect(first.unsubscribe).toHaveBeenCalledTimes(1)
+    expect(first.listeners.size).toBe(0)
+    expect(cmiSnapshot()).toEqual({ 'cmi.location': '3' })
+    expect(document.body.textContent).not.toContain('CMI data is not available')
+  })
+
+  it('releases the subscription when the dev bridge disappears entirely', () => {
+    const bridge = installBridge(true)
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+    togglePopover()
+
+    expect(bridge.listeners.size).toBe(1)
+
+    delete window.scormDevTools
+    act(() => root.render(<ScormDevToolsToolbar enabled />))
+
+    expect(bridge.unsubscribe).toHaveBeenCalledTimes(1)
+    expect(bridge.listeners.size).toBe(0)
+    // With no bridge the section degrades to its unavailable note.
+    expect(document.body.textContent).toContain('CMI data is not available')
+  })
 })

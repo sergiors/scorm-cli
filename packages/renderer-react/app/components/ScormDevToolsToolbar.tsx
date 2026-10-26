@@ -240,20 +240,32 @@ function CmiPersistenceControl() {
  * an older injected mock simply shows an unavailable note instead of crashing.
  */
 function CmiInspector() {
-  const [cmi, setCmi] = useState<Record<string, string>>(() => readCmiSnapshot())
-  const available = typeof getScormDevTools()?.getCmiSnapshot === 'function'
+  // Resolve the bridge during render so the subscription follows the bridge
+  // identity React Fast Refresh sees. A refreshed component can otherwise stay
+  // attached to a capture from its previous mount.
+  const bridge = getScormDevTools()
+  const [cmi, setCmi] = useState<Record<string, string>>(() => readCmiSnapshot(bridge))
+  const available = typeof bridge?.getCmiSnapshot === 'function'
 
   useEffect(() => {
-    const bridge = getScormDevTools()
-    if (!bridge || typeof bridge.subscribeToCmi !== 'function') {
+    if (!bridge) {
+      return
+    }
+
+    if (typeof bridge.subscribeToCmi !== 'function') {
+      // A rebind to a read-only bridge must still replace the previous mock's
+      // snapshot rather than leave it on screen.
+      setCmi(readCmiSnapshot(bridge))
       return
     }
     // Each notification carries a complete snapshot (never a patch), so the
     // state is replaced outright rather than merged. Switching SCORM version
     // reloads the preview, so the new mock starts its own snapshot with nothing
-    // carried over from the previous version.
+    // carried over from the previous version. Keying the effect on the bridge
+    // also releases the previous bridge's listener and immediately hydrates
+    // from the active one when Fast Refresh swaps the global.
     return bridge.subscribeToCmi((snapshot) => setCmi(snapshot))
-  }, [])
+  }, [bridge])
 
   return (
     <section className="space-y-2.5 overflow-hidden">
@@ -316,8 +328,7 @@ function readCmiPersistenceState(): CmiPersistenceState {
   }
 }
 
-function readCmiSnapshot(): Record<string, string> {
-  const bridge = getScormDevTools()
+function readCmiSnapshot(bridge = getScormDevTools()): Record<string, string> {
   if (!bridge || typeof bridge.getCmiSnapshot !== 'function') {
     return {}
   }

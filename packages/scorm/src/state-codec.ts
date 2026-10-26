@@ -278,7 +278,18 @@ export function decodeSuspendData(manifest: ContentManifest, raw: unknown): Play
 
 /** Embeds the same codec implementation used by the Node exports. */
 export function browserCodecSource(): string {
-  return `var suspendCodec = (${createSuspendDataCodec.toString()})();
+  // Source runners such as `tsx` compile this function with esbuild's
+  // `keepNames` transform, which wraps nested functions in `__name(...)` calls
+  // to preserve their names. That helper is not part of the serialized
+  // function, so the generated browser script would throw `__name is not
+  // defined` before the runtime can install its bridge. Provide the same tiny
+  // helper before the codec; it is unused by production builds, where
+  // `toString()` contains no wrappers.
+  return `var __name = function (target, name) {
+  try { Object.defineProperty(target, "name", { value: name, configurable: true }); } catch (_) {}
+  return target;
+};
+var suspendCodec = (${createSuspendDataCodec.toString()})();
   function compactEncode(manifest, state, progress) {
     return JSON.stringify(suspendCodec.encode(manifest, state, progress));
   }

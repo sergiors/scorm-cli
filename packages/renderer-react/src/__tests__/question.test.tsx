@@ -269,15 +269,17 @@ describe('QuestionnaireView', () => {
     act(() => input('first').click())
     act(() => button('Next question').click())
 
-    // On the final question the submit action is offered, but while the
-    // multiple-choice item is unanswered it stays disabled, so
-    // clicking it neither submits nor surfaces a validation message.
-    expect(button('Submit questionnaire').disabled).toBe(true)
+    // On the final question the Submit action is offered without waiting for
+    // every answer, so an incomplete click reaches the Root's validation
+    // instead: the required-answer message is revealed, the last question
+    // stays active, and nothing is submitted.
+    expect(button('Submit questionnaire').disabled).toBe(false)
     act(() => button('Submit questionnaire').click())
     expect(onSubmitted).not.toHaveBeenCalled()
-    expect(revealedErrors()).toHaveLength(0)
+    expect(revealedErrors()).toHaveLength(1)
     expect(activeItem().textContent).toContain('Which options apply?')
 
+    // Completing the final question lets the same enabled action submit once.
     act(() => input('alpha').click())
     expect(button('Submit questionnaire').disabled).toBe(false)
     act(() => button('Submit questionnaire').click())
@@ -285,14 +287,14 @@ describe('QuestionnaireView', () => {
     expect(onSubmitted).toHaveBeenCalledWith(questionnaireNode.id)
   })
 
-  it('gates the wizard actions behind the current answer', () => {
+  it('keeps the wizard boundaries on the Root: actions appear and vanish natively', () => {
     act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
-    // Given the first question unanswered, Previous and Next remain visible in
-    // the layout but disabled, no Submit is offered yet, and clicking either
-    // disabled action neither navigates nor surfaces a required message.
-    expect(button('Previous question').disabled).toBe(true)
-    act(() => button('Previous question').click())
+    // Given the first question unanswered, Previous is omitted at the start
+    // boundary, Next stays visible but disabled until the item is answered,
+    // and no Submit is offered. Clicking the disabled Next neither navigates
+    // nor surfaces a required message.
+    expect(hasVisibleButton('Previous question')).toBe(false)
     expect(button('Next question').disabled).toBe(true)
     act(() => button('Next question').click())
     expect(activeItem().textContent).toContain('Which option is correct?')
@@ -301,17 +303,85 @@ describe('QuestionnaireView', () => {
     act(() => input('first').click())
     expect(button('Next question').disabled).toBe(false)
 
-    // The last question keeps every action on screen: Previous unlocks, but
-    // Next stays disabled at the boundary, and Submit stays gated on the same
-    // terms until every question has an answer.
+    // The last boundary swaps the actions: Next is omitted there instead of
+    // lingering disabled, Submit is offered and remains enabled regardless of
+    // every answer, so Next and Submit are never shown together.
     act(() => button('Next question').click())
     expect(button('Previous question').disabled).toBe(false)
-    expect(button('Next question').disabled).toBe(true)
-    act(() => button('Next question').click())
-    expect(activeItem().textContent).toContain('Which options apply?')
-    expect(button('Submit questionnaire').disabled).toBe(true)
-    act(() => input('alpha').click())
+    expect(hasVisibleButton('Next question')).toBe(false)
+    expect(hasVisibleButton('Submit questionnaire')).toBe(true)
+    expect(button('Submit questionnaire').type).toBe('submit')
     expect(button('Submit questionnaire').disabled).toBe(false)
+  })
+
+  it('offers only the Submit action for a single-question questionnaire', () => {
+    const onSubmitted = vi.fn()
+    act(() =>
+      root.render(
+        <QuestionnaireView
+          node={{
+            type: 'questionnaire',
+            id: 'questionnaire:check.mdx:1:1',
+            contributesToScore: true,
+            questions: [trueFalse]
+          }}
+          onSubmitted={onSubmitted}
+        />
+      )
+    )
+
+    // With one question there are no wizard boundaries: Previous and Next do
+    // not exist and the only action is Submit, enabled before submission
+    // regardless of how many questions are answered.
+    expect(hasVisibleButton('Previous question')).toBe(false)
+    expect(hasVisibleButton('Next question')).toBe(false)
+    const submit = button('Submit questionnaire')
+    expect(submit.type).toBe('submit')
+    expect(submit.disabled).toBe(false)
+
+    // Submitting while unanswered validates instead of submitting.
+    act(() => button('Submit questionnaire').click())
+    expect(onSubmitted).not.toHaveBeenCalled()
+    expect(revealedErrors()).toHaveLength(1)
+    expect(activeItem().textContent).toContain('Is it true?')
+
+    // The answered question makes the same action submit once.
+    act(() => input('false').click())
+    expect(button('Submit questionnaire').disabled).toBe(false)
+    act(() => button('Submit questionnaire').click())
+    expect(onSubmitted).toHaveBeenCalledTimes(1)
+    expect(onSubmitted).toHaveBeenCalledWith('questionnaire:check.mdx:1:1')
+  })
+
+  it('places the wizard actions only at each native boundary', () => {
+    const threeQuestionNode: QuestionnaireNode = {
+      type: 'questionnaire',
+      id: 'questionnaire:native.mdx:1:1',
+      contributesToScore: true,
+      questions: [singleChoiceQuestion, multipleChoiceQuestion, trueFalse]
+    }
+
+    act(() => root.render(<QuestionnaireView node={threeQuestionNode} />))
+
+    // First question: Previous is omitted, Next is offered, no Submit.
+    expect(hasVisibleButton('Previous question')).toBe(false)
+    expect(hasVisibleButton('Next question')).toBe(true)
+    expect(hasVisibleButton('Submit questionnaire')).toBe(false)
+
+    // Middle question: both directions are offered, still no Submit.
+    act(() => input('first').click())
+    act(() => button('Next question').click())
+    expect(hasVisibleButton('Previous question')).toBe(true)
+    expect(hasVisibleButton('Next question')).toBe(true)
+    expect(hasVisibleButton('Submit questionnaire')).toBe(false)
+
+    // Last question: Next is omitted and Submit is offered, so the two are
+    // never shown together anywhere in the wizard.
+    act(() => input('alpha').click())
+    act(() => button('Next question').click())
+    expect(hasVisibleButton('Previous question')).toBe(true)
+    expect(hasVisibleButton('Next question')).toBe(false)
+    expect(hasVisibleButton('Submit questionnaire')).toBe(true)
   })
 
   it('keeps the wizard Next disabled until the owner answers restored items', () => {
@@ -444,72 +514,78 @@ describe('QuestionnaireView', () => {
 })
 
 describe('QuestionnaireView required-answer message suppression', () => {
-  it('stays hidden while the learner tries disabled wizard actions', () => {
+  it('stays hidden for the actions still gated and reveals through Submit validation', () => {
     act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
-    // Given the first question unanswered, the disabled Previous and Next
-    // cannot navigate and cannot trigger the required-answer validation.
-    expect(button('Previous question').disabled).toBe(true)
-    act(() => button('Previous question').click())
+    // Given the first question unanswered, the disabled Next cannot navigate
+    // and cannot trigger the required-answer validation.
     expect(button('Next question').disabled).toBe(true)
     act(() => button('Next question').click())
     expect(activeItem().textContent).toContain('Which option is correct?')
     expect(revealedErrors()).toHaveLength(0)
 
-    // On the final question the unanswered multiple-choice item keeps both
-    // Next and Submit disabled: clicking them neither navigates, submits,
-    // nor reveals the message.
+    // On the final question the enabled Submit validates the collection
+    // instead of being gated on every answer: the unanswered item's message is
+    // revealed without submitting.
     act(() => input('first').click())
     act(() => button('Next question').click())
-    expect(button('Next question').disabled).toBe(true)
-    act(() => button('Next question').click())
-    expect(button('Submit questionnaire').disabled).toBe(true)
-    act(() => button('Submit questionnaire').click())
-    expect(activeItem().textContent).toContain('Which options apply?')
-    expect(revealedErrors()).toHaveLength(0)
-
-    // Answering lifts the gate without ever showing a stale message.
-    act(() => input('alpha').click())
     expect(button('Submit questionnaire').disabled).toBe(false)
+    act(() => button('Submit questionnaire').click())
+    expect(revealedErrors()).toHaveLength(1)
+
+    // Answering lifts the validation state without ever showing a stale
+    // message.
+    act(() => input('alpha').click())
     expect(revealedErrors()).toHaveLength(0)
   })
 
-  it('keeps the localized required-answer message hidden under pt-BR', () => {
+  it('reveals the localized required-answer message under pt-BR', () => {
     act(() => root.render(<QuestionnaireView node={questionnaireNode} lang="pt-BR" />))
 
     act(() => input('first').click())
     act(() => button('Próxima pergunta').click())
-    expect(button('Enviar questionário').disabled).toBe(true)
-    act(() => button('Enviar questionário').click())
-    expect(revealedErrors()).toHaveLength(0)
 
-    // The message copy is still authored and localized for the moment it
-    // could be revealed, and the primitive's English fallback never leaks.
-    const error = activeItem().querySelector('[data-slot="questionnaire-error"]')
-    expect(error?.textContent).toBe('Escolha uma resposta para continuar.')
+    // The enabled Submit validates an incomplete submit, so the message the
+    // learner sees is the authored localized copy rather than the English
+    // fallback leaked from the primitive.
+    expect(button('Enviar questionário').disabled).toBe(false)
+    act(() => button('Enviar questionário').click())
+    const revealed = revealedErrors()
+    expect(revealed).toHaveLength(1)
+    expect(revealed[0]?.textContent).toBe('Escolha uma resposta para continuar.')
     expect(container.textContent).not.toContain('Choose an answer to continue.')
+
+    // Answering hides the message again until the next incomplete attempt.
+    act(() => input('alpha').click())
+    expect(revealedErrors()).toHaveLength(0)
   })
 })
 
 describe('QuestionnaireView Enter shortcut gating', () => {
-  it('ignores Enter and Ctrl+Enter while the current wizard action is disabled', () => {
+  it('gates plain Enter on the answer and hands Ctrl+Enter to validation', () => {
     act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
-    // Given the first question unanswered, both shortcut forms are inert:
-    // they neither advance the wizard nor surface a required-answer message.
+    // Given the first question unanswered, plain Enter stays inert: it neither
+    // advances the wizard nor surfaces a required-answer message.
     pressKey(input('first'), { key: 'Enter' })
-    expect(activeItem().textContent).toContain('Which option is correct?')
-    pressKey(input('first'), { key: 'Enter', ctrlKey: true })
     expect(activeItem().textContent).toContain('Which option is correct?')
     expect(revealedErrors()).toHaveLength(0)
 
+    // Ctrl+Enter hands over to the Root's validation: the message is revealed
+    // for the unanswered item, but nothing navigates or submits.
+    pressKey(input('first'), { key: 'Enter', ctrlKey: true })
+    expect(activeItem().textContent).toContain('Which option is correct?')
+    expect(revealedErrors()).toHaveLength(1)
+    expect(revealedErrors()[0]?.textContent).toContain('Choose an answer to continue.')
+
     // The primitive changes its active item without rerendering the owner.
-    // Its Ctrl+Enter shortcut must still be gated by the newly active item.
+    // Answering the first question lets Next reach the unanswered last one,
+    // whose Ctrl+Enter validates in exactly the same way.
     act(() => input('first').click())
     act(() => button('Next question').click())
     pressKey(input('alpha'), { key: 'Enter', ctrlKey: true })
     expect(activeItem().textContent).toContain('Which options apply?')
-    expect(revealedErrors()).toHaveLength(0)
+    expect(revealedErrors()).toHaveLength(1)
   })
 
   it('advances and submits with the shortcuts once the actions are enabled', () => {
@@ -736,15 +812,17 @@ describe('QuestionnaireView persistence', () => {
     expect(submittedChoiceResult('beta')).toBe('incorrect')
     expect(submittedChoiceResult('alpha')).toBe('correct')
 
-    // Submission cannot repeat: the Submit action stays rendered but disabled,
-    // while the wizard navigation remains visible for reviewing every answer.
-    // Next sits at the last review boundary, so it stays disabled there.
+    // Submission cannot repeat: the Submit action stays rendered but disabled
+    // on the last review question, while the Previous action remains visible
+    // and enabled for reviewing every answer. The boundary actions follow the
+    // Root's native visibility, so Next is omitted on the last review question
+    // instead of lingering disabled there.
     const submit = button('Submit questionnaire')
     expect(submit.type).toBe('submit')
     expect(submit.disabled).toBe(true)
     expect(hasVisibleButton('Previous question')).toBe(true)
-    expect(hasVisibleButton('Next question')).toBe(true)
-    expect(button('Next question').disabled).toBe(true)
+    expect(button('Previous question').disabled).toBe(false)
+    expect(hasVisibleButton('Next question')).toBe(false)
 
     // A submitted questionnaire never surfaces a required-answer message for
     // its read-only choices.
@@ -770,9 +848,10 @@ describe('QuestionnaireView persistence', () => {
     act(() => button('Previous question').click())
     expect(activeItem().textContent).toContain('Which option is correct?')
 
-    // The first review question is the start boundary: Previous stays visible
-    // but disabled there, while Next unlocks the return path.
-    expect(button('Previous question').disabled).toBe(true)
+    // The first review question is the start boundary: Previous is omitted
+    // there by the Root's native visibility, while Next unlocks the return
+    // path.
+    expect(hasVisibleButton('Previous question')).toBe(false)
     expect(hasVisibleButton('Next question')).toBe(true)
     expect(button('Next question').disabled).toBe(false)
 
@@ -974,18 +1053,26 @@ describe('QuestionnaireView submitted wizard flow', () => {
     expect(hiddenItems()).toHaveLength(1)
 
     // The Submit action stays visible but disabled so a submission cannot
-    // repeat, and the navigation actions stay visible: Next is disabled at the
-    // last boundary, while Previous remains enabled for reviewing results.
+    // repeat, Previous remains enabled for reviewing results, and Next is
+    // omitted on the final review question by the Root's native visibility.
     expect(button('Submit questionnaire').disabled).toBe(true)
     expect(hasVisibleButton('Previous question')).toBe(true)
-    expect(hasVisibleButton('Next question')).toBe(true)
-    expect(button('Next question').disabled).toBe(true)
+    expect(button('Previous question').disabled).toBe(false)
+    expect(hasVisibleButton('Next question')).toBe(false)
 
     // The answered questions read as results with their feedback. Review stays
-    // read-only without disabling the controls: a change attempt on the active
-    // question is dropped, so the rendered selection, its feedback, and the
-    // owner's persisted answers all keep the submitted values.
+    // read-only without disabling the controls: the input stays enabled, the
+    // choice keeps its hover palette (never `data-disabled`), and a change
+    // attempt on the active question is dropped, so the rendered selection,
+    // its feedback, and the owner's persisted answers all keep the submitted
+    // values.
     expect(submittedItem('alpha').getAttribute('aria-readonly')).toBe('true')
+    expect(submittedControl('alpha').disabled).toBe(false)
+    const alphaChoice = submittedControl('alpha').closest<HTMLElement>(
+      '[data-slot="questionnaire-choice"]'
+    )
+    expect(alphaChoice?.hasAttribute('data-disabled')).toBe(false)
+    expect(alphaChoice?.className).toContain('hover:bg-input/40')
     const persistedAnswers = onAnswer.mock.calls.length
     attemptSubmittedChange('beta')
     attemptSubmittedChange('alpha')
@@ -1019,22 +1106,26 @@ describe('QuestionnaireView submitted wizard flow', () => {
     expect(submittedChecked('first')).toBe(true)
     expect(submittedChoiceIsCorrect('first')).toBe(true)
 
-    // The start review boundary keeps Previous visible but disabled, while
-    // Next returns to the last question's feedback. This is the two-way
-    // review the submitted wizard must support: if it fails with the
-    // required-answer message shown on the earlier question, the wizard
+    // The start review boundary keeps Previous omitted by the Root's native
+    // visibility, while Next returns to the last question's feedback. This is
+    // the two-way review the submitted wizard must support: if it fails with
+    // the required-answer message shown on the earlier question, the wizard
     // validation is treating the submitted choices as unanswered.
-    expect(button('Previous question').disabled).toBe(true)
+    expect(hasVisibleButton('Previous question')).toBe(false)
     expect(button('Next question').disabled).toBe(false)
 
-    // Submit stays visible and disabled on the non-final review question too,
-    // so a submission can never repeat from anywhere in the wizard.
-    const submit = button('Submit questionnaire')
-    expect(submit.type).toBe('submit')
-    expect(submit.disabled).toBe(true)
+    // Submit belongs only to the last review question, so it is not offered
+    // from an earlier one.
+    expect(hasVisibleButton('Submit questionnaire')).toBe(false)
 
     act(() => button('Next question').click())
     expect(activeItem().textContent).toContain('Which options apply?')
+
+    // Back on the last review question Submit reappears, but it stays disabled
+    // so a submission can never repeat.
+    const submit = button('Submit questionnaire')
+    expect(submit.type).toBe('submit')
+    expect(submit.disabled).toBe(true)
     expect(submittedChoiceIsCorrect('alpha')).toBe(true)
     expect(revealedErrors()).toHaveLength(0)
   })
