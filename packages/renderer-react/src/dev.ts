@@ -15,8 +15,10 @@ import { escapeInlineScript } from './html'
 import {
   createPackageDataPlugin,
   isPackageNodeModuleId,
+  isSourceModule,
   resolveAppRoot,
   resolveCoreEntry,
+  resolveSourceCore,
   RESOLVED_PACKAGE_DATA_ID
 } from './vite-app'
 
@@ -47,8 +49,12 @@ export async function renderReactDevServer(
   // Vite treats port 0 as "unset" and falls back to 5173, so resolve an
   // ephemeral port ourselves to honour the conventional meaning of 0.
   const port = options.port === 0 ? await findFreePort(host) : (options.port ?? DEFAULT_PORT)
+  const sourceMode = isSourceModule(import.meta.url)
   const appRoot = resolveAppRoot(import.meta.url)
-  const coreEntry = resolveCoreEntry(appRoot)
+  // A source preview has no guaranteed workspace build to resolve the app's
+  // `@scorm-cli/core` import from, so point Vite at the dependency-free core
+  // source. The bundled CLI keeps its emitted browser copy.
+  const coreEntry = sourceMode ? resolveSourceCore(appRoot) : resolveCoreEntry(appRoot)
 
   const handle = { current: contentPackage }
   // The injected scripts change with the content manifest, so hold them in a
@@ -70,7 +76,13 @@ export async function renderReactDevServer(
     root: appRoot,
     base: '/',
     logLevel: 'warn',
-    resolve: { alias },
+    resolve: {
+      alias,
+      // The source preview compiles the app and any workspace sources it
+      // imports in one Vite graph. Keep one React/React DOM instance so hooks
+      // and Fast Refresh always share the same dispatcher.
+      dedupe: ['react', 'react-dom']
+    },
     // Keep Vite's dep cache inside the package's node_modules instead of
     // creating a stray `app/node_modules` (or `dist/node_modules`) directory
     // that would ship. The app sits at `<package>/app` in the workspace and at

@@ -6,7 +6,7 @@ import { getPresentationNodes } from '@scorm-cli/core'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { reactRenderer } from '..'
 import type { RendererDevServer } from '..'
-import { samplePackage, slidesPackage, tilesPackage } from './fixtures'
+import { introPage, samplePackage, setupPage, slidesPackage, tilesPackage } from './fixtures'
 
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>'
 
@@ -173,6 +173,25 @@ describe('reactRenderer.dev', () => {
     expect(html).toContain('<div id="root">')
     expect(html).toContain('/@vite/client')
     expect(html).toContain('<title>Rendering Fundamentals</title>')
+  })
+
+  it('serves the workspace app source with React Fast Refresh and source core', async () => {
+    const html = await fetch(server.url).then((response) => response.text())
+    expect(html).toContain('@react-refresh')
+
+    const main = await fetch(new URL('main.tsx', server.url)).then((response) => response.text())
+    expect(main).toContain('@vite/client')
+    expect(main).toContain('getRefreshReg')
+
+    const app = await fetch(new URL('App.tsx', server.url)).then((response) => response.text())
+    expect(app).toContain('createHotContext')
+
+    // Source previews have no guaranteed workspace build, so the app's core
+    // import is served from the dependency-free source module.
+    const helpers = await fetch(new URL('lib/content-helpers.ts', server.url)).then((response) =>
+      response.text()
+    )
+    expect(helpers).toContain('/packages/core/src/index.ts')
   })
 
   it('serves local assets from the provided content root', async () => {
@@ -428,5 +447,55 @@ describe('reactRenderer.dev', () => {
     } finally {
       client.close()
     }
+  })
+
+  it('asks connected preview clients to fully reload on update', async () => {
+    const client = await connectHmr(server.url)
+    try {
+      await client.waitFor((frame) => frame.type === 'connected')
+
+      // Every update invalidates the shared package modules and broadcasts a
+      // full reload: the served document is regenerated from the replaced
+      // package, so the preview never keeps rendering stale content.
+      const reload = client.waitFor((frame) => frame.type === 'full-reload')
+      await server.update(samplePackage)
+      expect((await reload).type).toBe('full-reload')
+    } finally {
+      client.close()
+    }
+  })
+
+  it('serves edited node content from the same lazy URL after an update', async () => {
+    const nodeUrl = `${server.url}@id/__x00__virtual:package-node/page%3Aintro.mdx`
+
+    await server.update(samplePackage)
+    const before = await fetch(nodeUrl).then((response) => response.text())
+    expect(before).toContain('Welcome')
+
+    // An authoring edit only replaces a node's body in the package; the page id
+    // (and therefore its virtual module id and lazy import specifier) is stable.
+    // The dev server must invalidate the cached transform so the very URL the
+    // browser already imported serves the new body after the reload — otherwise
+    // the preview would keep rendering stale content over the old chunk.
+    const edited: ContentPackage = {
+      metadata: samplePackage.metadata,
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            ...introPage,
+            content: [
+              { type: 'paragraph', children: [{ type: 'text', value: 'Edited introduction.' }] }
+            ]
+          },
+          setupPage
+        ]
+      }
+    }
+    await server.update(edited)
+
+    const after = await fetch(nodeUrl).then((response) => response.text())
+    expect(after).toContain('Edited introduction.')
+    expect(after).not.toContain('Welcome')
   })
 })

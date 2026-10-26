@@ -219,19 +219,49 @@ function findPackageRoot(startDirectory: string): string {
   }
 }
 
+/** Whether `file` is inside `directory` (and not the directory itself). */
+function isInside(directory: string, file: string): boolean {
+  const relative = path.relative(directory, file)
+  return (
+    relative !== '' &&
+    relative !== '..' &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  )
+}
+
 /**
- * Resolves the shipped `app` directory from the calling module URL, validating
- * that the HTML template exists so failures surface early with a clear message.
+ * Whether the calling module belongs to the renderer's TypeScript source tree.
+ *
+ * The dev entry can run from `<package>/src` (workspace source previews and
+ * tests) or from the bundled `<cli>/dist/index.js`. Source runs must load the
+ * workspace app directly, while a bundled run must use the app copy shipped
+ * next to the executable.
+ */
+export function isSourceModule(moduleUrl: string): boolean {
+  const modulePath = fileURLToPath(moduleUrl)
+  const packageRoot = findPackageRoot(path.dirname(modulePath))
+  return isInside(path.join(packageRoot, 'src'), modulePath)
+}
+
+/**
+ * Resolves the `app` directory from the calling module URL, validating that the
+ * HTML template exists so failures surface early with a clear message.
  *
  * The app source is owned by this package and lives in its `app` directory, so
- * the renderer resolves it there when it runs from its own workspace source or
- * build. The published CLI bundles this renderer and ships a copy of the app
- * next to its executable, so when the caller lives in `<cli>/dist` the app sits
- * at the sibling `<cli>/dist/app`.
+ * a source run (workspace preview or tests) must use that directory even when a
+ * stale `dist/app` copy is present. The published CLI bundles this renderer and
+ * ships a copy of the app next to its executable, so a bundled run resolves the
+ * sibling `<cli>/dist/app` first.
  */
 export function resolveAppRoot(moduleUrl: string): string {
-  const packageRoot = findPackageRoot(path.dirname(fileURLToPath(moduleUrl)))
-  const candidates = [path.join(packageRoot, 'dist', 'app'), path.join(packageRoot, 'app')]
+  const modulePath = fileURLToPath(moduleUrl)
+  const packageRoot = findPackageRoot(path.dirname(modulePath))
+  const sourceApp = path.join(packageRoot, 'app')
+  const builtApp = path.join(packageRoot, 'dist', 'app')
+  const candidates = isInside(path.join(packageRoot, 'src'), modulePath)
+    ? [sourceApp, builtApp]
+    : [builtApp, sourceApp]
   const appRoot = candidates.find((candidate) => existsSync(path.join(candidate, ENTRYPOINT)))
 
   if (!appRoot) {
@@ -260,6 +290,21 @@ const CORE_ENTRY = path.join('internal', 'core.js')
 /** Resolves {@link CORE_ENTRY} from the app directory, which sits under `dist`. */
 export function resolveCoreEntry(appRoot: string): string | undefined {
   const entry = path.resolve(appRoot, '..', CORE_ENTRY)
+  return existsSync(entry) ? entry : undefined
+}
+
+/**
+ * Workspace source entry for the browser-safe `@scorm-cli/core` module.
+ *
+ * Source previews must start without a `tsup` build, so the renderer app's
+ * `@scorm-cli/core` import is aliased to the dependency-free core source and
+ * Vite compiles it like any other module. This is only used by the source dev
+ * server; the bundled CLI keeps resolving the emitted `internal/core.js`
+ * through {@link resolveCoreEntry}, so shipped output is unchanged.
+ */
+export function resolveSourceCore(appRoot: string): string | undefined {
+  const packageRoot = findPackageRoot(appRoot)
+  const entry = path.resolve(packageRoot, '..', 'core', 'src', 'index.ts')
   return existsSync(entry) ? entry : undefined
 }
 

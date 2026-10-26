@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@scorm-cli/core": ["../core/src/index.ts"],
+      "@scorm-cli/parser": ["../parser/src/index.ts"],
+      "@scorm-cli/renderer-react": ["../renderer-react/src/index.ts"],
+      "@scorm-cli/scorm": ["../scorm/src/index.ts"]
+    }
+  }
+}

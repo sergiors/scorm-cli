@@ -50,12 +50,19 @@ export interface StartDevOptions {
   host?: string
 }
 
-/** Start a renderer preview and keep it updated from validated authored content. */
+/**
+ * Start a renderer preview and keep it updated from validated authored content.
+ *
+ * Dependencies are injectable so tests can drive the lifecycle, and the source
+ * preview entry can supply the workspace renderer without changing the packaged
+ * loader. Omitted dependencies keep their defaults.
+ */
 export async function startDevPackage(
   contentPath: string,
   options: StartDevOptions = {},
-  dependencies: DevDependencies = defaultDependencies
+  dependencyOverrides: Partial<DevDependencies> = {}
 ): Promise<DevSession> {
+  const dependencies: DevDependencies = { ...defaultDependencies, ...dependencyOverrides }
   const initialPackage = await dependencies.loadPackage(contentPath)
   const renderer = await dependencies.loadRenderer()
   if (typeof renderer.dev !== 'function')

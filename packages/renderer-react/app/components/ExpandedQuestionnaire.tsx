@@ -10,7 +10,7 @@ import {
   useQuestionnaireAnswers,
   useQuestionnaireSubmission,
   type QuestionnaireViewProps
-} from './questionnaire-shared'
+} from './QuestionnaireShared'
 
 /**
  * An expanded questionnaire: every authored question is rendered at once in

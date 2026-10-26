@@ -116,9 +116,11 @@ never depends on a workspace package. The private packages are declared as the C
 before the CLI. Authoring markers are exposed publicly only through the `scorm-cli/authoring`
 subpath.
 
-From the workspace root, `pnpm preview <content>` builds the private workspace dependencies before
-starting `pnpm scorm preview`. For example, `pnpm preview examples/typescript-content --port 0` starts
-the TypeScript course preview on an available port. Content paths are relative to the workspace root.
+From the workspace root, `pnpm preview <content>` starts the preview directly from the workspace
+TypeScript source with `tsx`; no `pnpm build` is required. Vite serves the renderer app with React
+Fast Refresh for source JSX, CSS and component edits, while authored MDX changes are re-parsed and
+reloaded. For example, `pnpm preview examples/typescript-content --port 0` starts the TypeScript
+course preview on an available port. Content paths are relative to the workspace root.
 
 | Workspace package            | Role                                                               |
 | ---------------------------- | ------------------------------------------------------------------ |
@@ -160,7 +162,7 @@ The examples demonstrate the supported package presentations and content compone
 | `examples/typescript-tiles`     | A two-column Tiles practice set of short items using Markdown.                                     | `pnpm scorm build examples/typescript-tiles`     | `pnpm scorm preview examples/typescript-tiles`     |
 | `examples/accessibility-basics` | A Scroll course with practical accessibility guidance and a knowledge-check questionnaire.         | `pnpm scorm build examples/accessibility-basics` | `pnpm scorm preview examples/accessibility-basics` |
 
-Builds write `dist/<content-name>.zip` by default (for example, `dist/accessibility-basics.zip`). Pass `--output <path>` to choose a different ZIP path. `pnpm scorm preview <content>` starts a local preview, watches the content directory, and reports validation errors without stopping the preview. Pass `--port <port>` to choose the preview port.
+Builds write `dist/<content-name>.zip` by default (for example, `dist/accessibility-basics.zip`). Pass `--output <path>` to choose a different ZIP path. `pnpm preview <content>` starts a local preview from workspace source; `pnpm scorm preview <content>` runs the same server from the built CLI. Both watch the content directory and report validation errors without stopping the preview. Pass `--port <port>` to choose the preview port.
 
 ## License
 
