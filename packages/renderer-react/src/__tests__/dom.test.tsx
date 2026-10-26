@@ -757,7 +757,14 @@ describe('PackageView scroll natural layout', () => {
       expect(utilities.some((name) => name.startsWith(forbidden))).toBe(false)
     }
     expect(column.querySelector('.overflow-y-auto')).toBeNull()
-    expect(column.querySelector('.overflow-auto')).toBeNull()
+    // No descendant of the layout scrolls either, so the document stays the only
+    // scroller. Authored code blocks do keep a horizontal code scroller on their
+    // own <pre> inside the code block component — a local content affordance,
+    // never a page or list scroller.
+    const nestedScrollers = Array.from(
+      column.querySelectorAll('.overflow-y-auto, .overflow-auto')
+    ).filter((node) => node.closest('[data-slot="code-block"]') === null)
+    expect(nestedScrollers).toEqual([])
     // The page slots render inside it, so they inherit its width without
     // repeating the layout classes.
     expect(column.contains(renderedPage(0))).toBe(true)

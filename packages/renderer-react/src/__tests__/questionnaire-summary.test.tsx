@@ -114,14 +114,21 @@ function summary(): HTMLElement | null {
   return container.querySelector<HTMLElement>('[data-slot="questionnaire-summary"]')
 }
 
-function summaryProgress(): HTMLElement {
-  const element = summary()?.querySelector<HTMLElement>(
-    '[data-slot="questionnaire-summary-progress"]'
-  )
+function summaryProgress(): SVGSVGElement {
+  const element = summary()?.querySelector<SVGSVGElement>('svg[role="progressbar"]')
   if (!element) {
     throw new Error('Summary progressbar not found')
   }
   return element
+}
+
+/** The visible percentage text rendered inside the progress circle. */
+function summaryPercent(): string {
+  const element = summary()?.querySelector<HTMLElement>('[aria-hidden="true"]')
+  if (!element) {
+    throw new Error('Summary percentage not found')
+  }
+  return element.textContent ?? ''
 }
 
 function choiceResult(value: string): string | null {
@@ -181,18 +188,21 @@ describe('QuestionnaireSummary in the stepper presentation', () => {
     act(() => input('alpha').click())
     act(() => visibleButton('Submit questionnaire').click())
 
-    // The summary is localized, reports one point per question, and exposes
-    // its percentage through progressbar semantics.
+    // The summary is localized, reports one point per question, and is
+    // announced by its own title through aria-labelledby.
     expect(summary()?.textContent).toContain('Questionnaire completed')
     expect(summary()?.textContent).toContain('2 of 2 correct answers')
-    expect(summary()?.getAttribute('aria-live')).toBe('polite')
+    const title = summary()?.querySelector('h2')
+    expect(title).not.toBeNull()
+    expect(summary()?.getAttribute('aria-labelledby')).toBe(title?.id)
     const progress = summaryProgress()
     expect(progress.getAttribute('role')).toBe('progressbar')
     expect(progress.getAttribute('aria-label')).toBe('Correct answers')
     expect(progress.getAttribute('aria-valuemin')).toBe('0')
     expect(progress.getAttribute('aria-valuemax')).toBe('100')
     expect(progress.getAttribute('aria-valuenow')).toBe('100')
-    expect(progress.getAttribute('aria-valuetext')).toBe('100%')
+    // The progress circle also shows the rounded percentage as visible text.
+    expect(summaryPercent()).toBe('100%')
 
     // Submission does not expand every question: the active last question and
     // one hidden earlier question remain, with the saved feedback preserved.
@@ -225,7 +235,7 @@ describe('QuestionnaireSummary in the stepper presentation', () => {
     // produce a 50% result immediately from persisted state.
     expect(summary()?.textContent).toContain('1 of 2 correct answers')
     expect(summaryProgress().getAttribute('aria-valuenow')).toBe('50')
-    expect(summaryProgress().getAttribute('aria-valuetext')).toBe('50%')
+    expect(summaryPercent()).toBe('50%')
 
     // The restored wizard keeps its read-only review flow and feedback.
     expect(activeItem().textContent).toContain('Which options apply?')
@@ -245,10 +255,10 @@ describe('QuestionnaireSummary in the stepper presentation', () => {
     act(() => root.render(<QuestionnaireView node={threeQuestionNode} />))
 
     // Two of three questions earn a point, so 66.67% rounds up to 67% in both
-    // the numeric progressbar value and its spoken percentage text.
+    // the numeric progressbar value and the visible percent label.
     expect(summary()?.textContent).toContain('2 of 3 correct answers')
     expect(summaryProgress().getAttribute('aria-valuenow')).toBe('67')
-    expect(summaryProgress().getAttribute('aria-valuetext')).toBe('67%')
+    expect(summaryPercent()).toBe('67%')
   })
 
   it('summarizes a questionnaire that does not contribute to score', () => {
@@ -282,7 +292,8 @@ describe('QuestionnaireSummary in the stepper presentation', () => {
     expect(summary()?.textContent).toContain('Questionário concluído')
     expect(summary()?.textContent).toContain('2 de 2 respostas corretas')
     expect(summaryProgress().getAttribute('aria-label')).toBe('Respostas corretas')
-    expect(summaryProgress().getAttribute('aria-valuetext')).toBe('100%')
+    // The percent label follows the locale's number formatting too.
+    expect(summaryPercent()).toBe('100%')
     expect(container.textContent).not.toContain('Questionnaire completed')
     expect(container.textContent).not.toContain('2 of 2 correct answers')
   })
@@ -311,10 +322,11 @@ describe('QuestionnaireSummary in the expanded presentation', () => {
     expect(summaryProgress().getAttribute('aria-valuenow')).toBe('100')
     expect(visibleButton('Submit questionnaire').disabled).toBe(true)
 
-    // The summary sits immediately before the submit action at the bottom.
+    // The summary sits at the very bottom: after submission it is rendered
+    // directly after the card that holds the questionnaire form.
     const form = container.querySelector('[data-slot="questionnaire"]')
     expect(form?.lastElementChild?.textContent).toContain('Submit questionnaire')
-    expect(form?.lastElementChild?.previousElementSibling).toBe(summary())
+    expect(summary()?.previousElementSibling).toBe(form?.closest('[data-slot="card"]'))
     expect(choiceResult('first')).toBe('correct')
     expect(choiceResult('alpha')).toBe('correct')
   })

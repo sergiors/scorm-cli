@@ -116,14 +116,18 @@ describe('PackageView scroll presentation', () => {
     for (const forbidden of ['overflow-', 'h-', 'min-h-', 'max-h-', 'py-', 'pt-', 'pb-']) {
       expect(columnUtilities.some((name) => name.startsWith(forbidden))).toBe(false)
     }
-    // The current page is marked semantically; the package adds no animation,
-    // transition or scroll snapping of its own.
+    // The current page is marked semantically; the package's own chrome — the
+    // scene, its content block, the prose wrapper and the shared column — adds
+    // no animation, transition or scroll snapping of its own. Utilities inside
+    // authored widgets (e.g. the code block's hover-revealed copy action) are
+    // that widget's own styling, not the package's scene chrome.
     expect(sceneTag).toContain('data-active="true"')
-    expect(html).not.toContain('transition-opacity')
-    expect(html).not.toContain('duration-200')
-    expect(html).not.toContain('motion-reduce:transition-none')
-    expect(html).not.toContain('snap-proximity')
-    expect(html).not.toContain('snap-start')
+    const packageChrome = [sceneTag, contentTag, proseTag, columnTag].join('')
+    expect(packageChrome).not.toContain('transition-opacity')
+    expect(packageChrome).not.toContain('duration-200')
+    expect(packageChrome).not.toContain('motion-reduce:transition-none')
+    expect(packageChrome).not.toContain('snap-proximity')
+    expect(packageChrome).not.toContain('snap-start')
     // The package never exposes scroll paging controls; the questionnaire's
     // own wizard controls are unrelated and may be present.
     expect(html).not.toContain('Previous page')

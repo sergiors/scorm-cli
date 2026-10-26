@@ -555,12 +555,21 @@ describe('ContentRenderer lists', () => {
 })
 
 describe('ContentRenderer code and quotes', () => {
-  it('renders code blocks with an optional language class and escaped value', () => {
+  it('renders a code block through the shared component with its value escaped', () => {
     const html = render([{ type: 'code', value: 'const x = 1 < 2;', language: 'ts' }])
-    expect(html).toContain('<pre')
-    expect(html).toContain('<code')
-    expect(html).toContain('language-ts')
+    // The block renders as the shared code block component: an interactive
+    // <pre><code> surface exposed through its data slots, carrying the authored
+    // source as its (escaped) text content.
+    expect(html).toContain('data-slot="code-block"')
+    expect(html).toContain('<pre data-slot="code-block-content"')
+    expect(html).toContain('<code data-slot="code-block-code"')
     expect(html).toContain('const x = 1 &lt; 2;')
+    // The authored language is optional: it selects the highlighting grammar and
+    // is not surfaced as a CSS class, so an unlanguaged block renders the same
+    // markup and the same escaped source.
+    const unlanguaged = render([{ type: 'code', value: 'const x = 1 < 2;' }])
+    expect(unlanguaged).toContain('<pre data-slot="code-block-content"')
+    expect(unlanguaged).toContain('const x = 1 &lt; 2;')
   })
 
   it('renders quotes with nested rich content', () => {
