@@ -5,6 +5,7 @@ import { PackageApp } from '../../app/App'
 import { ContentRenderer } from '../../app/components/ContentRenderer'
 import { PathView } from '../../app/components/PathView'
 import { QuestionnaireView } from '../../app/components/QuestionnaireView'
+import { PageProvider, PlayerProvider } from '../../app/lib/player-context'
 import {
   Questionnaire,
   QuestionnaireChoice,
@@ -20,7 +21,13 @@ import { PlayerI18nProvider } from '../../app/lib/player-i18n'
 import { questionnaireNode, inlineContentProvider } from './fixtures'
 
 function render(lang: string | undefined, ui: ReactNode): string {
-  return renderToStaticMarkup(<PlayerI18nProvider lang={lang}>{ui}</PlayerI18nProvider>)
+  return renderToStaticMarkup(
+    <PlayerI18nProvider lang={lang}>
+      <PlayerProvider contentPackage={emptyPackage()}>
+        <PageProvider pageId="page:i18n-test.mdx">{ui}</PageProvider>
+      </PlayerProvider>
+    </PlayerI18nProvider>
+  )
 }
 
 /**
@@ -76,12 +83,7 @@ const pathPages: PageNode[] = [
 function pathView(): string {
   return render(
     'pt-BR',
-    <PathView
-      node={pathNode}
-      pathPages={pathPages}
-      pageStates={{ 'page:a.mdx': { visited: true, completed: true } }}
-      onNavigatePathPage={() => {}}
-    />
+    <PathView node={pathNode} pathPages={pathPages} onNavigatePathPage={() => {}} />
   )
 }
 
@@ -159,15 +161,10 @@ describe('player i18n: English', () => {
   it('renders the Path navigation label and statuses', () => {
     const html = render(
       undefined,
-      <PathView
-        node={pathNode}
-        pathPages={pathPages}
-        pageStates={{ 'page:a.mdx': { visited: true, completed: true } }}
-        onNavigatePathPage={() => {}}
-      />
+      <PathView node={pathNode} pathPages={pathPages} onNavigatePathPage={() => {}} />
     )
     expect(html).toContain('aria-label="Path"')
-    expect(html).toContain('Visited')
+    expect(html).not.toContain('Visited')
     expect(html).toContain('Available')
     expect(html).toContain('Locked')
     // Authored titles and descriptions pass through untouched.
@@ -219,7 +216,7 @@ describe('player i18n: Brazilian Portuguese', () => {
   it('renders the Path navigation label and statuses', () => {
     const html = pathView()
     expect(html).toContain('aria-label="Trilha"')
-    expect(html).toContain('Visitada')
+    expect(html).not.toContain('Visitada')
     expect(html).toContain('Disponível')
     expect(html).toContain('Bloqueada')
     // Authored descriptions are passed through untouched.
@@ -259,7 +256,8 @@ describe('player i18n: authored content is never translated', () => {
     expect(html).toContain('Second authored')
     expect(html).toContain('Third authored')
     // The chrome is localized while the authored titles stay untouched.
-    expect(html).toContain('Visitada')
+    expect(html).toContain('Disponível')
+    expect(html).not.toContain('Visitada')
     expect(html).not.toContain('Locked')
     expect(html).not.toContain('Available')
   })

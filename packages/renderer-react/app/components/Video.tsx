@@ -6,15 +6,8 @@ import type { VideoNode } from '../types'
 import { cn } from '../lib/utils'
 import { useMediaInView } from '../lib/use-media-in-view'
 import { useVideoPlayer } from '../lib/use-video-player'
+import { usePageId, usePlayerActions, usePlayerState } from '../lib/player-context'
 import { MediaFrame } from './MediaFrame'
-
-export interface VideoProps {
-  node: VideoNode
-  /** Restored semantic position in seconds, applied once the player is ready. */
-  position?: number
-  /** Reports a semantic position in seconds for persistence. */
-  onPosition?: (seconds: number) => void
-}
 
 /**
  * How often ReactPlayer reports a progress tick while playing. Coarse on
@@ -80,12 +73,21 @@ function playerConfig(node: VideoNode, label: string, captionsLabel: string): Co
  * box (`object-contain`) rather than being stretched, and embedded providers fill
  * it as before.
  */
-export function Video({ node, position, onPosition }: VideoProps) {
+export function Video({ node }: { node: VideoNode }) {
   const intl = useIntl()
   const label = node.title ?? intl.formatMessage({ id: 'video.label' })
   const captionsLabel = intl.formatMessage({ id: 'video.captions' })
   const errorMessage = intl.formatMessage({ id: 'video.error' })
-  const player = useVideoPlayer({ position, onPosition })
+  const pageId = usePageId()
+  const state = usePlayerState()
+  const actions = usePlayerActions()
+  if (!pageId) {
+    throw new Error('Video must be rendered within a PageProvider')
+  }
+  const player = useVideoPlayer({
+    position: state.pages[pageId]?.videos?.[node.id],
+    onPosition: (seconds) => actions.setVideoPosition(pageId, node.id, seconds)
+  })
   const { ref, inView } = useMediaInView<HTMLDivElement>()
   const [ready, setReady] = useState(false)
   const [failed, setFailed] = useState(false)

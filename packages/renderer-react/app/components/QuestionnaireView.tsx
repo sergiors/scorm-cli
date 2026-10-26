@@ -1,17 +1,17 @@
 import { ExpandedQuestionnaire } from './ExpandedQuestionnaire'
 import { StepperQuestionnaire } from './StepperQuestionnaire'
 
-import type { QuestionnaireViewProps } from './QuestionnaireShared'
+import type { QuestionnaireNode } from '../types'
 export type { QuestionNode } from '../types'
 
-export function QuestionnaireView(props: QuestionnaireViewProps) {
-  if (props.node.questions.length === 0) {
+export function QuestionnaireView({ node }: { node: QuestionnaireNode }) {
+  if (node.questions.length === 0) {
     return null
   }
 
-  if (props.node.expanded === true) {
-    return <ExpandedQuestionnaire {...props} />
+  if (node.expanded === true) {
+    return <ExpandedQuestionnaire node={node} />
   }
 
-  return <StepperQuestionnaire {...props} />
+  return <StepperQuestionnaire node={node} />
 }

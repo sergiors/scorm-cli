@@ -1,9 +1,10 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { Lock } from 'lucide-react'
 import { useIntl } from 'react-intl'
-import type { AnswerValue, PlayerPageState, ItemNode } from '../types'
+import type { ItemNode } from '../types'
 import { getSequentialAccess } from '../lib/content-helpers'
 import { useContentLoader, type ContentProvider } from '../lib/content-loader'
+import { PageProvider, usePlayerActions, usePlayerState } from '../lib/player-context'
 import { cn } from '../lib/utils'
 import { ContentRenderer } from './ContentRenderer'
 import { ContentLoadError } from './ContentLoadError'
@@ -27,10 +28,7 @@ function tilesStyle(columns: number | undefined): CSSProperties {
 export type TileStatus = 'opened' | 'available' | 'locked'
 
 /** Derives each tile's status from the shared sequential access policy. */
-function tileStatuses(
-  items: readonly ItemNode[],
-  pageStates: Record<string, PlayerPageState>
-): TileStatus[] {
+function tileStatuses(items: readonly ItemNode[], pageStates: Record<string, { visited?: boolean }>): TileStatus[] {
   const ids = items.map((item) => item.id)
   const opened = new Set(
     items.filter((item) => pageStates[item.id]?.visited === true).map((item) => item.id)
@@ -49,21 +47,6 @@ export interface TilesPresentationProps {
   contentProvider: ContentProvider
   /** Authored column count; a layout intent, not a hard constraint. */
   columns?: number
-  /** Persisted state per item id, for restoring answers and submitted state. */
-  pageStates: Record<string, PlayerPageState>
-  /**
-   * Item id named by the saved lesson location. When it matches an accessible
-   * item, that item's dialog reopens on mount so a refresh resumes in place.
-   */
-  initialItemId?: string
-  /** Stores an item as the current location and marks it opened. */
-  onItemOpened: (id: string) => void
-  /** Persists a question answer for the opened item. */
-  onAnswer: (pageId: string, questionId: string, value: AnswerValue) => void
-  /** Marks a questionnaire on the opened item as submitted. */
-  onQuestionnaireSubmitted: (pageId: string, questionnaireId: string) => void
-  /** Persists a video's semantic playback position in seconds, scoped to the item. */
-  onVideoPosition?: (pageId: string, videoId: string, seconds: number) => void
 }
 
 /**
@@ -83,14 +66,12 @@ export interface TilesPresentationProps {
 export function TilesPresentation({
   items,
   contentProvider,
-  columns,
-  pageStates,
-  initialItemId,
-  onItemOpened,
-  onAnswer,
-  onQuestionnaireSubmitted,
-  onVideoPosition
+  columns
 }: TilesPresentationProps) {
+  const state = usePlayerState()
+  const pageStates = state.pages
+  const onItemOpened = usePlayerActions().markSeen
+  const initialItemId = state.location
   const statuses = tileStatuses(items, pageStates)
   const initiallyOpened = items.some(
     (item, index) => item.id === initialItemId && statuses[index] !== 'locked'
@@ -119,8 +100,6 @@ export function TilesPresentation({
     setOpen(true)
     onItemOpened(item.id)
   }
-
-  const pageState = selected ? pageStates[selected.id] : undefined
 
   return (
     <>
@@ -156,17 +135,9 @@ export function TilesPresentation({
           {selected ? (
             isLoaded(selected.id) ? (
               <div className="prose">
-                <ContentRenderer
-                  nodes={content(selected.id) ?? []}
-                  answers={pageState?.answers}
-                  submittedQuestionnaires={pageState?.submittedQuestionnaires}
-                  onAnswer={(questionId, value) => onAnswer(selected.id, questionId, value)}
-                  onQuestionnaireSubmitted={(id) => onQuestionnaireSubmitted(selected.id, id)}
-                  videoPositions={pageState?.videos}
-                  onVideoPosition={(videoId, seconds) =>
-                    onVideoPosition?.(selected.id, videoId, seconds)
-                  }
-                />
+                <PageProvider pageId={selected.id}>
+                  <ContentRenderer nodes={content(selected.id) ?? []} />
+                </PageProvider>
               </div>
             ) : hasError(selected.id) ? (
               <ItemLoadError onRetry={() => retry(selected.id)} />

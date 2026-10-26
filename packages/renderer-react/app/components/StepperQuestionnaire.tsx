@@ -20,9 +20,9 @@ import {
   submittedChoiceClassName,
   useQuestionnaireAnswers,
   useQuestionnaireSubmission,
-  type QuestionnaireViewProps
+  useQuestionnaireSession
 } from './QuestionnaireShared'
-import type { AnswerValue, QuestionNode } from '../types'
+import type { AnswerValue, QuestionNode, QuestionnaireNode } from '../types'
 
 interface StepperQuestionProps {
   node: QuestionNode
@@ -43,8 +43,8 @@ interface StepperQuestionProps {
  * The controlled `checked` value still keeps the saved answer immutable because
  * the submitted change handler drops the interaction and the primitive's own
  * controlled branch ignores it. The labelled item exposes the read-only review
- * through `aria-readonly` and `data-readonly` rather than disabling or muting
- * its choices, so hover and focus styling stay available.
+ * through `aria-readonly` rather than disabling or muting its choices, so hover
+ * and focus styling stay available.
  */
 function StepperQuestion({ node, value, submitted, onAnswer }: StepperQuestionProps) {
   const titleId = useId()
@@ -121,8 +121,8 @@ function StepperQuestion({ node, value, submitted, onAnswer }: StepperQuestionPr
  * The final item keeps its Submit disabled once submitted so submission cannot
  * repeat.
  */
-export function StepperQuestionnaire(props: QuestionnaireViewProps) {
-  const { node, answers, submitted = false, onAnswer, onSubmitted } = props
+export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
+  const { answers, submitted, onAnswer, onSubmitted } = useQuestionnaireSession(node)
   const intl = useIntl()
   const firstQuestionId = node.questions[0]?.id ?? ''
   const lastQuestionId = node.questions[node.questions.length - 1]?.id ?? ''

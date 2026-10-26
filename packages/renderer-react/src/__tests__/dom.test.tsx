@@ -1813,7 +1813,6 @@ describe('PackageView scroll persistence', () => {
     )
     expect(restoredItem?.textContent).toContain('Which options apply?')
     expect(restoredItem?.getAttribute('aria-readonly')).toBe('true')
-    expect(restoredItem?.hasAttribute('data-readonly')).toBe(true)
 
     act(() => submittedControl('beta').click())
     act(() => submittedControl('alpha').click())
@@ -1974,7 +1973,6 @@ describe('PackageView scroll persistence', () => {
       '[data-slot="questionnaire-item"]:not([hidden])'
     )
     expect(reviewedItem?.getAttribute('aria-readonly')).toBe('true')
-    expect(reviewedItem?.hasAttribute('data-readonly')).toBe(true)
     act(() => submittedControl('beta').click())
     act(() => submittedControl('alpha').click())
     expect(submittedControl('alpha').checked).toBe(true)
@@ -2487,6 +2485,38 @@ describe('PackageView slides presentation', () => {
 
     expect(lastSaved(saveState).location).toBe('page:plain-1.mdx')
   })
+
+  it('reopens the saved accessible slide on mount', () => {
+    // Given the learner left on the second slide with the first one done, when
+    // the package mounts again, then the restored slide is the one displayed,
+    // not the first one.
+    window.scormBridge = {
+      restoreState: () => ({
+        location: 'page:plain-2.mdx',
+        pages: { 'page:plain-1.mdx': { visited: true, completed: true } }
+      })
+    }
+
+    act(() => root.render(<Player contentPackage={slidesPackage} />))
+
+    expect(sceneIndices()).toEqual([1])
+    expect(text()).toContain('Body 2.')
+    expect(text()).not.toContain('Body 1.')
+  })
+
+  it('falls back to the first accessible slide when the saved location is locked', () => {
+    // The saved lesson location can only resume where the sequential access
+    // policy allows: a location whose slide is still locked reopens the first
+    // accessible slide rather than skipping ahead.
+    window.scormBridge = {
+      restoreState: () => ({ location: 'page:plain-2.mdx', pages: {} })
+    }
+
+    act(() => root.render(<Player contentPackage={slidesPackage} />))
+
+    expect(sceneIndices()).toEqual([0])
+    expect(text()).toContain('Body 1.')
+  })
 })
 
 describe('PackageView slides lazy loading', () => {
@@ -2743,7 +2773,6 @@ describe('PackageView tiles interactions', () => {
     expect(no.checked).toBe(true)
     const quizItem = no.closest<HTMLElement>('[data-slot="questionnaire-item"]')
     expect(quizItem?.getAttribute('aria-readonly')).toBe('true')
-    expect(quizItem?.hasAttribute('data-readonly')).toBe(true)
 
     // A change attempt on the reviewed choices is dropped, so the rendered
     // selection — and therefore the persisted answers — stays untouched.

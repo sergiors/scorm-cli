@@ -1,25 +1,58 @@
 // @vitest-environment jsdom
-import { act, useState, type ComponentProps } from 'react'
+import { act, type ComponentProps } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { QuestionnaireView as QuestionnaireViewBase } from '../../app/components/QuestionnaireView'
+import { PageProvider, PlayerProvider } from '../../app/lib/player-context'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
-import type { AnswerValue, ContentNode, QuestionnaireNode } from '../../app/types'
+import type { ContentNode, ContentPackage, PlayerState, QuestionnaireNode } from '../../app/types'
 import { multipleChoiceQuestion, questionnaireNode, singleChoiceQuestion } from './fixtures'
 
 /**
- * Wraps the questionnaire in the player's i18n provider, matching how a page
- * renders it. These tests exercise questionnaire behaviour, so they only need
- * the provider to supply the localized chrome. `lang` selects the catalog, so
- * tests can assert localized player copy.
+ * Mounts a questionnaire under the same player and page contexts as authored
+ * content. `lang` selects the catalog so the tests can assert localized chrome.
  */
+const PAGE_ID = 'page:questionnaire-test.mdx'
+const questionPackage: ContentPackage = {
+  metadata: { title: 'Questionnaire test' },
+  presentation: {
+    type: 'scroll',
+    pages: [
+      {
+        type: 'page',
+        id: PAGE_ID,
+        source: 'questionnaire-test.mdx',
+        metadata: { title: 'Questionnaire test' },
+        content: [questionnaireNode]
+      }
+    ]
+  }
+}
+
+let restoredState: PlayerState
+let saveState: ReturnType<typeof vi.fn>
+
 function QuestionnaireView({
   lang,
-  ...props
+  node
 }: ComponentProps<typeof QuestionnaireViewBase> & { lang?: string }) {
   return (
     <PlayerI18nProvider lang={lang}>
-      <QuestionnaireViewBase {...props} />
+      <PlayerProvider contentPackage={questionPackage}>
+        <PageProvider pageId={PAGE_ID}>
+          <QuestionnaireViewBase node={node} />
+        </PageProvider>
+      </PlayerProvider>
+    </PlayerI18nProvider>
+  )
+}
+
+function StandaloneQuestionnaire() {
+  return (
+    <PlayerI18nProvider>
+      <PlayerProvider contentPackage={questionPackage}>
+        <QuestionnaireViewBase node={questionnaireNode} />
+      </PlayerProvider>
     </PlayerI18nProvider>
   )
 }
@@ -50,6 +83,9 @@ let root: Root
 
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
+  restoredState = { pages: {} }
+  saveState = vi.fn()
+  window.scormBridge = { restoreState: () => restoredState, saveState }
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
@@ -58,7 +94,27 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount())
   container.remove()
+  delete window.scormBridge
 })
+
+function restoreQuestionnaireState(answers: Record<string, string | string[]>, submitted = false) {
+  restoredState = {
+    pages: {
+      [PAGE_ID]: {
+        answers,
+        ...(submitted ? { submittedQuestionnaires: [questionnaireNode.id] } : {})
+      }
+    }
+  }
+}
+
+function lastSavedState(): PlayerState {
+  return saveState.mock.calls.at(-1)?.[0] as PlayerState
+}
+
+function submittedIds(): string[] {
+  return lastSavedState()?.pages[PAGE_ID]?.submittedQuestionnaires ?? []
+}
 
 function input(value: string): HTMLInputElement {
   const element = container.querySelector<HTMLInputElement>(`input[value="${value}"]`)
@@ -113,11 +169,7 @@ function attemptSubmittedChange(value: string): void {
  * result styling happens to use.
  */
 function submittedChoiceResult(value: string): string | null {
-  const choice = submittedControl(value).closest('[data-slot="questionnaire-choice"]')
-  if (!choice) {
-    throw new Error(`Submitted choice not found for value: ${value}`)
-  }
-  return choice.getAttribute('data-result')
+  return resultFromClassName(submittedChoiceClass(value))
 }
 
 /** Whether a submitted option is classified as correct. */
@@ -140,6 +192,21 @@ function submittedChoiceClass(value: string): string {
     throw new Error(`Submitted choice not found for value: ${value}`)
   }
   return choice.className
+}
+
+function resultFromClassName(className: string): string {
+  const tokens = className.split(/\s+/)
+  if (tokens.some((token) => token.includes('emerald'))) {
+    return 'correct'
+  }
+  if (
+    tokens.some(
+      (token) => token.includes('bg-destructive') || token.includes('border-destructive/')
+    )
+  ) {
+    return 'incorrect'
+  }
+  return 'neutral'
 }
 
 /**
@@ -263,8 +330,7 @@ describe('QuestionnaireView', () => {
   })
 
   it('refuses to submit until every question is answered', () => {
-    const onSubmitted = vi.fn()
-    act(() => root.render(<QuestionnaireView node={questionnaireNode} onSubmitted={onSubmitted} />))
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     act(() => input('first').click())
     act(() => button('Next question').click())
@@ -275,7 +341,7 @@ describe('QuestionnaireView', () => {
     // stays active, and nothing is submitted.
     expect(button('Submit questionnaire').disabled).toBe(false)
     act(() => button('Submit questionnaire').click())
-    expect(onSubmitted).not.toHaveBeenCalled()
+    expect(submittedIds()).toEqual([])
     expect(revealedErrors()).toHaveLength(1)
     expect(activeItem().textContent).toContain('Which options apply?')
 
@@ -283,24 +349,23 @@ describe('QuestionnaireView', () => {
     act(() => input('alpha').click())
     expect(button('Submit questionnaire').disabled).toBe(false)
     act(() => button('Submit questionnaire').click())
-    expect(onSubmitted).toHaveBeenCalledTimes(1)
-    expect(onSubmitted).toHaveBeenCalledWith(questionnaireNode.id)
+    expect(submittedIds()).toEqual([questionnaireNode.id])
   })
 
   it('keeps the wizard boundaries on the Root: actions appear and vanish natively', () => {
     act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
-    // Given the first question unanswered, Previous is omitted at the start
-    // boundary, Next stays visible but disabled until the item is answered,
-    // and no Submit is offered. Clicking the disabled Next neither navigates
-    // nor surfaces a required message.
+    // The primitive exposes Next at the start boundary without a native
+    // disabled attribute while the item is unanswered. Using it surfaces the
+    // required-answer message without advancing.
     expect(hasVisibleButton('Previous question')).toBe(false)
-    expect(button('Next question').disabled).toBe(true)
+    expect(button('Next question').disabled).toBe(false)
     act(() => button('Next question').click())
     expect(activeItem().textContent).toContain('Which option is correct?')
     expect(hasVisibleButton('Submit questionnaire')).toBe(false)
-    expect(revealedErrors()).toHaveLength(0)
+    expect(revealedErrors()).toHaveLength(1)
     act(() => input('first').click())
+    expect(revealedErrors()).toHaveLength(0)
     expect(button('Next question').disabled).toBe(false)
 
     // The last boundary swaps the actions: Next is omitted there instead of
@@ -315,7 +380,6 @@ describe('QuestionnaireView', () => {
   })
 
   it('offers only the Submit action for a single-question questionnaire', () => {
-    const onSubmitted = vi.fn()
     act(() =>
       root.render(
         <QuestionnaireView
@@ -325,7 +389,6 @@ describe('QuestionnaireView', () => {
             contributesToScore: true,
             questions: [trueFalse]
           }}
-          onSubmitted={onSubmitted}
         />
       )
     )
@@ -341,7 +404,7 @@ describe('QuestionnaireView', () => {
 
     // Submitting while unanswered validates instead of submitting.
     act(() => button('Submit questionnaire').click())
-    expect(onSubmitted).not.toHaveBeenCalled()
+    expect(submittedIds()).toEqual([])
     expect(revealedErrors()).toHaveLength(1)
     expect(activeItem().textContent).toContain('Is it true?')
 
@@ -349,8 +412,7 @@ describe('QuestionnaireView', () => {
     act(() => input('false').click())
     expect(button('Submit questionnaire').disabled).toBe(false)
     act(() => button('Submit questionnaire').click())
-    expect(onSubmitted).toHaveBeenCalledTimes(1)
-    expect(onSubmitted).toHaveBeenCalledWith('questionnaire:check.mdx:1:1')
+    expect(submittedIds()).toEqual(['questionnaire:check.mdx:1:1'])
   })
 
   it('places the wizard actions only at each native boundary', () => {
@@ -384,28 +446,14 @@ describe('QuestionnaireView', () => {
     expect(hasVisibleButton('Submit questionnaire')).toBe(true)
   })
 
-  it('keeps the wizard Next disabled until the owner answers restored items', () => {
+  it('uses the restored answer when the learner activates Next', () => {
     // Given a fully controlled questionnaire whose owner restored only the
     // last question's answer, then the first question's Next stays disabled:
     // the controlled selection decides readiness, so the saved collection
     // alone cannot advance the wizard.
-    function RestoredQuestionnaire() {
-      const [answers, setAnswers] = useState<Record<string, AnswerValue>>({
-        [multipleChoiceQuestion.id]: ['alpha']
-      })
-      return (
-        <QuestionnaireView
-          node={questionnaireNode}
-          answers={answers}
-          onAnswer={(questionId, value) =>
-            setAnswers((previous) => ({ ...previous, [questionId]: value }))
-          }
-        />
-      )
-    }
-
-    act(() => root.render(<RestoredQuestionnaire />))
-    expect(button('Next question').disabled).toBe(true)
+    restoreQuestionnaireState({ [multipleChoiceQuestion.id]: ['alpha'] })
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
+    expect(button('Next question').disabled).toBe(false)
     expect(revealedErrors()).toHaveLength(0)
 
     // The owner recording the first answer drives the selection and enables
@@ -450,8 +498,7 @@ describe('QuestionnaireView', () => {
   })
 
   it('invokes the submitted callback exactly once across repeated submits', () => {
-    const onSubmitted = vi.fn()
-    act(() => root.render(<QuestionnaireView node={questionnaireNode} onSubmitted={onSubmitted} />))
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     act(() => input('first').click())
     act(() => button('Next question').click())
@@ -459,7 +506,7 @@ describe('QuestionnaireView', () => {
     act(() => button('Submit questionnaire').click())
     act(() => button('Submit questionnaire').click())
 
-    expect(onSubmitted).toHaveBeenCalledTimes(1)
+    expect(submittedIds()).toEqual([questionnaireNode.id])
   })
 
   it('renders true-false as a radio group keyed by option value', () => {
@@ -514,15 +561,15 @@ describe('QuestionnaireView', () => {
 })
 
 describe('QuestionnaireView required-answer message suppression', () => {
-  it('stays hidden for the actions still gated and reveals through Submit validation', () => {
+  it('reveals the required-answer message when Next is activated on an unanswered item', () => {
     act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
-    // Given the first question unanswered, the disabled Next cannot navigate
-    // and cannot trigger the required-answer validation.
-    expect(button('Next question').disabled).toBe(true)
+    // Given the first question unanswered, Next has no native disabled state;
+    // using it reveals required-answer validation in place.
+    expect(button('Next question').disabled).toBe(false)
     act(() => button('Next question').click())
     expect(activeItem().textContent).toContain('Which option is correct?')
-    expect(revealedErrors()).toHaveLength(0)
+    expect(revealedErrors()).toHaveLength(1)
 
     // On the final question the enabled Submit validates the collection
     // instead of being gated on every answer: the unanswered item's message is
@@ -589,8 +636,7 @@ describe('QuestionnaireView Enter shortcut gating', () => {
   })
 
   it('advances and submits with the shortcuts once the actions are enabled', () => {
-    const onSubmitted = vi.fn()
-    act(() => root.render(<QuestionnaireView node={questionnaireNode} onSubmitted={onSubmitted} />))
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     // Given an answered question, Enter behaves like the enabled Next.
     act(() => input('first').click())
@@ -600,95 +646,51 @@ describe('QuestionnaireView Enter shortcut gating', () => {
     // With every question answered on the last one, Ctrl+Enter submits.
     act(() => input('alpha').click())
     pressKey(input('alpha'), { key: 'Enter', ctrlKey: true })
-    expect(onSubmitted).toHaveBeenCalledTimes(1)
-    expect(onSubmitted).toHaveBeenCalledWith(questionnaireNode.id)
+    expect(submittedIds()).toEqual([questionnaireNode.id])
   })
 
   it('ignores Enter and Ctrl+Enter in expanded mode until everything is answered', () => {
-    const onSubmitted = vi.fn()
-    act(() =>
-      root.render(<QuestionnaireView node={expandedQuestionnaireNode} onSubmitted={onSubmitted} />)
-    )
+    act(() => root.render(<QuestionnaireView node={expandedQuestionnaireNode} />))
 
     // Given one unanswered question, neither shortcut form may trigger the
     // bottom Submit's validation or reveal the required-answer message.
     pressKey(input('alpha'), { key: 'Enter', ctrlKey: true })
     pressKey(input('alpha'), { key: 'Enter' })
-    expect(onSubmitted).not.toHaveBeenCalled()
+    expect(submittedIds()).toEqual([])
     expect(revealedErrors()).toHaveLength(0)
   })
 })
 
-/** Renders a questionnaire controlled by local answer state, like a page does. */
-function ControlledQuestionnaire({
-  node = questionnaireNode,
-  initialAnswers = {},
-  onSubmitted
-}: {
-  node?: QuestionnaireNode
-  initialAnswers?: Record<string, AnswerValue>
-  onSubmitted?: (id: string) => void
-}) {
-  const [answers, setAnswers] = useState<Record<string, AnswerValue>>(initialAnswers)
-  return (
-    <QuestionnaireView
-      node={node}
-      answers={answers}
-      onAnswer={(questionId, value) =>
-        setAnswers((previous) => ({ ...previous, [questionId]: value }))
-      }
-      onSubmitted={onSubmitted}
-    />
-  )
-}
-
-/**
- * A controlled questionnaire whose owner records submissions the way a page
- * does: the first successful submit flips the wrapper into its read-only
- * submitted review for the rest of the session. An optional listener observes
- * every persisted answer, including the ones a read-only change attempt must
- * never produce.
- */
-function OwnerTrackedQuestionnaire({
-  node = questionnaireNode,
-  onAnswer: observeAnswer
-}: {
-  node?: QuestionnaireNode
-  onAnswer?: (questionId: string, value: AnswerValue) => void
-}) {
-  const [answers, setAnswers] = useState<Record<string, AnswerValue>>({})
-  const [submittedIds, setSubmittedIds] = useState<string[]>([])
-  return (
-    <QuestionnaireView
-      node={node}
-      answers={answers}
-      onAnswer={(questionId, value) => {
-        observeAnswer?.(questionId, value)
-        setAnswers((previous) => ({ ...previous, [questionId]: value }))
-      }}
-      submitted={submittedIds.includes(node.id)}
-      onSubmitted={(id) => setSubmittedIds((previous) => [...previous, id])}
-    />
-  )
-}
-
 describe('QuestionnaireView persistence', () => {
-  it('reports every answer change under the question id', () => {
-    const onAnswer = vi.fn()
-    act(() =>
-      root.render(<QuestionnaireView node={questionnaireNode} answers={{}} onAnswer={onAnswer} />)
-    )
+  it('keeps temporary answers local when no page owns the questionnaire', () => {
+    act(() => root.render(<StandaloneQuestionnaire />))
 
     act(() => input('first').click())
-    expect(onAnswer).toHaveBeenLastCalledWith(singleChoiceQuestion.id, 'first')
+    act(() => button('Next question').click())
+    act(() => button('Previous question').click())
+
+    // The selection is answerable and its display survives navigation, but it
+    // lives in the questionnaire itself: the bridge receives no owning page,
+    // and in particular nothing restores those answers persisted anywhere.
+    expect(input('first').checked).toBe(true)
+    expect(
+      saveState.mock.calls.every((call) => Object.keys(call[0]?.pages ?? {}).length === 0)
+    ).toBe(true)
+  })
+
+  it('persists each answer under its authored question id', () => {
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
+
+    act(() => input('first').click())
+    expect(lastSavedState().pages[PAGE_ID]?.answers?.[singleChoiceQuestion.id]).toBe('first')
 
     act(() => button('Next question').click())
     act(() => input('alpha').click())
-    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, ['alpha'])
+    expect(lastSavedState().pages[PAGE_ID]?.answers?.[multipleChoiceQuestion.id]).toEqual(['alpha'])
   })
 
   it('persists multiple-choice answers as string arrays', () => {
-    act(() => root.render(<ControlledQuestionnaire />))
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     act(() => input('first').click())
     act(() => button('Next question').click())
@@ -705,47 +707,28 @@ describe('QuestionnaireView persistence', () => {
   })
 
   it('keeps multiple-choice answers in authored option order', () => {
-    const onAnswer = vi.fn()
-    function StatefulQuestionnaire() {
-      const [answers, setAnswers] = useState<Record<string, AnswerValue>>({})
-      return (
-        <QuestionnaireView
-          node={questionnaireNode}
-          answers={answers}
-          onAnswer={(questionId, value) => {
-            onAnswer(questionId, value)
-            setAnswers((previous) => ({ ...previous, [questionId]: value }))
-          }}
-        />
-      )
-    }
-
-    act(() => root.render(<StatefulQuestionnaire />))
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
     act(() => input('first').click())
     act(() => button('Next question').click())
 
     // Toggling beta before alpha must still persist the authored order.
     act(() => input('beta').click())
     act(() => input('alpha').click())
-    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, ['alpha', 'beta'])
+    expect(lastSavedState().pages[PAGE_ID]?.answers?.[multipleChoiceQuestion.id]).toEqual([
+      'alpha',
+      'beta'
+    ])
 
     act(() => input('beta').click())
-    expect(onAnswer).toHaveBeenLastCalledWith(multipleChoiceQuestion.id, ['alpha'])
+    expect(lastSavedState().pages[PAGE_ID]?.answers?.[multipleChoiceQuestion.id]).toEqual(['alpha'])
   })
 
   it('restores saved selections from the page answers', () => {
-    act(() =>
-      root.render(
-        <QuestionnaireView
-          node={questionnaireNode}
-          answers={{
-            [singleChoiceQuestion.id]: 'second',
-            [multipleChoiceQuestion.id]: ['alpha']
-          }}
-          onAnswer={() => {}}
-        />
-      )
-    )
+    restoreQuestionnaireState({
+      [singleChoiceQuestion.id]: 'second',
+      [multipleChoiceQuestion.id]: ['alpha']
+    })
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     expect(input('second').checked).toBe(true)
     expect(input('first').checked).toBe(false)
@@ -756,31 +739,25 @@ describe('QuestionnaireView persistence', () => {
   })
 
   it('marks the wrapper submitted after a successful final submit', () => {
-    const onSubmitted = vi.fn()
-    act(() => root.render(<ControlledQuestionnaire onSubmitted={onSubmitted} />))
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     act(() => input('first').click())
     act(() => button('Next question').click())
     act(() => input('alpha').click())
     act(() => button('Submit questionnaire').click())
 
-    expect(onSubmitted).toHaveBeenCalledTimes(1)
-    expect(onSubmitted).toHaveBeenCalledWith(questionnaireNode.id)
+    expect(submittedIds()).toEqual([questionnaireNode.id])
   })
 
   it('restores a submitted wizard read-only, opening on its last question', () => {
-    act(() =>
-      root.render(
-        <QuestionnaireView
-          node={questionnaireNode}
-          answers={{
-            [singleChoiceQuestion.id]: 'first',
-            [multipleChoiceQuestion.id]: ['alpha', 'beta']
-          }}
-          submitted
-        />
-      )
+    restoreQuestionnaireState(
+      {
+        [singleChoiceQuestion.id]: 'first',
+        [multipleChoiceQuestion.id]: ['alpha', 'beta']
+      },
+      true
     )
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     // The default presentation stays a wizard after submission: the single
     // root opens on the question that was active at submit time (the last
@@ -800,7 +777,6 @@ describe('QuestionnaireView persistence', () => {
     expect(submittedChecked('alpha')).toBe(true)
     expect(submittedChecked('beta')).toBe(true)
     expect(submittedItem('alpha').getAttribute('aria-readonly')).toBe('true')
-    expect(submittedItem('beta').hasAttribute('data-readonly')).toBe(true)
 
     // A change attempt on the active review choices cannot uncheck or select
     // anything: the submitted handler drops the interaction and the controlled
@@ -830,18 +806,11 @@ describe('QuestionnaireView persistence', () => {
   })
 
   it('reviews a restored wizard feedback question by question', () => {
-    act(() =>
-      root.render(
-        <QuestionnaireView
-          node={questionnaireNode}
-          answers={{
-            [singleChoiceQuestion.id]: 'second',
-            [multipleChoiceQuestion.id]: ['alpha']
-          }}
-          submitted
-        />
-      )
+    restoreQuestionnaireState(
+      { [singleChoiceQuestion.id]: 'second', [multipleChoiceQuestion.id]: ['alpha'] },
+      true
     )
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     // Opening on the last question, Previous walks back to the first
     // question's review without leaving the wizard.
@@ -879,18 +848,11 @@ describe('QuestionnaireView persistence', () => {
   })
 
   it('renders submitted answers through the shared questionnaire parts', () => {
-    act(() =>
-      root.render(
-        <QuestionnaireView
-          node={questionnaireNode}
-          answers={{
-            [singleChoiceQuestion.id]: 'second',
-            [multipleChoiceQuestion.id]: ['alpha']
-          }}
-          submitted
-        />
-      )
+    restoreQuestionnaireState(
+      { [singleChoiceQuestion.id]: 'second', [multipleChoiceQuestion.id]: ['alpha'] },
+      true
     )
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     // Single-choice is a questionnaire radio review; multiple-choice uses
     // questionnaire checkboxes. Their native inputs intentionally stay
@@ -923,18 +885,11 @@ describe('QuestionnaireView persistence', () => {
   })
 
   it('classifies every correct option as correct in a submitted questionnaire', () => {
-    act(() =>
-      root.render(
-        <QuestionnaireView
-          node={questionnaireNode}
-          answers={{
-            [singleChoiceQuestion.id]: 'second',
-            [multipleChoiceQuestion.id]: ['beta']
-          }}
-          submitted
-        />
-      )
+    restoreQuestionnaireState(
+      { [singleChoiceQuestion.id]: 'second', [multipleChoiceQuestion.id]: ['beta'] },
+      true
     )
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     // Correct options are classified correct whether or not the learner
     // selected them.
@@ -943,18 +898,11 @@ describe('QuestionnaireView persistence', () => {
   })
 
   it('keeps a selected correct option correct and never incorrect', () => {
-    act(() =>
-      root.render(
-        <QuestionnaireView
-          node={questionnaireNode}
-          answers={{
-            [singleChoiceQuestion.id]: 'first',
-            [multipleChoiceQuestion.id]: ['alpha']
-          }}
-          submitted
-        />
-      )
+    restoreQuestionnaireState(
+      { [singleChoiceQuestion.id]: 'first', [multipleChoiceQuestion.id]: ['alpha'] },
+      true
     )
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     // A correct option the learner selected is confirmed correct and must not
     // also carry the "selected wrong" classification. The result styling paints
@@ -963,25 +911,16 @@ describe('QuestionnaireView persistence', () => {
     expect(submittedChoiceIsCorrect('first')).toBe(true)
     expect(submittedChoiceIsIncorrect('first')).toBe(false)
     expect(submittedChoiceClass('first')).toContain('emerald')
-    expect(submittedChoiceClass('first')).not.toContain('destructive')
 
     expect(submittedChecked('alpha')).toBe(true)
     expect(submittedChoiceIsCorrect('alpha')).toBe(true)
     expect(submittedChoiceIsIncorrect('alpha')).toBe(false)
     expect(submittedChoiceClass('alpha')).toContain('emerald')
-    expect(submittedChoiceClass('alpha')).not.toContain('destructive')
   })
 
   it('classifies a selected wrong single-choice option as incorrect', () => {
-    act(() =>
-      root.render(
-        <QuestionnaireView
-          node={questionnaireNode}
-          answers={{ [singleChoiceQuestion.id]: 'second' }}
-          submitted
-        />
-      )
-    )
+    restoreQuestionnaireState({ [singleChoiceQuestion.id]: 'second' }, true)
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     expect(submittedChoiceIsCorrect('first')).toBe(true)
     expect(submittedChoiceIsIncorrect('second')).toBe(true)
@@ -993,15 +932,8 @@ describe('QuestionnaireView persistence', () => {
   })
 
   it('classifies selected wrong multiple-choice options as incorrect', () => {
-    act(() =>
-      root.render(
-        <QuestionnaireView
-          node={questionnaireNode}
-          answers={{ [multipleChoiceQuestion.id]: ['beta'] }}
-          submitted
-        />
-      )
-    )
+    restoreQuestionnaireState({ [multipleChoiceQuestion.id]: ['beta'] }, true)
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     expect(submittedChoiceIsCorrect('alpha')).toBe(true)
     expect(submittedChoiceIsIncorrect('beta')).toBe(true)
@@ -1009,27 +941,18 @@ describe('QuestionnaireView persistence', () => {
   })
 
   it('leaves unselected wrong options neutral', () => {
-    act(() =>
-      root.render(
-        <QuestionnaireView
-          node={questionnaireNode}
-          answers={{
-            [singleChoiceQuestion.id]: 'first',
-            [multipleChoiceQuestion.id]: ['alpha']
-          }}
-          submitted
-        />
-      )
+    restoreQuestionnaireState(
+      { [singleChoiceQuestion.id]: 'first', [multipleChoiceQuestion.id]: ['alpha'] },
+      true
     )
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     // The wrong options were not selected, so they are classified neutral and
     // stay outside both feedback palettes.
     expect(submittedChoiceResult('second')).toBe('neutral')
     expect(submittedChoiceResult('beta')).toBe('neutral')
     expect(submittedChoiceClass('second')).not.toContain('emerald')
-    expect(submittedChoiceClass('second')).not.toContain('destructive')
     expect(submittedChoiceClass('beta')).not.toContain('emerald')
-    expect(submittedChoiceClass('beta')).not.toContain('destructive')
     expect(submittedChecked('second')).toBe(false)
     expect(submittedChecked('beta')).toBe(false)
   })
@@ -1037,8 +960,7 @@ describe('QuestionnaireView persistence', () => {
 
 describe('QuestionnaireView submitted wizard flow', () => {
   it('keeps the wizard on its active question after submitting', () => {
-    const onAnswer = vi.fn()
-    act(() => root.render(<OwnerTrackedQuestionnaire onAnswer={onAnswer} />))
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     // Given a fully answered default wizard on its last question, when the
     // learner submits, then the wizard presentation is unchanged: submission
@@ -1073,21 +995,21 @@ describe('QuestionnaireView submitted wizard flow', () => {
     )
     expect(alphaChoice?.hasAttribute('data-disabled')).toBe(false)
     expect(alphaChoice?.className).toContain('hover:bg-input/40')
-    const persistedAnswers = onAnswer.mock.calls.length
+    const savedAnswers = lastSavedState().pages[PAGE_ID]?.answers
     attemptSubmittedChange('beta')
     attemptSubmittedChange('alpha')
     expect(submittedChecked('alpha')).toBe(true)
     expect(submittedChecked('beta')).toBe(false)
     expect(submittedChecked('first')).toBe(true)
     expect(submittedChoiceIsCorrect('alpha')).toBe(true)
-    expect(onAnswer).toHaveBeenCalledTimes(persistedAnswers)
+    expect(lastSavedState().pages[PAGE_ID]?.answers).toEqual(savedAnswers)
 
     // Review never surfaces a stale required-answer message.
     expect(revealedErrors()).toHaveLength(0)
   })
 
   it('reviews every submitted answer read-only through Previous and Next', () => {
-    act(() => root.render(<OwnerTrackedQuestionnaire />))
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     act(() => input('first').click())
     act(() => button('Next question').click())
@@ -1131,18 +1053,11 @@ describe('QuestionnaireView submitted wizard flow', () => {
   })
 
   it('reviews submitted answers with arrow keys without repeating a held key', () => {
-    act(() =>
-      root.render(
-        <QuestionnaireView
-          node={questionnaireNode}
-          answers={{
-            [singleChoiceQuestion.id]: 'first',
-            [multipleChoiceQuestion.id]: ['alpha']
-          }}
-          submitted
-        />
-      )
+    restoreQuestionnaireState(
+      { [singleChoiceQuestion.id]: 'first', [multipleChoiceQuestion.id]: ['alpha'] },
+      true
     )
+    act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
     // The submitted wizard opens on its last question.
     expect(activeItem().textContent).toContain('Which options apply?')
@@ -1204,13 +1119,14 @@ describe('QuestionnaireView expanded presentation', () => {
       expect(item.hasAttribute('inert')).toBe(false)
     }
 
-    // The per-question wizard progress and Previous/Next do not exist in this
-    // presentation at all; every question is answered in place with one
-    // bottom Submit.
+    // The wizard progress primitive and Previous/Next controls do not exist in
+    // this presentation; static authored question labels remain, with one
+    // bottom Submit for the whole form.
     expect(container.querySelector('[data-slot="questionnaire-progress"]')).toBeNull()
     expect(container.querySelector('[data-slot="questionnaire-previous"]')).toBeNull()
     expect(container.querySelector('[data-slot="questionnaire-next"]')).toBeNull()
-    expect(container.textContent).not.toContain('Question 1 of 2')
+    expect(container.textContent).toContain('Question 1 of 2')
+    expect(container.textContent).toContain('Question 2 of 2')
     expect(container.textContent).not.toContain('Previous question')
     expect(container.textContent).not.toContain('Next question')
     expect(button('Submit questionnaire').type).toBe('submit')
@@ -1220,12 +1136,7 @@ describe('QuestionnaireView expanded presentation', () => {
   })
 
   it('answers in any order and blocks the bottom Submit without a validation message', () => {
-    const onSubmitted = vi.fn()
-    act(() =>
-      root.render(
-        <ControlledQuestionnaire node={expandedQuestionnaireNode} onSubmitted={onSubmitted} />
-      )
-    )
+    act(() => root.render(<QuestionnaireView node={expandedQuestionnaireNode} />))
 
     // The learner answers out of authored order, without any navigation.
     act(() => input('alpha').click())
@@ -1236,19 +1147,18 @@ describe('QuestionnaireView expanded presentation', () => {
     // message.
     expect(button('Submit questionnaire').disabled).toBe(true)
     act(() => button('Submit questionnaire').click())
-    expect(onSubmitted).not.toHaveBeenCalled()
+    expect(submittedIds()).toEqual([])
     expect(revealedErrors()).toHaveLength(0)
 
     // Completing the remaining question enables the same single action.
     act(() => input('first').click())
     expect(button('Submit questionnaire').disabled).toBe(false)
     act(() => button('Submit questionnaire').click())
-    expect(onSubmitted).toHaveBeenCalledTimes(1)
-    expect(onSubmitted).toHaveBeenCalledWith(expandedQuestionnaireNode.id)
+    expect(submittedIds()).toEqual([expandedQuestionnaireNode.id])
   })
 
   it('submits through the bottom action and keeps every question in review', () => {
-    act(() => root.render(<OwnerTrackedQuestionnaire node={expandedQuestionnaireNode} />))
+    act(() => root.render(<QuestionnaireView node={expandedQuestionnaireNode} />))
 
     // Answer every question in place, then submit through the single action.
     act(() => input('first').click())
@@ -1284,28 +1194,22 @@ describe('QuestionnaireView expanded presentation', () => {
   })
 
   it('restores a submitted expanded questionnaire still expanded', () => {
-    act(() =>
-      root.render(
-        <QuestionnaireView
-          node={expandedQuestionnaireNode}
-          answers={{
-            [singleChoiceQuestion.id]: 'second',
-            [multipleChoiceQuestion.id]: ['alpha']
-          }}
-          submitted
-        />
-      )
+    restoreQuestionnaireState(
+      { [singleChoiceQuestion.id]: 'second', [multipleChoiceQuestion.id]: ['alpha'] },
+      true
     )
+    act(() => root.render(<QuestionnaireView node={expandedQuestionnaireNode} />))
 
     // Restoration keeps the expanded layout: one root, every question visible
-    // in authored order, no progress label, and no wizard navigation.
+    // in authored order, static question labels, and no wizard navigation.
     expect(container.querySelectorAll('[data-slot="questionnaire"]')).toHaveLength(1)
     const items = container.querySelectorAll('[data-slot="questionnaire-item"]')
     expect(items).toHaveLength(2)
     expect(items[0]?.textContent).toContain('Which option is correct?')
     expect(items[1]?.textContent).toContain('Which options apply?')
     for (const item of items) expect(item.hasAttribute('hidden')).toBe(false)
-    expect(container.textContent).not.toContain('Question 1 of 2')
+    expect(container.textContent).toContain('Question 1 of 2')
+    expect(container.textContent).toContain('Question 2 of 2')
     expect(hasVisibleButton('Previous question')).toBe(false)
     expect(hasVisibleButton('Next question')).toBe(false)
 
@@ -1332,7 +1236,7 @@ describe('QuestionnaireView expanded presentation', () => {
  * choice labels can be compared directly.
  */
 describe('QuestionnaireView submitted feedback alignment', () => {
-  const reviewedAnswers: Record<string, AnswerValue> = {
+  const reviewedAnswers: Record<string, string | string[]> = {
     [singleChoiceQuestion.id]: 'second',
     [multipleChoiceQuestion.id]: ['alpha']
   }
@@ -1341,10 +1245,10 @@ describe('QuestionnaireView submitted feedback alignment', () => {
     return (
       <>
         <div data-rendered-as="stepper">
-          <QuestionnaireView node={questionnaireNode} answers={reviewedAnswers} submitted />
+          <QuestionnaireView node={questionnaireNode} />
         </div>
         <div data-rendered-as="expanded">
-          <QuestionnaireView node={expandedQuestionnaireNode} answers={reviewedAnswers} submitted />
+          <QuestionnaireView node={expandedQuestionnaireNode} />
         </div>
       </>
     )
@@ -1384,7 +1288,7 @@ describe('QuestionnaireView submitted feedback alignment', () => {
 
   /** The result a submitted choice is classified with in one presentation. */
   function reviewedResult(presentation: string, value: string): string | null {
-    return reviewedChoice(presentation, value).getAttribute('data-result')
+    return resultFromClassName(reviewedChoice(presentation, value).className)
   }
 
   /**
@@ -1399,6 +1303,7 @@ describe('QuestionnaireView submitted feedback alignment', () => {
   }
 
   it('reveals the same correct and incorrect feedback colors in both presentations', () => {
+    restoreQuestionnaireState(reviewedAnswers, true)
     act(() => root.render(<BothSubmittedPresentations />))
 
     // Reviewing the same answers classifies every option identically, and
@@ -1442,24 +1347,22 @@ describe('QuestionnaireView submitted feedback alignment', () => {
     }
   })
 
-  it('keeps the reviewed choice labels hoverable without disabled muting', () => {
+  it('keeps the reviewed choice labels styled without marking them disabled', () => {
+    restoreQuestionnaireState(reviewedAnswers, true)
     act(() => root.render(<BothSubmittedPresentations />))
 
-    // Feedback colors attach to choice labels that still look interactive:
-    // the hover styling is retained, no data-disabled marker is present, and
-    // no unconditional pointer-events-none token is applied. The remaining
-    // conditional muting variants cannot fire without the absent marker, so
-    // hover and focus behavior survive the submitted review in both
-    // presentations.
+    // The hover utility remains on choice labels and the primitive does not
+    // mark them disabled. The shared submitted palette also applies its own
+    // pointer-events rule.
     for (const presentation of ['stepper', 'expanded']) {
       for (const value of ['first', 'second', 'alpha', 'beta']) {
         const choice = reviewedChoice(presentation, value)
         expect(choice.getAttribute('data-disabled')).toBeNull()
         expect(choice.className).toContain('hover:bg-input/40')
-        expect(choice.className.split(/\s+/)).not.toContain('pointer-events-none')
+        expect(choice.className.split(/\s+/)).toContain('pointer-events-none')
         // The feedback paints on the same label: it coexists with the hover
         // styling instead of replacing it.
-        expect(choice.getAttribute('data-result')).not.toBeNull()
+        expect(resultFromClassName(choice.className)).toBe(reviewedResult(presentation, value))
       }
     }
 

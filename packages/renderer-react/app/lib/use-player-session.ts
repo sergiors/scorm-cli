@@ -17,8 +17,9 @@ import { restoreState, saveState, useScormBridge, useScormScore } from './use-sc
 
 /**
  * The learner's owned progress plus the transitions that mutate it, as returned
- * by {@link usePlayerSession}. Presentations stay stateless: they render
- * `state` and call these handlers, never persisting anything themselves.
+ * by {@link usePlayerSession}. {@link PlayerProvider} exposes the semantic state
+ * and these actions through separate contexts; presentations never persist
+ * anything themselves.
  */
 export interface PlayerSession {
   /** The in-memory resume state (lesson location plus per-node progress). */

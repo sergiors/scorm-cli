@@ -3,14 +3,14 @@ import { FormattedMessage, useIntl } from 'react-intl'
 import { CheckIcon } from 'lucide-react'
 import { answerAfterChange, isOptionSelected, submittedOptionResult } from '../lib/questionnaire'
 import { cn } from '../lib/utils'
-import type { AnswerValue, QuestionNode } from '../types'
+import type { AnswerValue, QuestionNode, QuestionnaireNode } from '../types'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
 import {
   submittedChoiceClassName,
   useQuestionnaireAnswers,
   useQuestionnaireSubmission,
-  type QuestionnaireViewProps
+  useQuestionnaireSession
 } from './QuestionnaireShared'
 import { Separator } from './ui/separator'
 
@@ -126,10 +126,9 @@ function QuestionnaireQuestion({ node, value, submitted, onAnswer }: Questionnai
  * present but disabled. Restored submissions render the same way from the
  * owner's saved answers.
  */
-export function ExpandedQuestionnaire(props: QuestionnaireViewProps) {
-  const { node, answers, submitted = false, onAnswer, onSubmitted } = props
-
+export function ExpandedQuestionnaire({ node }: { node: QuestionnaireNode }) {
   const intl = useIntl()
+  const { answers, submitted, onAnswer, onSubmitted } = useQuestionnaireSession(node)
 
   const {
     answers: currentAnswers,

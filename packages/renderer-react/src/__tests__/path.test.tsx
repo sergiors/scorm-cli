@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ContentRenderer as ContentRendererBase } from '../../app/components/ContentRenderer'
 import { PackageView as PackageViewBase } from '../../app/components/PackageView'
+import { PageProvider, PlayerProvider } from '../../app/lib/player-context'
 import type { ContentProvider } from '../../app/lib/content-loader'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
 import type {
@@ -25,11 +26,15 @@ vi.mock('react-virtuoso', () => import('./virtuoso-mock'))
 /**
  * Wraps a player component in the i18n provider, matching how `PackageApp`
  * renders the tree. These tests render players directly, so they supply the
- * provider here; the wrappers keep every call site unchanged.
+ * provider here; the wrappers keep every call site unchanged. `lang` selects
+ * the catalog; without it the English default chrome renders.
  */
-function ContentRenderer(props: ComponentProps<typeof ContentRendererBase>) {
+function ContentRenderer({
+  lang,
+  ...props
+}: ComponentProps<typeof ContentRendererBase> & { lang?: string }) {
   return (
-    <PlayerI18nProvider>
+    <PlayerI18nProvider lang={lang}>
       <ContentRendererBase {...props} />
     </PlayerI18nProvider>
   )
@@ -108,10 +113,43 @@ interface PathContext {
   pathPages?: readonly PageNode[]
   pageStates?: Record<string, PlayerPageState>
   onNavigatePathPage?: (pageId: string) => void
+  /** Locale for the player chrome; defaults to the react-intl fallback. */
+  lang?: string
 }
 
 function renderStatic(nodes: ContentNode[], context: PathContext = {}): string {
-  return renderToStaticMarkup(<ContentRenderer nodes={nodes} {...context} />)
+  const { pageStates = {}, lang, ...contentContext } = context
+  window.scormBridge = { restoreState: () => ({ pages: pageStates }) }
+  return renderToStaticMarkup(
+    <PlayerProvider contentPackage={pathStatePackage}>
+      <PageProvider pageId={refPages[0]!.id}>
+        <ContentRenderer lang={lang} nodes={nodes} {...contentContext} />
+      </PageProvider>
+    </PlayerProvider>
+  )
+}
+
+const pathStatePackage: ContentPackage = {
+  metadata: { title: 'Path state' },
+  presentation: { type: 'scroll', pages: refPages }
+}
+
+function StatefulContentRenderer({
+  pageStates,
+  ...props
+}: ComponentProps<typeof ContentRendererBase> & {
+  pageStates: Record<string, PlayerPageState>
+}) {
+  window.scormBridge = { restoreState: () => ({ pages: pageStates }) }
+  return (
+    <PlayerI18nProvider>
+      <PlayerProvider contentPackage={pathStatePackage}>
+        <PageProvider pageId={refPages[0]!.id}>
+          <ContentRendererBase {...props} />
+        </PageProvider>
+      </PlayerProvider>
+    </PlayerI18nProvider>
+  )
 }
 
 function host(html: string): HTMLElement {
@@ -215,6 +253,22 @@ describe('PathView status affordances', () => {
       entries.map((entry) => entry.querySelector('[data-slot="item-actions"]')?.textContent)
     ).toEqual(['Visited', 'Available', 'Locked', 'Locked'])
   })
+
+  it('localizes the pt-BR status labels from restored page state', () => {
+    const html = renderStatic([pathNode], {
+      pathPages: refPages,
+      pageStates: { 'page:one.mdx': { visited: true, completed: true } },
+      onNavigatePathPage: () => {},
+      lang: 'pt-BR'
+    })
+    const entries = Array.from(host(html).querySelectorAll('[data-path-entry]'))
+
+    expect(
+      entries.map((entry) => entry.querySelector('[data-slot="item-actions"]')?.textContent)
+    ).toEqual(['Visitada', 'Disponível', 'Bloqueada', 'Bloqueada'])
+    // Authored copy passes through untouched, as in every locale.
+    expect(entries[0]?.textContent).toContain('The first page')
+  })
 })
 
 describe('PathView display metadata', () => {
@@ -260,7 +314,7 @@ describe('PathView navigation', () => {
     const onNavigate = vi.fn()
     act(() =>
       root.render(
-        <ContentRenderer
+        <StatefulContentRenderer
           nodes={[pathNode]}
           pathPages={refPages}
           pageStates={{ 'page:one.mdx': { visited: true, completed: true } }}
@@ -289,7 +343,7 @@ describe('PathView navigation', () => {
     const onNavigate = vi.fn()
     act(() =>
       root.render(
-        <ContentRenderer
+        <StatefulContentRenderer
           nodes={[pathNode]}
           pathPages={refPages}
           pageStates={{}}
@@ -312,7 +366,7 @@ describe('PathView navigation', () => {
     const onNavigate = vi.fn()
     act(() =>
       root.render(
-        <ContentRenderer
+        <StatefulContentRenderer
           nodes={[pathNode]}
           pathPages={refPages}
           // Page three is completed (and so visited), but page one is not done,
@@ -339,7 +393,9 @@ describe('PathView navigation', () => {
 
   it('renders inert without a page-switching callback', () => {
     act(() =>
-      root.render(<ContentRenderer nodes={[pathNode]} pathPages={refPages} pageStates={{}} />)
+      root.render(
+        <StatefulContentRenderer nodes={[pathNode]} pathPages={refPages} pageStates={{}} />
+      )
     )
 
     const first = entries()[0]!

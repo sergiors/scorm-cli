@@ -1,8 +1,9 @@
 import { Check, Circle, Lock, type LucideIcon } from 'lucide-react'
 import { useIntl } from 'react-intl'
-import type { PageNode, PathNode, PlayerPageState } from '../types'
+import type { PageNode, PathNode } from '../types'
 import type { MessageId } from '../lib/messages'
 import { getSequentialAccess } from '../lib/content-helpers'
+import { usePlayerState } from '../lib/player-context'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from './ui/item'
 
 /**
@@ -36,13 +37,6 @@ export interface PathViewProps {
   pathPages?: readonly PageNode[]
 
   /**
-   * Persisted state per page id. `completed` decides the accessible run and
-   * `visited` labels an accessible entry, so Path adds no state of its own and
-   * never persists anything.
-   */
-  pageStates?: Record<string, PlayerPageState>
-
-  /**
    * Opens a referenced page through the presentation's existing page switching.
    * When absent the whole Path renders inert, without offering dead controls;
    * this is the case whenever the surrounding presentation cannot switch pages.
@@ -60,10 +54,10 @@ export interface PathViewProps {
 export function PathView({
   node,
   pathPages = [],
-  pageStates = {},
   onNavigatePathPage
 }: PathViewProps) {
   const intl = useIntl()
+  const pageStates = usePlayerState().pages
   const pagesById = new Map(pathPages.map((page) => [page.id, page]))
 
   // Status is derived from the shared sequential access policy over the root

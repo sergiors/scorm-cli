@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 import { Lock } from 'lucide-react'
 import { Virtuoso, type ListItem, type VirtuosoHandle } from 'react-virtuoso'
-import type { AnswerValue, ContentNode, PageNode, PlayerPageState } from '../types'
+import type { ContentNode, PageNode } from '../types'
 import {
   areQuestionnairesSubmitted,
   collectQuestionnaireIds,
   getSequentialAccess
 } from '../lib/content-helpers'
 import { useContentLoader, type ContentProvider, type ContentLoader } from '../lib/content-loader'
+import { PageProvider, usePlayerActions, usePlayerState } from '../lib/player-context'
 import { ContentRenderer } from './ContentRenderer'
 import { ContentLoadError } from './ContentLoadError'
 import { Skeleton } from './ui/skeleton'
@@ -38,7 +39,7 @@ const PAGE_ITEM = 'py-4 sm:py-6'
 /** The nodes whose own completion rule has been met, which advance the done prefix. */
 function donePageIds(
   pages: readonly PageNode[],
-  pageStates: Record<string, PlayerPageState>
+  pageStates: Record<string, { completed?: boolean }>
 ): Set<string> {
   return new Set(
     pages.filter((page) => pageStates[page.id]?.completed === true).map((page) => page.id)
@@ -85,28 +86,6 @@ export interface ScrollPresentationProps {
    * independent lazily loaded module; a locked page's module is never fetched.
    */
   contentProvider: ContentProvider
-  /** Persisted state per page id, for restored answers and submitted state. */
-  pageStates: Record<string, PlayerPageState>
-  /**
-   * Page id named by the saved lesson location, read once to seed the initial
-   * reading position. It falls back to the first accessible page when the id is
-   * absent, unknown, or still locked.
-   */
-  initialPageId?: string
-  /** Invoked once per page the learner reaches, storing it as the location. */
-  onPageSeen: (id: string) => void
-  /**
-   * Invoked once when a page is complete: its end boundary was reached and every
-   * questionnaire it contains has been submitted. Completion unlocks the next
-   * page in the shared sequential progression.
-   */
-  onPageCompleted: (id: string) => void
-  /** Persists a question answer for a page. */
-  onAnswer: (pageId: string, questionId: string, value: AnswerValue) => void
-  /** Marks a questionnaire on a page as submitted. */
-  onQuestionnaireSubmitted: (pageId: string, questionnaireId: string) => void
-  /** Persists a video's semantic playback position in seconds, scoped to the page. */
-  onVideoPosition?: (pageId: string, videoId: string, seconds: number) => void
 }
 
 /**
@@ -142,15 +121,11 @@ export interface ScrollPresentationProps {
  */
 export function ScrollPresentation({
   pages,
-  contentProvider,
-  pageStates,
-  initialPageId,
-  onPageSeen,
-  onPageCompleted,
-  onAnswer,
-  onQuestionnaireSubmitted,
-  onVideoPosition
+  contentProvider
 }: ScrollPresentationProps) {
+  const state = usePlayerState()
+  const pageStates = state.pages
+  const initialPageId = state.location
   const ids = pages.map((page) => page.id)
   const { accessible } = getSequentialAccess(ids, donePageIds(pages, pageStates))
 
@@ -384,13 +359,7 @@ export function ScrollPresentation({
                 contentLoader={loader}
                 active={page.id === activeId}
                 pathPages={pages}
-                pageStates={pageStates}
                 onNavigatePathPage={navigateToPageId}
-                pageState={pageStates[page.id]}
-                onAnswer={onAnswer}
-                onQuestionnaireSubmitted={onQuestionnaireSubmitted}
-                onVideoPosition={onVideoPosition}
-                onPageCompleted={onPageCompleted}
                 showLockedBoundary={index === finalAccessibleIndex && nextAfterFinalLocked}
               />
             </div>
@@ -403,7 +372,7 @@ export function ScrollPresentation({
         whose module is still resolving is never reported as seen — and the saved
         location is not transiently changed.
       */}
-      <PageSeenReporter pageId={isLoaded(activeId) ? activeId : ''} onPageSeen={onPageSeen} />
+      <PageSeenReporter pageId={isLoaded(activeId) ? activeId : ''} />
     </div>
   )
 }
@@ -414,12 +383,11 @@ export function ScrollPresentation({
  * StrictMode's doubled effect for the same id is a no-op.
  */
 function PageSeenReporter({
-  pageId,
-  onPageSeen
+  pageId
 }: {
   pageId: string
-  onPageSeen: (id: string) => void
 }) {
+  const onPageSeen = usePlayerActions().markSeen
   const reportedRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -436,13 +404,12 @@ function PageSeenReporter({
 /** Reports a page completion exactly once, guarding repeated callbacks and StrictMode. */
 function PageCompletionReporter({
   pageId,
-  complete,
-  onPageCompleted
+  complete
 }: {
   pageId: string
   complete: boolean
-  onPageCompleted: (id: string) => void
 }) {
+  const onPageCompleted = usePlayerActions().markCompleted
   const reportedRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -466,16 +433,8 @@ interface PageSlotProps {
   active: boolean
   /** Root pages, so a Path on this page can resolve its references. */
   pathPages: readonly PageNode[]
-  /** Persisted state per root page id, for Path visited status. */
-  pageStates: Record<string, PlayerPageState>
   /** Opens a referenced page through the presentation's switching. */
   onNavigatePathPage: (pageId: string) => void
-  pageState?: PlayerPageState
-  onAnswer: (pageId: string, questionId: string, value: AnswerValue) => void
-  onQuestionnaireSubmitted: (pageId: string, questionnaireId: string) => void
-  onVideoPosition?: (pageId: string, videoId: string, seconds: number) => void
-  /** Reports the page completion exactly once. */
-  onPageCompleted: (id: string) => void
   /** Whether the page after this one is still locked, so the boundary notice belongs here. */
   showLockedBoundary: boolean
 }
@@ -493,13 +452,7 @@ function PageSlot({
   contentLoader,
   active,
   pathPages,
-  pageStates,
   onNavigatePathPage,
-  pageState,
-  onAnswer,
-  onQuestionnaireSubmitted,
-  onVideoPosition,
-  onPageCompleted,
   showLockedBoundary
 }: PageSlotProps) {
   const { request, retry } = contentLoader
@@ -517,21 +470,17 @@ function PageSlot({
   }
 
   return (
-    <PageScene
-      page={page}
-      index={index}
-      nodes={contentLoader.content(page.id) ?? []}
-      active={active}
-      pathPages={pathPages}
-      pageStates={pageStates}
-      onNavigatePathPage={onNavigatePathPage}
-      pageState={pageState}
-      onAnswer={onAnswer}
-      onQuestionnaireSubmitted={onQuestionnaireSubmitted}
-      onVideoPosition={onVideoPosition}
-      onPageCompleted={onPageCompleted}
-      showLockedBoundary={showLockedBoundary}
-    />
+    <PageProvider pageId={page.id}>
+      <PageScene
+        page={page}
+        index={index}
+        nodes={contentLoader.content(page.id) ?? []}
+        active={active}
+        pathPages={pathPages}
+        onNavigatePathPage={onNavigatePathPage}
+        showLockedBoundary={showLockedBoundary}
+      />
+    </PageProvider>
   )
 }
 
@@ -578,16 +527,8 @@ interface PageSceneProps {
   active: boolean
   /** Root pages, so a Path on this page can resolve its references. */
   pathPages: readonly PageNode[]
-  /** Persisted state per root page id, for Path visited status. */
-  pageStates: Record<string, PlayerPageState>
   /** Opens a referenced page through the presentation's switching. */
   onNavigatePathPage: (pageId: string) => void
-  pageState?: PlayerPageState
-  onAnswer: (pageId: string, questionId: string, value: AnswerValue) => void
-  onQuestionnaireSubmitted: (pageId: string, questionnaireId: string) => void
-  onVideoPosition?: (pageId: string, videoId: string, seconds: number) => void
-  /** Reports the page completion exactly once. */
-  onPageCompleted: (id: string) => void
   /** Whether the page after this one is still locked, so the boundary notice belongs here. */
   showLockedBoundary: boolean
 }
@@ -605,15 +546,11 @@ function PageScene({
   nodes,
   active,
   pathPages,
-  pageStates,
   onNavigatePathPage,
-  pageState,
-  onAnswer,
-  onQuestionnaireSubmitted,
-  onVideoPosition,
-  onPageCompleted,
   showLockedBoundary
 }: PageSceneProps) {
+  const state = usePlayerState()
+  const pageState = state.pages[page.id]
   const endRef = useRef<HTMLDivElement>(null)
   const [endReached, setEndReached] = useState(false)
 
@@ -656,14 +593,7 @@ function PageScene({
           <ContentRenderer
             nodes={nodes}
             pathPages={pathPages}
-            pageStates={pageStates}
             onNavigatePathPage={onNavigatePathPage}
-            answers={pageState?.answers}
-            submittedQuestionnaires={pageState?.submittedQuestionnaires}
-            onAnswer={(questionId, value) => onAnswer(page.id, questionId, value)}
-            onQuestionnaireSubmitted={(id) => onQuestionnaireSubmitted(page.id, id)}
-            videoPositions={pageState?.videos}
-            onVideoPosition={(videoId, seconds) => onVideoPosition?.(page.id, videoId, seconds)}
           />
         </section>
       </div>
@@ -675,7 +605,6 @@ function PageScene({
       <PageCompletionReporter
         pageId={page.id}
         complete={complete}
-        onPageCompleted={onPageCompleted}
       />
     </div>
   )

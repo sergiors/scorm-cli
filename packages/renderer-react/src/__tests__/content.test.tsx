@@ -1,9 +1,11 @@
+// @vitest-environment jsdom
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { ContentRenderer } from '../../app/components/ContentRenderer'
 import { InlineContent } from '../../app/components/InlineContent'
+import { PageProvider, PlayerProvider } from '../../app/lib/player-context'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
-import type { ContentNode, InlineNode } from '../../app/types'
+import type { ContentNode, ContentPackage, InlineNode, PlayerState } from '../../app/types'
 import {
   headingDepths,
   multipleChoiceQuestion,
@@ -11,10 +13,35 @@ import {
   singleChoiceQuestion
 } from './fixtures'
 
-function render(nodes: ContentNode[]): string {
+/**
+ * Renders the player contexts around a page whose authored content is `nodes`.
+ * `restored`, when given, is what the SCORM bridge hands back before the first
+ * render, exactly as a mounted package would receive it.
+ */
+function render(nodes: ContentNode[], restored?: PlayerState): string {
+  const contentPackage: ContentPackage = {
+    metadata: { title: 'Content test' },
+    presentation: {
+      type: 'scroll',
+      pages: [
+        {
+          type: 'page',
+          id: 'page:content-test.mdx',
+          source: 'content-test.mdx',
+          metadata: { title: 'Content test' },
+          content: nodes
+        }
+      ]
+    }
+  }
+  window.scormBridge = { restoreState: () => restored ?? { pages: {} } }
   return renderToStaticMarkup(
     <PlayerI18nProvider>
-      <ContentRenderer nodes={nodes} />
+      <PlayerProvider contentPackage={contentPackage}>
+        <PageProvider pageId="page:content-test.mdx">
+          <ContentRenderer nodes={nodes} />
+        </PageProvider>
+      </PlayerProvider>
     </PlayerI18nProvider>
   )
 }
@@ -822,55 +849,65 @@ describe('ContentRenderer questionnaires', () => {
   })
 })
 
-describe('ContentRenderer context propagation', () => {
-  it('threads answers and submitted state through nested blocks', () => {
-    const html = renderToStaticMarkup(
-      <PlayerI18nProvider>
-        <ContentRenderer
-          nodes={[
+describe('ContentRenderer nested context', () => {
+  const nestedNodes: ContentNode[] = [
+    {
+      type: 'quote',
+      children: [
+        {
+          type: 'heading',
+          depth: 1,
+          children: [{ type: 'text', value: 'Context' }]
+        },
+        {
+          type: 'list',
+          ordered: false,
+          items: [
             {
-              type: 'quote',
               children: [
                 {
-                  type: 'heading',
-                  depth: 1,
-                  children: [{ type: 'text', value: 'Context' }]
-                },
-                {
-                  type: 'list',
-                  ordered: false,
-                  items: [
-                    {
-                      children: [
-                        {
-                          type: 'questionnaire',
-                          id: 'questionnaire:nested.mdx:1:1',
-                          contributesToScore: true,
-                          questions: [singleChoiceQuestion]
-                        }
-                      ]
-                    }
-                  ]
+                  type: 'questionnaire',
+                  id: 'questionnaire:nested.mdx:1:1',
+                  contributesToScore: true,
+                  questions: [singleChoiceQuestion]
                 }
               ]
             }
-          ]}
-          answers={{ [singleChoiceQuestion.id]: 'second' }}
-          submittedQuestionnaires={['questionnaire:nested.mdx:1:1']}
-        />
-      </PlayerI18nProvider>
-    )
+          ]
+        }
+      ]
+    }
+  ]
+
+  it('renders questionnaires nested through quotes and lists', () => {
+    const html = render(nestedNodes)
 
     // A heading nested inside a quote keeps its authored depth...
     expect(html).toContain('<h1')
-    // ...and saved answers/submitted state reach a questionnaire nested inside
-    // a list, rendered read-only with the restored selection.
+    // ...and the nested questionnaire still renders its authored content.
+    expect(html).toContain('value="first"')
+    expect(html).toContain('data-slot="questionnaire-submit"')
+  })
+
+  it('restores saved answers read-only in a questionnaire nested inside a quote list', () => {
+    const html = render(nestedNodes, {
+      pages: {
+        'page:content-test.mdx': {
+          answers: { [singleChoiceQuestion.id]: 'second' },
+          submittedQuestionnaires: ['questionnaire:nested.mdx:1:1']
+        }
+      }
+    })
+
+    // A heading nested inside a quote keeps its authored depth, and the
+    // restored selection reaches the nested questionnaire, rendered read-only
+    // with the saved selection checked.
+    expect(html).toContain('<h1')
     expect(html).toContain('value="second"')
     expect(html).toContain('checked')
     expect(html).toContain('disabled')
     // The Submit action stays rendered for the submitted questionnaire, but
     // natively disabled so a submission cannot repeat.
-    expect(html).toContain('data-slot="questionnaire-submit"')
     expect(html).toMatch(
       /<button\b(?=[^>]*\sdata-slot="questionnaire-submit")(?=[^>]*\sdisabled=)[^>]*>/
     )

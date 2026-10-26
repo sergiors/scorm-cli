@@ -1,39 +1,27 @@
 import { useRef, useState } from 'react'
 import type { AnswerValue, QuestionnaireNode, QuestionNode } from '../types'
 import { allQuestionsAnswered, type SubmittedOptionResult } from '../lib/questionnaire'
+import { usePageId, usePlayerActions, usePlayerState } from '../lib/player-context'
 
-export interface QuestionnaireViewProps {
-  node: QuestionnaireNode
-  /**
-   * Saved answers for the owning page/item, keyed by `QuestionNode.id`.
-   * Supplying this controls the rendered selection, so restored answers display
-   * as checked. It does not report interactions on its own; supply
-   * {@link onAnswer} as well for a fully controlled questionnaire.
-   */
-  answers?: Record<string, AnswerValue>
-  /**
-   * Whether this questionnaire's wrapper id is already in the owning page's
-   * `submittedQuestionnaires`. Submitted questionnaires render read-only while
-   * keeping their authored stepper or expanded presentation for review. The
-   * owner supplies the saved `answers` used to restore selections and feedback.
-   */
-  submitted?: boolean
-  /**
-   * Reports a single question interaction for the owning page/item so the owner
-   * can persist it. Multiple-choice answers are string arrays; single-choice and
-   * true-false are strings. Supplying this reports changes but does not by
-   * itself drive the selection; supply {@link answers} as well for fully
-   * controlled updates. When neither is supplied, the questionnaire keeps its
-   * own selection.
-   */
-  onAnswer?: (questionId: string, value: AnswerValue) => void
-  /**
-   * Invoked exactly once, with the questionnaire id, after every question has
-   * been answered and the learner submits. Submission is never graded, but the
-   * read-only result view does reveal correctness: correct options are marked
-   * green and a wrong option the learner selected is marked red.
-   */
-  onSubmitted?: (id: string) => void
+/** Reads persisted questionnaire state/actions for the page or item that owns the node. */
+export function useQuestionnaireSession(node: QuestionnaireNode) {
+  const pageId = usePageId()
+  const state = usePlayerState()
+  const actions = usePlayerActions()
+  const pageState = pageId ? state.pages[pageId] : undefined
+
+  return {
+    answers: pageState?.answers,
+    submitted: pageState?.submittedQuestionnaires?.includes(node.id) ?? false,
+    onAnswer: pageId
+      ? (questionId: string, value: AnswerValue) =>
+          actions.setAnswer(pageId, questionId, value)
+      : undefined,
+    onSubmitted: pageId
+      ? (questionnaireId: string) =>
+          actions.markQuestionnaireSubmitted(pageId, questionnaireId)
+      : undefined
+  }
 }
 
 /**

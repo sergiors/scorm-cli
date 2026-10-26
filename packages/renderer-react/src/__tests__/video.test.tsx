@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Video } from '../../app/components/Video'
 import { ContentRenderer } from '../../app/components/ContentRenderer'
+import { PageProvider, PlayerProvider } from '../../app/lib/player-context'
 import { getPackageProgress } from '../../app/lib/content-helpers'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
 import { usePlayerSession, type PlayerSession } from '../../app/lib/use-player-session'
@@ -32,6 +33,36 @@ const nativeNode: VideoNode = {
   title: 'Lesson video',
   poster: './poster.png',
   captions: './lesson.vtt'
+}
+
+const VIDEO_PAGE_ID = 'page:video-test.mdx'
+
+function videoPackageFor(node: VideoNode): ContentPackage {
+  return {
+    metadata: { title: 'Video test' },
+    presentation: {
+      type: 'scroll',
+      pages: [
+        {
+          type: 'page',
+          id: VIDEO_PAGE_ID,
+          source: 'video-test.mdx',
+          metadata: { title: 'Video test' },
+          content: [node]
+        }
+      ]
+    }
+  }
+}
+
+function VideoContext({ node }: { node: VideoNode }) {
+  return (
+    <PlayerProvider contentPackage={videoPackageFor(node)}>
+      <PageProvider pageId={VIDEO_PAGE_ID}>
+        <Video node={node} />
+      </PageProvider>
+    </PlayerProvider>
+  )
 }
 
 /** A canonical source per provider; ReactPlayer never sees a sniffed host. */
@@ -67,10 +98,29 @@ async function mountVideo(
   position: number | undefined,
   onPosition: (seconds: number) => void
 ): Promise<RecordedPlayer> {
+  const pageId = VIDEO_PAGE_ID
+  const contentPackage = videoPackageFor(node)
+  let lastPosition = position
+  window.scormBridge = {
+    restoreState: (): PlayerState => ({
+      pages: position === undefined ? {} : { [pageId]: { videos: { [node.id]: position } } }
+    }),
+    saveState: (state) => {
+      const nextPosition = state.pages[pageId]?.videos?.[node.id]
+      if (nextPosition !== undefined && nextPosition !== lastPosition) {
+        lastPosition = nextPosition
+        onPosition(nextPosition)
+      }
+    }
+  }
   await act(async () => {
     root.render(
       <PlayerI18nProvider>
-        <Video node={node} position={position} onPosition={onPosition} />
+        <PlayerProvider contentPackage={contentPackage}>
+          <PageProvider pageId={pageId}>
+            <Video node={node} />
+          </PageProvider>
+        </PlayerProvider>
       </PlayerI18nProvider>
     )
   })
@@ -145,7 +195,7 @@ describe('Video provider inputs', () => {
     await act(async () => {
       root.render(
         <PlayerI18nProvider lang="pt-BR">
-          <Video node={nativeNode} />
+          <VideoContext node={nativeNode} />
         </PlayerI18nProvider>
       )
     })
@@ -158,7 +208,7 @@ describe('Video provider inputs', () => {
     (provider) => {
       const html = renderToStaticMarkup(
         <PlayerI18nProvider>
-          <Video node={{ ...nativeNode, provider, src: providerSources[provider] }} position={5} />
+          <VideoContext node={{ ...nativeNode, provider, src: providerSources[provider] }} />
         </PlayerI18nProvider>
       )
 
@@ -223,6 +273,23 @@ describe('Video provider inputs', () => {
   })
 })
 
+describe('Video page ownership', () => {
+  it('refuses to render without a page owner', () => {
+    // An ownerless video has no page to scope its persisted position to, so
+    // the context-aware Video demands PageProvider ownership instead of
+    // silently rendering without save or restore.
+    expect(() =>
+      renderToStaticMarkup(
+        <PlayerI18nProvider>
+          <PlayerProvider contentPackage={videoPackageFor(nativeNode)}>
+            <Video node={nativeNode} />
+          </PlayerProvider>
+        </PlayerI18nProvider>
+      )
+    ).toThrow('Video must be rendered within a PageProvider')
+  })
+})
+
 describe('Video resume and persistence', () => {
   it('waits for a usable duration before seeking to the restored position and never autoplays', async () => {
     const onPosition = vi.fn()
@@ -280,7 +347,7 @@ describe('Video resume and persistence', () => {
     players.getCurrentTime.mockReturnValue(20.27)
     act(() => record.onPause?.())
     act(() => record.onSeek?.(30))
-    expect(savedPositions(onPosition)).toEqual([6, 20.27, 30])
+    expect(savedPositions(onPosition)).toEqual([6, 20.3, 30])
   })
 
   it('falls back to the last progress tick when the provider exposes no live time', async () => {
@@ -401,15 +468,35 @@ describe('Video resume and persistence', () => {
         }
       ]
     }
+    const pageId = 'page:lesson.mdx'
+    const nodes = [quote, questionnaire]
+    const contentPackage: ContentPackage = {
+      metadata: { title: 'Video content' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: pageId,
+            source: 'lesson.mdx',
+            metadata: { title: 'Lesson' },
+            content: nodes
+          }
+        ]
+      }
+    }
+    window.scormBridge = {
+      restoreState: () => ({ pages: { [pageId]: { videos: { [VIDEO_ID]: 9.5 } } } })
+    }
 
     await act(async () => {
       root.render(
         <PlayerI18nProvider>
-          <ContentRenderer
-            nodes={[quote, questionnaire]}
-            videoPositions={{ [VIDEO_ID]: 9.5 }}
-            onVideoPosition={() => {}}
-          />
+          <PlayerProvider contentPackage={contentPackage}>
+            <PageProvider pageId={pageId}>
+              <ContentRenderer nodes={nodes} />
+            </PageProvider>
+          </PlayerProvider>
         </PlayerI18nProvider>
       )
     })

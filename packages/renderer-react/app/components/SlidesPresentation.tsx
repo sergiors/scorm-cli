@@ -1,21 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useIntl } from 'react-intl'
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight
-} from 'lucide-react'
-import type { AnswerValue, ContentNode, PageNode, PlayerPageState } from '../types'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import type { ContentNode, PageNode } from '../types'
 import {
   areQuestionnairesSubmitted,
   collectQuestionnaireIds,
   getSequentialAccess
 } from '../lib/content-helpers'
 import { useContentLoader, type ContentProvider } from '../lib/content-loader'
+import { PageProvider, usePlayerActions, usePlayerState } from '../lib/player-context'
 import { clampPageIndex } from '../lib/sequence'
 import { Button } from './ui/button'
 import { Skeleton } from './ui/skeleton'
@@ -49,7 +42,7 @@ const SLIDE_SLOT =
 /** The nodes whose own completion rule has been met, which advance the done prefix. */
 function donePageIds(
   pages: readonly PageNode[],
-  pageStates: Record<string, PlayerPageState>
+  pageStates: Record<string, { completed?: boolean }>
 ): Set<string> {
   return new Set(
     pages.filter((page) => pageStates[page.id]?.completed === true).map((page) => page.id)
@@ -64,29 +57,6 @@ export interface SlidesPresentationProps {
    * locked page's module is never requested.
    */
   contentProvider: ContentProvider
-  /**
-   * Page to open on first mount, so a saved lesson location can resume on the
-   * bookmarked page instead of the first one. Clamped to the accessible pages.
-   */
-  initialIndex?: number
-  /** Persisted state per page id, for restored answers and submitted state. */
-  pageStates: Record<string, PlayerPageState>
-  /**
-   * Invoked once per displayed page — on first mount and on every transition —
-   * to store it as the current location and mark it visited.
-   */
-  onPageSeen: (id: string) => void
-  /**
-   * Invoked once when the displayed page is complete: every questionnaire it
-   * contains has been submitted. Completion is what unlocks the next page.
-   */
-  onPageCompleted: (id: string) => void
-  /** Persists a question answer for the displayed page. */
-  onAnswer: (pageId: string, questionId: string, value: AnswerValue) => void
-  /** Marks a questionnaire on the displayed page as submitted. */
-  onQuestionnaireSubmitted: (pageId: string, questionnaireId: string) => void
-  /** Persists a video's semantic playback position in seconds, scoped to the page. */
-  onVideoPosition?: (pageId: string, videoId: string, seconds: number) => void
 }
 
 /**
@@ -105,23 +75,16 @@ export interface SlidesPresentationProps {
  * navigation never transiently moves the location to a page that is not yet
  * shown.
  */
-export function SlidesPresentation({
-  pages,
-  contentProvider,
-  initialIndex = 0,
-  pageStates,
-  onPageSeen,
-  onPageCompleted,
-  onAnswer,
-  onQuestionnaireSubmitted,
-  onVideoPosition
-}: SlidesPresentationProps) {
+export function SlidesPresentation({ pages, contentProvider }: SlidesPresentationProps) {
+  const playerState = usePlayerState()
+  const pageStates = playerState.pages
   const ids = pages.map((page) => page.id)
   const { accessible } = getSequentialAccess(ids, donePageIds(pages, pageStates))
   const { content, isLoaded, hasError, request, retry } = useContentLoader(contentProvider)
 
   const [currentIndex, setCurrentIndex] = useState(() => {
-    const requested = clampPageIndex(initialIndex, pages.length)
+    const restoredIndex = pages.findIndex((page) => page.id === playerState.location)
+    const requested = clampPageIndex(restoredIndex >= 0 ? restoredIndex : 0, pages.length)
     const requestedId = pages[requested]?.id
     return requestedId !== undefined && accessible.has(requestedId) ? requested : 0
   })
@@ -225,12 +188,7 @@ export function SlidesPresentation({
           index={currentIndex}
           nodes={content(currentPage.id) ?? []}
           pathPages={pages}
-          pageStates={pageStates}
           onNavigatePathPage={navigateToPageId}
-          pageState={pageState}
-          onAnswer={onAnswer}
-          onQuestionnaireSubmitted={onQuestionnaireSubmitted}
-          onVideoPosition={onVideoPosition}
         />
       )}
 
@@ -241,12 +199,8 @@ export function SlidesPresentation({
       */}
       {loaded ? (
         <>
-          <PageSeenReporter pageId={currentPage.id} onPageSeen={onPageSeen} />
-          <PageCompletionReporter
-            pageId={currentPage.id}
-            complete={pageComplete}
-            onPageCompleted={onPageCompleted}
-          />
+          <PageSeenReporter pageId={currentPage.id} />
+          <PageCompletionReporter pageId={currentPage.id} complete={pageComplete} />
         </>
       ) : null}
     </>
@@ -259,13 +213,8 @@ export function SlidesPresentation({
  * effects from writing the same page twice, while a genuine transition changes
  * the id and reports again.
  */
-function PageSeenReporter({
-  pageId,
-  onPageSeen
-}: {
-  pageId: string
-  onPageSeen: (id: string) => void
-}) {
+function PageSeenReporter({ pageId }: { pageId: string }) {
+  const onPageSeen = usePlayerActions().markSeen
   const reportedRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -280,15 +229,8 @@ function PageSeenReporter({
 }
 
 /** Reports a page completion exactly once, guarding StrictMode's doubled effects. */
-function PageCompletionReporter({
-  pageId,
-  complete,
-  onPageCompleted
-}: {
-  pageId: string
-  complete: boolean
-  onPageCompleted: (id: string) => void
-}) {
+function PageCompletionReporter({ pageId, complete }: { pageId: string; complete: boolean }) {
+  const onPageCompleted = usePlayerActions().markCompleted
   const reportedRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -309,50 +251,28 @@ interface PageSceneProps {
   nodes: ContentNode[]
   /** Root pages, so a Path on this page can resolve its references. */
   pathPages: readonly PageNode[]
-  /** Persisted state per root page id, for Path visited status. */
-  pageStates: Record<string, PlayerPageState>
   /** Opens a referenced page through the presentation's switching. */
   onNavigatePathPage: (pageId: string) => void
-  pageState?: PlayerPageState
-  onAnswer: (pageId: string, questionId: string, value: AnswerValue) => void
-  onQuestionnaireSubmitted: (pageId: string, questionnaireId: string) => void
-  onVideoPosition?: (pageId: string, videoId: string, seconds: number) => void
 }
 
 /** The single displayed slide, full-height so it fills the viewport. The slot
  * clears the fixed edge rails and the mobile bottom nav; the shared column then
  * applies the same responsive gutters and vertical spacing as Scroll. */
-function PageScene({
-  page,
-  index,
-  nodes,
-  pathPages,
-  pageStates,
-  onNavigatePathPage,
-  pageState,
-  onAnswer,
-  onQuestionnaireSubmitted,
-  onVideoPosition
-}: PageSceneProps) {
+function PageScene({ page, index, nodes, pathPages, onNavigatePathPage }: PageSceneProps) {
   return (
-    <div data-scene-index={index} aria-label={page.metadata.title} className={SLIDE_SLOT}>
-      <div className={`${PAGE_COLUMN} ${PAGE_ITEM}`}>
-        <section className="prose prose-stone max-w-none! dark:prose-invert">
-          <ContentRenderer
-            nodes={nodes}
-            pathPages={pathPages}
-            pageStates={pageStates}
-            onNavigatePathPage={onNavigatePathPage}
-            answers={pageState?.answers}
-            submittedQuestionnaires={pageState?.submittedQuestionnaires}
-            onAnswer={(questionId, value) => onAnswer(page.id, questionId, value)}
-            onQuestionnaireSubmitted={(id) => onQuestionnaireSubmitted(page.id, id)}
-            videoPositions={pageState?.videos}
-            onVideoPosition={(videoId, seconds) => onVideoPosition?.(page.id, videoId, seconds)}
-          />
-        </section>
+    <PageProvider pageId={page.id}>
+      <div data-scene-index={index} aria-label={page.metadata.title} className={SLIDE_SLOT}>
+        <div className={`${PAGE_COLUMN} ${PAGE_ITEM}`}>
+          <section className="prose prose-stone max-w-none! dark:prose-invert">
+            <ContentRenderer
+              nodes={nodes}
+              pathPages={pathPages}
+              onNavigatePathPage={onNavigatePathPage}
+            />
+          </section>
+        </div>
       </div>
-    </div>
+    </PageProvider>
   )
 }
 

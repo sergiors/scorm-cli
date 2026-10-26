@@ -1,11 +1,20 @@
 import { Fragment, useState } from 'react'
 import type { ComponentType, ReactNode } from 'react'
-import type { AnswerValue, ContentNode, PageNode, PlayerPageState } from '../types'
+import type { ContentNode, PageNode } from '../types'
 import { InlineContent } from './InlineContent'
 import { MediaFrame } from './MediaFrame'
 import { PathView } from './PathView'
 import { QuestionnaireView } from './QuestionnaireView'
 import { Video } from './Video'
+import {
+  CodeBlock,
+  CodeBlockActions,
+  CodeBlockContent,
+  CodeBlockCopyButton,
+  CodeBlockHeader,
+  CodeBlockLine
+} from './ui/code-block'
+import { useHighlightedCode } from '@/hooks/use-highlighted-code'
 
 const HEADING_TAGS = {
   1: 'h1',
@@ -29,38 +38,11 @@ function clampHeading(depth: number): keyof typeof HEADING_TAGS {
 export interface ContentRendererProps {
   nodes: ContentNode[]
   /**
-   * Invoked once when a questionnaire in this subtree is submitted. Threaded
-   * recursively through nested lists, quotes and questionnaire content so the
-   * owning presentation sees every submission, however deeply it is authored.
-   */
-  onQuestionnaireSubmitted?: (id: string) => void
-  /**
-   * Saved answers for the owning page/item, keyed by question id. Threaded to
-   * every questionnaire in the subtree so restored selections render.
-   */
-  answers?: Record<string, AnswerValue>
-  /**
-   * Wrapper ids of the questionnaires already submitted on the owning
-   * page/item. Submitted questionnaires render read-only.
-   */
-  submittedQuestionnaires?: readonly string[]
-  /**
-   * Persists a single question answer for the owning page/item. Threaded to
-   * every questionnaire so nested answers are saved under the same namespace.
-   */
-  onAnswer?: (questionId: string, value: AnswerValue) => void
-  /**
    * The root presentation's pages, so a Path node can resolve its referenced
    * ids to display metadata. Threaded unchanged through nested blocks; only a
    * Scroll or Slides presentation supplies it.
    */
   pathPages?: readonly PageNode[]
-  /**
-   * Persisted state per root page id, so Path entries can read which referenced
-   * pages are already visited. Path reuses this state and persists none of its
-   * own.
-   */
-  pageStates?: Record<string, PlayerPageState>
   /**
    * Opens a referenced root page through the presentation's existing page
    * switching, without mounting a second copy of the page. Absent when the
@@ -68,18 +50,6 @@ export interface ContentRendererProps {
    * render inert.
    */
   onNavigatePathPage?: (pageId: string) => void
-  /**
-   * Restored playback positions for the owning page/item, in semantic seconds,
-   * keyed by stable video node id. Threaded to every video in the subtree so a
-   * resume seeks to the saved position once its provider is ready.
-   */
-  videoPositions?: Record<string, number>
-  /**
-   * Persists a video's semantic playback position in seconds, already scoped to
-   * the owning page/item by the presentation. Threaded to every video in the
-   * subtree so nested videos save under the same page.
-   */
-  onVideoPosition?: (videoId: string, seconds: number) => void
 }
 
 /**
@@ -174,14 +144,21 @@ function ListView({ node, context }: ContentNodeViewProps<'list'>) {
 }
 
 function CodeView({ node }: ContentNodeViewProps<'code'>) {
+  const lines = useHighlightedCode(node.value, node?.language ?? '')
+
   return (
-    <div className="rounded-2xl border border-border bg-secondary overflow-hidden">
-      <pre className="text-sm font-mono not-prose overflow-x-auto p-6">
-        <code className={node.language ? `language-${node.language}` : undefined}>
-          {node.value}
-        </code>
-      </pre>
-    </div>
+    <CodeBlock className="not-prose">
+      <CodeBlockHeader>
+        <CodeBlockActions>
+          <CodeBlockCopyButton value={node.value} />
+        </CodeBlockActions>
+      </CodeBlockHeader>
+      <CodeBlockContent lineNumbers>
+        {lines.map((line, index) => (
+          <CodeBlockLine key={index}>{line}</CodeBlockLine>
+        ))}
+      </CodeBlockContent>
+    </CodeBlock>
   )
 }
 
@@ -232,30 +209,13 @@ function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
   )
 }
 
-function VideoView({ node, context }: ContentNodeViewProps<'video'>) {
-  return (
-    <Video
-      node={node}
-      position={context.videoPositions?.[node.id]}
-      onPosition={(seconds) => context.onVideoPosition?.(node.id, seconds)}
-    />
-  )
+function VideoView({ node }: ContentNodeViewProps<'video'>) {
+  return <Video node={node} />
 }
 
-/**
- * Delegates a questionnaire block to {@link QuestionnaireView}, translating the
- * threaded answer and submission state into its props.
- */
-function QuestionnaireBlockView({ node, context }: ContentNodeViewProps<'questionnaire'>) {
-  return (
-    <QuestionnaireView
-      node={node}
-      answers={context.answers}
-      submitted={context.submittedQuestionnaires?.includes(node.id) ?? false}
-      onAnswer={context.onAnswer}
-      onSubmitted={context.onQuestionnaireSubmitted}
-    />
-  )
+/** Delegates a questionnaire block to the context-aware {@link QuestionnaireView}. */
+function QuestionnaireBlockView({ node }: ContentNodeViewProps<'questionnaire'>) {
+  return <QuestionnaireView node={node} />
 }
 
 /**
@@ -268,7 +228,6 @@ function PathBlockView({ node, context }: ContentNodeViewProps<'path'>) {
     <PathView
       node={node}
       pathPages={context.pathPages}
-      pageStates={context.pageStates}
       onNavigatePathPage={context.onNavigatePathPage}
     />
   )
