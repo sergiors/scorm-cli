@@ -186,6 +186,14 @@ export interface QuestionnaireNode {
   type: 'questionnaire'
   id: string
   contributesToScore: boolean
+  /**
+   * Whether the questionnaire presents every question at once instead of one
+   * at a time. Authoring may omit the prop; parser output always normalizes it
+   * to a boolean, with omitted meaning `false`. Expanded presentation changes
+   * navigation and layout only, not answers, validation, persistence, or
+   * scoring.
+   */
+  expanded?: boolean
   questions: QuestionNode[]
 }
 

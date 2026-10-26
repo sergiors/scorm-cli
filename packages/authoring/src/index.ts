@@ -110,6 +110,12 @@ export interface VideoProps {
 export interface QuestionnaireProps extends ContainerProps {
   /** Whether this questionnaire contributes to the package's aggregate score. */
   contributesToScore?: boolean
+  /**
+   * Whether to show every question at once instead of one at a time. Expanded
+   * questionnaires keep their single Submit action at the bottom and reveal
+   * correctness only after submission. Defaults to `false`.
+   */
+  expanded?: boolean
 }
 
 /** Props for `<Question type="..." />`, which contains a Prompt and Options. */

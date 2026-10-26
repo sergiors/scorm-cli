@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { QuestionnaireView as QuestionnaireViewBase } from '../../app/components/QuestionnaireView'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
-import type { AnswerValue, ContentNode } from '../../app/types'
+import type { AnswerValue, ContentNode, QuestionnaireNode } from '../../app/types'
 import { multipleChoiceQuestion, questionnaireNode, singleChoiceQuestion } from './fixtures'
 
 /**
@@ -129,6 +129,13 @@ function activeItem(): HTMLElement {
     throw new Error('No active questionnaire item')
   }
   return element
+}
+
+/** The questions the wizard currently hides because they are not active. */
+function hiddenItems(): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>('[data-slot="questionnaire-item"]')
+  ).filter((item) => item.hasAttribute('hidden'))
 }
 
 describe('QuestionnaireView', () => {
@@ -276,21 +283,44 @@ describe('QuestionnaireView required-answer message', () => {
 
 /** Renders a questionnaire controlled by local answer state, like a page does. */
 function ControlledQuestionnaire({
+  node = questionnaireNode,
   initialAnswers = {},
   onSubmitted
 }: {
+  node?: QuestionnaireNode
   initialAnswers?: Record<string, AnswerValue>
   onSubmitted?: (id: string) => void
 }) {
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>(initialAnswers)
   return (
     <QuestionnaireView
-      node={questionnaireNode}
+      node={node}
       answers={answers}
       onAnswer={(questionId, value) =>
         setAnswers((previous) => ({ ...previous, [questionId]: value }))
       }
       onSubmitted={onSubmitted}
+    />
+  )
+}
+
+/**
+ * A controlled questionnaire whose owner records submissions the way a page
+ * does: the first successful submit flips the wrapper into its read-only
+ * submitted review for the rest of the session.
+ */
+function OwnerTrackedQuestionnaire({ node = questionnaireNode }: { node?: QuestionnaireNode }) {
+  const [answers, setAnswers] = useState<Record<string, AnswerValue>>({})
+  const [submittedIds, setSubmittedIds] = useState<string[]>([])
+  return (
+    <QuestionnaireView
+      node={node}
+      answers={answers}
+      onAnswer={(questionId, value) =>
+        setAnswers((previous) => ({ ...previous, [questionId]: value }))
+      }
+      submitted={submittedIds.includes(node.id)}
+      onSubmitted={(id) => setSubmittedIds((previous) => [...previous, id])}
     />
   )
 }
@@ -391,7 +421,7 @@ describe('QuestionnaireView persistence', () => {
     expect(onSubmitted).toHaveBeenCalledWith(questionnaireNode.id)
   })
 
-  it('renders a submitted questionnaire read-only with every answer visible', () => {
+  it('restores a submitted wizard read-only, opening on its last question', () => {
     act(() =>
       root.render(
         <QuestionnaireView
@@ -405,16 +435,65 @@ describe('QuestionnaireView persistence', () => {
       )
     )
 
-    // Both questions are shown at once, with their saved selections checked and
-    // disabled; there is no wizard or submit action left.
+    // The default presentation stays a wizard after submission: the single
+    // root opens on the question that was active at submit time (the last
+    // one) instead of restarting or expanding every question.
+    expect(container.querySelectorAll('[data-slot="questionnaire-item"]')).toHaveLength(2)
+    expect(hiddenItems()).toHaveLength(1)
+    expect(activeItem().textContent).toContain('Which options apply?')
+    expect(container.textContent).toContain('Question 2 of 2')
+
+    // The hidden earlier question keeps its saved selection rendered, and
+    // both saved answers are checked and disabled.
+    expect(hiddenItems()[0]?.textContent).toContain('Which option is correct?')
     expect(submittedChecked('first')).toBe(true)
     expect(submittedControl('first').disabled).toBe(true)
     expect(submittedChecked('second')).toBe(false)
     expect(submittedChecked('alpha')).toBe(true)
     expect(submittedChecked('beta')).toBe(true)
     expect(submittedControl('beta').disabled).toBe(true)
+
+    // Submission cannot repeat: the Submit action is gone, but the wizard
+    // navigation remains available for reviewing every answer.
     expect(container.textContent).not.toContain('Submit questionnaire')
-    expect(container.textContent).not.toContain('Next question')
+    expect(container.textContent).toContain('Previous question')
+    expect(container.textContent).toContain('Next question')
+  })
+
+  it('reviews a restored wizard feedback question by question', () => {
+    act(() =>
+      root.render(
+        <QuestionnaireView
+          node={questionnaireNode}
+          answers={{
+            [singleChoiceQuestion.id]: 'second',
+            [multipleChoiceQuestion.id]: ['alpha']
+          }}
+          submitted
+        />
+      )
+    )
+
+    // Opening on the last question, Previous walks back to the first
+    // question's review without leaving the wizard.
+    act(() => button('Previous question').click())
+    expect(activeItem().textContent).toContain('Which option is correct?')
+
+    // The answer stays read-only and the result is classified: the saved
+    // 'second' pick was wrong, the unselected correct option stays correct.
+    expect(submittedChecked('second')).toBe(true)
+    expect(submittedControl('second').disabled).toBe(true)
+    expect(submittedChoiceIsCorrect('first')).toBe(true)
+    expect(submittedChoiceIsIncorrect('second')).toBe(true)
+
+    // Next returns to the last question's feedback, also read-only. This is
+    // the two-way review the submitted wizard must support: if it fails with
+    // the required-answer message shown on the earlier question, the wizard
+    // validation is treating the submitted (disabled) choices as unanswered.
+    act(() => button('Next question').click())
+    expect(activeItem().textContent).toContain('Which options apply?')
+    expect(submittedChecked('alpha')).toBe(true)
+    expect(submittedChoiceIsCorrect('alpha')).toBe(true)
   })
 
   it('renders submitted answers through the shadcn questionnaire parts', () => {
@@ -445,8 +524,10 @@ describe('QuestionnaireView persistence', () => {
     expect(multiple.disabled).toBe(true)
     expect(submittedControl('beta').checked).toBe(false)
 
-    // Every question is its own single-item root, all shown at once.
-    expect(container.querySelectorAll('[data-slot="questionnaire"]')).toHaveLength(2)
+    // One root form still drives the restored wizard: every question is part
+    // of the Root's item collection, the earlier one hidden while the last is
+    // active, and each exposes its choices as accessible choice parts.
+    expect(container.querySelectorAll('[data-slot="questionnaire"]')).toHaveLength(1)
     expect(container.querySelectorAll('[data-slot="questionnaire-title"]')).toHaveLength(2)
     expect(container.querySelectorAll('[data-slot="questionnaire-choice"]')).toHaveLength(4)
   })
@@ -547,5 +628,232 @@ describe('QuestionnaireView persistence', () => {
     expect(submittedChoiceResult('beta')).toBe('neutral')
     expect(submittedChecked('second')).toBe(false)
     expect(submittedChecked('beta')).toBe(false)
+  })
+})
+
+describe('QuestionnaireView submitted wizard flow', () => {
+  it('keeps the wizard on its active question after submitting', () => {
+    act(() => root.render(<OwnerTrackedQuestionnaire />))
+
+    // Given a fully answered default wizard on its last question, when the
+    // learner submits, then the wizard presentation is unchanged: submission
+    // neither advances, restarts, nor expands the questions.
+    act(() => input('first').click())
+    act(() => button('Next question').click())
+    act(() => input('alpha').click())
+    act(() => button('Submit questionnaire').click())
+
+    expect(activeItem().textContent).toContain('Which options apply?')
+    expect(container.textContent).toContain('Question 2 of 2')
+    expect(hiddenItems()).toHaveLength(1)
+
+    // The Submit action is removed so a submission cannot repeat, while the
+    // Previous/Next navigation remains for reviewing every result.
+    expect(container.textContent).not.toContain('Submit questionnaire')
+    expect(container.textContent).toContain('Previous question')
+    expect(container.textContent).toContain('Next question')
+
+    // The answered questions read as results: read-only with their feedback.
+    expect(submittedControl('alpha').disabled).toBe(true)
+    expect(submittedChecked('alpha')).toBe(true)
+    expect(submittedChoiceIsCorrect('alpha')).toBe(true)
+    expect(submittedChecked('first')).toBe(true)
+    expect(submittedControl('first').disabled).toBe(true)
+  })
+
+  it('reviews every submitted answer read-only through Previous and Next', () => {
+    act(() => root.render(<OwnerTrackedQuestionnaire />))
+
+    act(() => input('first').click())
+    act(() => button('Next question').click())
+    act(() => input('alpha').click())
+    act(() => button('Submit questionnaire').click())
+
+    // Previous revisits the first question, still exactly one item visible,
+    // with its saved answer checked, disabled, and feedback revealed.
+    act(() => button('Previous question').click())
+    expect(activeItem().textContent).toContain('Which option is correct?')
+    expect(hiddenItems()).toHaveLength(1)
+    expect(submittedChecked('first')).toBe(true)
+    expect(submittedControl('first').disabled).toBe(true)
+    expect(submittedChoiceIsCorrect('first')).toBe(true)
+
+    // Next returns to the last question's feedback. This is the two-way
+    // review the submitted wizard must support: if it fails with the
+    // required-answer message shown on the earlier question, the wizard
+    // validation is treating the submitted (disabled) choices as unanswered.
+    act(() => button('Next question').click())
+    expect(activeItem().textContent).toContain('Which options apply?')
+    expect(submittedChoiceIsCorrect('alpha')).toBe(true)
+  })
+
+  it('reviews submitted answers with arrow keys without repeating a held key', () => {
+    act(() =>
+      root.render(
+        <QuestionnaireView
+          node={questionnaireNode}
+          answers={{
+            [singleChoiceQuestion.id]: 'first',
+            [multipleChoiceQuestion.id]: ['alpha']
+          }}
+          submitted
+        />
+      )
+    )
+
+    // The submitted wizard opens on its last question.
+    expect(activeItem().textContent).toContain('Which options apply?')
+
+    act(() => {
+      activeItem().dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true })
+      )
+    })
+    expect(activeItem().textContent).toContain('Which option is correct?')
+
+    // A held ArrowRight matches the primitive: it is canceled but does not
+    // navigate or trigger required validation while the key repeats.
+    act(() => {
+      activeItem().dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'ArrowRight',
+          repeat: true,
+          bubbles: true,
+          cancelable: true
+        })
+      )
+    })
+    expect(activeItem().textContent).toContain('Which option is correct?')
+    expect(container.querySelector('[data-slot="questionnaire-error"]:not([hidden])')).toBeNull()
+
+    // A fresh ArrowRight still returns to the last question's feedback.
+    act(() => {
+      activeItem().dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
+      )
+    })
+    expect(activeItem().textContent).toContain('Which options apply?')
+    expect(submittedChoiceIsCorrect('alpha')).toBe(true)
+  })
+})
+
+describe('QuestionnaireView expanded presentation', () => {
+  /** The shared questionnaire in expanded form: every question visible at once. */
+  const expandedQuestionnaireNode: QuestionnaireNode = {
+    ...questionnaireNode,
+    expanded: true
+  }
+
+  it('shows every question at once in authored order without wizard chrome', () => {
+    act(() => root.render(<QuestionnaireView node={expandedQuestionnaireNode} />))
+
+    const items = container.querySelectorAll('[data-slot="questionnaire-item"]')
+    expect(items).toHaveLength(2)
+    // Authored order is kept and no question is hidden away.
+    expect(items[0]?.textContent).toContain('Which option is correct?')
+    expect(items[1]?.textContent).toContain('Which options apply?')
+    for (const item of items) expect(item.hasAttribute('hidden')).toBe(false)
+
+    // The per-question wizard progress and Previous/Next do not apply; every
+    // question is answered in place with one bottom Submit.
+    expect(container.textContent).not.toContain('Question 1 of 2')
+    expect(container.textContent).not.toContain('Previous question')
+    expect(container.textContent).not.toContain('Next question')
+    expect(button('Submit questionnaire').type).toBe('submit')
+
+    // Correctness stays hidden until submission, as in the wizard mode.
+    expect(container.querySelector('[data-result]')).toBeNull()
+  })
+
+  it('answers in any order through a single bottom Submit that validates all', () => {
+    const onSubmitted = vi.fn()
+    act(() =>
+      root.render(
+        <ControlledQuestionnaire node={expandedQuestionnaireNode} onSubmitted={onSubmitted} />
+      )
+    )
+
+    // The learner answers out of authored order, without any navigation.
+    act(() => input('alpha').click())
+    expect(input('alpha').checked).toBe(true)
+
+    // One unanswered question still blocks the shared bottom Submit, and its
+    // required-answer message is visible among the displayed questions.
+    act(() => button('Submit questionnaire').click())
+    expect(onSubmitted).not.toHaveBeenCalled()
+    const invalidItem = container.querySelector<HTMLElement>(
+      '[data-slot="questionnaire-item"][data-active]'
+    )
+    expect(invalidItem?.textContent).toContain('Which option is correct?')
+    const error = invalidItem?.querySelector('[data-slot="questionnaire-error"]')
+    expect(error?.hasAttribute('hidden')).toBe(false)
+    expect(error?.textContent).toBe('Choose an answer to continue.')
+
+    // Completing the remaining question succeeds through the same action.
+    act(() => input('first').click())
+    act(() => button('Submit questionnaire').click())
+    expect(onSubmitted).toHaveBeenCalledTimes(1)
+    expect(onSubmitted).toHaveBeenCalledWith(expandedQuestionnaireNode.id)
+  })
+
+  it('submits through the bottom action and keeps every question in review', () => {
+    act(() => root.render(<OwnerTrackedQuestionnaire node={expandedQuestionnaireNode} />))
+
+    // Answer every question in place, then submit through the single action.
+    act(() => input('first').click())
+    act(() => input('alpha').click())
+    act(() => button('Submit questionnaire').click())
+
+    // The expanded presentation is retained: no wizard chrome appears, every
+    // question stays visible with its feedback, and nothing remains to do.
+    expect(container.querySelectorAll('[data-slot="questionnaire"]')).toHaveLength(1)
+    const items = container.querySelectorAll('[data-slot="questionnaire-item"]')
+    expect(items).toHaveLength(2)
+    for (const item of items) expect(item.hasAttribute('hidden')).toBe(false)
+    expect(container.textContent).not.toContain('Submit questionnaire')
+    expect(container.textContent).not.toContain('Previous question')
+    expect(container.textContent).not.toContain('Next question')
+
+    // All answers are read-only and classified.
+    expect(submittedControl('first').disabled).toBe(true)
+    expect(submittedControl('alpha').disabled).toBe(true)
+    expect(submittedChoiceIsCorrect('first')).toBe(true)
+    expect(submittedChoiceIsCorrect('alpha')).toBe(true)
+  })
+
+  it('restores a submitted expanded questionnaire still expanded', () => {
+    act(() =>
+      root.render(
+        <QuestionnaireView
+          node={expandedQuestionnaireNode}
+          answers={{
+            [singleChoiceQuestion.id]: 'second',
+            [multipleChoiceQuestion.id]: ['alpha']
+          }}
+          submitted
+        />
+      )
+    )
+
+    // Restoration keeps the expanded layout: one root, every question visible
+    // in authored order, no progress label, and no wizard navigation.
+    expect(container.querySelectorAll('[data-slot="questionnaire"]')).toHaveLength(1)
+    const items = container.querySelectorAll('[data-slot="questionnaire-item"]')
+    expect(items).toHaveLength(2)
+    expect(items[0]?.textContent).toContain('Which option is correct?')
+    expect(items[1]?.textContent).toContain('Which options apply?')
+    for (const item of items) expect(item.hasAttribute('hidden')).toBe(false)
+    expect(container.textContent).not.toContain('Question 1 of 2')
+    expect(container.textContent).not.toContain('Submit questionnaire')
+    expect(container.textContent).not.toContain('Previous question')
+    expect(container.textContent).not.toContain('Next question')
+
+    // Saved answers stay checked and read-only with their feedback revealed.
+    expect(submittedChecked('second')).toBe(true)
+    expect(submittedControl('second').disabled).toBe(true)
+    expect(submittedChecked('alpha')).toBe(true)
+    expect(submittedControl('beta').disabled).toBe(true)
+    expect(submittedChoiceIsIncorrect('second')).toBe(true)
+    expect(submittedChoiceIsCorrect('alpha')).toBe(true)
   })
 })

@@ -193,11 +193,14 @@ export async function parseQuestionnaire(
   sourceLineOffset = 0
 ): Promise<QuestionnaireNode> {
   const values = attrs(node, file)
-  assertAttributes(values, ['contributesToScore'], file, node)
+  assertAttributes(values, ['contributesToScore', 'expanded'], file, node)
   if (values.contributesToScore !== undefined && typeof values.contributesToScore !== 'boolean') {
     throw new Error(
       `${sourceLocation(file, node)}: Questionnaire "contributesToScore" must be a boolean`
     )
+  }
+  if (values.expanded !== undefined && typeof values.expanded !== 'boolean') {
+    throw new Error(`${sourceLocation(file, node)}: Questionnaire "expanded" must be a boolean`)
   }
 
   const children = normalizeQuestionChildren(node.children ?? [], ['Question'])
@@ -223,6 +226,7 @@ export async function parseQuestionnaire(
     type: 'questionnaire',
     id: sourceNodeId('questionnaire', node, file, root, sourceLineOffset),
     contributesToScore: values.contributesToScore !== false,
+    expanded: values.expanded === true,
     questions
   }
 }

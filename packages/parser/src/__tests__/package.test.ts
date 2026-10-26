@@ -591,6 +591,8 @@ describe('parsePackage', () => {
         type: 'questionnaire',
         id: 'questionnaire:lesson.mdx:4:1',
         contributesToScore: true,
+        // Omitted `expanded` is normalized to `false` in the parsed output.
+        expanded: false,
         questions: [
           {
             type: 'question',
@@ -818,6 +820,48 @@ describe('parsePackage', () => {
       await rm(root, { recursive: true, force: true })
       temp = ''
     }
+  })
+
+  it('normalizes omitted expanded to false and accepts only static booleans', async () => {
+    for (const [attribute, expected] of [
+      ['', false],
+      [' expanded', true],
+      [' expanded={true}', true],
+      [' expanded={false}', false]
+    ] as const) {
+      const root = await makeLesson(
+        `<Questionnaire${attribute}><Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>`
+      )
+      const content = await lessonContent(root)
+      expect(content[0]?.type === 'questionnaire' && content[0].expanded).toBe(expected)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
+    }
+
+    for (const [attribute, error] of [
+      [' expanded="true"', /Questionnaire "expanded" must be a boolean/],
+      [' expanded={dynamic}', /dynamic value for attribute "expanded" is not supported/]
+    ] as const) {
+      const root = await makeLesson(
+        `<Questionnaire${attribute}><Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>`
+      )
+      await expect(parsePackage(root)).rejects.toThrow(error)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
+    }
+  })
+
+  it('parses expanded together with a score-contribution override', async () => {
+    const root = await makeLesson(
+      '<Questionnaire contributesToScore={false} expanded>' +
+        '<Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>'
+    )
+    const content = await lessonContent(root)
+    expect(
+      content[0]?.type === 'questionnaire' &&
+        content[0].contributesToScore === false &&
+        content[0].expanded === true
+    ).toBe(true)
   })
 
   it('rejects standalone Questions with a source-located wrapper hint', async () => {
