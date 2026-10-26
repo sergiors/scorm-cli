@@ -1,5 +1,6 @@
 import { useId, useRef, useState, type KeyboardEvent } from 'react'
 import { FormattedMessage, useIntl } from 'react-intl'
+import type { QuestionnaireItemStatus } from '@shadcn/react/questionnaire'
 import type {
   AnswerValue,
   PageNode,
@@ -127,6 +128,32 @@ function navigatesReviewWithArrowKeys(target: EventTarget | null): boolean {
   return !(target instanceof HTMLElement && target.isContentEditable)
 }
 
+/** Whether a persisted answer selects at least one option. */
+function hasAnswerValue(value: AnswerValue | undefined): boolean {
+  if (Array.isArray(value)) {
+    return value.length > 0
+  }
+  return typeof value === 'string' && value.length > 0
+}
+
+/**
+ * Whether an Enter key press would activate the questionnaire's shared
+ * completion action. The primitive submits on Ctrl/Meta+Enter from anywhere and
+ * on Enter from an answer control.
+ */
+function activatesQuestionnaireAction(event: KeyboardEvent<HTMLFormElement>): boolean {
+  if (event.key !== 'Enter') {
+    return false
+  }
+  if (event.metaKey || event.ctrlKey) {
+    return !event.altKey && !event.shiftKey
+  }
+  return (
+    event.target instanceof HTMLInputElement &&
+    (event.target.type === 'radio' || event.target.type === 'checkbox')
+  )
+}
+
 /**
  * A grouped questionnaire rendered through the shadcn questionnaire UI: one
  * `Questionnaire.Root` with one `Questionnaire.Item` per question.
@@ -134,9 +161,11 @@ function navigatesReviewWithArrowKeys(target: EventTarget | null): boolean {
  * By default the root behaves as a wizard: one question at a time, navigated
  * with Previous/Next, and finished with a single "Submit questionnaire" action
  * on the last question. With `node.expanded`, every question is shown in
- * authored order, answered in any order, and validated by one bottom Submit.
- * The expanded Root still owns required-answer validation; its non-active items
- * are kept visible and interactive instead of hidden, so only presentation and
+ * authored order, answered in any order, and finished by one bottom Submit.
+ * Actions are disabled until their required question (or, for a Submit, every
+ * required question) has an answer, so an incomplete action cannot surface a
+ * validation message. The expanded Root still keeps every item visible and
+ * interactive instead of hiding or disabling it, so only presentation and
  * navigation change.
  *
  * The authored `questions` are declared once as the Root's `items` collection
@@ -152,8 +181,9 @@ function navigatesReviewWithArrowKeys(target: EventTarget | null): boolean {
  * mode) the full list stay in place; the choices become read-only and reveal
  * the result: correct options are highlighted green and any wrong option the
  * learner selected is highlighted red, while wrong options left unselected stay
- * neutral. The Submit action is removed, so a submission cannot be repeated.
- * The wizard keeps Previous/Next for reviewing every question's feedback.
+ * neutral. The Submit action stays visible but disabled, so a submission cannot
+ * be repeated. The wizard keeps Previous/Next for reviewing every question's
+ * feedback.
  *
  * Correctness is never revealed before submission. The rich prompt and each
  * option are rendered as content, and the submission callback bubbles through
@@ -180,6 +210,14 @@ export function QuestionnaireView({
   // Review position for a submitted wizard. It starts unset so the fallback is
   // the last authored question, which is where a successful submit happens.
   const [reviewItem, setReviewItem] = useState<string | undefined>(undefined)
+  // The primitive owns the wizard position when the questionnaire is not in
+  // submitted review. Tracking the reported item lets Next follow the active
+  // question's answer status in controlled and uncontrolled modes alike.
+  const [activeItem, setActiveItem] = useState<string | undefined>(undefined)
+  // Item status includes answers selected by the primitive itself, not only
+  // owner-controlled `answers`, so aggregate Submit enablement also works for
+  // the standalone/uncontrolled questionnaire.
+  const [itemStatuses, setItemStatuses] = useState<Record<string, QuestionnaireItemStatus>>({})
   // Bundled once so it can be forwarded verbatim to every nested renderer.
   const contentContext: NestedContentContext = {
     pathPages,
@@ -216,6 +254,37 @@ export function QuestionnaireView({
   // A restored submission opens on the question that was active when it was
   // submitted, so it neither restarts the wizard nor expands every question.
   const reviewQuestionId = reviewingSubmitted ? (reviewItem ?? lastQuestionId) : undefined
+  const currentQuestionId = reviewingSubmitted
+    ? reviewQuestionId
+    : node.questions.some((question) => question.id === activeItem)
+      ? activeItem
+      : node.questions[0]?.id
+
+  // An item is answered once its own reported status says so. Restored owner
+  // answers seed the status before the primitive's first layout effect runs,
+  // and keep the server-rendered markup accurate; afterwards the primitive is
+  // the source of truth, including selections it owns in uncontrolled mode.
+  const isQuestionAnswered = (questionId: string | undefined) => {
+    if (questionId === undefined) {
+      return false
+    }
+    const status = itemStatuses[questionId]
+    if (status !== undefined) {
+      return status === 'answered'
+    }
+    return answers !== undefined && hasAnswerValue(answers[questionId])
+  }
+  const allQuestionsAnswered = node.questions.every((question) => isQuestionAnswered(question.id))
+  const currentQuestionAnswered = isQuestionAnswered(currentQuestionId)
+
+  const handleItemStatusChange = (questionId: string, status: QuestionnaireItemStatus) => {
+    setItemStatuses((previous) => {
+      if (previous[questionId] === status) {
+        return previous
+      }
+      return { ...previous, [questionId]: status }
+    })
+  }
 
   const reviewPreviousQuestion = () => {
     const currentIndex = node.questions.findIndex((question) => question.id === reviewQuestionId)
@@ -233,24 +302,43 @@ export function QuestionnaireView({
     }
   }
 
-  const handleReviewKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+  const handleKeyDownCapture = (event: KeyboardEvent<HTMLFormElement>) => {
+    if (
+      reviewingSubmitted &&
+      (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+      navigatesReviewWithArrowKeys(event.target)
+    ) {
+      // Arrow keys are the primitive's keyboard equivalent of Previous/Next.
+      // Bypass its required-answer validation for the same reason as the
+      // buttons: submitted choices are read-only and would look unanswered.
+      event.preventDefault()
+      // Match the primitive: suppress repeats while the key is held.
+      if (event.repeat) {
+        return
+      }
+      if (event.key === 'ArrowLeft') {
+        reviewPreviousQuestion()
+      } else {
+        reviewNextQuestion()
+      }
       return
     }
-    if (!navigatesReviewWithArrowKeys(event.target)) {
+
+    if (!activatesQuestionnaireAction(event)) {
       return
     }
-    // Arrow keys are the primitive's keyboard equivalent of Previous/Next.
-    // Bypass its required-answer validation for the same reason as the buttons.
-    event.preventDefault()
-    // Match the primitive: suppress repeats while the key is held.
-    if (event.repeat) {
-      return
+    // The primitive's Enter shortcuts would otherwise run its required-answer
+    // validation even though the equivalent action is disabled. Preventing the
+    // default makes the primitive's key handler ignore the event and avoids
+    // surfacing a validation message for an action the learner cannot take.
+    let actionDisabled = !currentQuestionAnswered
+    if (expanded) {
+      actionDisabled = !allQuestionsAnswered
+    } else if (submitted || currentQuestionId === lastQuestionId) {
+      actionDisabled = submitted || !allQuestionsAnswered
     }
-    if (event.key === 'ArrowLeft') {
-      reviewPreviousQuestion()
-    } else {
-      reviewNextQuestion()
+    if (actionDisabled) {
+      event.preventDefault()
     }
   }
 
@@ -260,8 +348,8 @@ export function QuestionnaireView({
         <Questionnaire
           items={items}
           item={reviewQuestionId}
-          onItemChange={reviewingSubmitted ? setReviewItem : undefined}
-          onKeyDownCapture={reviewingSubmitted ? handleReviewKeyDown : undefined}
+          onItemChange={reviewingSubmitted ? setReviewItem : setActiveItem}
+          onKeyDownCapture={handleKeyDownCapture}
           onSubmit={(event) => {
             // The root only reaches this handler once every required item has an
             // answer. Never let the browser navigate away, and forward the
@@ -303,32 +391,36 @@ export function QuestionnaireView({
 
           {node.questions.map((question) => (
             <QuestionnaireQuestion
-              key={question.id}
+              // Submitting disables the choices, which the primitive reports as
+              // unanswered even though they are the saved result. Remounting the
+              // now read-only item clears the validation attempt recorded by the
+              // submit that ended it, so review keeps valid semantics.
+              key={submitted ? `${question.id}:submitted` : question.id}
               node={question}
               controlled={controlled}
               submitted={submitted}
               expanded={expanded}
               value={answers?.[question.id]}
               onAnswer={onAnswer}
+              onStatusChange={(status) => handleItemStatusChange(question.id, status)}
               onQuestionnaireSubmitted={onSubmitted}
               contentContext={contentContext}
             />
           ))}
 
           {expanded ? (
-            submitted ? null : (
-              <div className="flex justify-end">
-                <Button type="submit">
-                  <FormattedMessage id="questionnaire.submit" />
-                </Button>
-              </div>
-            )
+            <div className="flex justify-end">
+              <Button type="submit" disabled={submitted || !allQuestionsAnswered}>
+                <FormattedMessage id="questionnaire.submit" />
+              </Button>
+            </div>
           ) : (
             <QuestionnaireActions>
               <QuestionnairePrevious>
                 <FormattedMessage id="questionnaire.previous" />
               </QuestionnairePrevious>
               <QuestionnaireNext
+                disabled={!submitted && !currentQuestionAnswered}
                 onClick={
                   reviewingSubmitted
                     ? (event) => {
@@ -344,11 +436,9 @@ export function QuestionnaireView({
               >
                 <FormattedMessage id="questionnaire.next" />
               </QuestionnaireNext>
-              {submitted ? null : (
-                <QuestionnaireSubmit>
-                  <FormattedMessage id="questionnaire.submit" />
-                </QuestionnaireSubmit>
-              )}
+              <QuestionnaireSubmit disabled={submitted || !allQuestionsAnswered}>
+                <FormattedMessage id="questionnaire.submit" />
+              </QuestionnaireSubmit>
             </QuestionnaireActions>
           )}
         </Questionnaire>
@@ -382,6 +472,7 @@ function QuestionnaireQuestion({
   expanded,
   value,
   onAnswer,
+  onStatusChange,
   onQuestionnaireSubmitted,
   contentContext
 }: {
@@ -391,6 +482,7 @@ function QuestionnaireQuestion({
   expanded: boolean
   value: AnswerValue | undefined
   onAnswer?: (questionId: string, value: AnswerValue) => void
+  onStatusChange?: (status: QuestionnaireItemStatus) => void
   onQuestionnaireSubmitted?: (id: string) => void
   contentContext: NestedContentContext
 }) {
@@ -412,6 +504,7 @@ function QuestionnaireQuestion({
       name={node.id}
       multiple={multiple}
       required
+      onStatusChange={onStatusChange}
       // The primitive hides and inerts every non-active item for its wizard.
       // Expanded mode overrides both states so every question stays visible and
       // operable while the Root keeps owning validation and answer state.
@@ -459,9 +552,11 @@ function QuestionnaireQuestion({
         })}
       </QuestionnaireChoices>
 
-      <QuestionnaireError>
-        <FormattedMessage id="questionnaire.answerRequired" />
-      </QuestionnaireError>
+      {submitted ? null : (
+        <QuestionnaireError>
+          <FormattedMessage id="questionnaire.answerRequired" />
+        </QuestionnaireError>
+      )}
     </QuestionnaireItem>
   )
 }

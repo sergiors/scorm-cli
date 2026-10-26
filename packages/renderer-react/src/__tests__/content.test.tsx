@@ -958,7 +958,12 @@ describe('ContentRenderer context propagation', () => {
     expect(html).toContain('value="second"')
     expect(html).toContain('checked')
     expect(html).toContain('disabled')
-    expect(html).not.toContain('Submit questionnaire')
+    // The Submit action stays rendered for the submitted questionnaire, but
+    // natively disabled so a submission cannot repeat.
+    expect(html).toContain('data-slot="questionnaire-submit"')
+    expect(html).toMatch(
+      /<button\b(?=[^>]*\sdata-slot="questionnaire-submit")(?=[^>]*\sdisabled=)[^>]*>/
+    )
   })
 })
 

@@ -237,6 +237,18 @@ function submittedControl(value: string): HTMLInputElement {
   return element
 }
 
+/**
+ * The questionnaire's Submit action, which stays rendered but disabled after
+ * submission so a saved submission can never repeat.
+ */
+function submitAction(): HTMLButtonElement {
+  const element = container.querySelector<HTMLButtonElement>('[data-slot="questionnaire-submit"]')
+  if (!element) {
+    throw new Error('Submit action not found')
+  }
+  return element
+}
+
 /** Answers the standard intro questionnaire (single- then multiple-choice). */
 function answerQuestionnaire(): void {
   act(() => input('first').click())
@@ -1807,7 +1819,10 @@ describe('PackageView scroll persistence', () => {
     expect(submittedControl('first').disabled).toBe(true)
     expect(submittedControl('alpha').checked).toBe(true)
     expect(submittedControl('alpha').disabled).toBe(true)
-    expect(text()).not.toContain('Submit questionnaire')
+    // The Submit action stays rendered for the submitted questionnaire, but
+    // natively disabled so the saved submission can never repeat.
+    expect(submitAction().type).toBe('submit')
+    expect(submitAction().disabled).toBe(true)
     expect(saveState).not.toHaveBeenCalled()
 
     setEndIntersecting(0, true)
@@ -1953,7 +1968,9 @@ describe('PackageView scroll persistence', () => {
     expect(submittedControl('first').disabled).toBe(true)
     expect(submittedControl('alpha').checked).toBe(true)
     expect(submittedControl('alpha').disabled).toBe(true)
-    expect(text()).not.toContain('Submit questionnaire')
+    // The Submit action stays rendered but disabled for the restored
+    // submission, so it can never be submitted again.
+    expect(submitAction().disabled).toBe(true)
   })
 
   it('keeps restored completion and answers without overwriting the restored location', () => {
