@@ -89,6 +89,9 @@ importers:
       react-virtuoso:
         specifier: ^4.18.19
         version: 4.18.19(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      shiki:
+        specifier: ^4.5.0
+        version: 4.5.0
       tailwind-merge:
         specifier: ^2.5.0
         version: 2.6.1
