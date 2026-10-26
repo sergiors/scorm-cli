@@ -1,16 +1,117 @@
-import { Fragment, type KeyboardEvent } from 'react'
+import { useId, type KeyboardEvent, Fragment } from 'react'
 import { FormattedMessage, useIntl } from 'react-intl'
+import { CheckIcon } from 'lucide-react'
+import { answerAfterChange, isOptionSelected, submittedOptionResult } from '../lib/questionnaire'
+import { cn } from '../lib/utils'
+import type { AnswerValue, QuestionNode } from '../types'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
 import {
-  activatesQuestionnaireAction,
-  isEventFromNestedQuestionnaire,
-  QuestionnaireQuestion,
+  submittedChoiceClassName,
   useQuestionnaireAnswers,
   useQuestionnaireSubmission,
   type QuestionnaireViewProps
 } from './QuestionnaireShared'
 import { Separator } from './ui/separator'
+
+interface QuestionnaireQuestionProps {
+  node: QuestionNode
+  value: AnswerValue | undefined
+  submitted: boolean
+  onAnswer: (questionId: string, value: AnswerValue) => void
+}
+
+/**
+ * One authored question rendered as a native fieldset. Expanded mode stays
+ * outside the wizard by design, so it does not use the compound Root's
+ * validation or navigation. Submitted choices are disabled and classified, so
+ * the same rendering serves both the interactive and read-only presentations.
+ */
+function QuestionnaireQuestion({ node, value, submitted, onAnswer }: QuestionnaireQuestionProps) {
+  const titleId = useId()
+  const multiple = node.questionType === 'multiple-choice'
+
+  return (
+    <fieldset
+      data-slot="questionnaire-item"
+      aria-labelledby={titleId}
+      className="not-prose flex min-w-0 flex-col gap-5 border-0 p-0 outline-none"
+    >
+      <legend
+        id={titleId}
+        data-slot="questionnaire-title"
+        className="text-base font-semibold text-pretty mb-5"
+      >
+        {node.prompt}
+      </legend>
+      <div
+        data-slot="questionnaire-choices"
+        className="group/questionnaire-choices grid min-w-0 gap-3"
+      >
+        {node.options.map((option) => {
+          const selected = isOptionSelected(node, value, option.value)
+          const result = submitted ? submittedOptionResult(option, selected) : undefined
+          return (
+            <label
+              key={option.value}
+              data-slot="questionnaire-choice"
+              data-type={multiple ? 'checkbox' : 'radio'}
+              data-checked={selected ? '' : undefined}
+              data-unchecked={selected ? undefined : ''}
+              data-result={result}
+              className={cn(
+                'group/questionnaire-choice relative flex min-h-11 cursor-pointer items-start gap-2.5 rounded-3xl border border-input px-4 py-3 text-start text-sm transition-colors outline-none select-none hover:bg-input/40 has-[>input:focus-visible]:border-ring has-[>input:focus-visible]:ring-3 has-[>input:focus-visible]:ring-ring/50 data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-disabled:opacity-50 data-checked:border-primary/40 data-checked:bg-primary/10',
+                result ? submittedChoiceClassName(result) : undefined
+              )}
+            >
+              <input
+                data-slot="questionnaire-choice-input"
+                type={multiple ? 'checkbox' : 'radio'}
+                name={node.id}
+                value={option.value}
+                checked={selected}
+                disabled={submitted}
+                required={!submitted && !multiple}
+                onChange={(event) => {
+                  if (submitted) {
+                    return
+                  }
+                  onAnswer(
+                    node.id,
+                    answerAfterChange(node, value, option.value, event.target.checked)
+                  )
+                }}
+                className="absolute inset-0 z-10 size-full cursor-pointer opacity-0"
+              />
+
+              <span
+                aria-hidden="true"
+                data-slot="questionnaire-choice-indicator"
+                className="pointer-events-none relative flex size-4 shrink-0 translate-y-[--spacing(0.45)] items-center justify-center rounded-[5px] border border-transparent bg-input/90 group-data-[type=radio]/questionnaire-choice:rounded-full group-data-checked/questionnaire-choice:border-primary group-data-checked/questionnaire-choice:bg-primary group-data-checked/questionnaire-choice:text-primary-foreground dark:group-data-checked/questionnaire-choice:bg-primary"
+              >
+                <span
+                  data-slot="questionnaire-choice-indicator-dot"
+                  className="hidden size-2 rounded-full bg-primary-foreground group-data-[type=checkbox]/questionnaire-choice:hidden group-data-checked/questionnaire-choice:block dark:size-2.5"
+                />
+                <CheckIcon
+                  data-slot="questionnaire-choice-indicator-check"
+                  className="hidden size-3.5 group-data-[type=radio]/questionnaire-choice:hidden group-data-checked/questionnaire-choice:block"
+                />
+              </span>
+
+              <span
+                data-slot="questionnaire-choice-label"
+                className="flex min-w-0 flex-1 flex-col gap-1 leading-snug"
+              >
+                {option.content}
+              </span>
+            </label>
+          )
+        })}
+      </div>
+    </fieldset>
+  )
+}
 
 /**
  * An expanded questionnaire: every authored question is rendered at once in
@@ -42,21 +143,6 @@ export function ExpandedQuestionnaire(props: QuestionnaireViewProps) {
   const submitQuestionnaire = useQuestionnaireSubmission(node.id, submitted, onSubmitted)
   const canSubmit = !submitted && allAnswered
 
-  const handleKeyDownCapture = (event: KeyboardEvent<HTMLFormElement>) => {
-    if (isEventFromNestedQuestionnaire(event) || !activatesQuestionnaireAction(event)) {
-      return
-    }
-    // The shared bottom action is the only Enter path in expanded mode. Keeping
-    // it gated prevents an incomplete submit from submitting anything.
-    event.preventDefault()
-    if (event.repeat) {
-      return
-    }
-    if (canSubmit) {
-      submitQuestionnaire()
-    }
-  }
-
   return (
     <Card>
       <CardContent>
@@ -64,7 +150,6 @@ export function ExpandedQuestionnaire(props: QuestionnaireViewProps) {
           data-slot="questionnaire"
           noValidate
           className="grid gap-6"
-          onKeyDownCapture={handleKeyDownCapture}
           onSubmit={(event) => {
             event.preventDefault()
             if (canSubmit) {

@@ -93,4 +93,9 @@
     color: var(--color-foreground);
     -webkit-font-smoothing: antialiased;
   }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
 }

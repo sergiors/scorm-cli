@@ -1,13 +1,7 @@
-import {
-  useId,
-  type ButtonHTMLAttributes,
-  type HTMLAttributes,
-  type SubmitEventHandler
-} from 'react'
+import { useId, type HTMLAttributes, type SubmitEventHandler } from 'react'
 import { FormattedMessage, useIntl } from 'react-intl'
 import type { QuestionnaireItemDefinition } from '@shadcn/react/questionnaire'
 import { answerAfterChange, isOptionSelected, submittedOptionResult } from '../lib/questionnaire'
-import { cn } from '../lib/utils'
 import { Card, CardContent } from './ui/card'
 import {
   Questionnaire,
@@ -63,7 +57,6 @@ function StepperQuestion({ node, value, submitted, onAnswer }: StepperQuestionPr
       multiple={multiple}
       aria-labelledby={titleId}
       aria-readonly={submitted || undefined}
-      {...(submitted ? { 'data-readonly': '' } : {})}
     >
       <QuestionnaireTitle id={titleId}>{node.prompt}</QuestionnaireTitle>
       <QuestionnaireChoices>
@@ -73,9 +66,7 @@ function StepperQuestion({ node, value, submitted, onAnswer }: StepperQuestionPr
           // Submitted review is past validation, so replace the primitive's
           // dormant required-answer border with the neutral input border and
           // leave only the result palette visible.
-          const feedbackClassName = result
-            ? cn(submittedChoiceClassName(result), 'data-invalid:border-input')
-            : undefined
+          const feedbackClassName = result ? submittedChoiceClassName(result) : undefined
 
           return (
             <QuestionnaireChoice
@@ -83,7 +74,6 @@ function StepperQuestion({ node, value, submitted, onAnswer }: StepperQuestionPr
               value={option.value}
               checked={selected}
               className={feedbackClassName}
-              {...(result ? { 'data-result': result } : {})}
               onChange={(event) => {
                 if (submitted) {
                   // Gate the interaction without forwarding it to the owner.
@@ -155,28 +145,24 @@ export function StepperQuestionnaire(props: QuestionnaireViewProps) {
   }))
 
   /**
-   * The Root validates the whole collection in its own submit handler and
-   * prevents the event when any item fails. Handling submit on the ancestor
-   * that wraps the Root lets that validation finish first: an invalid
-   * submission never arrives here unprevented, while a valid one is reported
-   * exactly once.
-   *
-   * Passing onSubmit to the Root instead would merge with its internal handler
-   * and run before it, so preventing eagerly would skip validation and not
-   * preventing would call the owner twice on a valid submission.
+   * The Root validates the whole collection before invoking its own onSubmit,
+   * so an invalid submission never reaches this handler while a valid one is
+   * reported exactly once. Preventing the event stops the browser's native
+   * form submission instead of skipping the primitive's validation.
    */
-  const handleSubmit: SubmitEventHandler<HTMLDivElement> = (event) => {
-    if (event.defaultPrevented) {
-      return
-    }
+  const handleSubmit: SubmitEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault()
     submitQuestionnaire()
   }
 
   return (
     <Card>
-      <CardContent onSubmit={handleSubmit}>
-        <Questionnaire defaultItem={submitted ? lastQuestionId : firstQuestionId} items={items}>
+      <CardContent>
+        <Questionnaire
+          defaultItem={submitted ? lastQuestionId : firstQuestionId}
+          items={items}
+          onSubmit={handleSubmit}
+        >
           <QuestionnaireProgress
             aria-label={intl.formatMessage({ id: 'questionnaire.progressLabel' })}
             render={(renderProps, state) => {
@@ -207,14 +193,7 @@ export function StepperQuestionnaire(props: QuestionnaireViewProps) {
               <FormattedMessage id="questionnaire.previous" />
             </QuestionnairePrevious>
 
-            <QuestionnaireNext
-              render={(renderProps, state) => (
-                <button
-                  {...(renderProps as ButtonHTMLAttributes<HTMLButtonElement>)}
-                  disabled={!submitted && state.status !== 'answered'}
-                />
-              )}
-            >
+            <QuestionnaireNext>
               <FormattedMessage id="questionnaire.next" />
             </QuestionnaireNext>
 

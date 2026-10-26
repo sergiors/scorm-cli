@@ -1323,3 +1323,152 @@ describe('QuestionnaireView expanded presentation', () => {
     expect(submittedChoiceIsCorrect('alpha')).toBe(true)
   })
 })
+
+/**
+ * The submitted feedback must reach the learner identically through both
+ * presentations: they share one result palette source and keep the reviewed
+ * choice labels looking interactive rather than muted. These cases render
+ * both presentations side by side with the same reviewed answers so their
+ * choice labels can be compared directly.
+ */
+describe('QuestionnaireView submitted feedback alignment', () => {
+  const reviewedAnswers: Record<string, AnswerValue> = {
+    [singleChoiceQuestion.id]: 'second',
+    [multipleChoiceQuestion.id]: ['alpha']
+  }
+
+  function BothSubmittedPresentations() {
+    return (
+      <>
+        <div data-rendered-as="stepper">
+          <QuestionnaireView node={questionnaireNode} answers={reviewedAnswers} submitted />
+        </div>
+        <div data-rendered-as="expanded">
+          <QuestionnaireView node={expandedQuestionnaireNode} answers={reviewedAnswers} submitted />
+        </div>
+      </>
+    )
+  }
+
+  /** The scope one presentation rendered into. */
+  function renderedAs(presentation: string): HTMLElement {
+    const scope = container.querySelector<HTMLElement>(`[data-rendered-as="${presentation}"]`)
+    if (!scope) {
+      throw new Error(`Presentation not rendered: ${presentation}`)
+    }
+    return scope
+  }
+
+  /** The submitted choice label of one option value in one presentation. */
+  function reviewedChoice(presentation: string, value: string): HTMLElement {
+    const control = renderedAs(presentation).querySelector<HTMLInputElement>(
+      `[data-slot="questionnaire-choice-input"][value="${value}"]`
+    )
+    const choice = control?.closest<HTMLElement>('[data-slot="questionnaire-choice"]')
+    if (!choice) {
+      throw new Error(`Submitted choice not found in ${presentation}: ${value}`)
+    }
+    return choice
+  }
+
+  /** Whether a reviewed input is disabled, presentation-scoped. */
+  function reviewedInputDisabled(presentation: string, value: string): boolean {
+    const control = renderedAs(presentation).querySelector<HTMLInputElement>(
+      `[data-slot="questionnaire-choice-input"][value="${value}"]`
+    )
+    if (!control) {
+      throw new Error(`Input not found in ${presentation}: ${value}`)
+    }
+    return control.disabled
+  }
+
+  /** The result a submitted choice is classified with in one presentation. */
+  function reviewedResult(presentation: string, value: string): string | null {
+    return reviewedChoice(presentation, value).getAttribute('data-result')
+  }
+
+  /**
+   * The feedback color tokens one submitted choice paints, so the palette is
+   * asserted through the colors the learner actually sees.
+   */
+  function reviewedFeedbackTokens(presentation: string, value: string): string[] {
+    return reviewedChoice(presentation, value)
+      .className.split(/\s+/)
+      .filter(paintsResultFeedback)
+      .sort()
+  }
+
+  it('reveals the same correct and incorrect feedback colors in both presentations', () => {
+    act(() => root.render(<BothSubmittedPresentations />))
+
+    // Reviewing the same answers classifies every option identically, and
+    // both presentations paint the result with exactly the same color tokens,
+    // so neither gains or loses feedback styling.
+    for (const [value, result] of [
+      ['first', 'correct'],
+      ['second', 'incorrect'],
+      ['alpha', 'correct'],
+      ['beta', 'neutral']
+    ] as const) {
+      expect(reviewedResult('stepper', value)).toBe(result)
+      expect(reviewedResult('expanded', value)).toBe(result)
+      expect(reviewedFeedbackTokens('stepper', value)).toEqual(
+        reviewedFeedbackTokens('expanded', value)
+      )
+    }
+
+    // The aligned palettes are the shared ones: emerald green, including the
+    // checked-state tint a selected correct option keeps, and destructive red
+    // for a selected wrong one, while an unselected wrong option stays
+    // outside both palettes.
+    const tokens = (presentation: string, value: string) =>
+      reviewedFeedbackTokens(presentation, value)
+    expect(tokens('stepper', 'first')).toContain('border-emerald-600/60')
+    expect(tokens('expanded', 'first')).toContain('bg-emerald-500/10')
+    expect(tokens('stepper', 'alpha')).toContain('data-checked:bg-emerald-500/15')
+    expect(tokens('expanded', 'alpha')).toContain('data-checked:bg-emerald-500/15')
+    expect(tokens('stepper', 'second')).toContain('border-destructive/60')
+    expect(tokens('expanded', 'second')).toContain('bg-destructive/10')
+    expect(tokens('stepper', 'second')).toContain('data-checked:bg-destructive/15')
+    expect(tokens('expanded', 'second')).toContain('data-checked:bg-destructive/15')
+    expect(tokens('stepper', 'beta')).toEqual([])
+    expect(tokens('expanded', 'beta')).toEqual([])
+
+    // No palette bleeds into the opposite result in either presentation.
+    for (const presentation of ['stepper', 'expanded']) {
+      const feedback = (value: string) => tokens(presentation, value).join(' ')
+      expect(feedback('first')).not.toContain('destructive')
+      expect(feedback('second')).not.toContain('emerald')
+    }
+  })
+
+  it('keeps the reviewed choice labels hoverable without disabled muting', () => {
+    act(() => root.render(<BothSubmittedPresentations />))
+
+    // Feedback colors attach to choice labels that still look interactive:
+    // the hover styling is retained, no data-disabled marker is present, and
+    // no unconditional pointer-events-none token is applied. The remaining
+    // conditional muting variants cannot fire without the absent marker, so
+    // hover and focus behavior survive the submitted review in both
+    // presentations.
+    for (const presentation of ['stepper', 'expanded']) {
+      for (const value of ['first', 'second', 'alpha', 'beta']) {
+        const choice = reviewedChoice(presentation, value)
+        expect(choice.getAttribute('data-disabled')).toBeNull()
+        expect(choice.className).toContain('hover:bg-input/40')
+        expect(choice.className.split(/\s+/)).not.toContain('pointer-events-none')
+        // The feedback paints on the same label: it coexists with the hover
+        // styling instead of replacing it.
+        expect(choice.getAttribute('data-result')).not.toBeNull()
+      }
+    }
+
+    // Only the actual controls differ between the presentations: the wizard
+    // keeps them enabled for the Root's answer derivation, and the expanded
+    // review disables its native inputs directly — never the labels.
+    for (const value of ['first', 'second', 'alpha', 'beta']) {
+      expect(reviewedInputDisabled('stepper', value)).toBe(false)
+      expect(reviewedInputDisabled('expanded', value)).toBe(true)
+    }
+  })
+})
