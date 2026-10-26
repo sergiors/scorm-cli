@@ -69,8 +69,11 @@ function input(value: string): HTMLInputElement {
 }
 
 /**
- * A read-only submitted choice. Submitted answers render through the shadcn
- * questionnaire choice part, whose native input carries the value and state.
+ * A submitted choice's native input. Submitted answers render through the
+ * shadcn questionnaire choice part. Its input intentionally stays enabled so
+ * the Root still derives the item's answered status from it; the controlled
+ * `checked` value and the dropped change interaction keep the saved selection
+ * immutable instead.
  */
 function submittedControl(value: string): HTMLInputElement {
   const element = container.querySelector<HTMLInputElement>(
@@ -84,6 +87,24 @@ function submittedControl(value: string): HTMLInputElement {
 
 function submittedChecked(value: string): boolean {
   return submittedControl(value).checked
+}
+
+/** The questionnaire item (fieldset) that renders a submitted option. */
+function submittedItem(value: string): HTMLElement {
+  const item = submittedControl(value).closest<HTMLElement>('[data-slot="questionnaire-item"]')
+  if (!item) {
+    throw new Error(`Submitted item not found for value: ${value}`)
+  }
+  return item
+}
+
+/**
+ * Attempts a submitted choice change the way a learner would. A read-only
+ * review drops the interaction, so every observed state after this call reveals
+ * how the saved answer withstood the attempt.
+ */
+function attemptSubmittedChange(value: string): void {
+  act(() => submittedControl(value).click())
 }
 
 /**
@@ -548,18 +569,27 @@ function ControlledQuestionnaire({
 /**
  * A controlled questionnaire whose owner records submissions the way a page
  * does: the first successful submit flips the wrapper into its read-only
- * submitted review for the rest of the session.
+ * submitted review for the rest of the session. An optional listener observes
+ * every persisted answer, including the ones a read-only change attempt must
+ * never produce.
  */
-function OwnerTrackedQuestionnaire({ node = questionnaireNode }: { node?: QuestionnaireNode }) {
+function OwnerTrackedQuestionnaire({
+  node = questionnaireNode,
+  onAnswer: observeAnswer
+}: {
+  node?: QuestionnaireNode
+  onAnswer?: (questionId: string, value: AnswerValue) => void
+}) {
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>({})
   const [submittedIds, setSubmittedIds] = useState<string[]>([])
   return (
     <QuestionnaireView
       node={node}
       answers={answers}
-      onAnswer={(questionId, value) =>
+      onAnswer={(questionId, value) => {
+        observeAnswer?.(questionId, value)
         setAnswers((previous) => ({ ...previous, [questionId]: value }))
-      }
+      }}
       submitted={submittedIds.includes(node.id)}
       onSubmitted={(id) => setSubmittedIds((previous) => [...previous, id])}
     />
@@ -684,15 +714,27 @@ describe('QuestionnaireView persistence', () => {
     expect(activeItem().textContent).toContain('Which options apply?')
     expect(container.textContent).toContain('Question 2 of 2')
 
-    // The hidden earlier question keeps its saved selection rendered, and
-    // both saved answers are checked and disabled.
+    // The hidden earlier question keeps its saved selection rendered, and both
+    // saved answers stay checked and read-only: the inputs stay enabled, but
+    // every reviewed item exposes its submitted read-only state to
+    // assistive technology.
     expect(hiddenItems()[0]?.textContent).toContain('Which option is correct?')
     expect(submittedChecked('first')).toBe(true)
-    expect(submittedControl('first').disabled).toBe(true)
     expect(submittedChecked('second')).toBe(false)
     expect(submittedChecked('alpha')).toBe(true)
     expect(submittedChecked('beta')).toBe(true)
-    expect(submittedControl('beta').disabled).toBe(true)
+    expect(submittedItem('alpha').getAttribute('aria-readonly')).toBe('true')
+    expect(submittedItem('beta').hasAttribute('data-readonly')).toBe(true)
+
+    // A change attempt on the active review choices cannot uncheck or select
+    // anything: the submitted handler drops the interaction and the controlled
+    // checked value stays authoritative, so the feedback is untouched too.
+    attemptSubmittedChange('alpha')
+    attemptSubmittedChange('beta')
+    expect(submittedChecked('alpha')).toBe(true)
+    expect(submittedChecked('beta')).toBe(true)
+    expect(submittedChoiceResult('beta')).toBe('incorrect')
+    expect(submittedChoiceResult('alpha')).toBe('correct')
 
     // Submission cannot repeat: the Submit action stays rendered but disabled,
     // while the wizard navigation remains visible for reviewing every answer.
@@ -735,16 +777,22 @@ describe('QuestionnaireView persistence', () => {
     expect(button('Next question').disabled).toBe(false)
 
     // The answer stays read-only and the result is classified: the saved
-    // 'second' pick was wrong, the unselected correct option stays correct.
+    // 'second' pick was wrong, the unselected correct option stays correct. A
+    // switch attempt to the unchecked correct option is dropped, so the
+    // selection cannot move.
+    expect(submittedItem('second').getAttribute('aria-readonly')).toBe('true')
+    attemptSubmittedChange('first')
+    expect(submittedChecked('first')).toBe(false)
     expect(submittedChecked('second')).toBe(true)
-    expect(submittedControl('second').disabled).toBe(true)
     expect(submittedChoiceIsCorrect('first')).toBe(true)
     expect(submittedChoiceIsIncorrect('second')).toBe(true)
 
     // Next returns to the last question's feedback, also read-only. This is
     // the two-way review the submitted wizard must support: if it fails with
     // the required-answer message shown on the earlier question, the wizard
-    // validation is treating the submitted (disabled) choices as unanswered.
+    // validation is treating the submitted choices as unanswered — which
+    // disabling them would cause, since the Root reads answer status from
+    // non-disabled controls.
     act(() => button('Next question').click())
     expect(activeItem().textContent).toContain('Which options apply?')
     expect(submittedChecked('alpha')).toBe(true)
@@ -765,18 +813,20 @@ describe('QuestionnaireView persistence', () => {
       )
     )
 
-    // Single-choice is a disabled questionnaire radio; multiple-choice uses
-    // disabled questionnaire checkboxes, each an accessible choice part.
+    // Single-choice is a questionnaire radio review; multiple-choice uses
+    // questionnaire checkboxes. Their native inputs intentionally stay
+    // enabled: the Root derives an item's answered status only from
+    // non-disabled controls, and the controlled checked value plus the dropped
+    // submitted interaction keep the saved selection immutable instead.
     const single = submittedControl('second')
     expect(single.type).toBe('radio')
     expect(single.checked).toBe(true)
-    expect(single.disabled).toBe(true)
+    expect(single.disabled).toBe(false)
     expect(single.closest('[data-slot="questionnaire-choice"]')).not.toBeNull()
 
     const multiple = submittedControl('alpha')
     expect(multiple.type).toBe('checkbox')
     expect(multiple.checked).toBe(true)
-    expect(multiple.disabled).toBe(true)
     expect(submittedControl('beta').checked).toBe(false)
 
     // One shared form still drives the restored wizard: every question renders
@@ -785,6 +835,12 @@ describe('QuestionnaireView persistence', () => {
     expect(container.querySelectorAll('[data-slot="questionnaire"]')).toHaveLength(1)
     expect(container.querySelectorAll('[data-slot="questionnaire-title"]')).toHaveLength(2)
     expect(container.querySelectorAll('[data-slot="questionnaire-choice"]')).toHaveLength(4)
+    // Both questions stay inside the one primitive Root; the review never
+    // nests or replaces a second questionnaire.
+    const questionnaireRoot = container.querySelector('[data-slot="questionnaire"]')
+    for (const item of container.querySelectorAll('[data-slot="questionnaire-item"]')) {
+      expect(item.closest('[data-slot="questionnaire"]')).toBe(questionnaireRoot)
+    }
   })
 
   it('classifies every correct option as correct in a submitted questionnaire', () => {
@@ -902,7 +958,8 @@ describe('QuestionnaireView persistence', () => {
 
 describe('QuestionnaireView submitted wizard flow', () => {
   it('keeps the wizard on its active question after submitting', () => {
-    act(() => root.render(<OwnerTrackedQuestionnaire />))
+    const onAnswer = vi.fn()
+    act(() => root.render(<OwnerTrackedQuestionnaire onAnswer={onAnswer} />))
 
     // Given a fully answered default wizard on its last question, when the
     // learner submits, then the wizard presentation is unchanged: submission
@@ -924,12 +981,19 @@ describe('QuestionnaireView submitted wizard flow', () => {
     expect(hasVisibleButton('Next question')).toBe(true)
     expect(button('Next question').disabled).toBe(true)
 
-    // The answered questions read as results: read-only with their feedback.
-    expect(submittedControl('alpha').disabled).toBe(true)
+    // The answered questions read as results with their feedback. Review stays
+    // read-only without disabling the controls: a change attempt on the active
+    // question is dropped, so the rendered selection, its feedback, and the
+    // owner's persisted answers all keep the submitted values.
+    expect(submittedItem('alpha').getAttribute('aria-readonly')).toBe('true')
+    const persistedAnswers = onAnswer.mock.calls.length
+    attemptSubmittedChange('beta')
+    attemptSubmittedChange('alpha')
     expect(submittedChecked('alpha')).toBe(true)
-    expect(submittedChoiceIsCorrect('alpha')).toBe(true)
+    expect(submittedChecked('beta')).toBe(false)
     expect(submittedChecked('first')).toBe(true)
-    expect(submittedControl('first').disabled).toBe(true)
+    expect(submittedChoiceIsCorrect('alpha')).toBe(true)
+    expect(onAnswer).toHaveBeenCalledTimes(persistedAnswers)
 
     // Review never surfaces a stale required-answer message.
     expect(revealedErrors()).toHaveLength(0)
@@ -944,21 +1008,31 @@ describe('QuestionnaireView submitted wizard flow', () => {
     act(() => button('Submit questionnaire').click())
 
     // Previous revisits the first question, still exactly one item visible,
-    // with its saved answer checked, disabled, and feedback revealed.
+    // with its saved answer checked and feedback revealed. The change attempt
+    // to the unchecked option is dropped, so the saved selection cannot move.
     act(() => button('Previous question').click())
     expect(activeItem().textContent).toContain('Which option is correct?')
     expect(hiddenItems()).toHaveLength(1)
     expect(submittedChecked('first')).toBe(true)
-    expect(submittedControl('first').disabled).toBe(true)
+    attemptSubmittedChange('second')
+    expect(submittedChecked('second')).toBe(false)
+    expect(submittedChecked('first')).toBe(true)
     expect(submittedChoiceIsCorrect('first')).toBe(true)
 
     // The start review boundary keeps Previous visible but disabled, while
     // Next returns to the last question's feedback. This is the two-way
     // review the submitted wizard must support: if it fails with the
     // required-answer message shown on the earlier question, the wizard
-    // validation is treating the submitted (disabled) choices as unanswered.
+    // validation is treating the submitted choices as unanswered.
     expect(button('Previous question').disabled).toBe(true)
     expect(button('Next question').disabled).toBe(false)
+
+    // Submit stays visible and disabled on the non-final review question too,
+    // so a submission can never repeat from anywhere in the wizard.
+    const submit = button('Submit questionnaire')
+    expect(submit.type).toBe('submit')
+    expect(submit.disabled).toBe(true)
+
     act(() => button('Next question').click())
     expect(activeItem().textContent).toContain('Which options apply?')
     expect(submittedChoiceIsCorrect('alpha')).toBe(true)

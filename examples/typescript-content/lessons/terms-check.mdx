@@ -13,23 +13,32 @@ import { Questionnaire, Question, Prompt, Option } from 'scorm-cli/authoring'
     <Option value="types" correct={true}>
       Static types and tooling that compile to JavaScript
     </Option>
-  </Question>
-  <Question type="single-choice">
-    <Prompt>When does TypeScript perform type checking?</Prompt>
-    <Option value="runtime" correct={false}>
-      While the application is running in the browser
-    </Option>
-    <Option value="compile" correct={true}>
-      During development and compilation
+    <Option value="browser" correct={false}>
+      A new browser engine for running TypeScript
     </Option>
   </Question>
-  <Question type="single-choice">
-    <Prompt>Which file extension is commonly used for TypeScript files?</Prompt>
-    <Option value="js" correct={false}>
-      .js
+  <Question type="multiple-choice">
+    <Prompt>Which statements about TypeScript are correct?</Prompt>
+    <Option value="static-checking" correct={true}>
+      TypeScript can detect type errors during development
     </Option>
-    <Option value="ts" correct={true}>
-      .ts
+    <Option value="browser-native" correct={false}>
+      Browsers execute TypeScript directly without compilation
+    </Option>
+    <Option value="javascript" correct={true}>
+      TypeScript code can be compiled into JavaScript
+    </Option>
+    <Option value="runtime-types" correct={false}>
+      TypeScript types are always preserved at runtime
+    </Option>
+  </Question>
+  <Question type="true-false">
+    <Prompt>TypeScript uses the .ts file extension by default.</Prompt>
+    <Option value="true" correct={true}>
+      True
+    </Option>
+    <Option value="false" correct={false}>
+      False
     </Option>
   </Question>
 </Questionnaire>

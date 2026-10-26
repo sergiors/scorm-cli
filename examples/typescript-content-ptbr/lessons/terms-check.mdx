@@ -4,7 +4,7 @@ title: Verificação de conceitos de TypeScript
 
 import { Questionnaire, Question, Prompt, Option } from 'scorm-cli/authoring'
 
-<Questionnaire>
+<Questionnaire expanded={true}>
   <Question type="single-choice">
     <Prompt>O que o TypeScript adiciona ao JavaScript?</Prompt>
     <Option value="runtime" correct={false}>
@@ -12,6 +12,33 @@ import { Questionnaire, Question, Prompt, Option } from 'scorm-cli/authoring'
     </Option>
     <Option value="types" correct={true}>
       Tipos estáticos e ferramentas que compilam para JavaScript
+    </Option>
+    <Option value="browser" correct={false}>
+      Um novo mecanismo de navegador para executar TypeScript
+    </Option>
+  </Question>
+  <Question type="multiple-choice">
+    <Prompt>Quais afirmações sobre o TypeScript estão corretas?</Prompt>
+    <Option value="static-checking" correct={true}>
+      O TypeScript pode detectar erros de tipo durante o desenvolvimento
+    </Option>
+    <Option value="browser-native" correct={false}>
+      Os navegadores executam TypeScript diretamente, sem compilação
+    </Option>
+    <Option value="javascript" correct={true}>
+      O código TypeScript pode ser compilado para JavaScript
+    </Option>
+    <Option value="runtime-types" correct={false}>
+      Os tipos do TypeScript são sempre preservados durante a execução
+    </Option>
+  </Question>
+  <Question type="true-false">
+    <Prompt>O TypeScript utiliza a extensão .ts por padrão.</Prompt>
+    <Option value="true" correct={true}>
+      Verdadeiro
+    </Option>
+    <Option value="false" correct={false}>
+      Falso
     </Option>
   </Question>
 </Questionnaire>

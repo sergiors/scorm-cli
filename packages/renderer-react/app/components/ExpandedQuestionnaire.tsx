@@ -1,5 +1,5 @@
-import { type KeyboardEvent } from 'react'
-import { FormattedMessage } from 'react-intl'
+import { Fragment, type KeyboardEvent } from 'react'
+import { FormattedMessage, useIntl } from 'react-intl'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
 import {
@@ -10,6 +10,7 @@ import {
   useQuestionnaireSubmission,
   type QuestionnaireViewProps
 } from './QuestionnaireShared'
+import { Separator } from './ui/separator'
 
 /**
  * An expanded questionnaire: every authored question is rendered at once in
@@ -26,6 +27,8 @@ import {
  */
 export function ExpandedQuestionnaire(props: QuestionnaireViewProps) {
   const { node, answers, submitted = false, onAnswer, onSubmitted } = props
+
+  const intl = useIntl()
 
   const {
     answers: currentAnswers,
@@ -60,7 +63,7 @@ export function ExpandedQuestionnaire(props: QuestionnaireViewProps) {
         <form
           data-slot="questionnaire"
           noValidate
-          className="flex w-full min-w-0 flex-col gap-6"
+          className="grid gap-6"
           onKeyDownCapture={handleKeyDownCapture}
           onSubmit={(event) => {
             event.preventDefault()
@@ -69,15 +72,28 @@ export function ExpandedQuestionnaire(props: QuestionnaireViewProps) {
             }
           }}
         >
-          {node.questions.map((question) => (
-            <QuestionnaireQuestion
-              key={question.id}
-              node={question}
-              value={currentAnswers[question.id]}
-              submitted={submitted}
-              onAnswer={answerQuestion}
-            />
-          ))}
+          {node.questions.map((question, index) => {
+            const label = intl.formatMessage(
+              { id: 'questionnaire.progress' },
+              { current: index + 1, total: node.questions.length }
+            )
+
+            return (
+              <Fragment key={question.id}>
+                {index > 0 && <Separator />}
+
+                <div className="text-xs font-medium text-muted-foreground">{label}</div>
+
+                <QuestionnaireQuestion
+                  key={question.id}
+                  node={question}
+                  value={currentAnswers[question.id]}
+                  submitted={submitted}
+                  onAnswer={answerQuestion}
+                />
+              </Fragment>
+            )
+          })}
 
           <div className="flex justify-end">
             <Button type="submit" data-slot="questionnaire-submit" disabled={!canSubmit}>

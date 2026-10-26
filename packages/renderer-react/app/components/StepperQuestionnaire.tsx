@@ -1,15 +1,19 @@
 import {
   useId,
   useRef,
-  useState,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
   type KeyboardEvent
 } from 'react'
 import { FormattedMessage, useIntl } from 'react-intl'
 import type { QuestionnaireItemDefinition } from '@shadcn/react/questionnaire'
-import { answerAfterChange, isOptionSelected, isQuestionAnswered } from '../lib/questionnaire'
-import { Button } from './ui/button'
+import {
+  answerAfterChange,
+  isOptionSelected,
+  isQuestionAnswered,
+  submittedOptionResult
+} from '../lib/questionnaire'
+import { cn } from '../lib/utils'
 import { Card, CardContent } from './ui/card'
 import {
   Questionnaire,
@@ -25,8 +29,7 @@ import {
   QuestionnaireTitle
 } from './ui/questionnaire'
 import {
-  isEventFromNestedQuestionnaire,
-  QuestionnaireQuestion,
+  submittedChoiceClassName,
   useQuestionnaireAnswers,
   useQuestionnaireSubmission,
   type QuestionnaireViewProps
@@ -36,30 +39,64 @@ import type { AnswerValue, QuestionNode } from '../types'
 interface StepperQuestionProps {
   node: QuestionNode
   value: AnswerValue | undefined
+  submitted: boolean
   onAnswer: (questionId: string, value: AnswerValue) => void
 }
 
 /**
  * One authored question rendered through the Questionnaire compound parts. The
  * Root owns which item is active, hiding and inerting the rest, so this only
- * describes the question and reports its choice interactions.
+ * describes the question, reports its choice interactions, and reveals its
+ * submitted feedback.
+ *
+ * Submitted choices stay enabled on purpose: the primitive derives an item's
+ * answer status from its non-disabled answer controls, so disabling them would
+ * make every submitted question look unanswered and block review navigation.
+ * The controlled `checked` value still keeps the saved answer immutable because
+ * the submitted change handler drops the interaction and the primitive's own
+ * controlled branch ignores it.
  */
-function StepperQuestion({ node, value, onAnswer }: StepperQuestionProps) {
+function StepperQuestion({ node, value, submitted, onAnswer }: StepperQuestionProps) {
   const titleId = useId()
   const multiple = node.questionType === 'multiple-choice'
 
   return (
-    <QuestionnaireItem name={node.id} required multiple={multiple} aria-labelledby={titleId}>
+    <QuestionnaireItem
+      name={node.id}
+      required
+      multiple={multiple}
+      aria-labelledby={titleId}
+      aria-readonly={submitted || undefined}
+      {...(submitted ? { 'data-readonly': '' } : {})}
+    >
       <QuestionnaireTitle id={titleId}>{node.prompt}</QuestionnaireTitle>
       <QuestionnaireChoices>
         {node.options.map((option) => {
           const selected = isOptionSelected(node, value, option.value)
+          const result = submitted ? submittedOptionResult(option, selected) : undefined
+          // Submitted review is past validation, so replace the primitive's
+          // dormant required-answer border with the neutral input border and
+          // leave only the result palette visible.
+          const feedbackClassName = result
+            ? cn(submittedChoiceClassName(result), 'data-invalid:border-input')
+            : undefined
           return (
             <QuestionnaireChoice
               key={option.value}
               value={option.value}
               checked={selected}
+              className={feedbackClassName}
+              {...(result ? { 'data-result': result } : {})}
               onChange={(event) => {
+                if (submitted) {
+                  // Gate the interaction without forwarding it to the owner.
+                  // Canceling the change would also suppress React's restore
+                  // of a controlled checkbox, leaving the saved selection
+                  // looking toggled, so let the controlled `checked` value be
+                  // authoritative instead. The primitive's own controlled
+                  // branch ignores the interaction, so the answer cannot change.
+                  return
+                }
                 onAnswer(
                   node.id,
                   answerAfterChange(node, value, option.value, event.target.checked)
@@ -79,44 +116,25 @@ function StepperQuestion({ node, value, onAnswer }: StepperQuestionProps) {
 }
 
 /**
- * Whether an arrow key belongs to a text-editing control. Submitted review has
- * no editable answers, but preserve native caret behavior if a text-editing
- * control is ever rendered inside the questionnaire.
- */
-function navigatesReviewWithArrowKeys(target: EventTarget | null): boolean {
-  if (
-    target instanceof HTMLInputElement &&
-    !['button', 'checkbox', 'radio', 'reset', 'submit'].includes(target.type)
-  ) {
-    return false
-  }
-  if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
-    return false
-  }
-  return !(target instanceof HTMLElement && target.isContentEditable)
-}
-
-/**
- * A one-question-at-a-time questionnaire. While it is answerable, the
- * Questionnaire Root owns the active item, validation, focus, keyboard
- * shortcuts and navigation; only the active item is visible and the rest stay
- * hidden and inert. Previous and Next stay in the layout and disable at the
- * boundaries or while the active item is unanswered. Submit appears on the
- * final item and stays disabled until every question has an answer.
+ * A one-question-at-a-time questionnaire. A single Questionnaire Root owns the
+ * active item, validation, focus, keyboard shortcuts and navigation before and
+ * after submission; only the active item is visible and the rest stay hidden
+ * and inert.
  *
- * The wizard cannot navigate a submitted review: its item status ignores
- * disabled answer controls, so read-only choices make every item read as
- * unanswered. A submitted stepper therefore keeps the identical one-question
- * presentation with the shared native question, rendering saved choices
- * read-only with their feedback. It opens on the last authored question, keeps
- * Submit visible but disabled, and lets Previous/Next review every answer.
+ * Previous and Next stay in the layout and disable at the boundaries or while
+ * the active item is unanswered. Submit appears on the final item and stays
+ * disabled until every question has an answer.
+ *
+ * Submitting does not replace the Root or move the active item. Saved choices
+ * remain checked but read-only with their correctness feedback revealed, and
+ * Previous/Next continue to review every question through the same wizard.
+ * Submit stays visible but disabled on every item so submission cannot repeat.
  */
 export function StepperQuestionnaire(props: QuestionnaireViewProps) {
   const { node, answers, submitted = false, onAnswer, onSubmitted } = props
   const intl = useIntl()
   const firstQuestionId = node.questions[0]?.id ?? ''
   const lastQuestionId = node.questions[node.questions.length - 1]?.id ?? ''
-  const total = node.questions.length
 
   const {
     answers: currentAnswers,
@@ -129,114 +147,13 @@ export function StepperQuestionnaire(props: QuestionnaireViewProps) {
   })
   const submitQuestionnaire = useQuestionnaireSubmission(node.id, submitted, onSubmitted)
 
-  // The live wizard Root owns the active item. Mirror its reported item in a
-  // ref only so the Enter-shortcut guard can tell whether the action that
-  // shortcut would invoke is enabled; rendering and navigation stay Root-owned.
+  // The live Root owns the active item. Mirror its reported item in a ref only
+  // so the Enter-shortcut guard can tell whether the action that shortcut would
+  // invoke is available; rendering and navigation stay Root-owned.
   const activeItemRef = useRef(firstQuestionId)
-  const [reviewIndex, setReviewIndex] = useState(() => Math.max(total - 1, 0))
 
   if (node.questions.length === 0) {
     return null
-  }
-
-  if (submitted) {
-    const resolvedReviewIndex = Math.min(Math.max(reviewIndex, 0), total - 1)
-    const progressLabel = intl.formatMessage(
-      { id: 'questionnaire.progress' },
-      { current: resolvedReviewIndex + 1, total }
-    )
-    const goToQuestion = (index: number) => {
-      if (index < 0 || index >= total) {
-        return
-      }
-      setReviewIndex(index)
-    }
-    const handleReviewKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
-      if (isEventFromNestedQuestionnaire(event)) {
-        return
-      }
-      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
-        return
-      }
-      if (!navigatesReviewWithArrowKeys(event.target)) {
-        return
-      }
-      event.preventDefault()
-      if (event.repeat) {
-        return
-      }
-      goToQuestion(event.key === 'ArrowLeft' ? resolvedReviewIndex - 1 : resolvedReviewIndex + 1)
-    }
-
-    return (
-      <Card>
-        <CardContent>
-          <form
-            data-slot="questionnaire"
-            noValidate
-            className="flex w-full min-w-0 flex-col gap-6"
-            onKeyDown={handleReviewKeyDown}
-            onSubmit={(event) => event.preventDefault()}
-          >
-            <div
-              data-slot="questionnaire-progress"
-              role="progressbar"
-              aria-label={intl.formatMessage({ id: 'questionnaire.progressLabel' })}
-              aria-live="polite"
-              aria-valuemin={1}
-              aria-valuemax={total}
-              aria-valuenow={resolvedReviewIndex + 1}
-              aria-valuetext={progressLabel}
-              className="min-h-[1lh] w-fit min-w-[14ch] text-xs font-medium text-muted-foreground tabular-nums"
-            >
-              {progressLabel}
-            </div>
-
-            {node.questions.map((question, index) => (
-              <QuestionnaireQuestion
-                key={question.id}
-                node={question}
-                value={currentAnswers[question.id]}
-                submitted
-                onAnswer={answerQuestion}
-                hidden={index !== resolvedReviewIndex}
-                inert={index !== resolvedReviewIndex}
-              />
-            ))}
-
-            <div
-              data-slot="questionnaire-actions"
-              className="flex min-h-11 w-full flex-wrap items-center justify-between gap-2 sm:min-h-9"
-            >
-              <Button
-                type="button"
-                variant="outline"
-                data-slot="questionnaire-previous"
-                disabled={resolvedReviewIndex === 0}
-                onClick={() => goToQuestion(resolvedReviewIndex - 1)}
-              >
-                <FormattedMessage id="questionnaire.previous" />
-              </Button>
-
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  data-slot="questionnaire-next"
-                  disabled={resolvedReviewIndex === total - 1}
-                  onClick={() => goToQuestion(resolvedReviewIndex + 1)}
-                >
-                  <FormattedMessage id="questionnaire.next" />
-                </Button>
-
-                <Button type="submit" data-slot="questionnaire-submit" disabled>
-                  <FormattedMessage id="questionnaire.submit" />
-                </Button>
-              </div>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-    )
   }
 
   const items: QuestionnaireItemDefinition[] = node.questions.map((question) => ({
@@ -245,16 +162,19 @@ export function StepperQuestionnaire(props: QuestionnaireViewProps) {
     choices: question.options.map((option) => ({ value: option.value }))
   }))
 
-  const canSubmit = allAnswered
+  const canSubmit = !submitted && allAnswered
 
   /**
-   * The Root handles arrow keys, focus, validation and its Enter shortcuts. Its
-   * shortcuts do not know whether the equivalent buttons are disabled, so this
-   * thin guard suppresses exactly those shortcut paths while the action is not
-   * available; otherwise the Root receives the event unchanged.
+   * The installed Root handles arrow keys, focus, validation and its Enter
+   * shortcuts. Its shortcuts do not know whether the equivalent button is
+   * disabled, so letting one through on an unanswered item would run validation
+   * and reveal the required-answer message those disabled actions suppress.
+   * This guard cancels exactly those unavailable shortcut paths before the Root
+   * sees them. Once submitted, the Root's shortcuts are safe and its read-only
+   * review navigation stays in charge.
    */
   const handleKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
-    if (event.key !== 'Enter') {
+    if (submitted || event.key !== 'Enter') {
       return
     }
     const commandShortcut = event.metaKey || event.ctrlKey
@@ -269,7 +189,7 @@ export function StepperQuestionnaire(props: QuestionnaireViewProps) {
     }
     const activeQuestion =
       node.questions.find((question) => question.id === activeItemRef.current) ?? node.questions[0]
-    const activeIsLast = activeQuestion === undefined || activeQuestion.id === lastQuestionId
+    const activeIsLast = activeQuestion?.id === lastQuestionId
     const activeActionEnabled =
       activeQuestion !== undefined &&
       (activeIsLast ? canSubmit : isQuestionAnswered(activeQuestion, currentAnswers))
@@ -283,7 +203,7 @@ export function StepperQuestionnaire(props: QuestionnaireViewProps) {
     <Card>
       <CardContent>
         <Questionnaire
-          defaultItem={firstQuestionId}
+          defaultItem={submitted ? lastQuestionId : firstQuestionId}
           items={items}
           onItemChange={(item) => {
             activeItemRef.current = item
@@ -311,25 +231,15 @@ export function StepperQuestionnaire(props: QuestionnaireViewProps) {
             }}
           />
 
-          <div
-            className="contents"
-            onKeyDown={(event) => {
-              if (isEventFromNestedQuestionnaire(event)) {
-                // The nested questionnaire already handled its own keys. Stop
-                // them here so the outer Root cannot also navigate.
-                event.stopPropagation()
-              }
-            }}
-          >
-            {node.questions.map((question) => (
-              <StepperQuestion
-                key={question.id}
-                node={question}
-                value={currentAnswers[question.id]}
-                onAnswer={answerQuestion}
-              />
-            ))}
-          </div>
+          {node.questions.map((question) => (
+            <StepperQuestion
+              key={question.id}
+              node={question}
+              value={currentAnswers[question.id]}
+              submitted={submitted}
+              onAnswer={answerQuestion}
+            />
+          ))}
 
           <QuestionnaireActions>
             <QuestionnairePrevious
@@ -339,9 +249,6 @@ export function StepperQuestionnaire(props: QuestionnaireViewProps) {
               render={(renderProps, state) => (
                 <button
                   {...(renderProps as ButtonHTMLAttributes<HTMLButtonElement>)}
-                  hidden={false}
-                  inert={false}
-                  aria-hidden={false}
                   disabled={!state.visible}
                 />
               )}
@@ -357,17 +264,22 @@ export function StepperQuestionnaire(props: QuestionnaireViewProps) {
               render={(renderProps, state) => (
                 <button
                   {...(renderProps as ButtonHTMLAttributes<HTMLButtonElement>)}
-                  hidden={false}
-                  inert={false}
-                  aria-hidden={false}
-                  disabled={!state.visible || state.status !== 'answered'}
+                  disabled={!state.visible || (!submitted && state.status !== 'answered')}
                 />
               )}
             >
               <FormattedMessage id="questionnaire.next" />
             </QuestionnaireNext>
 
-            <QuestionnaireSubmit disabled={!canSubmit}>
+            <QuestionnaireSubmit
+              disabled={!canSubmit}
+              render={(renderProps) => (
+                <button
+                  {...(renderProps as ButtonHTMLAttributes<HTMLButtonElement>)}
+                  {...(submitted ? { hidden: false, inert: false, 'aria-hidden': false } : {})}
+                />
+              )}
+            >
               <FormattedMessage id="questionnaire.submit" />
             </QuestionnaireSubmit>
           </QuestionnaireActions>

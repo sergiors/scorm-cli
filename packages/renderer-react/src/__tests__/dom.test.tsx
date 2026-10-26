@@ -1800,10 +1800,26 @@ describe('PackageView scroll persistence', () => {
 
     act(() => root.render(<Player contentPackage={gatedPackage} />))
 
+    // The restored submission is read-only: the saved selections render
+    // checked, the active review item exposes its read-only state, and a
+    // change attempt on that item is dropped — so neither the rendered
+    // selections nor the persisted answers move.
     expect(submittedControl('first').checked).toBe(true)
-    expect(submittedControl('first').disabled).toBe(true)
+    expect(submittedControl('second').checked).toBe(false)
     expect(submittedControl('alpha').checked).toBe(true)
-    expect(submittedControl('alpha').disabled).toBe(true)
+    expect(submittedControl('beta').checked).toBe(false)
+    const restoredItem = document.querySelector<HTMLElement>(
+      '[data-slot="questionnaire-item"]:not([hidden])'
+    )
+    expect(restoredItem?.textContent).toContain('Which options apply?')
+    expect(restoredItem?.getAttribute('aria-readonly')).toBe('true')
+    expect(restoredItem?.hasAttribute('data-readonly')).toBe(true)
+
+    act(() => submittedControl('beta').click())
+    act(() => submittedControl('alpha').click())
+    expect(submittedControl('alpha').checked).toBe(true)
+    expect(submittedControl('beta').checked).toBe(false)
+
     // The Submit action stays rendered for the submitted questionnaire, but
     // natively disabled so the saved submission can never repeat.
     expect(submitAction().type).toBe('submit')
@@ -1946,13 +1962,23 @@ describe('PackageView scroll persistence', () => {
 
     // The reload resumes on the saved page, and the earlier page's restored
     // answers and submitted questionnaire are still rendered read-only when the
-    // learner scrolls back to it — only the reading position resumes.
+    // learner scrolls back to it — only the reading position resumes. The saved
+    // selections stay checked and expose the read-only state, and a change
+    // attempt on the active review choices is dropped: the rendered
+    // selections — and therefore the persisted answers — stay untouched.
     expect(sceneIndices()).toEqual([1])
     showScrollPage(0)
     expect(submittedControl('first').checked).toBe(true)
-    expect(submittedControl('first').disabled).toBe(true)
     expect(submittedControl('alpha').checked).toBe(true)
-    expect(submittedControl('alpha').disabled).toBe(true)
+    const reviewedItem = document.querySelector<HTMLElement>(
+      '[data-slot="questionnaire-item"]:not([hidden])'
+    )
+    expect(reviewedItem?.getAttribute('aria-readonly')).toBe('true')
+    expect(reviewedItem?.hasAttribute('data-readonly')).toBe(true)
+    act(() => submittedControl('beta').click())
+    act(() => submittedControl('alpha').click())
+    expect(submittedControl('alpha').checked).toBe(true)
+    expect(submittedControl('beta').checked).toBe(false)
     // The Submit action stays rendered but disabled for the restored
     // submission, so it can never be submitted again.
     expect(submitAction().disabled).toBe(true)
@@ -2691,6 +2717,7 @@ describe('PackageView tiles interactions', () => {
   })
 
   it('reopens the saved tile and restores its answers read-only', () => {
+    const saveState = vi.fn()
     window.scormBridge = {
       restoreState: () => ({
         location: 'item:quiz.mdx',
@@ -2701,16 +2728,30 @@ describe('PackageView tiles interactions', () => {
             submittedQuestionnaires: ['questionnaire:quiz.mdx']
           }
         }
-      })
+      }),
+      saveState
     }
 
     act(() => root.render(<Player contentPackage={quizTilesPackage} />))
 
     expect(dialog()).not.toBeNull()
     expect(documentText()).toContain('Shared prompt')
+
+    // The restored submission is read-only: the saved selection stays checked
+    // and the item exposes its read-only state.
     const no = submittedControl('no')
     expect(no.checked).toBe(true)
-    expect(no.disabled).toBe(true)
+    const quizItem = no.closest<HTMLElement>('[data-slot="questionnaire-item"]')
+    expect(quizItem?.getAttribute('aria-readonly')).toBe('true')
+    expect(quizItem?.hasAttribute('data-readonly')).toBe(true)
+
+    // A change attempt on the reviewed choices is dropped, so the rendered
+    // selection — and therefore the persisted answers — stays untouched.
+    act(() => submittedControl('yes').click())
+    act(() => submittedControl('no').click())
+    expect(submittedControl('no').checked).toBe(true)
+    expect(submittedControl('yes').checked).toBe(false)
+    expect(saveState).not.toHaveBeenCalled()
   })
 
   it('completes once every tile has been opened and notifies the bridge once', () => {
