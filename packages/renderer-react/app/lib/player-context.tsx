@@ -22,6 +22,7 @@ export function PlayerProvider({
   const actions = useMemo<PlayerActions>(
     () => ({
       markSeen: session.markSeen,
+      recordReadingPosition: session.recordReadingPosition,
       markCompleted: session.markCompleted,
       setAnswer: session.setAnswer,
       markQuestionnaireSubmitted: session.markQuestionnaireSubmitted,
@@ -31,6 +32,7 @@ export function PlayerProvider({
     }),
     [
       session.markSeen,
+      session.recordReadingPosition,
       session.markCompleted,
       session.setAnswer,
       session.markQuestionnaireSubmitted,

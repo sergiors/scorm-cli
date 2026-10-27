@@ -9,6 +9,7 @@ import type {
   ItemNode
 } from '../types'
 import { collectQuestionnaires, collectVideoNodes } from './content-helpers'
+import { decodeReadingLocation, isReadingAnchorId } from './reading-location'
 
 /** A fresh player state with no location and no recorded pages. */
 export function emptyPlayerState(): PlayerState {
@@ -254,6 +255,17 @@ export function sanitizePlayerState(contentPackage: ContentPackage, raw: unknown
 
   if (typeof raw.location === 'string' && byId.has(raw.location)) {
     state.location = raw.location
+    if (isReadingAnchorId(raw.anchor)) {
+      state.anchor = raw.anchor
+    }
+  } else {
+    const decoded = decodeReadingLocation(raw.location)
+    if (decoded.location !== undefined && byId.has(decoded.location)) {
+      state.location = decoded.location
+      if (decoded.anchor !== undefined) {
+        state.anchor = decoded.anchor
+      }
+    }
   }
 
   if (!isRecord(raw.pages)) {
@@ -298,9 +310,17 @@ export function updatePageState(
   return { ...state, pages: { ...state.pages, [pageId]: nextPage } }
 }
 
-/** Returns a new state with `location` set, preserving pages state. */
+/**
+ * Returns a new state with `location` set, preserving pages state. A location
+ * change clears the old page's anchor; the reading presentation records the new
+ * page's anchor separately once it exists.
+ */
 export function withLocation(state: PlayerState, location: string): PlayerState {
-  return state.location === location ? state : { ...state, location }
+  if (state.location === location) {
+    return state
+  }
+  const { anchor: _stale, ...rest } = state
+  return { ...rest, location }
 }
 
 /** Compares two answers so an unchanged selection never triggers a write. */

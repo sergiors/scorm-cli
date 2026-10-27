@@ -316,8 +316,13 @@ ${browserCodecSource()}
       var serialized = compactEncode(CONTENT_MANIFEST, state, progressFor(state));
       var normalized = compactDecode(CONTENT_MANIFEST, serialized);
       var saved = true;
-      if (state && typeof state.location === "string") {
-        currentLocation = state.location;
+      var location = state && typeof state.location === "string" ? state.location : "";
+      var anchor = state && typeof state.anchor === "string" ? state.anchor : "";
+      if (location && anchor && location.indexOf("#") < 0) {
+        location = location + "#" + anchor;
+      }
+      if (location) {
+        currentLocation = location;
         normalized.location = currentLocation;
         if (call(API_MAPPING.setValue, "lms.set-value", API_MAPPING.location, API_MAPPING.location, currentLocation) !== "true") saved = false;
       }

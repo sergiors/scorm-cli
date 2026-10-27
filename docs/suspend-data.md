@@ -29,7 +29,7 @@ Renderer: scormBridge.saveState(state, progress)
   → cmi.suspend_data
 
 cmi.suspend_data → JSON parse / decodeSuspendData(current manifest)
-  → semantic PlayerState + separately read CMI location
+  → semantic PlayerState with the CMI location decoded into a page/item and optional anchor
   → renderer sanitizePlayerState(current content AST)
   → player
 ```
@@ -85,6 +85,8 @@ export interface PlayerPageState {
 
 export interface PlayerState {
   location?: string
+  /** Reading anchor within location; persisted with it in the CMI location field. */
+  anchor?: string
   pages: Record<string, PlayerPageState>
 }
 ```
@@ -93,9 +95,11 @@ Video positions belong to the Page/Item that currently owns each video. Within
 that page's `PlayerPageState.videos`, positions are keyed by stable video node
 ID; there is no root-level `PlayerState.videos` map.
 
-`location` is **not** in compact data. The SCORM runtime reads and writes it in
-`cmi.core.lesson_location` (1.2) or `cmi.location` (2004). The renderer accepts
-only a location that matches a current page/item ID.
+`location` and its optional reading `anchor` are **not** in compact data. The
+SCORM runtime reads and writes them together in `cmi.core.lesson_location` (1.2)
+or `cmi.location` (2004), using `page-or-item-id#anchor` when an anchor is
+present. The renderer decodes that value and accepts only a page/item ID that
+matches the current content; legacy page-only locations remain valid.
 
 What the compact data does and does not preserve:
 

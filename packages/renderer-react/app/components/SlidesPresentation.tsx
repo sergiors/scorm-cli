@@ -7,6 +7,9 @@ import { useContentLoader, type ContentProvider } from '../lib/content-loader'
 import { PageProvider, usePlayerActions, usePlayerState } from '../lib/player-context'
 import { arePageQuestionnairesComplete } from '../lib/questionnaire-completion'
 import { clampPageIndex } from '../lib/sequence'
+import { READING_PAGE_ATTRIBUTE } from '../lib/reading-anchors'
+import { hasReadingPage, scrollToReadingPosition } from '../lib/reading-anchor-dom'
+import { useReadingAnchorTracking } from '../lib/use-reading-anchor'
 import { Button } from './ui/button'
 import { Skeleton } from './ui/skeleton'
 import { ContentLoadError } from './ContentLoadError'
@@ -74,6 +77,7 @@ export interface SlidesPresentationProps {
  */
 export function SlidesPresentation({ pages, contentProvider }: SlidesPresentationProps) {
   const playerState = usePlayerState()
+  const { recordReadingPosition } = usePlayerActions()
   const pageStates = playerState.pages
   const ids = pages.map((page) => page.id)
   const { accessible } = getSequentialAccess(ids, donePageIds(pages, pageStates))
@@ -87,6 +91,25 @@ export function SlidesPresentation({ pages, contentProvider }: SlidesPresentatio
   })
 
   const currentPage = pages[currentIndex]
+
+  // The anchor restore is captured once for the initially resumed slide. Moving
+  // between slides later never re-arms it; navigation is always a fresh top.
+  const [initialPage] = useState(() => pages[currentIndex])
+  const [restoreTarget] = useState(() => {
+    if (
+      playerState.anchor === undefined ||
+      initialPage?.id === undefined ||
+      playerState.location !== initialPage.id
+    ) {
+      return null
+    }
+    return { pageId: initialPage.id, anchor: playerState.anchor }
+  })
+  const [restoring, setRestoring] = useState(restoreTarget !== null)
+  const restoringRef = useRef(restoring)
+  restoringRef.current = restoring
+  const restoreTargetRef = useRef(restoreTarget)
+  restoreTargetRef.current = restoreTarget
 
   // The next page's id once the shared progression reports it accessible, so the
   // prefetch below can depend on a stable primitive instead of the access set.
@@ -104,9 +127,41 @@ export function SlidesPresentation({ pages, contentProvider }: SlidesPresentatio
     }
   }, [currentPage?.id, prefetchId, request])
 
+  const loaded = currentPage !== undefined && isLoaded(currentPage.id)
+
+  // Restoration may only run once the target slide is mounted and loaded. A
+  // missing anchor falls back to the slide beginning; the recorded anchor is
+  // therefore the one that actually succeeded, never a stale saved one.
+  const attemptRestoreRef = useRef<() => void>(() => {})
+  attemptRestoreRef.current = () => {
+    const target = restoreTargetRef.current
+    if (!restoringRef.current || target === null || currentPage?.id !== target.pageId) {
+      return
+    }
+    if (!isLoaded(target.pageId) && !hasError(target.pageId)) {
+      return
+    }
+    if (!hasReadingPage(target.pageId)) {
+      return
+    }
+    const resolved = scrollToReadingPosition(target.pageId, target.anchor)
+    recordReadingPosition(target.pageId, resolved)
+    restoreTargetRef.current = null
+    restoringRef.current = false
+    setRestoring(false)
+  }
+  useEffect(() => {
+    attemptRestoreRef.current()
+  })
+
   // Every page opens at its top; the reset runs before paint so a previous
-  // page's offset never leaks into the next one.
+  // page's offset never leaks into the next one. The initial resumed slide is
+  // the one exception: it keeps the saved reading anchor until it is restored.
   useLayoutEffect(() => {
+    const pending = restoreTargetRef.current
+    if (pending !== null && pending.pageId === currentPage?.id) {
+      return
+    }
     window.scrollTo({ top: 0, behavior: 'auto' })
   }, [currentPage?.id])
 
@@ -117,10 +172,27 @@ export function SlidesPresentation({ pages, contentProvider }: SlidesPresentatio
       if (!target || nextIndex === currentIndex || !accessible.has(target.id)) {
         return
       }
+      // A deliberate navigation always starts at the top; it cancels any
+      // initial anchor restore so a later return cannot replay a stale anchor.
+      restoreTargetRef.current = null
+      restoringRef.current = false
+      setRestoring(false)
+      recordReadingPosition(target.id, null)
       setCurrentIndex(nextIndex)
     },
-    [accessible, currentIndex, pages]
+    [accessible, currentIndex, pages, recordReadingPosition]
   )
+
+  useReadingAnchorTracking({
+    pageId: currentPage?.id,
+    scroller: typeof window === 'undefined' ? null : window,
+    enabled: loaded && !restoring,
+    onChange: (anchor) => {
+      if (currentPage !== undefined) {
+        recordReadingPosition(currentPage.id, anchor)
+      }
+    }
+  })
 
   const navigateToPageId = useCallback(
     (pageId: string) => {
@@ -136,7 +208,6 @@ export function SlidesPresentation({ pages, contentProvider }: SlidesPresentatio
     return null
   }
 
-  const loaded = isLoaded(currentPage.id)
   const pageState = pageStates[currentPage.id]
   const pageComplete = arePageQuestionnairesComplete(currentPage.content, pageState)
   const hasNext = currentIndex < pages.length - 1
@@ -192,7 +263,7 @@ export function SlidesPresentation({ pages, contentProvider }: SlidesPresentatio
       */}
       {loaded ? (
         <>
-          <PageSeenReporter pageId={currentPage.id} />
+          {restoring ? null : <PageSeenReporter pageId={currentPage.id} />}
           <PageCompletionReporter pageId={currentPage.id} complete={pageComplete} />
         </>
       ) : null}
@@ -254,13 +325,19 @@ interface PageSceneProps {
 function PageScene({ page, index, nodes, pathPages, onNavigatePathPage }: PageSceneProps) {
   return (
     <PageProvider pageId={page.id}>
-      <div data-scene-index={index} aria-label={page.metadata.title} className={SLIDE_SLOT}>
+      <div
+        data-scene-index={index}
+        {...{ [READING_PAGE_ATTRIBUTE]: page.id }}
+        aria-label={page.metadata.title}
+        className={SLIDE_SLOT}
+      >
         <div className={`${PAGE_COLUMN} ${PAGE_ITEM}`}>
           <section className="prose prose-stone max-w-none! dark:prose-invert">
             <ContentRenderer
               nodes={nodes}
               pathPages={pathPages}
               onNavigatePathPage={onNavigatePathPage}
+              readingAnchorPageId={page.id}
             />
           </section>
         </div>

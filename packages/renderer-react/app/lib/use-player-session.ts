@@ -21,6 +21,7 @@ import {
   withLocation,
   normalizeVideoPosition
 } from './player-state'
+import { persistablePlayerState } from './reading-location'
 import { restoreState, saveState, useScormBridge, useScormScore } from './use-scorm-bridge'
 
 /**
@@ -34,6 +35,12 @@ export interface PlayerSession {
   state: PlayerState
   /** Stores a node as the current location and marks it visited in one write. */
   markSeen(id: string): void
+  /**
+   * Records the latest reading anchor without committing or persisting. The
+   * next existing save (a page change, answer, submission, video position, ...)
+   * carries it in the lesson location; scrolling itself never writes.
+   */
+  recordReadingPosition(pageId: string, anchor: string | null): void
   /** Marks a node completed (scroll completion is gated on this). */
   markCompleted(id: string): void
   /** Persists a question answer for a node. */
@@ -118,6 +125,14 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
   )
   const stateRef = useRef(state)
 
+  // The latest reading anchor, kept out of React state so a scroll never
+  // re-renders or writes. It starts from the restored anchor and is folded into
+  // whichever save happens next.
+  const readingRef = useRef<{ pageId?: string; anchor?: string }>({
+    pageId: state.location,
+    anchor: state.anchor
+  })
+
   // Applies a pure update to the owned state and persists the result. The ref
   // is updated synchronously so back-to-back interactions compose, and the
   // bridge write happens outside the updater — never as a side effect of it.
@@ -132,15 +147,30 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
       }
       stateRef.current = next
       setState(next)
-      saveState(next, getPackageProgress(contentPackage, next))
+      saveState(
+        persistablePlayerState(next, readingRef.current),
+        getPackageProgress(contentPackage, next)
+      )
     },
     [contentPackage]
   )
+
+  // The presentation owns geometry; this only stores the latest anchor in a
+  // ref. A save happens on the next semantic transition, never per scroll.
+  const recordReadingPosition = useCallback((pageId: string, anchor: string | null) => {
+    readingRef.current = {
+      pageId,
+      ...(anchor === null ? {} : { anchor })
+    }
+  }, [])
 
   // Marks a page/item as seen and stores it as the current location in one
   // write, so a display never produces two bridge calls.
   const markSeen = useCallback(
     (id: string) => {
+      if (readingRef.current.pageId !== id) {
+        readingRef.current = { pageId: id }
+      }
       applyState((previous) => {
         const visited = updatePageState(previous, id, (page) =>
           page.visited ? page : { ...page, visited: true }
@@ -371,6 +401,7 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
   return {
     state,
     markSeen,
+    recordReadingPosition,
     markCompleted,
     setAnswer,
     markQuestionnaireSubmitted,

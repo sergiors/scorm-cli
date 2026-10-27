@@ -218,7 +218,15 @@ export interface PlayerPageState {
 }
 
 export interface PlayerState {
+  /** The semantic ID of the current page or item. */
   location?: string
+  /**
+   * The stable reading anchor within {@link location}. Optional and independent
+   * of the semantic location, so navigation, progress and validation keep using
+   * page/item IDs. The SCORM runtime persists it as
+   * `page-id#anchor` in the version's location element.
+   */
+  anchor?: string
   pages: Record<string, PlayerPageState>
 }
 

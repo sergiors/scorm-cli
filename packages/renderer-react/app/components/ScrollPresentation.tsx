@@ -6,6 +6,12 @@ import type { ContentNode, PageNode } from '../types'
 import { getSequentialAccess } from '../lib/content-helpers'
 import { useContentLoader, type ContentProvider, type ContentLoader } from '../lib/content-loader'
 import { PageProvider, usePlayerActions, usePlayerState } from '../lib/player-context'
+import { READING_PAGE_ATTRIBUTE } from '../lib/reading-anchors'
+import {
+  hasReadingPage,
+  resolveReadingAnchor,
+  scrollToReadingPosition
+} from '../lib/reading-anchor-dom'
 import { arePageQuestionnairesComplete } from '../lib/questionnaire-completion'
 import { ContentRenderer } from './ContentRenderer'
 import { ContentLoadError } from './ContentLoadError'
@@ -32,6 +38,13 @@ const PAGE_COLUMN = 'mx-auto w-full max-w-3xl px-4 sm:px-6'
  * needed.
  */
 const PAGE_ITEM = 'py-4 sm:py-6'
+
+/**
+ * react-virtuoso 4.18.19 completes its initial non-zero item positioning after
+ * four animation frames once measurements are available. Keep anchor restoration
+ * behind that queued position so its final scroll cannot replace the anchor.
+ */
+const INITIAL_SCROLL_SETTLE_FRAMES = 5
 
 /** The nodes whose own completion rule has been met, which advance the done prefix. */
 function donePageIds(
@@ -118,8 +131,10 @@ export interface ScrollPresentationProps {
  */
 export function ScrollPresentation({ pages, contentProvider }: ScrollPresentationProps) {
   const state = usePlayerState()
+  const { recordReadingPosition } = usePlayerActions()
   const pageStates = state.pages
   const initialPageId = state.location
+  const initialAnchor = state.anchor
   const ids = pages.map((page) => page.id)
   const { accessible } = getSequentialAccess(ids, donePageIds(pages, pageStates))
 
@@ -129,7 +144,7 @@ export function ScrollPresentation({ pages, contentProvider }: ScrollPresentatio
   const accessiblePages = pages.filter((page) => accessible.has(page.id))
 
   const loader = useContentLoader(contentProvider)
-  const { isLoaded, request, ensure } = loader
+  const { isLoaded, hasError, request, ensure } = loader
 
   // The accessible pages of the *current* render, so an asynchronous Path jump
   // resolves its target index against the latest list without closing over a
@@ -147,6 +162,24 @@ export function ScrollPresentation({ pages, contentProvider }: ScrollPresentatio
     return index >= 0 ? index : 0
   })
 
+  // An anchor is restored only when it belongs to the accessible page the list
+  // actually opens at. A locked/unknown page or a missing anchor never leaves a
+  // pending restore behind for later navigation.
+  const [restoreTarget] = useState(() => {
+    if (initialAnchor === undefined || initialPageId === undefined) {
+      return null
+    }
+    return accessiblePages[initialIndex]?.id === initialPageId
+      ? { pageId: initialPageId, anchor: initialAnchor }
+      : null
+  })
+  const [restoring, setRestoring] = useState(restoreTarget !== null)
+  const restoringRef = useRef(restoring)
+  restoringRef.current = restoring
+  const restoreTargetRef = useRef(restoreTarget)
+  const restoreFrameRef = useRef<number | null>(null)
+  const restoreScheduledRef = useRef(false)
+
   // The semantic current page starts at the restored item, so the first seen
   // report matches the restored location rather than overwriting it with page
   // zero.
@@ -162,6 +195,64 @@ export function ScrollPresentation({ pages, contentProvider }: ScrollPresentatio
     activeIdRef.current = pageId
     setActiveId(pageId)
   }
+
+  const isLoadedRef = useRef(isLoaded)
+  const hasErrorRef = useRef(hasError)
+  isLoadedRef.current = isLoaded
+  hasErrorRef.current = hasError
+
+  // Restoration is deliberately gated on the target slot being mounted and
+  // settled. Until it resolves, no seen/scroll report may overwrite the saved
+  // location. A missing anchor falls back to the mounted page's beginning.
+  const attemptRestoreRef = useRef<() => void>(() => {})
+  attemptRestoreRef.current = () => {
+    const target = restoreTargetRef.current
+    if (!restoringRef.current || target === null) {
+      return
+    }
+    if (!isLoadedRef.current(target.pageId) && !hasErrorRef.current(target.pageId)) {
+      return
+    }
+    if (!hasReadingPage(target.pageId)) {
+      return
+    }
+    if (restoreScheduledRef.current) {
+      return
+    }
+    restoreScheduledRef.current = true
+    let framesRemaining = INITIAL_SCROLL_SETTLE_FRAMES
+    const restoreAfterInitialScroll = () => {
+      const pendingTarget = restoreTargetRef.current
+      if (!restoringRef.current || pendingTarget !== target) {
+        restoreScheduledRef.current = false
+        restoreFrameRef.current = null
+        return
+      }
+      if (framesRemaining > 0) {
+        framesRemaining -= 1
+        if (framesRemaining > 0) {
+          restoreFrameRef.current = window.requestAnimationFrame(restoreAfterInitialScroll)
+          return
+        }
+      }
+      restoreScheduledRef.current = false
+      restoreFrameRef.current = null
+      if (
+        (!isLoadedRef.current(target.pageId) && !hasErrorRef.current(target.pageId)) ||
+        !hasReadingPage(target.pageId)
+      ) {
+        return
+      }
+      const resolved = scrollToReadingPosition(target.pageId, target.anchor)
+      recordReadingPosition(target.pageId, resolved)
+      restoringRef.current = false
+      setRestoring(false)
+    }
+    restoreFrameRef.current = window.requestAnimationFrame(restoreAfterInitialScroll)
+  }
+  useEffect(() => {
+    attemptRestoreRef.current()
+  })
 
   const virtuosoRef = useRef<VirtuosoHandle>(null)
 
@@ -187,6 +278,19 @@ export function ScrollPresentation({ pages, contentProvider }: ScrollPresentatio
   function navigateToPageId(pageId: string) {
     if (accessiblePagesRef.current.findIndex((page) => page.id === pageId) < 0) {
       return
+    }
+    recordReadingPosition(pageId, null)
+    // An explicit Path jump supersedes the resume target, even when its content
+    // is still loading. A queued restoration must never pull the learner back.
+    if (restoringRef.current) {
+      restoringRef.current = false
+      restoreTargetRef.current = null
+      restoreScheduledRef.current = false
+      if (restoreFrameRef.current !== null) {
+        window.cancelAnimationFrame(restoreFrameRef.current)
+        restoreFrameRef.current = null
+      }
+      setRestoring(false)
     }
     const navigation = (navigationRef.current += 1)
     const scrollToTarget = () => {
@@ -238,6 +342,9 @@ export function ScrollPresentation({ pages, contentProvider }: ScrollPresentatio
     mountedRef.current = true
     return () => {
       mountedRef.current = false
+      if (restoreFrameRef.current !== null) {
+        window.cancelAnimationFrame(restoreFrameRef.current)
+      }
     }
   }, [])
 
@@ -248,12 +355,16 @@ export function ScrollPresentation({ pages, contentProvider }: ScrollPresentatio
   // closure without being re-attached on every render.
   function applyScrollTop(scrollTop: number) {
     scrollTopRef.current = scrollTop
+    if (restoringRef.current) {
+      return
+    }
     const pageId = activePageIdAt(renderedItemsRef.current, scrollTop, accessiblePagesRef.current)
     if (pageId === null) {
       pendingReconcileRef.current = true
       return
     }
     pendingReconcileRef.current = false
+    recordReadingPosition(pageId, resolveReadingAnchor(pageId))
     setActive(pageId)
   }
   const applyScrollTopRef = useRef(applyScrollTop)
@@ -286,7 +397,8 @@ export function ScrollPresentation({ pages, contentProvider }: ScrollPresentatio
   // lazy load that re-measures an offset cannot change it.
   function handleItemsRendered(items: ListItem<unknown>[]) {
     renderedItemsRef.current = items
-    if (!pendingReconcileRef.current) {
+    attemptRestoreRef.current()
+    if (restoringRef.current || !pendingReconcileRef.current) {
       return
     }
     const scrollTop = scrollTopRef.current
@@ -298,6 +410,7 @@ export function ScrollPresentation({ pages, contentProvider }: ScrollPresentatio
       return
     }
     pendingReconcileRef.current = false
+    recordReadingPosition(pageId, resolveReadingAnchor(pageId))
     setActive(pageId)
   }
 
@@ -366,7 +479,7 @@ export function ScrollPresentation({ pages, contentProvider }: ScrollPresentatio
         whose module is still resolving is never reported as seen — and the saved
         location is not transiently changed.
       */}
-      <PageSeenReporter pageId={isLoaded(activeId) ? activeId : ''} />
+      <PageSeenReporter pageId={isLoaded(activeId) && !restoring ? activeId : ''} />
     </div>
   )
 }
@@ -447,7 +560,7 @@ function PageSlot({
 
   if (!contentLoader.isLoaded(page.id)) {
     return contentLoader.hasError(page.id) ? (
-      <PageLoadError index={index} onRetry={() => retry(page.id)} />
+      <PageLoadError pageId={page.id} index={index} onRetry={() => retry(page.id)} />
     ) : (
       <PageSkeleton index={index} />
     )
@@ -492,9 +605,22 @@ function PageSkeleton({ index }: { index: number }) {
  * A page whose module failed to load: a small, natural-height slot offering a
  * single retry action rather than hiding the failure.
  */
-function PageLoadError({ index, onRetry }: { index: number; onRetry: () => void }) {
+function PageLoadError({
+  pageId,
+  index,
+  onRetry
+}: {
+  pageId: string
+  index: number
+  onRetry: () => void
+}) {
   return (
-    <div data-scene-index={index} data-scroll-page={index} data-scroll-error>
+    <div
+      data-scene-index={index}
+      data-scroll-page={index}
+      data-scroll-error
+      {...{ [READING_PAGE_ATTRIBUTE]: pageId }}
+    >
       <div className="flex flex-col items-start gap-3">
         <ContentLoadError onRetry={onRetry} />
       </div>
@@ -565,6 +691,7 @@ function PageScene({
       data-scene-index={index}
       data-scroll-page={index}
       data-active={active ? 'true' : 'false'}
+      {...{ [READING_PAGE_ATTRIBUTE]: page.id }}
       aria-label={page.metadata.title}
     >
       <div data-scroll-page-content>
@@ -573,6 +700,7 @@ function PageScene({
             nodes={nodes}
             pathPages={pathPages}
             onNavigatePathPage={onNavigatePathPage}
+            readingAnchorPageId={page.id}
           />
         </section>
       </div>

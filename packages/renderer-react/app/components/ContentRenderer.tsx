@@ -1,6 +1,12 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import type { ComponentType, ReactNode } from 'react'
 import type { ContentNode, PageNode } from '../types'
+import {
+  readingAnchorAt,
+  readingAnchorAttributes,
+  readingAnchorsForPage,
+  type ReadingAnchor
+} from '../lib/reading-anchors'
 import { InlineContent } from './InlineContent'
 import { MediaFrame } from './MediaFrame'
 import { PathView } from './PathView'
@@ -50,6 +56,15 @@ export interface ContentRendererProps {
    * render inert.
    */
   onNavigatePathPage?: (pageId: string) => void
+  /**
+   * The owning page/item ID. Supplying it enables deterministic reading anchors
+   * for eligible blocks; the Tiles presentation deliberately does not supply it.
+   */
+  readingAnchorPageId?: string
+  /** @internal The page's anchor map, shared by nested renderers. */
+  readingAnchors?: ReadonlyMap<string, ReadingAnchor>
+  /** @internal The authored path of this renderer within the page. */
+  readingAnchorPath?: readonly number[]
 }
 
 /**
@@ -71,6 +86,8 @@ type ContentNodeOf<T extends ContentNodeType> = Extract<ContentNode, { type: T }
 interface ContentNodeViewProps<T extends ContentNodeType> {
   node: ContentNodeOf<T>
   context: ContentNodeRenderContext
+  anchor: ReadingAnchor | undefined
+  path: readonly number[]
 }
 
 /**
@@ -82,18 +99,18 @@ type ContentNodeRenderers = {
   [T in ContentNodeType]: ComponentType<ContentNodeViewProps<T>>
 }
 
-function HeadingView({ node }: ContentNodeViewProps<'heading'>) {
+function HeadingView({ node, anchor }: ContentNodeViewProps<'heading'>) {
   const Tag = HEADING_TAGS[clampHeading(node.depth)]
   return (
-    <Tag>
+    <Tag {...readingAnchorAttributes(anchor)}>
       <InlineContent nodes={node.children} />
     </Tag>
   )
 }
 
-function ParagraphView({ node }: ContentNodeViewProps<'paragraph'>) {
+function ParagraphView({ node, anchor }: ContentNodeViewProps<'paragraph'>) {
   return (
-    <p>
+    <p {...readingAnchorAttributes(anchor)}>
       <InlineContent nodes={node.children} />
     </p>
   )
@@ -111,10 +128,12 @@ function ThematicBreakView() {
  */
 function ListItemView({
   item,
-  context
+  context,
+  path
 }: {
   item: ContentNodeOf<'list'>['items'][number]
   context: ContentNodeRenderContext
+  path: readonly number[]
 }) {
   return (
     <li>
@@ -122,14 +141,16 @@ function ListItemView({
         child.type === 'inlineContent' ? (
           <InlineContent key={`inlineContent-${index}`} nodes={child.children} />
         ) : (
-          <Fragment key={`${child.type}-${index}`}>{renderContentNode(child, context)}</Fragment>
+          <Fragment key={`${child.type}-${index}`}>
+            {renderContentNode(child, context, [...path, index], undefined)}
+          </Fragment>
         )
       )}
     </li>
   )
 }
 
-function ListView({ node, context }: ContentNodeViewProps<'list'>) {
+function ListView({ node, context, path }: ContentNodeViewProps<'list'>) {
   const ListTag = node.ordered ? 'ol' : 'ul'
   return (
     <ListTag
@@ -137,35 +158,37 @@ function ListView({ node, context }: ContentNodeViewProps<'list'>) {
       className={node.ordered ? 'list-decimal' : 'list-disc'}
     >
       {node.items.map((item, index) => (
-        <ListItemView key={index} item={item} context={context} />
+        <ListItemView key={index} item={item} context={context} path={[...path, index]} />
       ))}
     </ListTag>
   )
 }
 
-function CodeView({ node }: ContentNodeViewProps<'code'>) {
+function CodeView({ node, anchor }: ContentNodeViewProps<'code'>) {
   const lines = useHighlightedCode(node.value, node?.language ?? '')
 
   return (
-    <CodeBlock className="not-prose">
-      <CodeBlockHeader>
-        <CodeBlockActions>
-          <CodeBlockCopyButton value={node.value} />
-        </CodeBlockActions>
-      </CodeBlockHeader>
-      <CodeBlockContent lineNumbers>
-        {lines.map((line, index) => (
-          <CodeBlockLine key={index}>{line}</CodeBlockLine>
-        ))}
-      </CodeBlockContent>
-    </CodeBlock>
+    <div {...readingAnchorAttributes(anchor)}>
+      <CodeBlock className="not-prose">
+        <CodeBlockHeader>
+          <CodeBlockActions>
+            <CodeBlockCopyButton value={node.value} />
+          </CodeBlockActions>
+        </CodeBlockHeader>
+        <CodeBlockContent lineNumbers>
+          {lines.map((line, index) => (
+            <CodeBlockLine key={index}>{line}</CodeBlockLine>
+          ))}
+        </CodeBlockContent>
+      </CodeBlock>
+    </div>
   )
 }
 
-function QuoteView({ node, context }: ContentNodeViewProps<'quote'>) {
+function QuoteView({ node, context, path }: ContentNodeViewProps<'quote'>) {
   return (
     <blockquote className="border-l-4 border-primary/50 bg-secondary/50 py-2 px-6">
-      <ContentRenderer nodes={node.children} {...context} />
+      <ContentRenderer nodes={node.children} {...context} readingAnchorPath={path} />
     </blockquote>
   )
 }
@@ -186,12 +209,15 @@ function QuoteView({ node, context }: ContentNodeViewProps<'quote'>) {
  * the margins of its direct children, so the framed image sits in the flow
  * without the prose image margins leaking into the reserved box.
  */
-function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
+function BlockImageView({ node, anchor }: ContentNodeViewProps<'image'>) {
   const [loaded, setLoaded] = useState(false)
   const [failed, setFailed] = useState(false)
 
   return (
-    <figure className={node.caption ? 'space-y-2.5' : undefined}>
+    <figure
+      {...readingAnchorAttributes(anchor)}
+      className={node.caption ? 'space-y-2.5' : undefined}
+    >
       <MediaFrame ready={loaded || failed} className="rounded-2xl not-prose">
         <img
           src={node.src}
@@ -209,14 +235,18 @@ function BlockImageView({ node }: ContentNodeViewProps<'image'>) {
   )
 }
 
-function VideoView({ node }: ContentNodeViewProps<'video'>) {
-  return <Video node={node} />
+function VideoView({ node, anchor }: ContentNodeViewProps<'video'>) {
+  return (
+    <div {...readingAnchorAttributes(anchor)}>
+      <Video node={node} />
+    </div>
+  )
 }
 
 /** Delegates a questionnaire block to the context-aware {@link QuestionnaireView}. */
-function QuestionnaireBlockView({ node }: ContentNodeViewProps<'questionnaire'>) {
+function QuestionnaireBlockView({ node, anchor }: ContentNodeViewProps<'questionnaire'>) {
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div {...readingAnchorAttributes(anchor)} className="space-y-4 sm:space-y-6">
       <QuestionnaireView node={node} />
     </div>
   )
@@ -254,12 +284,39 @@ const contentNodeRenderers = {
   path: PathBlockView
 } satisfies ContentNodeRenderers
 
-export function ContentRenderer({ nodes, ...context }: ContentRendererProps) {
+export function ContentRenderer({
+  nodes,
+  readingAnchorPageId,
+  readingAnchors,
+  readingAnchorPath,
+  ...context
+}: ContentRendererProps) {
+  const generatedAnchors = useMemo(
+    () =>
+      readingAnchors ??
+      (readingAnchorPageId === undefined
+        ? undefined
+        : readingAnchorsForPage(readingAnchorPageId, nodes)),
+    [nodes, readingAnchorPageId, readingAnchors]
+  )
+  const anchors = readingAnchors ?? generatedAnchors
+  const path = readingAnchorPath ?? []
+  const renderContext: ContentNodeRenderContext = {
+    ...context,
+    readingAnchorPageId,
+    readingAnchors: anchors
+  }
+
   return (
     <>
-      {nodes.map((node, index) => (
-        <Fragment key={`${node.type}-${index}`}>{renderContentNode(node, context)}</Fragment>
-      ))}
+      {nodes.map((node, index) => {
+        const nodePath = [...path, index]
+        return (
+          <Fragment key={`${node.type}-${index}`}>
+            {renderContentNode(node, renderContext, nodePath, readingAnchorAt(anchors, nodePath))}
+          </Fragment>
+        )
+      })}
     </>
   )
 }
@@ -270,7 +327,12 @@ export function ContentRenderer({ nodes, ...context }: ContentRendererProps) {
  * expresses the correlation TypeScript cannot follow through a union-indexed
  * lookup — the node's discriminant guarantees the resolved view matches it.
  */
-function renderContentNode(node: ContentNode, context: ContentNodeRenderContext): ReactNode {
+function renderContentNode(
+  node: ContentNode,
+  context: ContentNodeRenderContext,
+  path: readonly number[],
+  anchor: ReadingAnchor | undefined
+): ReactNode {
   if (!Object.hasOwn(contentNodeRenderers, node.type)) {
     // Runtime guard for malformed content: never silently drop a node.
     throw new Error(`Unsupported content node type: ${String(node.type ?? 'unknown')}`)
@@ -279,6 +341,8 @@ function renderContentNode(node: ContentNode, context: ContentNodeRenderContext)
   const View = contentNodeRenderers[node.type] as ComponentType<{
     node: ContentNode
     context: ContentNodeRenderContext
+    anchor: ReadingAnchor | undefined
+    path: readonly number[]
   }>
-  return <View node={node} context={context} />
+  return <View node={node} context={context} anchor={anchor} path={path} />
 }
