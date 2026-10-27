@@ -7,7 +7,6 @@ import {
   isOptionSelected,
   submittedOptionResult
 } from '../lib/questionnaire'
-import { QuestionnaireSummary } from './QuestionnaireSummary'
 import { Card, CardContent } from './ui/card'
 import {
   Questionnaire,
@@ -23,6 +22,7 @@ import {
   QuestionnaireTitle
 } from './ui/questionnaire'
 import {
+  QuestionnaireSubmissionResult,
   submittedChoiceClassName,
   useQuestionnaireAnswers,
   useQuestionnaireSubmission,
@@ -126,20 +126,35 @@ function StepperQuestion({ node, value, submitted, onAnswer }: StepperQuestionPr
  * Previous/Next continue to review every question through the same wizard.
  * The final item keeps its Submit disabled once submitted so submission cannot
  * repeat.
+ *
+ * A retry is a new submission round: the owner clears this questionnaire's
+ * answers and submitted status while keeping its attempt history and page
+ * completion. Remounting the Root under a retry key makes the wizard start again
+ * at the first question with every choice editable, while Try Again stays
+ * available only while the history has an attempt left.
  */
 export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
-  const { answers, submitted, onAnswer, onSubmitted } = useQuestionnaireSession(node)
+  const { answers, submitted, attempts, retrying, onAnswer, onSubmitted, onRetry } =
+    useQuestionnaireSession(node)
   const intl = useIntl()
   const firstQuestionId = node.questions[0]?.id ?? ''
   const lastQuestionId = node.questions[node.questions.length - 1]?.id ?? ''
+  const maxAttempts = node.maxAttempts ?? 1
+  const reviewing = submitted && !retrying
 
   const { answers: currentAnswers, answerQuestion } = useQuestionnaireAnswers({
     questions: node.questions,
     answers,
     onAnswer
   })
-  const submitQuestionnaire = useQuestionnaireSubmission(node.id, submitted, onSubmitted)
   const result = getQuestionnaireResult(node, currentAnswers)
+  const submitQuestionnaire = useQuestionnaireSubmission(
+    node.id,
+    reviewing,
+    result.correct,
+    onSubmitted
+  )
+  const canRetry = reviewing && maxAttempts > 1 && attempts.length < maxAttempts
 
   if (node.questions.length === 0) {
     return null
@@ -167,7 +182,8 @@ export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
       <Card className="not-prose">
         <CardContent>
           <Questionnaire
-            defaultItem={submitted ? lastQuestionId : firstQuestionId}
+            key={retrying ? `retry-${attempts.length}` : 'review'}
+            defaultItem={reviewing ? lastQuestionId : firstQuestionId}
             items={items}
             onSubmit={handleSubmit}
           >
@@ -191,7 +207,7 @@ export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
                 key={question.id}
                 node={question}
                 value={currentAnswers[question.id]}
-                submitted={submitted}
+                submitted={reviewing}
                 onAnswer={answerQuestion}
               />
             ))}
@@ -205,7 +221,7 @@ export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
                 <FormattedMessage id="questionnaire.next" />
               </QuestionnaireNext>
 
-              <QuestionnaireSubmit disabled={submitted}>
+              <QuestionnaireSubmit disabled={reviewing}>
                 <FormattedMessage id="questionnaire.submit" />
               </QuestionnaireSubmit>
             </QuestionnaireActions>
@@ -213,7 +229,9 @@ export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
         </CardContent>
       </Card>
 
-      {submitted && <QuestionnaireSummary {...result} />}
+      {reviewing && (
+        <QuestionnaireSubmissionResult {...result} onRetry={canRetry ? onRetry : undefined} />
+      )}
     </>
   )
 }

@@ -4,7 +4,7 @@ title: TypeScript concepts check
 
 import { Questionnaire, Question, Prompt, Option } from 'scorm-cli/authoring'
 
-<Questionnaire expanded={true}>
+<Questionnaire expanded={true} maxAttempts={3}>
   <Question type="single-choice">
     <Prompt>What does TypeScript add to JavaScript?</Prompt>
     <Option value="runtime" correct={false}>

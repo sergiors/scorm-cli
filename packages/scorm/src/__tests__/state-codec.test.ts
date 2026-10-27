@@ -769,3 +769,299 @@ describe('compact suspend-data codec', () => {
     expect(events.some((event) => event.name === 'lms.suspend-data-too-large')).toBe(true)
   })
 })
+
+describe('questionnaire attempt history in the suspend-data codec', () => {
+  const attemptContent: ContentPackage = {
+    metadata: { title: 'Attempts' },
+    presentation: {
+      type: 'scroll',
+      pages: [
+        {
+          type: 'page',
+          id: 'alpha',
+          source: 'alpha.mdx',
+          metadata: { title: 'Alpha' },
+          content: [
+            {
+              type: 'questionnaire',
+              id: 'quiz-a',
+              contributesToScore: true,
+              maxAttempts: 3,
+              questions: [
+                {
+                  type: 'question',
+                  id: 'qa1',
+                  questionType: 'single-choice',
+                  prompt: '',
+                  options: [{ value: 'yes', correct: true, content: '' }]
+                },
+                {
+                  type: 'question',
+                  id: 'qa2',
+                  questionType: 'single-choice',
+                  prompt: '',
+                  options: [{ value: 'yes', correct: false, content: '' }]
+                }
+              ]
+            },
+            {
+              type: 'questionnaire',
+              id: 'quiz-b',
+              contributesToScore: true,
+              maxAttempts: 2,
+              questions: [
+                {
+                  type: 'question',
+                  id: 'qb1',
+                  questionType: 'single-choice',
+                  prompt: '',
+                  options: [{ value: 'yes', correct: false, content: '' }]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          type: 'page',
+          id: 'beta',
+          source: 'beta.mdx',
+          metadata: { title: 'Beta' },
+          content: [
+            {
+              // No authored maxAttempts: the manifest records the default cap.
+              type: 'questionnaire',
+              id: 'quiz-c',
+              contributesToScore: true,
+              questions: [
+                {
+                  type: 'question',
+                  id: 'qc1',
+                  questionType: 'single-choice',
+                  prompt: '',
+                  options: [{ value: 'no', correct: false, content: '' }]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+  const attemptManifest = createContentManifest(attemptContent)
+
+  it('encodes attempt histories and active retries as page-local q/r keys', () => {
+    const encoded = encodeSuspendData(
+      attemptManifest,
+      {
+        pages: {
+          alpha: {
+            visited: true,
+            questionnaireAttempts: { 'quiz-a': [1, 0], 'quiz-b': [0] },
+            activeQuestionnaireRetries: ['quiz-a']
+          },
+          beta: { questionnaireAttempts: { 'quiz-c': [1] } }
+        }
+      },
+      0
+    )
+    expect(encoded).toEqual({
+      v: 1,
+      p: 0,
+      x: '10',
+      d: {
+        '0.q.0': [1, 0],
+        '0.r.0': 1,
+        '0.q.1': [0],
+        '1.q.0': [1]
+      }
+    })
+    // Attempt counts travel as bare point counts; questionnaire or page ids
+    // must never appear in the persisted payload.
+    expect(JSON.stringify(encoded)).not.toMatch(/quiz-[abc]|Attempts|Alpha|Beta/)
+  })
+
+  it('round-trips a retry-in-progress payload back into the same semantic state', () => {
+    const encoded = encodeSuspendData(
+      attemptManifest,
+      {
+        pages: {
+          alpha: {
+            visited: true,
+            questionnaireAttempts: { 'quiz-a': [1, 0], 'quiz-b': [0] },
+            activeQuestionnaireRetries: ['quiz-a']
+          },
+          beta: { questionnaireAttempts: { 'quiz-c': [1] } }
+        }
+      },
+      0
+    )
+    const restored = decodeSuspendData(attemptManifest, JSON.stringify(encoded))
+    expect(restored).toEqual({
+      pages: {
+        alpha: {
+          visited: true,
+          questionnaireAttempts: { 'quiz-a': [1, 0], 'quiz-b': [0] },
+          activeQuestionnaireRetries: ['quiz-a']
+        },
+        beta: { questionnaireAttempts: { 'quiz-c': [1] } }
+      }
+    })
+    expect(encodeSuspendData(attemptManifest, restored, 0)).toEqual(encoded)
+  })
+
+  it('encodes a retry flag only when the history still has an attempt left', () => {
+    // quiz-b's history already fills its cap of two, so it keeps its q entry
+    // but the stale retry flag must not be persisted.
+    const atCap = encodeSuspendData(
+      attemptManifest,
+      {
+        pages: {
+          alpha: {
+            questionnaireAttempts: { 'quiz-b': [0, 0] },
+            activeQuestionnaireRetries: ['quiz-b']
+          }
+        }
+      },
+      0
+    )
+    expect(atCap).toEqual({ v: 1, p: 0, x: '00', d: { '0.q.1': [0, 0] } })
+
+    // A retry marker without a recorded attempt history carries nothing.
+    expect(
+      encodeSuspendData(
+        attemptManifest,
+        { pages: { alpha: { activeQuestionnaireRetries: ['quiz-a'] } } },
+        0
+      )
+    ).toEqual({ v: 1, p: 0, x: '00' })
+  })
+
+  it('skips histories that violate the attempt bounds instead of clamping them', () => {
+    const encoded = encodeSuspendData(
+      attemptManifest,
+      {
+        pages: {
+          alpha: {
+            questionnaireAttempts: {
+              'quiz-a': [1, 0, 1, 0], // Four entries exceed maxAttempts 3.
+              'quiz-b': [2], // The count exceeds quiz-b's single question.
+              'quiz-c': [1] // quiz-c is not owned by this page.
+            },
+            activeQuestionnaireRetries: ['quiz-a', 'quiz-c']
+          },
+          beta: {
+            questionnaireAttempts: {
+              'quiz-a': [1], // quiz-a is not owned by this page.
+              'quiz-c': [1.5] // A partial attempt count is not a point count.
+            }
+          }
+        }
+      },
+      0
+    )
+    // Nothing survives validation, so no data section is emitted at all.
+    expect(encoded).toEqual({ v: 1, p: 0, x: '00' })
+  })
+
+  it('skips questionnaires whose manifest bounds are not usable', () => {
+    const unusable = structuredClone(attemptManifest)
+    unusable.pages['0']!.questionnaires!['0']!.maxAttempts = 0
+    unusable.pages['1']!.questionnaires!['0']!.questionCount = -1
+    expect(
+      encodeSuspendData(
+        unusable,
+        {
+          pages: {
+            alpha: { questionnaireAttempts: { 'quiz-a': [1] } },
+            beta: { questionnaireAttempts: { 'quiz-c': [1] } }
+          }
+        },
+        0
+      )
+    ).toEqual({ v: 1, p: 0, x: '00' })
+
+    // A non-canonical questionnaire index also contributes no flat key.
+    const malformed = structuredClone(attemptManifest)
+    malformed.pages['0']!.questionnaires!['00'] = { id: 'quiz-x', maxAttempts: 2, questionCount: 1 }
+    expect(
+      encodeSuspendData(
+        malformed,
+        { pages: { alpha: { questionnaireAttempts: { 'quiz-x': [1], 'quiz-b': [0] } } } },
+        0
+      )
+    ).toEqual({ v: 1, p: 0, x: '00', d: { '0.q.1': [0] } })
+  })
+
+  it('restores attempts under semantic ids and drops retries without attempts left', () => {
+    const restored = decodeSuspendData(attemptManifest, {
+      v: 1,
+      p: 0,
+      x: '10',
+      d: {
+        '0.q.0': [2, 1],
+        '0.r.0': 1,
+        '0.q.1': [0, 0],
+        // quiz-b's history fills its cap, so this stale retry is not restored.
+        '0.r.1': 1,
+        '1.q.0': [0],
+        // Only the exact retry flag 1 is meaningful.
+        '1.r.0': 2
+      }
+    })
+    expect(restored).toEqual({
+      pages: {
+        alpha: {
+          visited: true,
+          questionnaireAttempts: { 'quiz-a': [2, 1], 'quiz-b': [0, 0] },
+          activeQuestionnaireRetries: ['quiz-a']
+        },
+        beta: { questionnaireAttempts: { 'quiz-c': [0] } }
+      }
+    })
+  })
+
+  it('ignores malformed q/r keys while preserving valid attempt entries', () => {
+    const restored = decodeSuspendData(attemptManifest, {
+      v: 1,
+      p: 0,
+      x: '10',
+      d: {
+        // Valid entries that must survive.
+        '0.q.0': [1],
+        // An over-cap count for quiz-c (questionCount 1) is rejected per entry.
+        '1.q.0': [2],
+        // Malformed keys: non-canonical or out-of-range questionnaire indexes,
+        // wrong segment counts, unknown kinds, unknown pages, prototype keys.
+        '0.q.01': [1],
+        '0.q.-1': [1],
+        '0.q.9': [1],
+        '0.q': 1,
+        '0.q.0.0': 1,
+        // Invalid: only an exact flag of 1 with a restored attempt history is
+        // meaningful, and quiz-c has no attempt history in this payload.
+        '0.w.0': [1],
+        '99.q.0': [1],
+        '__proto__.q.0': 1,
+        '1.r.0': 1,
+        // An empty history cannot restore attempts.
+        '0.q.1': []
+      }
+    })
+    expect(restored).toEqual({
+      pages: { alpha: { visited: true, questionnaireAttempts: { 'quiz-a': [1] } } }
+    })
+  })
+
+  it('drops page-indexed attempts when the visited bitmap is oversized', () => {
+    // A three-bit visited string cannot belong to a two-page manifest, so its
+    // page-indexed q/r data is meaningless and restores nothing.
+    expect(
+      decodeSuspendData(attemptManifest, {
+        v: 1,
+        p: 0,
+        x: '100',
+        d: { '0.q.0': [1], '0.r.0': 1 }
+      })
+    ).toEqual({ pages: {} })
+  })
+})

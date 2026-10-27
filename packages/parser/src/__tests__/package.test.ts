@@ -591,6 +591,8 @@ describe('parsePackage', () => {
         type: 'questionnaire',
         id: 'questionnaire:lesson.mdx:4:1',
         contributesToScore: true,
+        // Omitted `maxAttempts` is normalized to a single attempt.
+        maxAttempts: 1,
         // Omitted `expanded` is normalized to `false` in the parsed output.
         expanded: false,
         questions: [
@@ -879,6 +881,56 @@ describe('parsePackage', () => {
       await rm(root, { recursive: true, force: true })
       temp = ''
     }
+  })
+
+  it('normalizes omitted maxAttempts to 1 and accepts only positive integer literals', async () => {
+    for (const [attribute, expected] of [
+      ['', 1],
+      [' maxAttempts={1}', 1],
+      [' maxAttempts={3}', 3]
+    ] as const) {
+      const root = await makeLesson(
+        `<Questionnaire${attribute}><Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>`
+      )
+      const content = await lessonContent(root)
+      expect(content[0]?.type === 'questionnaire' && content[0].maxAttempts).toBe(expected)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
+    }
+
+    for (const [attribute, error] of [
+      [' maxAttempts', /Questionnaire "maxAttempts" must be a positive integer/],
+      // A string value keeps the attribute unusable as an attempt cap.
+      [' maxAttempts="3"', /Questionnaire "maxAttempts" must be a positive integer/],
+      [' maxAttempts={true}', /Questionnaire "maxAttempts" must be a positive integer/],
+      // Zero is a parsed numeric literal, but an attempt cap must be at least 1.
+      [' maxAttempts={0}', /Questionnaire "maxAttempts" must be a positive integer/],
+      [' maxAttempts={dynamic}', /dynamic value for attribute "maxAttempts" is not supported/],
+      // Non-integer numeric literals are never treated as a supported dynamic value.
+      [' maxAttempts={1.5}', /dynamic value for attribute "maxAttempts" is not supported/],
+      [' maxAttempts={-2}', /dynamic value for attribute "maxAttempts" is not supported/]
+    ] as const) {
+      const root = await makeLesson(
+        `<Questionnaire${attribute}><Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>`
+      )
+      await expect(parsePackage(root)).rejects.toThrow(error)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
+    }
+  })
+
+  it('parses maxAttempts together with a score-contribution override and expanded', async () => {
+    const root = await makeLesson(
+      '<Questionnaire maxAttempts={3} expanded contributesToScore={false}>' +
+        '<Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>'
+    )
+    const content = await lessonContent(root)
+    expect(
+      content[0]?.type === 'questionnaire' &&
+        content[0].maxAttempts === 3 &&
+        content[0].expanded === true &&
+        content[0].contributesToScore === false
+    ).toBe(true)
   })
 
   it('parses expanded together with a score-contribution override', async () => {

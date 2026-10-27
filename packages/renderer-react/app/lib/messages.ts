@@ -35,6 +35,7 @@ export const en = {
   'questionnaire.summaryTitle': 'Questionnaire completed',
   'questionnaire.summaryCorrect': '{correct} of {total} correct answers',
   'questionnaire.summaryProgressLabel': 'Correct answers',
+  'questionnaire.tryAgain': 'Try again',
   'dialog.close': 'Close',
   'package.empty': 'This package does not contain any content.',
   'content.for': 'Content for {title}'
@@ -72,6 +73,7 @@ export const ptBR: Record<MessageId, string> = {
   'questionnaire.summaryTitle': 'Questionário concluído',
   'questionnaire.summaryCorrect': '{correct} de {total} respostas corretas',
   'questionnaire.summaryProgressLabel': 'Respostas corretas',
+  'questionnaire.tryAgain': 'Tentar novamente',
   'dialog.close': 'Fechar',
   'package.empty': 'Este pacote não contém nenhum conteúdo.',
   'content.for': 'Conteúdo de {title}'

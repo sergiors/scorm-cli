@@ -1,10 +1,12 @@
 import { useId } from 'react'
+import type { ReactNode } from 'react'
 import { FormattedMessage, useIntl } from 'react-intl'
 import { Card, CardContent } from './ui/card'
 
 export interface QuestionnaireSummaryProps {
   correct: number
   total: number
+  children?: ReactNode
 }
 
 function QuestionnaireProgressCircle({ percentage }: { percentage: number }) {
@@ -50,7 +52,7 @@ function QuestionnaireProgressCircle({ percentage }: { percentage: number }) {
   )
 }
 
-export function QuestionnaireSummary({ correct, total }: QuestionnaireSummaryProps) {
+export function QuestionnaireSummary({ correct, total, children }: QuestionnaireSummaryProps) {
   const titleId = useId()
   const percentage = total > 0 ? Math.round((correct / total) * 100) : 0
 
@@ -68,6 +70,8 @@ export function QuestionnaireSummary({ correct, total }: QuestionnaireSummaryPro
             <FormattedMessage id="questionnaire.summaryCorrect" values={{ correct, total }} />
           </p>
         </div>
+
+        {children}
       </CardContent>
     </Card>
   )

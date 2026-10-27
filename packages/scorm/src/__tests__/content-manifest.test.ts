@@ -93,7 +93,12 @@ describe('content manifest', () => {
       }
     }
     const manifest = createContentManifest(content)
-    expect(manifest.pages['0']).toEqual({ id: 'empty', title: 'Empty', questions: {} })
+    expect(manifest.pages['0']).toEqual({
+      id: 'empty',
+      title: 'Empty',
+      questions: {},
+      questionnaires: {}
+    })
     expect(manifest.pages['1']!.videos).toBeUndefined()
     expect(manifest.pages['1']!.questions!['0']).toMatchObject({
       id: 'multi',
@@ -118,8 +123,52 @@ describe('content manifest', () => {
       correctAnswers: ['semantic-value'],
       options: { '0': { value: 'semantic-value', label: 'Visible label' } }
     })
+    // Both questionnaires get the single-attempt default; the opted-out one
+    // keeps its contribution flag out of the attempt bounds entirely.
+    expect(manifest.pages['1']!.questionnaires).toEqual({
+      '0': { id: 'quiz', maxAttempts: 1, questionCount: 1 }
+    })
+    expect(manifest.pages['3']!.questionnaires).toEqual({
+      '0': { id: 'quiz-2', maxAttempts: 1, questionCount: 1 }
+    })
+    expect(manifest.pages['2']!.questionnaires).toEqual({})
     expect(manifest).not.toHaveProperty('videos')
-    expect(JSON.stringify(manifest)).not.toMatch(/pageId|quiz-2|quiz\"/)
+    // Each page exposes exactly the runtime dictionaries it needs and nothing
+    // else: prompts, labels, correct answers and attempt bounds are
+    // manifest-owned, while no learner progress or extra keys can appear.
+    expect(Object.keys(manifest.pages['0']!)).toEqual([
+      'id',
+      'title',
+      'questions',
+      'questionnaires'
+    ])
+    expect(Object.keys(manifest.pages['1']!)).toEqual([
+      'id',
+      'title',
+      'questions',
+      'questionnaires'
+    ])
+    expect(Object.keys(manifest.pages['2']!)).toEqual([
+      'id',
+      'title',
+      'questions',
+      'questionnaires',
+      'videos'
+    ])
+    expect(Object.keys(manifest.pages['3']!)).toEqual([
+      'id',
+      'title',
+      'questions',
+      'questionnaires',
+      'videos'
+    ])
+    expect(Object.keys(manifest.pages['1']!.questions!['0']!)).toEqual([
+      'id',
+      'prompt',
+      'type',
+      'options',
+      'correctAnswers'
+    ])
   })
 
   it('deterministically indexes pages, nested questionnaires, questions, and authored options', () => {
@@ -219,8 +268,64 @@ describe('content manifest', () => {
         '1': { id: 'p-b', title: 'Second', questions: {} }
       }
     })
-    expect(JSON.stringify(first)).not.toMatch(/quiz-a|Before/)
+    expect(JSON.stringify(first)).not.toMatch(/Before/)
     expect(first).not.toHaveProperty('videos')
+  })
+
+  it('stores stable preorder questionnaire indexes with attempt bounds', () => {
+    const content: ContentPackage = {
+      metadata: { title: 'Attempts' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'p-attempts',
+            source: 'attempts.mdx',
+            metadata: { title: 'Attempts' },
+            content: [
+              {
+                type: 'quote',
+                children: [
+                  {
+                    type: 'list',
+                    ordered: false,
+                    items: [
+                      {
+                        children: [
+                          {
+                            type: 'questionnaire',
+                            id: 'quiz-nested',
+                            contributesToScore: true,
+                            maxAttempts: 3,
+                            questions: [question('n1', 'First'), question('n2', 'Second')]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                type: 'questionnaire',
+                id: 'quiz-toplevel',
+                contributesToScore: true,
+                questions: [question('t1', 'Third')]
+              }
+            ]
+          }
+        ]
+      }
+    }
+
+    // Nested and top-level questionnaires share one preorder index per page,
+    // and every entry carries the bounds the suspend-data codec validates
+    // against: the authored attempt cap (or the single-attempt default) and
+    // the questionnaire's question count.
+    expect(createContentManifest(content).pages['0']!.questionnaires).toEqual({
+      '0': { id: 'quiz-nested', maxAttempts: 3, questionCount: 2 },
+      '1': { id: 'quiz-toplevel', maxAttempts: 1, questionCount: 1 }
+    })
   })
 
   it('indexes videos from content blocks without playback state', () => {

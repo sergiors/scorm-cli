@@ -11,8 +11,8 @@ import { cn } from '../lib/utils'
 import type { AnswerValue, QuestionNode, QuestionnaireNode } from '../types'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
-import { QuestionnaireSummary } from './QuestionnaireSummary'
 import {
+  QuestionnaireSubmissionResult,
   submittedChoiceClassName,
   useQuestionnaireAnswers,
   useQuestionnaireSubmission,
@@ -131,10 +131,18 @@ function QuestionnaireQuestion({ node, value, submitted, onAnswer }: Questionnai
  * visible and read-only, with its feedback revealed and the Submit action still
  * present but disabled. Restored submissions render the same way from the
  * owner's saved answers.
+ *
+ * A retry clears this questionnaire's answers and submitted status while
+ * keeping its attempt history and page completion, so every question becomes
+ * editable at once again. Try Again stays available only while the history has
+ * an attempt left.
  */
 export function ExpandedQuestionnaire({ node }: { node: QuestionnaireNode }) {
   const intl = useIntl()
-  const { answers, submitted, onAnswer, onSubmitted } = useQuestionnaireSession(node)
+  const { answers, submitted, attempts, retrying, onAnswer, onSubmitted, onRetry } =
+    useQuestionnaireSession(node)
+  const maxAttempts = node.maxAttempts ?? 1
+  const reviewing = submitted && !retrying
 
   const {
     answers: currentAnswers,
@@ -145,9 +153,15 @@ export function ExpandedQuestionnaire({ node }: { node: QuestionnaireNode }) {
     answers,
     onAnswer
   })
-  const submitQuestionnaire = useQuestionnaireSubmission(node.id, submitted, onSubmitted)
-  const canSubmit = !submitted && allAnswered
   const result = getQuestionnaireResult(node, currentAnswers)
+  const submitQuestionnaire = useQuestionnaireSubmission(
+    node.id,
+    reviewing,
+    result.correct,
+    onSubmitted
+  )
+  const canSubmit = !reviewing && allAnswered
+  const canRetry = reviewing && maxAttempts > 1 && attempts.length < maxAttempts
 
   return (
     <>
@@ -180,7 +194,7 @@ export function ExpandedQuestionnaire({ node }: { node: QuestionnaireNode }) {
                     key={question.id}
                     node={question}
                     value={currentAnswers[question.id]}
-                    submitted={submitted}
+                    submitted={reviewing}
                     onAnswer={answerQuestion}
                   />
                 </Fragment>
@@ -196,7 +210,9 @@ export function ExpandedQuestionnaire({ node }: { node: QuestionnaireNode }) {
         </CardContent>
       </Card>
 
-      {submitted && <QuestionnaireSummary {...result} />}
+      {reviewing && (
+        <QuestionnaireSubmissionResult {...result} onRetry={canRetry ? onRetry : undefined} />
+      )}
     </>
   )
 }

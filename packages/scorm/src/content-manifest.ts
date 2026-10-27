@@ -4,6 +4,7 @@ import type {
   ContentPackage,
   InlineContentNode,
   QuestionNode,
+  QuestionnaireNode,
   VideoProvider
 } from '@scorm-cli/core'
 
@@ -27,9 +28,32 @@ export interface ContentManifest {
           correctAnswers: string[]
         }
       >
+      /** Stable preorder questionnaire indexes and the bounds needed by suspend-data validation. */
+      questionnaires?: Record<string, { id: string; maxAttempts: number; questionCount: number }>
       videos?: Record<string, { id: string; src: string; provider: VideoProvider }>
     }
   >
+}
+
+function collectQuestionnaires(
+  nodes: Array<ContentNode | InlineContentNode>,
+  output: QuestionnaireNode[]
+): void {
+  for (const node of nodes) {
+    switch (node.type) {
+      case 'list':
+        for (const item of node.items) collectQuestionnaires(item.children, output)
+        break
+      case 'quote':
+        collectQuestionnaires(node.children, output)
+        break
+      case 'questionnaire':
+        output.push(node)
+        break
+      default:
+        break
+    }
+  }
 }
 
 function collectQuestions(
@@ -67,6 +91,8 @@ export function createContentManifest(contentPackage: ContentPackage): ContentMa
   nodes.forEach((node, pageIndex) => {
     const sourceQuestions: QuestionNode[] = []
     collectQuestions(node.content, sourceQuestions)
+    const sourceQuestionnaires: QuestionnaireNode[] = []
+    collectQuestionnaires(node.content, sourceQuestionnaires)
     const questions: ContentManifest['pages'][string]['questions'] = {}
     sourceQuestions.forEach((question, questionIndex) => {
       const options: Record<string, { value: string; label: string }> = {}
@@ -86,6 +112,16 @@ export function createContentManifest(contentPackage: ContentPackage): ContentMa
           .map((option) => option.value)
       }
     })
+    const questionnaires = Object.fromEntries(
+      sourceQuestionnaires.map((questionnaire, questionnaireIndex) => [
+        String(questionnaireIndex),
+        {
+          id: questionnaire.id,
+          maxAttempts: questionnaire.maxAttempts ?? 1,
+          questionCount: questionnaire.questions.length
+        }
+      ])
+    )
     const videos = Object.fromEntries(
       collectVideoNodes(node.content).map(({ id, src, provider }, videoIndex) => [
         String(videoIndex),
@@ -96,6 +132,7 @@ export function createContentManifest(contentPackage: ContentPackage): ContentMa
       id: node.id,
       title: node.metadata.title,
       questions,
+      questionnaires,
       ...(Object.keys(videos).length > 0 ? { videos } : {})
     }
   })

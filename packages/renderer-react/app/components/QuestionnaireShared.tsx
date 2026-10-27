@@ -1,7 +1,10 @@
 import { useRef, useState } from 'react'
+import { FormattedMessage } from 'react-intl'
 import type { AnswerValue, QuestionnaireNode, QuestionNode } from '../types'
 import { allQuestionsAnswered, type SubmittedOptionResult } from '../lib/questionnaire'
 import { usePageId, usePlayerActions, usePlayerState } from '../lib/player-context'
+import { QuestionnaireSummary } from './QuestionnaireSummary'
+import { Button } from './ui/button'
 
 /** Reads persisted questionnaire state/actions for the page or item that owns the node. */
 export function useQuestionnaireSession(node: QuestionnaireNode) {
@@ -13,13 +16,34 @@ export function useQuestionnaireSession(node: QuestionnaireNode) {
   return {
     answers: pageState?.answers,
     submitted: pageState?.submittedQuestionnaires?.includes(node.id) ?? false,
+    attempts: pageState?.questionnaireAttempts?.[node.id] ?? [],
+    retrying: pageState?.activeQuestionnaireRetries?.includes(node.id) ?? false,
     onAnswer: pageId
-      ? (questionId: string, value: AnswerValue) =>
-          actions.setAnswer(pageId, questionId, value)
+      ? (questionId: string, value: AnswerValue) => actions.setAnswer(pageId, questionId, value)
       : undefined,
     onSubmitted: pageId
-      ? (questionnaireId: string) =>
-          actions.markQuestionnaireSubmitted(pageId, questionnaireId)
+      ? (questionnaireId: string, correctCount: number) =>
+          actions.markQuestionnaireSubmitted(
+            pageId,
+            questionnaireId,
+            // Keep the recorded count within the authored question count. A
+            // non-integer or negative count falls back to zero exactly as the
+            // action did before, while an oversized count is clamped here so
+            // the codec can still persist the attempt history.
+            Number.isSafeInteger(correctCount)
+              ? Math.min(Math.max(correctCount, 0), node.questions.length)
+              : 0,
+            node.maxAttempts
+          )
+      : undefined,
+    onRetry: pageId
+      ? () =>
+          actions.retryQuestionnaire(
+            pageId,
+            node.id,
+            node.questions.map((question) => question.id),
+            node.maxAttempts
+          )
       : undefined
   }
 }
@@ -61,20 +85,29 @@ export function useQuestionnaireAnswers({
  * Returns a submit callback that reports this questionnaire at most once. The
  * guard covers repeated clicks, keyboard submissions, owner-controlled
  * `submitted` updates, and restored submissions that are already complete.
+ *
+ * The guard is forgotten whenever the owner clears the submitted status. That is
+ * exactly what happens when a retry starts, so the retry's next valid submission
+ * is reported while repeated clicks within one submission still are not.
  */
 export function useQuestionnaireSubmission(
   id: string,
   submitted: boolean,
-  onSubmitted: ((id: string) => void) | undefined
+  correctCount: number,
+  onSubmitted: ((id: string, correctCount: number) => void) | undefined
 ): () => void {
   const submittedIdRef = useRef<string | null>(submitted ? id : null)
+
+  if (!submitted) {
+    submittedIdRef.current = null
+  }
 
   return () => {
     if (submitted || submittedIdRef.current === id) {
       return
     }
     submittedIdRef.current = id
-    onSubmitted?.(id)
+    onSubmitted?.(id, correctCount)
   }
 }
 
@@ -96,4 +129,34 @@ export function submittedChoiceClassName(result: SubmittedOptionResult): string 
   }
 
   return 'pointer-events-none'
+}
+
+/**
+ * The submitted summary shared by both presentations. Without a retry action
+ * this renders exactly the summary used before retries existed, so a
+ * questionnaire whose attempt limit is reached keeps the same UI. When an
+ * attempt remains, Try Again follows the summary as a separate action.
+ */
+export function QuestionnaireSubmissionResult({
+  correct,
+  total,
+  onRetry
+}: {
+  correct: number
+  total: number
+  onRetry?: () => void
+}) {
+  if (!onRetry) {
+    return <QuestionnaireSummary correct={correct} total={total} />
+  }
+
+  return (
+    <div className="grid gap-3">
+      <QuestionnaireSummary correct={correct} total={total}>
+        <Button type="button" variant="outline" data-slot="questionnaire-retry" onClick={onRetry}>
+          <FormattedMessage id="questionnaire.tryAgain" />
+        </Button>
+      </QuestionnaireSummary>
+    </div>
+  )
 }

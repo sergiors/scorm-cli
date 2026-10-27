@@ -6,8 +6,19 @@ import {
   updatePageState,
   withLocation
 } from '../../app/lib/player-state'
-import type { ContentPackage, PlayerState, VideoNode } from '../../app/types'
-import { questionnaireNode, scrollPackage } from './fixtures'
+import type {
+  ContentPackage,
+  PageNode,
+  PlayerState,
+  QuestionnaireNode,
+  VideoNode
+} from '../../app/types'
+import {
+  multipleChoiceQuestion,
+  questionnaireNode,
+  scrollPackage,
+  singleChoiceQuestion
+} from './fixtures'
 
 /** A scroll package whose first page carries the shared questionnaire fixture. */
 const questionnairePackage: ContentPackage = {
@@ -343,6 +354,165 @@ describe('sanitizePlayerState videos', () => {
     const state = sanitizePlayerState(videoPackage, raw)
     state.pages['page:a.mdx']!.videos![pageAVideo.id] = 99
     expect(raw.pages['page:a.mdx'].videos[pageAVideo.id]).toBe(12.34)
+  })
+})
+
+describe('sanitizePlayerState attempt history', () => {
+  /** The shared questionnaire fixture with an authored cap of three attempts. */
+  const retryQuestionnaire: QuestionnaireNode = { ...questionnaireNode, maxAttempts: 3 }
+  const [single, multiple] = questionnaireNode.questions
+
+  function attemptPackage(presentation: 'scroll' | 'slides' = 'scroll'): ContentPackage {
+    const page: PageNode = {
+      type: 'page',
+      id: 'page:intro.mdx',
+      source: 'intro.mdx',
+      metadata: { title: 'Introduction' },
+      content: [retryQuestionnaire]
+    }
+    return presentation === 'slides'
+      ? { metadata: { title: 'Attempts' }, presentation: { type: 'slides', pages: [page] } }
+      : { metadata: { title: 'Attempts' }, presentation: { type: 'scroll', pages: [page] } }
+  }
+
+  it.each(['scroll', 'slides'] as const)(
+    'seeds one legacy attempt on a completed %s page that already implies submission',
+    (presentation) => {
+      // Older suspend data recorded the completed page and its answers, but no
+      // attempt history at all.
+      const state = sanitizePlayerState(attemptPackage(presentation), {
+        pages: {
+          'page:intro.mdx': {
+            visited: true,
+            completed: true,
+            answers: { [single.id]: 'first', [multiple.id]: ['beta'] }
+          }
+        }
+      })
+
+      expect(state.pages['page:intro.mdx']).toEqual({
+        visited: true,
+        completed: true,
+        answers: { [single.id]: 'first', [multiple.id]: ['beta'] },
+        // The completed page normally implies a read-only submission and the
+        // missing legacy history is seeded from the answers as exactly one
+        // consumed attempt: one correct and one wrong question.
+        submittedQuestionnaires: [retryQuestionnaire.id],
+        questionnaireAttempts: { [retryQuestionnaire.id]: [1] }
+      })
+    }
+  )
+
+  it('seeds one attempt for an explicitly submitted questionnaire without history', () => {
+    const state = sanitizePlayerState(attemptPackage(), {
+      pages: {
+        'page:intro.mdx': {
+          submittedQuestionnaires: [retryQuestionnaire.id],
+          answers: { [single.id]: 'first', [multiple.id]: ['alpha'] }
+        }
+      }
+    })
+
+    // Both questions correct: the seeded entry records the full score once.
+    expect(state.pages['page:intro.mdx']).toEqual({
+      answers: { [single.id]: 'first', [multiple.id]: ['alpha'] },
+      submittedQuestionnaires: [retryQuestionnaire.id],
+      questionnaireAttempts: { [retryQuestionnaire.id]: [2] }
+    })
+  })
+
+  it('counts only sanitized answers when seeding the legacy history', () => {
+    const state = sanitizePlayerState(attemptPackage(), {
+      pages: {
+        'page:intro.mdx': {
+          submittedQuestionnaires: [retryQuestionnaire.id],
+          // A stale option value cannot survive sanitization, so it must not
+          // credit the seeded attempt either.
+          answers: { [single.id]: 'gone', [multiple.id]: 'alpha' }
+        }
+      }
+    })
+
+    expect(state.pages['page:intro.mdx']?.answers).toBeUndefined()
+    expect(state.pages['page:intro.mdx']?.questionnaireAttempts).toEqual({
+      [retryQuestionnaire.id]: [0]
+    })
+  })
+
+  it('never seeds an in-progress retry on a completed page', () => {
+    const state = sanitizePlayerState(attemptPackage(), {
+      pages: {
+        'page:intro.mdx': {
+          visited: true,
+          completed: true,
+          activeQuestionnaireRetries: [retryQuestionnaire.id],
+          questionnaireAttempts: { [retryQuestionnaire.id]: [0] },
+          answers: { [single.id]: 'first' }
+        }
+      }
+    })
+
+    // The retry keeps the page editable instead of being inferred submitted,
+    // so completion seeds nothing and the restored history stays untouched.
+    expect(state.pages['page:intro.mdx']).toEqual({
+      visited: true,
+      completed: true,
+      answers: { [single.id]: 'first' },
+      questionnaireAttempts: { [retryQuestionnaire.id]: [0] },
+      activeQuestionnaireRetries: [retryQuestionnaire.id]
+    })
+  })
+
+  it('keeps a surviving retry excluded from an explicitly provided submission', () => {
+    const state = sanitizePlayerState(attemptPackage(), {
+      pages: {
+        'page:intro.mdx': {
+          submittedQuestionnaires: [retryQuestionnaire.id],
+          activeQuestionnaireRetries: [retryQuestionnaire.id],
+          questionnaireAttempts: { [retryQuestionnaire.id]: [0] },
+          answers: { [single.id]: 'first' }
+        }
+      }
+    })
+
+    expect(state.pages['page:intro.mdx']).toEqual({
+      answers: { [single.id]: 'first' },
+      questionnaireAttempts: { [retryQuestionnaire.id]: [0] },
+      activeQuestionnaireRetries: [retryQuestionnaire.id]
+    })
+  })
+
+  it('never overwrites or extends a restored attempt history', () => {
+    const state = sanitizePlayerState(attemptPackage(), {
+      pages: {
+        'page:intro.mdx': {
+          submittedQuestionnaires: [retryQuestionnaire.id],
+          questionnaireAttempts: { [retryQuestionnaire.id]: [0, 2] },
+          answers: { [single.id]: 'first', [multiple.id]: ['alpha'] }
+        }
+      }
+    })
+
+    // Two restored attempts stay exactly two; no legacy entry is appended.
+    expect(state.pages['page:intro.mdx']?.questionnaireAttempts).toEqual({
+      [retryQuestionnaire.id]: [0, 2]
+    })
+  })
+
+  it('does not seed a one-attempt questionnaire', () => {
+    const state = sanitizePlayerState(questionnairePackage, {
+      pages: {
+        'page:intro.mdx': {
+          submittedQuestionnaires: [questionnaireNode.id],
+          answers: { [single.id]: 'first', [multiple.id]: ['alpha'] }
+        }
+      }
+    })
+
+    // A single-attempt questionnaire has no retry allowance to protect, so a
+    // legacy submission without history must stay history-free.
+    expect(state.pages['page:intro.mdx']?.submittedQuestionnaires).toEqual([questionnaireNode.id])
+    expect(state.pages['page:intro.mdx']?.questionnaireAttempts).toBeUndefined()
   })
 })
 

@@ -393,6 +393,89 @@ describe('suspend-data codec integration', () => {
     }
   })
 
+  it('matches browser and Node codecs for attempt history and active retries', () => {
+    // Give the fixture questionnaires authored attempt caps so both runtimes
+    // must apply the same history validation and retry-flag rules.
+    const retryManifest = structuredClone(manifest)
+    retryManifest.pages['3']!.questionnaires!['0']!.maxAttempts = 3
+    retryManifest.pages['4']!.questionnaires!['0']!.maxAttempts = 2
+
+    // quiz-3 is mid-retry with a valid history; quiz-4's history is at its cap.
+    const retrying: PlayerState = {
+      pages: {
+        'page-3': {
+          visited: true,
+          questionnaireAttempts: { 'quiz-3': [2, 1] },
+          activeQuestionnaireRetries: ['quiz-3']
+        },
+        'page-4': {
+          questionnaireAttempts: { 'quiz-4': [0, 0] },
+          activeQuestionnaireRetries: ['quiz-4']
+        }
+      }
+    }
+
+    const context: Record<string, unknown> = {}
+    vm.createContext(context)
+    vm.runInContext(browserCodecSource(), context)
+    const browserEncode = context.compactEncode as (
+      manifest: unknown,
+      state: unknown,
+      progress: number
+    ) => string
+    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState
+
+    const encoded = encodeSuspendData(retryManifest, retrying, 0)
+    expect(encoded).toEqual({
+      v: 1,
+      p: 0,
+      x: '00010',
+      d: { '3.q.0': [2, 1], '3.r.0': 1, '4.q.0': [0, 0] }
+    })
+    expect(JSON.parse(browserEncode(retryManifest, retrying, 0))).toEqual(encoded)
+
+    const payload = JSON.stringify({
+      v: 1,
+      p: 0,
+      x: '00010',
+      d: { '3.q.0': [2, 1], '3.r.0': 1, '4.q.0': [0, 0], '4.r.0': 1 }
+    })
+    const nodeRestored = decodeSuspendData(retryManifest, payload)
+    expect(nodeRestored).toEqual({
+      pages: {
+        'page-3': {
+          visited: true,
+          questionnaireAttempts: { 'quiz-3': [2, 1] },
+          activeQuestionnaireRetries: ['quiz-3']
+        },
+        'page-4': { questionnaireAttempts: { 'quiz-4': [0, 0] } }
+      }
+    })
+    expect(normalize(browserDecode(retryManifest, payload))).toEqual(nodeRestored)
+
+    // Both runtimes also agree on rejecting out-of-bound or malformed entries.
+    const malformed = JSON.stringify({
+      v: 1,
+      p: 0,
+      x: '00010',
+      d: {
+        '3.q.0': [9],
+        '3.q.1': [1.5],
+        '3.r.0': 1,
+        '4.q.0': [],
+        '4.r.0': 1,
+        '99.q.0': [1],
+        '3.z.0': 1
+      }
+    })
+    expect(normalize(browserDecode(retryManifest, malformed))).toEqual(
+      decodeSuspendData(retryManifest, malformed)
+    )
+    expect(decodeSuspendData(retryManifest, malformed)).toEqual({
+      pages: { 'page-3': { visited: true } }
+    })
+  })
+
   it('saves compact suspend data without values and keeps location separate', () => {
     const values: Record<string, string> = {}
     const window: any = {

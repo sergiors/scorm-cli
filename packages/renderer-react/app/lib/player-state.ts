@@ -5,6 +5,7 @@ import type {
   PlayerPageState,
   PlayerState,
   QuestionNode,
+  QuestionnaireNode,
   ItemNode
 } from '../types'
 import { collectQuestionnaires, collectVideoNodes } from './content-helpers'
@@ -46,6 +47,12 @@ function sanitizeAnswer(question: QuestionNode, value: unknown): AnswerValue | u
   return value
 }
 
+/** The effective attempt cap, falling back to one for older ASTs. */
+function questionnaireMaxAttempts(questionnaire: QuestionnaireNode): number {
+  const value = questionnaire.maxAttempts
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : 1
+}
+
 function sanitizePageState(
   node: PageNode | ItemNode,
   raw: Record<string, unknown>,
@@ -54,9 +61,11 @@ function sanitizePageState(
 ): PlayerPageState | undefined {
   const questionnaires = collectQuestionnaires(node.content)
   const questions = new Map<string, QuestionNode>()
+  const questionnaireById = new Map<string, QuestionnaireNode>()
   const wrapperIds = new Set<string>()
   for (const questionnaire of questionnaires) {
     wrapperIds.add(questionnaire.id)
+    questionnaireById.set(questionnaire.id, questionnaire)
     for (const question of questionnaire.questions) {
       questions.set(question.id, question)
     }
@@ -77,6 +86,47 @@ function sanitizePageState(
     if (Object.keys(answers).length > 0) page.answers = answers
   }
 
+  // Attempt histories are scoped to questionnaires this node actually owns and
+  // must stay within the authored cap and question count. A restored history is
+  // what lets a resumed questionnaire show Try Again only while attempts
+  // remain, so an out-of-range history is dropped rather than truncated.
+  const attempts: Record<string, number[]> = {}
+  if (isRecord(raw.questionnaireAttempts)) {
+    for (const [questionnaireId, value] of Object.entries(raw.questionnaireAttempts)) {
+      const questionnaire = questionnaireById.get(questionnaireId)
+      if (!questionnaire || !Array.isArray(value)) continue
+      if (value.length === 0 || value.length > questionnaireMaxAttempts(questionnaire)) continue
+      if (
+        !value.every(
+          (count) =>
+            typeof count === 'number' &&
+            Number.isSafeInteger(count) &&
+            count >= 0 &&
+            count <= questionnaire.questions.length
+        )
+      ) {
+        continue
+      }
+      attempts[questionnaireId] = [...value]
+    }
+    if (Object.keys(attempts).length > 0) page.questionnaireAttempts = attempts
+  }
+
+  // An in-progress retry is only meaningful with a recorded history that still
+  // has an attempt left. Keeping this flag separate from submissions is what
+  // lets a completed page resume editable instead of being inferred read-only.
+  const retries = new Set<string>()
+  if (Array.isArray(raw.activeQuestionnaireRetries)) {
+    for (const questionnaireId of raw.activeQuestionnaireRetries) {
+      if (typeof questionnaireId !== 'string') continue
+      const questionnaire = questionnaireById.get(questionnaireId)
+      if (!questionnaire) continue
+      const history = attempts[questionnaireId]
+      if (!history || history.length >= questionnaireMaxAttempts(questionnaire)) continue
+      retries.add(questionnaireId)
+    }
+  }
+
   // Video positions are scoped to the page/item that owns the video: only ids
   // reachable in this node's nested AST are kept, so a video moved to another
   // page never retains a position under the page that used to own it. Invalid
@@ -95,7 +145,8 @@ function sanitizePageState(
   // A completed sequential page implies every questionnaire on it was
   // submitted, so resume stays read-only and gated even when only the
   // completion flag was persisted (the compact codec derives completion from
-  // progress).
+  // progress). A questionnaire with an active retry is the exception: its
+  // submission was intentionally cleared, so completion must not infer it back.
   const provided = new Set(
     Array.isArray(raw.submittedQuestionnaires)
       ? raw.submittedQuestionnaires.filter((id): id is string => typeof id === 'string')
@@ -103,12 +154,53 @@ function sanitizePageState(
   )
   const submitted: string[] = []
   for (const id of wrapperIds) {
-    if (provided.has(id) || (completedImpliesSubmitted && page.completed)) {
+    if (!retries.has(id) && (provided.has(id) || (completedImpliesSubmitted && page.completed))) {
       submitted.push(id)
     }
   }
+
+  // Legacy suspend data did not store attempt history. When submission is
+  // nevertheless known, seed its single historical score from the sanitized
+  // answers so retries do not grant a fresh full allowance after an upgrade.
+  // Never infer history for an active retry or a one-attempt questionnaire.
+  const submittedIds = new Set(submitted)
+  for (const questionnaire of questionnaires) {
+    if (
+      questionnaireMaxAttempts(questionnaire) <= 1 ||
+      attempts[questionnaire.id] ||
+      !submittedIds.has(questionnaire.id) ||
+      retries.has(questionnaire.id)
+    ) {
+      continue
+    }
+    let correctCount = 0
+    for (const question of questionnaire.questions) {
+      const answer = page.answers?.[question.id]
+      const correctValues = question.options
+        .filter((option) => option.correct)
+        .map((option) => option.value)
+      if (question.questionType === 'multiple-choice') {
+        if (correctValues.length === 0 || !Array.isArray(answer)) continue
+        const selected = new Set(answer)
+        const correct = new Set(correctValues)
+        if (selected.size === correct.size && [...selected].every((value) => correct.has(value))) {
+          correctCount += 1
+        }
+      } else if (typeof answer === 'string' && correctValues.includes(answer)) {
+        correctCount += 1
+      }
+    }
+    attempts[questionnaire.id] = [correctCount]
+  }
+  if (Object.keys(attempts).length > 0) page.questionnaireAttempts = attempts
+
   if (submitted.length > 0) {
     page.submittedQuestionnaires = submitted
+  }
+
+  const activeRetries = [...retries].filter((id) => !submittedIds.has(id))
+  if (activeRetries.length > 0) {
+    page.activeQuestionnaireRetries = activeRetries
   }
 
   return Object.keys(page).length > 0 ? page : undefined
@@ -120,13 +212,18 @@ function sanitizePageState(
  * questions that no longer exist (or no longer have the recorded options),
  * submission ids that no longer name a reachable questionnaire, and video
  * positions whose id no longer names a video authored on that page/item (or
- * whose value is not a finite, non-negative number). Video positions are scoped
- * to the page/item that owns the video, so a video moved to another node never
- * retains a position under its old node. A completed sequential page is
- * normalized to have all of its questionnaires submitted, so a resume that only
- * persisted completion stays read-only and gated. The result is always a plain
- * in-memory state — never the raw persisted object — so the renderer can mutate
- * it without touching whatever the bridge returned.
+ * whose value is not a finite, non-negative number). Attempt histories are
+ * validated against the authored attempt cap and question count, and an active
+ * retry survives only while its history still has an attempt left. Video
+ * positions are scoped to the page/item that owns the video, so a video moved to
+ * another node never retains a position under its old node. A completed
+ * sequential page is normalized to have all of its questionnaires submitted,
+ * except one with an active retry, so a resume that only persisted completion
+ * stays read-only and gated without discarding an in-progress retry. A submitted
+ * retry-enabled questionnaire with no legacy history is seeded with one score
+ * from its sanitized answers. The result is always a plain in-memory state —
+ * never the raw persisted object — so the renderer can mutate it without
+ * touching whatever the bridge returned.
  */
 export function sanitizePlayerState(contentPackage: ContentPackage, raw: unknown): PlayerState {
   const { presentation } = contentPackage

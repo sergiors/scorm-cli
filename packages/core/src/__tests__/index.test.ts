@@ -635,6 +635,138 @@ describe('aggregate questionnaire score', () => {
     }
     expect(getAggregateQuestionnaireScore(noEligibleQuestions, { pages: {} })).toBeUndefined()
   })
+
+  it('scores the best recorded attempt for a questionnaire with attempts left', () => {
+    const content: ContentPackage = {
+      metadata: { title: 'Retries' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'page',
+            source: 'page.mdx',
+            metadata: { title: 'Page' },
+            content: [
+              {
+                ...questionnaire('quiz', [
+                  question('repeat', 'single-choice', ['right', 'wrong'], ['right']),
+                  question('choice', 'multiple-choice', ['a', 'b'], ['a'])
+                ]),
+                maxAttempts: 3
+              }
+            ]
+          }
+        ]
+      }
+    }
+    const stateFor = (history: number[]): PlayerState => ({
+      pages: { page: { questionnaireAttempts: { quiz: history } } }
+    })
+
+    // A retry in progress has no current answers, but the best recorded
+    // attempt still counts — starting a retry never resets the score to zero.
+    expect(getAggregateQuestionnaireScore(content, stateFor([1, 0]))).toEqual({
+      earned: 1,
+      possible: 2
+    })
+
+    // A worse later attempt does not decrease the reported score.
+    expect(getAggregateQuestionnaireScore(content, stateFor([2, 0]))).toEqual({
+      earned: 2,
+      possible: 2
+    })
+    expect(getAggregateQuestionnaireScore(content, stateFor([0, 1]))).toEqual({
+      earned: 1,
+      possible: 2
+    })
+  })
+
+  it('falls back to current answers for histories outside the attempt rules', () => {
+    const content: ContentPackage = {
+      metadata: { title: 'Retries' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'page',
+            source: 'page.mdx',
+            metadata: { title: 'Page' },
+            content: [
+              {
+                ...questionnaire('quiz', [
+                  question('repeat', 'single-choice', ['right', 'wrong'], ['right'])
+                ]),
+                maxAttempts: 3
+              },
+              // A single-attempt questionnaire keeps scoring live answers and
+              // ignores any recorded history.
+              questionnaire('single', [
+                question('once', 'single-choice', ['right', 'wrong'], ['right'])
+              ])
+            ]
+          }
+        ]
+      }
+    }
+    const state: PlayerState = {
+      pages: {
+        page: {
+          answers: { repeat: 'wrong', once: 'right' },
+          questionnaireAttempts: {
+            // Longer than maxAttempts: dropped entirely, not clamped.
+            quiz: [1, 0, 1, 0],
+            // Every count is out of range: unusable for the best attempt.
+            single: [0, 5, -1, 1.5]
+          }
+        }
+      }
+    }
+
+    // The retryable quiz scores its live (wrong) answer, and the
+    // single-attempt quiz scores its saved correct answer.
+    expect(getAggregateQuestionnaireScore(content, state)).toEqual({ earned: 1, possible: 2 })
+  })
+
+  it('excludes an opted-out questionnaire and its attempts from the score', () => {
+    const content: ContentPackage = {
+      metadata: { title: 'Retries' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'page',
+            source: 'page.mdx',
+            metadata: { title: 'Page' },
+            content: [
+              {
+                ...questionnaire(
+                  'excluded',
+                  [question('excluded-question', 'single-choice', ['a', 'b'], ['a'])],
+                  false
+                ),
+                maxAttempts: 3
+              },
+              questionnaire('scored', [
+                question('scored-question', 'single-choice', ['a', 'b'], ['a'])
+              ])
+            ]
+          }
+        ]
+      }
+    }
+
+    const score = getAggregateQuestionnaireScore(content, {
+      pages: {
+        page: { questionnaireAttempts: { excluded: [1] }, answers: { 'scored-question': 'a' } }
+      }
+    })
+    // The opted-out questionnaire contributes no points in either direction,
+    // even when its attempt history holds a full result.
+    expect(score).toEqual({ earned: 1, possible: 1 })
+  })
 })
 
 describe('shared sequential progression policy', () => {

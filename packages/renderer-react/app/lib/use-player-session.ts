@@ -30,8 +30,28 @@ export interface PlayerSession {
   markCompleted(id: string): void
   /** Persists a question answer for a node. */
   setAnswer(pageId: string, questionId: string, value: AnswerValue): void
-  /** Marks a questionnaire on a node as submitted. */
-  markQuestionnaireSubmitted(pageId: string, questionnaireId: string): void
+  /**
+   * Records a successful questionnaire submission: appends its correct-answer
+   * count to the attempt history (never beyond `maxAttempts`), marks the
+   * questionnaire submitted, and clears any active retry.
+   */
+  markQuestionnaireSubmitted(
+    pageId: string,
+    questionnaireId: string,
+    correctCount: number,
+    maxAttempts?: number
+  ): void
+  /**
+   * Starts a retry for a submitted questionnaire whose history still has an
+   * attempt left: clears only its answers, keeps the history and page
+   * completion, removes the submitted status, and marks it actively retrying.
+   */
+  retryQuestionnaire(
+    pageId: string,
+    questionnaireId: string,
+    questionIds: readonly string[],
+    maxAttempts?: number
+  ): void
   /**
    * Persists a video's semantic playback position in seconds, scoped to the
    * page/item that owns the video. Non-finite and negative positions are
@@ -39,6 +59,11 @@ export interface PlayerSession {
    * no-op.
    */
   setVideoPosition(pageId: string, videoId: string, seconds: number): void
+}
+
+/** The effective attempt cap, falling back to one for older ASTs. */
+function normalizeAttemptLimit(value: number | undefined): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : 1
 }
 
 /**
@@ -145,18 +170,98 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
     [applyState]
   )
 
+  // A successful submission is the only thing that consumes an attempt. The
+  // history append is capped here as well as in the UI, so a restored state at
+  // the attempt limit can never grow past it. Submission and the attempt are
+  // written together, and an active retry is cleared at the same time.
   const markQuestionnaireSubmitted = useCallback(
-    (pageId: string, questionnaireId: string) => {
+    (pageId: string, questionnaireId: string, correctCount: number, maxAttempts?: number) => {
+      const attemptLimit = normalizeAttemptLimit(maxAttempts)
+      const correct = Number.isSafeInteger(correctCount) && correctCount >= 0 ? correctCount : 0
       applyState((previous) =>
         updatePageState(previous, pageId, (page) => {
           const submitted = page.submittedQuestionnaires ?? []
           if (submitted.includes(questionnaireId)) {
             return page
           }
-          return {
+
+          const history = page.questionnaireAttempts?.[questionnaireId] ?? []
+          const nextHistory = history.length < attemptLimit ? [...history, correct] : history
+          const nextPage = {
             ...page,
             submittedQuestionnaires: [...submitted, questionnaireId]
           }
+
+          if (nextHistory !== history) {
+            nextPage.questionnaireAttempts = {
+              ...page.questionnaireAttempts,
+              [questionnaireId]: nextHistory
+            }
+          }
+
+          const retries = page.activeQuestionnaireRetries
+          if (retries?.includes(questionnaireId)) {
+            const nextRetries = retries.filter((id) => id !== questionnaireId)
+            if (nextRetries.length > 0) {
+              nextPage.activeQuestionnaireRetries = nextRetries
+            } else {
+              delete nextPage.activeQuestionnaireRetries
+            }
+          }
+
+          return nextPage
+        })
+      )
+    },
+    [applyState]
+  )
+
+  // Starting a retry keeps the recorded attempts and the page's completion
+  // flag intact, but clears the submitted status and that questionnaire's own
+  // answers so both presentations render it editable again. The active retry
+  // marker is separate from submission on purpose: a restored completed page
+  // must not infer this questionnaire back to submitted.
+  const retryQuestionnaire = useCallback(
+    (
+      pageId: string,
+      questionnaireId: string,
+      questionIds: readonly string[],
+      maxAttempts?: number
+    ) => {
+      const attemptLimit = normalizeAttemptLimit(maxAttempts)
+      applyState((previous) =>
+        updatePageState(previous, pageId, (page) => {
+          const historyLength = page.questionnaireAttempts?.[questionnaireId]?.length ?? 0
+          const retries = page.activeQuestionnaireRetries ?? []
+          if (historyLength >= attemptLimit || retries.includes(questionnaireId)) {
+            return page
+          }
+
+          const answers = { ...page.answers }
+          for (const questionId of questionIds) {
+            delete answers[questionId]
+          }
+          const submitted = (page.submittedQuestionnaires ?? []).filter(
+            (id) => id !== questionnaireId
+          )
+          const nextPage: typeof page = {
+            ...page,
+            activeQuestionnaireRetries: [...retries, questionnaireId]
+          }
+
+          if (Object.keys(answers).length > 0) {
+            nextPage.answers = answers
+          } else {
+            delete nextPage.answers
+          }
+
+          if (submitted.length > 0) {
+            nextPage.submittedQuestionnaires = submitted
+          } else {
+            delete nextPage.submittedQuestionnaires
+          }
+
+          return nextPage
         })
       )
     },
@@ -198,5 +303,13 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
   // on unrelated renders. No scored questions yields `undefined`, never a zero.
   useScormScore(getAggregateQuestionnaireScore(contentPackage, state))
 
-  return { state, markSeen, markCompleted, setAnswer, markQuestionnaireSubmitted, setVideoPosition }
+  return {
+    state,
+    markSeen,
+    markCompleted,
+    setAnswer,
+    markQuestionnaireSubmitted,
+    retryQuestionnaire,
+    setVideoPosition
+  }
 }

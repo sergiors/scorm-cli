@@ -186,6 +186,8 @@ export interface QuestionnaireNode {
   type: 'questionnaire'
   id: string
   contributesToScore: boolean
+  /** Maximum number of submission attempts. Defaults to 1 for older ASTs. */
+  maxAttempts?: number
   /**
    * Whether the questionnaire presents every question at once instead of one
    * at a time. Authoring may omit the prop; parser output always normalizes it
@@ -205,6 +207,10 @@ export interface PlayerPageState {
   completed?: boolean
   answers?: Record<string, AnswerValue>
   submittedQuestionnaires?: string[]
+  /** Correct-question counts for each completed submission, keyed by stable questionnaire ID. */
+  questionnaireAttempts?: Record<string, number[]>
+  /** Questionnaires currently being retried after an unsuccessful submission. */
+  activeQuestionnaireRetries?: string[]
   /** Playback positions in semantic seconds, keyed by stable video node ID. */
   videos?: Record<string, number>
 }
@@ -378,12 +384,36 @@ interface QuestionnaireScore {
   possible: number
 }
 
-/** Calculates the semantic score for one questionnaire from its current answers. */
+/**
+ * Scores retry-enabled questionnaires by their best recorded submission when
+ * history exists; otherwise scores currently saved answers.
+ */
 function scoreQuestionnaire(
   questionnaire: QuestionnaireNode,
-  answers: PlayerPageState['answers']
+  answers: PlayerPageState['answers'],
+  attempts: PlayerPageState['questionnaireAttempts']
 ): QuestionnaireScore {
   if (!questionnaire.contributesToScore) return { earned: 0, possible: 0 }
+
+  const history = attempts?.[questionnaire.id]
+  const maxAttempts = questionnaire.maxAttempts ?? 1
+  if (
+    Number.isSafeInteger(maxAttempts) &&
+    maxAttempts > 1 &&
+    Array.isArray(history) &&
+    history.length > 0 &&
+    history.length <= maxAttempts
+  ) {
+    const validCounts = history.filter(
+      (count) => Number.isInteger(count) && count >= 0 && count <= questionnaire.questions.length
+    )
+    if (validCounts.length > 0) {
+      return {
+        earned: Math.max(...validCounts),
+        possible: questionnaire.questions.length
+      }
+    }
+  }
 
   let earned = 0
   for (const question of questionnaire.questions) {
@@ -411,8 +441,10 @@ function scoreQuestionnaire(
 
 /**
  * Calculates the aggregate one-point-per-question score across all eligible
- * questionnaires in every page or item. Answers are scored as currently saved;
- * submission status does not affect the score or its possible-question count.
+ * questionnaires in every page or item. Retry-enabled questionnaires with
+ * submitted-attempt history use their best recorded correct count; without
+ * history (and for single-attempt questionnaires), currently saved answers are
+ * scored. Submission status does not affect the possible-question count.
  */
 export function getAggregateQuestionnaireScore(
   contentPackage: ContentPackage,
@@ -423,18 +455,22 @@ export function getAggregateQuestionnaireScore(
 
   const visit = (
     nodes: Array<ContentNode | InlineContentNode>,
-    answers: PlayerPageState['answers']
+    pageState: PlayerPageState | undefined
   ) => {
     for (const node of nodes) {
       switch (node.type) {
         case 'list':
-          for (const item of node.items) visit(item.children, answers)
+          for (const item of node.items) visit(item.children, pageState)
           break
         case 'quote':
-          visit(node.children, answers)
+          visit(node.children, pageState)
           break
         case 'questionnaire':
-          const questionnaireScore = scoreQuestionnaire(node, answers)
+          const questionnaireScore = scoreQuestionnaire(
+            node,
+            pageState?.answers,
+            pageState?.questionnaireAttempts
+          )
           earned += questionnaireScore.earned
           possible += questionnaireScore.possible
           break
@@ -452,7 +488,7 @@ export function getAggregateQuestionnaireScore(
   }
 
   for (const presentationNode of getPresentationNodes(contentPackage)) {
-    visit(presentationNode.content, playerState.pages[presentationNode.id]?.answers)
+    visit(presentationNode.content, playerState.pages[presentationNode.id])
   }
 
   return possible === 0 ? undefined : { earned, possible }

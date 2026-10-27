@@ -1,7 +1,7 @@
 # Player state and SCORM suspend data
 
-This describes the implementation in this repository, including the current
-video-position addition. It is not a separate format specification: the codec,
+This describes the implementation in this repository, including questionnaire
+retry history and video positions. It is not a separate format specification: the codec,
 packaged manifest, parser IDs, player sanitizer, and SCORM runtime are the
 behavioral sources of truth.
 
@@ -73,6 +73,10 @@ export interface PlayerPageState {
   completed?: boolean
   answers?: Record<string, AnswerValue>
   submittedQuestionnaires?: string[]
+  /** Correct-question counts for completed submissions, keyed by questionnaire ID. */
+  questionnaireAttempts?: Record<string, number[]>
+  /** IDs of questionnaires currently active in a retry. */
+  activeQuestionnaireRetries?: string[]
   /** Playback positions in semantic seconds, keyed by stable video node ID. */
   videos?: Record<string, number>
 }
@@ -108,28 +112,44 @@ What the compact data does and does not preserve:
   are not independently encoded, and sequential completion is necessarily
   positional/lossy.
 - `d` is a single flat map for the current v1 format. Each key is
-  `<pageIndex>.<kind>.<entityIndex>` where `kind` is `a` (answer) or `t` (video
-  position); answer selections are manifest option indexes and video positions
-  are integer deciseconds. Answers do not store
+  `<pageIndex>.<kind>.<entityIndex>` where `kind` is `a` (answer), `t` (video
+  position), `q` (questionnaire attempt history), or `r` (active retry marker).
+  Answer selections are manifest option indexes, video positions are integer
+  deciseconds, and `q` values are arrays of correct-question counts for completed
+  submissions, correct or not, in submission order. The array length is the
+  number of consumed submissions; each count is bounded by the questionnaire's
+  question count and authored `maxAttempts`.
+  An `r` value of `1` marks a questionnaire currently being retried and is only
+  restored when its history leaves an attempt available. Answers do not store
   question IDs, answer strings, labels, correctness, prompts, or questionnaire
   IDs. Video positions use page-local manifest video indexes in their keys;
   semantic positions are seconds rounded to tenths (for example, `132.5`
   seconds encodes as `1325` and decodes as `132.5` seconds). Empty/unknown
-  values are omitted from the map; `d` is omitted when no valid answers or video
-  positions remain. The compact codec supports only the current flat layout; a
+  values are omitted from the map; `d` is omitted when no valid answers, video
+  positions, or questionnaire histories remain. The compact codec supports only the current flat layout; a
   payload using the earlier nested `d[pageIndex].a`/`.t` shape is not decoded
-  and restores no answers or video positions (see
+  and restores no answers, attempt histories, retry markers, or video positions (see
   [Format versions](#format-versions)).
 - `submittedQuestionnaires` is not encoded. The renderer sanitizer retains only
   current questionnaire IDs and, for a **completed sequential page** (Scroll or
-  Slides), infers that all questionnaires on that page have been submitted. This
-  preserves the completed-page read-only/gating behavior even though compact
-  state only reconstructs completion from `p`. It does not infer submissions for
-  Tiles.
+  Slides), infers that questionnaires without an active retry have been
+  submitted. This preserves completed-page read-only/gating behavior even though
+  compact state only reconstructs completion from `p`. It does not infer
+  submissions for Tiles. For a retry-enabled questionnaire with known submitted
+  status but no legacy attempt history, sanitization seeds one history entry from
+  its current sanitized answers, consuming the prior submission. An active retry
+  is never inferred as submitted.
+- `questionnaireAttempts` stores correct counts only for completed submissions,
+  whether correct or not; an in-progress attempt does not append history. `activeQuestionnaireRetries`
+  marks an in-progress retry separately from submitted status. Both are restored
+  through current manifest questionnaire indexes and stable IDs.
 - There is no score field in `PlayerState` or compact suspend data. Aggregate
-  questionnaire score is derived from current authored questions/options and
-  saved answers (`getAggregateQuestionnaireScore` in core); the separate SCORM
-  bridge reports it through `setScore` and version-specific CMI score fields.
+  questionnaire score is derived from current authored questions/options. A
+  retry-enabled questionnaire with history contributes its best recorded
+  correct-count score; with no history, and for a one-attempt questionnaire,
+  currently saved answers are scored. `contributesToScore={false}` questionnaires
+  remain excluded. The separate SCORM bridge reports the aggregate through
+  `setScore` and version-specific CMI score fields.
 
 `emptyPlayerState()` in `packages/renderer-react/app/lib/player-state.ts`
 returns `{ pages: {} }`. The compact empty payload depends on the manifest: for
@@ -147,15 +167,15 @@ interface CompactSuspendData {
   p: number // rounded/clamped integer package progress
   x: string // manifest-order visited bits
   d?: {
-    // key: `${pageIndex}.${kind}.${entityIndex}`, kind is 'a' or 't'
-    [key: string]: number | number[] // option indexes (a) or deciseconds (t)
+    // key: `${pageIndex}.${kind}.${entityIndex}`
+    [key: string]: number | number[] // a: option indexes; t: deciseconds; q: correct counts; r: 1
   }
 }
 ```
 
-Page, question, and option indexes are zero-based positions in the manifest.
-Question indexes are local to a page, and option indexes are local to a
-question. The decoder maps those indexes through that page's current manifest
+Page, question, questionnaire, and option indexes are zero-based positions in
+the manifest. Question and questionnaire indexes are local to a page, and
+option indexes are local to a question. The decoder maps those indexes through that page's current manifest
 entry to recover semantic page/question IDs and option `value`s. A single-choice
 or true-false selection is encoded as one number; a multiple-choice selection
 is an array of option indexes sorted numerically. On decode, selections are
@@ -169,7 +189,7 @@ learner's selection order.
 
 - `v: 1` is the flat layout and the only supported version. `d` keys are
   `<pageIndex>.<kind>.<entityIndex>` with exactly three segments: two canonical
-  non-negative safe-integer indexes around a kind of `a` or `t`.
+  non-negative safe-integer indexes around a kind of `a`, `t`, `q`, or `r`.
 - Any other `v` is unsupported: the whole payload is rejected and decoding
   returns a fresh `{ pages: {} }` state. There is no versioned decode path.
 
@@ -221,6 +241,20 @@ plus `page-two` answer `q1: ["blue"]`, encoded with progress 50, produces:
 The first page gets `completed: true` from `p: 50` for this two-page Scroll
 manifest. Decoded answers are `q1: ["red", "green"]` and `q1: ["blue"]`,
 respectively. The input answer order is normalized by option index.
+
+### Questionnaire attempts and active retry
+
+For questionnaire index `0` on page index `0`, the history `[1, 2]` records two
+submitted attempts with one and two correct answers. An active retry marker is
+stored separately:
+
+```json
+{ "v": 1, "p": 0, "x": "0", "d": { "0.q.0": [1, 2], "0.r.0": 1 } }
+```
+
+The manifest maps that index to the semantic questionnaire ID and supplies its
+attempt/question bounds. History length, not a separate counter, determines how
+many submissions have been consumed. The `r` marker does not add to that count.
 
 ### Video positions
 
@@ -295,6 +329,8 @@ interface ContentManifest {
           correctAnswers: string[]
         }
       >
+      /** Stable page-local preorder indexes; used to validate compact attempt histories. */
+      questionnaires: Record<string, { id: string; maxAttempts: number; questionCount: number }>
       videos?: Record<string, { id: string; src: string; provider: VideoProvider }>
     }
   >
@@ -302,8 +338,11 @@ interface ContentManifest {
 ```
 
 In generated JSON, the outer page keys are stringified page/item indexes; nested
-question, option, and page-local video keys are likewise stringified indexes. Question collection
-walks nested block content in document order, and each question includes the
+question, option, questionnaire, and page-local video keys are likewise
+stringified indexes. Question and questionnaire collection walk nested block
+content in document order. Each questionnaire entry retains its stable semantic
+ID, authored `maxAttempts` (default `1`), and question count, allowing the codec
+to validate history length and correct-count bounds. Each question includes the
 semantic values of its correct options. Each page/item may include a `videos`
 record keyed by deterministic traversal-order video index (`"0"`, `"1"`, ...);
 each static `{ id, src, provider }` entry retains its semantic `id`. Nesting
@@ -311,7 +350,8 @@ identifies the owner, and the manifest maps compact local indexes back to
 semantic video IDs. Neither
 the manifest nor its video entries contain learner playback positions. `createContentManifest` includes
 the package title, language (default `en`), presentation type, page titles,
-plain-text question prompt/option labels, authored `correctAnswers`, and the static mappings. The SCORM
+plain-text question prompt/option labels, authored `correctAnswers`, questionnaire
+attempt bounds, and the static mappings. The SCORM
 packager writes it as `content-manifest.json` and embeds the same manifest in
 `scorm-runtime.js`.
 
@@ -323,14 +363,18 @@ The codec validates compact values against that packaged manifest:
 - `v` must equal `1`; `p` must be an integer from 0 through 100; and `x`
   must contain only `0` and `1`. A shorter `x` is accepted; missing trailing bits
   mean unvisited. If `x` is longer than the current manifest page count, the
-  decoder skips page-indexed visited, progress, and answer restoration. Video
-  data is independently resolved through page/local-video indexes.
+  decoder skips page-indexed visited, progress, answers, attempt histories, and
+  retry markers. Video data is independently resolved through page/local-video
+  indexes.
 - An absent, non-object, or malformed `d` does not invalidate otherwise-valid
   progress. `d` is a flat map whose keys must be exactly
   `<pageIndex>.<kind>.<entityIndex>` with canonical non-negative safe-integer
-  page/entity indexes and a kind of `a` or `t`. Malformed keys, unknown pages or
-  entities, and invalid values are ignored individually without affecting other
-  entries.
+  page/entity indexes and a kind of `a`, `t`, `q`, or `r`. Malformed keys,
+  unknown pages or entities, and invalid values are ignored individually without
+  affecting other entries. A `q` value must be a non-empty array of safe integer
+  correct counts within the manifest's question count and attempt cap. An `r`
+  value must be `1`, name a current questionnaire, and have a valid `q` history
+  with at least one attempt remaining.
 - Unknown page/question indexes and invalid or unknown option indexes are
   ignored. A selection must be a safe-integer scalar or an array; array members
   that are not non-negative safe integers are filtered, then the rest are
@@ -341,6 +385,11 @@ The codec validates compact values against that packaged manifest:
   values are decoded; missing/removed indexes and invalid values are discarded
   without rejecting other state. A valid value is divided by ten and nested in
   `pages[ownerPageId].videos` using the semantic video ID from the manifest.
+- Questionnaire history is restored only through current page-local
+  questionnaire indexes and manifest IDs. Invalid, over-cap, or out-of-range
+  histories are ignored. A valid history is stored as
+  `questionnaireAttempts[questionnaireId]`; retry markers are restored as
+  `activeQuestionnaireRetries` only when history leaves an attempt available.
 - Unknown extra root sections are ignored; there is no root-level `t` field and
   root `t` values are not decoded. The codec has no rejection rule for extra
   properties beyond the required root fields.
@@ -350,14 +399,20 @@ The renderer's `sanitizePlayerState` in
 against the current parsed content AST. It drops unknown page/item and location
 IDs; unknown questions and options; answer values whose shape does not fit the
 current question type; submission IDs that do not name a questionnaire reachable
-on that page; and, within each `PlayerPageState.videos`, video IDs not found by
+on that page; attempt histories outside the authored cap/question count; invalid
+active retry IDs; and, within each `PlayerPageState.videos`, video IDs not found by
 `collectVideoNodes` in that specific Page/Item or positions that are non-numeric,
 non-finite, or negative. Malformed video maps and stale/malformed positions are
 dropped there; surviving video values are normalized to tenths of a second.
 Direct sanitizer input is not moved between pages: a position stored under the
 wrong page is rejected. Multiple-choice answers must be arrays whose
 every element is a current option value; valid arrays are deduplicated.
-Correctness is not consulted by the sanitizer.
+Correctness is not consulted when validating answers. For a legacy completed
+Scroll/Slides page (or explicit submission) with a retry-enabled questionnaire
+and no recorded history, the sanitizer seeds one attempt's correct count from
+the current sanitized answers. This migration applies only when submitted status
+is known; an active retry is not treated as submitted, and a questionnaire with
+the default single attempt is unchanged.
 
 The compact codec cannot detect semantic removal/reordering for its numeric
 indexes. If a page, question, or option is removed and a new entry occupies its

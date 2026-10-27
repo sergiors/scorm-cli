@@ -107,6 +107,59 @@ const optOutOnlyPackage: ContentPackage = {
   }
 }
 
+const RETRY_QUIZ = 'questionnaire:quiz.mdx:1:1'
+
+/**
+ * The scored questionnaire with an authored cap of three attempts, so the
+ * reported score can be checked against its recorded attempt history.
+ */
+const retryablePackage: ContentPackage = {
+  metadata: { title: 'Quiz retries' },
+  presentation: {
+    type: 'scroll',
+    pages: [
+      {
+        type: 'page',
+        id: PAGE_ID,
+        source: 'quiz.mdx',
+        metadata: { title: 'Quiz' },
+        content: [
+          {
+            type: 'questionnaire',
+            id: RETRY_QUIZ,
+            contributesToScore: true,
+            maxAttempts: 3,
+            questions: [
+              {
+                type: 'question',
+                id: SCORED_SINGLE,
+                questionType: 'single-choice',
+                prompt: '',
+                options: [
+                  { value: 'yes', correct: true, content: '' },
+                  { value: 'no', correct: false, content: '' }
+                ]
+              },
+              {
+                type: 'question',
+                id: SCORED_MULTIPLE,
+                questionType: 'multiple-choice',
+                prompt: '',
+                options: [
+                  { value: 'a', correct: true, content: '' },
+                  { value: 'b', correct: true, content: '' },
+                  { value: 'c', correct: false, content: '' }
+                ]
+              }
+            ]
+          },
+          optOutQuestionnaire
+        ]
+      }
+    ]
+  }
+}
+
 let container: HTMLDivElement
 let root: Root
 let session: PlayerSession | undefined
@@ -236,5 +289,64 @@ describe('usePlayerSession score reporting', () => {
       render(scoredPackage)
       answer(SCORED_SINGLE, 'yes')
     }).not.toThrow()
+  })
+
+  it('reports the best recorded attempt while a retry is in progress', () => {
+    const setScore = vi.fn()
+    window.scormBridge = {
+      // A mid-retry restore has no saved answers, only its attempt history.
+      restoreState: () => ({
+        pages: { [PAGE_ID]: { questionnaireAttempts: { [RETRY_QUIZ]: [1, 0] } } }
+      }),
+      setScore
+    }
+
+    render(retryablePackage)
+
+    // Starting a retry must not reset the score to the cleared answers: the
+    // best recorded attempt stays the reported score.
+    expect(lastScore(setScore)).toEqual({ earned: 1, possible: 2 })
+  })
+
+  it('does not decrease the score when a retry answers worse', () => {
+    const setScore = vi.fn()
+    window.scormBridge = {
+      restoreState: () => ({
+        pages: { [PAGE_ID]: { questionnaireAttempts: { [RETRY_QUIZ]: [2, 0] } } }
+      }),
+      setScore
+    }
+
+    render(retryablePackage)
+    expect(lastScore(setScore)).toEqual({ earned: 2, possible: 2 })
+
+    // The retry round is answered worse; the best attempt keeps the reported
+    // score, so the point counts do not change and nothing is re-reported.
+    const reportsAfterMount = setScore.mock.calls.length
+    answer(SCORED_SINGLE, 'no')
+    answer(SCORED_MULTIPLE, ['a'])
+    expect(lastScore(setScore)).toEqual({ earned: 2, possible: 2 })
+    expect(setScore.mock.calls.length).toBe(reportsAfterMount)
+  })
+
+  it('scores saved answers instead of history for a single-attempt questionnaire', () => {
+    const setScore = vi.fn()
+    window.scormBridge = {
+      // The scored questionnaire has no maxAttempts, so its recorded history
+      // must never override the learner's saved answers.
+      restoreState: () => ({
+        pages: {
+          [PAGE_ID]: {
+            answers: { [SCORED_SINGLE]: 'yes', [SCORED_MULTIPLE]: ['a', 'b'] },
+            questionnaireAttempts: { [RETRY_QUIZ]: [0] }
+          }
+        }
+      }),
+      setScore
+    }
+
+    render(scoredPackage)
+
+    expect(lastScore(setScore)).toEqual({ earned: 2, possible: 2 })
   })
 })
