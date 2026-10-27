@@ -1,0 +1,19 @@
+# scorm-cli
+
+> Build SCORM 1.2 and SCORM 2004 packages from structured MDX content, with a local preview server, mock LMS, and authoring validation.
+
+## Documentation
+
+- [How to Use](https://raw.githubusercontent.com/sergiors/scorm-cli/main/docs/how-to-use.md): Complete guide to creating MDX content, configuring components, previewing, and building SCORM packages.
+- [README](https://raw.githubusercontent.com/sergiors/scorm-cli/main/README.md): Installation, quick start, presentation types, and CLI commands.
+
+## Examples
+
+- [Scroll Example](https://github.com/sergiors/scorm-cli/tree/main/examples/typescript-content): Continuous content with Markdown, media, and questionnaires.
+- [Slides Example](https://github.com/sergiors/scorm-cli/tree/main/examples/typescript-slides): One-page-at-a-time presentation with sequential navigation.
+- [Tiles Example](https://github.com/sergiors/scorm-cli/tree/main/examples/typescript-tiles): Tile-based presentation with navigable items.
+- [Accessibility Example](https://github.com/sergiors/scorm-cli/tree/main/examples/accessibility-basics): Accessibility content and questionnaires.
+
+## Optional
+
+- [Player State and SCORM Suspend Data](https://raw.githubusercontent.com/sergiors/scorm-cli/main/docs/suspend-data.md): Technical reference for learner state persistence and SCORM suspend data encoding.
