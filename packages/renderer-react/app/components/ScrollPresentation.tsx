@@ -3,13 +3,10 @@ import { FormattedMessage } from 'react-intl'
 import { Lock } from 'lucide-react'
 import { Virtuoso, type ListItem, type VirtuosoHandle } from 'react-virtuoso'
 import type { ContentNode, PageNode } from '../types'
-import {
-  areQuestionnairesSubmitted,
-  collectQuestionnaireIds,
-  getSequentialAccess
-} from '../lib/content-helpers'
+import { getSequentialAccess } from '../lib/content-helpers'
 import { useContentLoader, type ContentProvider, type ContentLoader } from '../lib/content-loader'
 import { PageProvider, usePlayerActions, usePlayerState } from '../lib/player-context'
+import { arePageQuestionnairesComplete } from '../lib/questionnaire-finalization'
 import { ContentRenderer } from './ContentRenderer'
 import { ContentLoadError } from './ContentLoadError'
 import { Skeleton } from './ui/skeleton'
@@ -119,10 +116,7 @@ export interface ScrollPresentationProps {
  * so the first seen report matches it rather than overwriting the saved location
  * with page zero.
  */
-export function ScrollPresentation({
-  pages,
-  contentProvider
-}: ScrollPresentationProps) {
+export function ScrollPresentation({ pages, contentProvider }: ScrollPresentationProps) {
   const state = usePlayerState()
   const pageStates = state.pages
   const initialPageId = state.location
@@ -382,11 +376,7 @@ export function ScrollPresentation({
  * holds the last reported id, so a genuine change reports again while
  * StrictMode's doubled effect for the same id is a no-op.
  */
-function PageSeenReporter({
-  pageId
-}: {
-  pageId: string
-}) {
+function PageSeenReporter({ pageId }: { pageId: string }) {
   const onPageSeen = usePlayerActions().markSeen
   const reportedRef = useRef<string | null>(null)
 
@@ -402,13 +392,7 @@ function PageSeenReporter({
 }
 
 /** Reports a page completion exactly once, guarding repeated callbacks and StrictMode. */
-function PageCompletionReporter({
-  pageId,
-  complete
-}: {
-  pageId: string
-  complete: boolean
-}) {
+function PageCompletionReporter({ pageId, complete }: { pageId: string; complete: boolean }) {
   const onPageCompleted = usePlayerActions().markCompleted
   const reportedRef = useRef<string | null>(null)
 
@@ -574,12 +558,7 @@ function PageScene({
     return () => observer.disconnect()
   }, [])
 
-  const complete =
-    endReached &&
-    areQuestionnairesSubmitted(
-      collectQuestionnaireIds(nodes),
-      pageState?.submittedQuestionnaires ?? []
-    )
+  const complete = endReached && arePageQuestionnairesComplete(nodes, pageState)
 
   return (
     <div
@@ -602,10 +581,7 @@ function PageScene({
 
       {showLockedBoundary && endReached && !complete ? <LockedBoundary /> : null}
 
-      <PageCompletionReporter
-        pageId={page.id}
-        complete={complete}
-      />
+      <PageCompletionReporter pageId={page.id} complete={complete} />
     </div>
   )
 }

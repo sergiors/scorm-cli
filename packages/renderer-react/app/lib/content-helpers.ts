@@ -89,9 +89,9 @@ export function collectQuestionnaireIds(nodes: ContentNode[]): string[] {
 
 /**
  * Whether every questionnaire in `questionnaireIds` has been submitted, ignoring
- * any submitted ids that no longer name a reachable questionnaire. This is the
- * question gate every presentation applies before a node completes, kept pure
- * and shared so the decision never depends on viewport state.
+ * any submitted ids that no longer name a reachable questionnaire. A page whose
+ * questionnaire has an explicit retry cap also requires finalization; that
+ * higher-level gate lives in `questionnaire-finalization`.
  */
 export function areQuestionnairesSubmitted(
   questionnaireIds: readonly string[],

@@ -636,7 +636,7 @@ describe('aggregate questionnaire score', () => {
     expect(getAggregateQuestionnaireScore(noEligibleQuestions, { pages: {} })).toBeUndefined()
   })
 
-  it('scores the best recorded attempt for a questionnaire with attempts left', () => {
+  it('scores the best recorded attempt once the questionnaire is finalized', () => {
     const content: ContentPackage = {
       metadata: { title: 'Retries' },
       presentation: {
@@ -660,26 +660,112 @@ describe('aggregate questionnaire score', () => {
         ]
       }
     }
-    const stateFor = (history: number[]): PlayerState => ({
-      pages: { page: { questionnaireAttempts: { quiz: history } } }
+    const stateFor = (page: PlayerState['pages'][string]): PlayerState => ({
+      pages: { page }
     })
 
-    // A retry in progress has no current answers, but the best recorded
-    // attempt still counts — starting a retry never resets the score to zero.
-    expect(getAggregateQuestionnaireScore(content, stateFor([1, 0]))).toEqual({
-      earned: 1,
-      possible: 2
-    })
+    // Finalized: the best recorded attempt is the score, even when the current
+    // answers were cleared for a retry in progress.
+    expect(
+      getAggregateQuestionnaireScore(
+        content,
+        stateFor({ finalizedQuestionnaires: ['quiz'], questionnaireAttempts: { quiz: [1, 0] } })
+      )
+    ).toEqual({ earned: 1, possible: 2 })
+    expect(
+      getAggregateQuestionnaireScore(
+        content,
+        stateFor({ finalizedQuestionnaires: ['quiz'], questionnaireAttempts: { quiz: [2, 0] } })
+      )
+    ).toEqual({ earned: 2, possible: 2 })
+    expect(
+      getAggregateQuestionnaireScore(
+        content,
+        stateFor({ finalizedQuestionnaires: ['quiz'], questionnaireAttempts: { quiz: [0, 1] } })
+      )
+    ).toEqual({ earned: 1, possible: 2 })
 
-    // A worse later attempt does not decrease the reported score.
-    expect(getAggregateQuestionnaireScore(content, stateFor([2, 0]))).toEqual({
-      earned: 2,
-      possible: 2
-    })
-    expect(getAggregateQuestionnaireScore(content, stateFor([0, 1]))).toEqual({
-      earned: 1,
-      possible: 2
-    })
+    // A history beyond the authored cap is unusable and never grants a score,
+    // even a finalized one. With nothing else scoreable, this also means no
+    // aggregate exists at all.
+    expect(
+      getAggregateQuestionnaireScore(
+        content,
+        stateFor({
+          finalizedQuestionnaires: ['quiz'],
+          questionnaireAttempts: { quiz: [0, 0, 0, 0] }
+        })
+      )
+    ).toBeUndefined()
+  })
+
+  it('excludes a pending retry-enabled questionnaire from earned and possible', () => {
+    const retryable: QuestionnaireNode = {
+      ...questionnaire('quiz', [
+        question('repeat', 'single-choice', ['right', 'wrong'], ['right']),
+        question('choice', 'multiple-choice', ['a', 'b'], ['a'])
+      ]),
+      maxAttempts: 3
+    }
+    const liveScored = questionnaire('single-quiz', [
+      question('once', 'single-choice', ['yes', 'no'], ['yes'])
+    ])
+
+    const mixed: ContentPackage = {
+      metadata: { title: 'Retries' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'page',
+            source: 'page.mdx',
+            metadata: { title: 'Page' },
+            content: [retryable, liveScored]
+          }
+        ]
+      }
+    }
+
+    // The pending assessment contributes nothing in either direction — neither
+    // its recorded attempts nor its saved in-progress answers count — while the
+    // single-attempt questionnaire keeps its live score.
+    expect(
+      getAggregateQuestionnaireScore(mixed, {
+        pages: {
+          page: {
+            submittedQuestionnaires: ['quiz'],
+            questionnaireAttempts: { quiz: [2] },
+            answers: { repeat: 'right', choice: ['a'], once: 'yes' }
+          }
+        }
+      })
+    ).toEqual({ earned: 1, possible: 1 })
+
+    // Even on a page whose only scoreable content is the pending questionnaire,
+    // its questions stay out of the possible count entirely.
+    const pendingOnly: ContentPackage = {
+      metadata: { title: 'Pending only' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'page',
+            source: 'page.mdx',
+            metadata: { title: 'Page' },
+            content: [retryable]
+          }
+        ]
+      }
+    }
+    expect(
+      getAggregateQuestionnaireScore(pendingOnly, {
+        pages: {
+          page: { submittedQuestionnaires: ['quiz'], questionnaireAttempts: { quiz: [2] } }
+        }
+      })
+    ).toBeUndefined()
   })
 
   it('falls back to current answers for histories outside the attempt rules', () => {
@@ -715,18 +801,20 @@ describe('aggregate questionnaire score', () => {
         page: {
           answers: { repeat: 'wrong', once: 'right' },
           questionnaireAttempts: {
-            // Longer than maxAttempts: dropped entirely, not clamped.
+            // Longer than maxAttempts and not finalized: the pending
+            // questionnaire contributes nothing in either direction.
             quiz: [1, 0, 1, 0],
-            // Every count is out of range: unusable for the best attempt.
+            // A single-attempt questionnaire keeps scoring live answers and
+            // ignores any recorded history.
             single: [0, 5, -1, 1.5]
           }
         }
       }
     }
 
-    // The retryable quiz scores its live (wrong) answer, and the
-    // single-attempt quiz scores its saved correct answer.
-    expect(getAggregateQuestionnaireScore(content, state)).toEqual({ earned: 1, possible: 2 })
+    // The pending retry contributes nothing; the single-attempt quiz scores
+    // its saved correct answer.
+    expect(getAggregateQuestionnaireScore(content, state)).toEqual({ earned: 1, possible: 1 })
   })
 
   it('excludes an opted-out questionnaire and its attempts from the score', () => {

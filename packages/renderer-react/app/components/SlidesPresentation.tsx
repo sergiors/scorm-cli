@@ -2,13 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useIntl } from 'react-intl'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { ContentNode, PageNode } from '../types'
-import {
-  areQuestionnairesSubmitted,
-  collectQuestionnaireIds,
-  getSequentialAccess
-} from '../lib/content-helpers'
+import { getSequentialAccess } from '../lib/content-helpers'
 import { useContentLoader, type ContentProvider } from '../lib/content-loader'
 import { PageProvider, usePlayerActions, usePlayerState } from '../lib/player-context'
+import { arePageQuestionnairesComplete } from '../lib/questionnaire-finalization'
 import { clampPageIndex } from '../lib/sequence'
 import { Button } from './ui/button'
 import { Skeleton } from './ui/skeleton'
@@ -141,11 +138,7 @@ export function SlidesPresentation({ pages, contentProvider }: SlidesPresentatio
 
   const loaded = isLoaded(currentPage.id)
   const pageState = pageStates[currentPage.id]
-  const questionnaireIds = collectQuestionnaireIds(currentPage.content)
-  const pageComplete = areQuestionnairesSubmitted(
-    questionnaireIds,
-    pageState?.submittedQuestionnaires ?? []
-  )
+  const pageComplete = arePageQuestionnairesComplete(currentPage.content, pageState)
   const hasNext = currentIndex < pages.length - 1
   const hasPrevious = currentIndex > 0
   const showNext = hasNext && pageComplete && loaded

@@ -476,6 +476,77 @@ describe('suspend-data codec integration', () => {
     })
   })
 
+  it('matches browser and Node codecs for finalization markers', () => {
+    const finalizingManifest = structuredClone(manifest)
+    finalizingManifest.pages['3']!.questionnaires!['0']!.maxAttempts = 3
+
+    // quiz-3 is finalized beside a stale retry marker; quiz-4 stays pending.
+    const finalizing: PlayerState = {
+      pages: {
+        'page-3': {
+          visited: true,
+          questionnaireAttempts: { 'quiz-3': [2, 1] },
+          finalizedQuestionnaires: ['quiz-3'],
+          activeQuestionnaireRetries: ['quiz-3']
+        },
+        'page-4': { questionnaireAttempts: { 'quiz-4': [0] } }
+      }
+    }
+
+    const context: Record<string, unknown> = {}
+    vm.createContext(context)
+    vm.runInContext(browserCodecSource(), context)
+    const browserEncode = context.compactEncode as (
+      manifest: unknown,
+      state: unknown,
+      progress: number
+    ) => string
+    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState
+
+    const encoded = encodeSuspendData(finalizingManifest, finalizing, 0)
+    expect(encoded).toEqual({
+      v: 1,
+      p: 0,
+      x: '00010',
+      d: { '3.q.0': [2, 1], '3.f.0': 1, '4.q.0': [0] }
+    })
+    expect(JSON.parse(browserEncode(finalizingManifest, finalizing, 0))).toEqual(encoded)
+
+    const payload = JSON.stringify({
+      v: 1,
+      p: 0,
+      x: '00010',
+      d: { '3.q.0': [2, 1], '3.f.0': 1, '3.r.0': 1, '4.q.0': [0] }
+    })
+    const nodeRestored = decodeSuspendData(finalizingManifest, payload)
+    expect(nodeRestored).toEqual({
+      pages: {
+        'page-3': {
+          visited: true,
+          questionnaireAttempts: { 'quiz-3': [2, 1] },
+          finalizedQuestionnaires: ['quiz-3']
+        },
+        'page-4': { questionnaireAttempts: { 'quiz-4': [0] } }
+      }
+    })
+    expect(normalize(browserDecode(finalizingManifest, payload))).toEqual(nodeRestored)
+
+    // Both runtimes also reject a marker without a restored history in the
+    // same payload.
+    const malformed = JSON.stringify({
+      v: 1,
+      p: 0,
+      x: '00010',
+      d: { '3.f.0': 2, '4.f.0': 1, '3.z.0': 1, '4.q.0': [] }
+    })
+    expect(normalize(browserDecode(finalizingManifest, malformed))).toEqual(
+      decodeSuspendData(finalizingManifest, malformed)
+    )
+    expect(decodeSuspendData(finalizingManifest, malformed)).toEqual({
+      pages: { 'page-3': { visited: true } }
+    })
+  })
+
   it('saves compact suspend data without values and keeps location separate', () => {
     const values: Record<string, string> = {}
     const window: any = {

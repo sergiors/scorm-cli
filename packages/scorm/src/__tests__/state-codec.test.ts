@@ -1054,14 +1054,155 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
 
   it('drops page-indexed attempts when the visited bitmap is oversized', () => {
     // A three-bit visited string cannot belong to a two-page manifest, so its
-    // page-indexed q/r data is meaningless and restores nothing.
+    // page-indexed q/r/f data is meaningless and restores nothing.
     expect(
       decodeSuspendData(attemptManifest, {
         v: 1,
         p: 0,
         x: '100',
-        d: { '0.q.0': [1], '0.r.0': 1 }
+        d: { '0.q.0': [1], '0.r.0': 1, '0.f.0': 1 }
       })
     ).toEqual({ pages: {} })
+  })
+
+  it('encodes finalization with the history and never a stale retry flag', () => {
+    const encoded = encodeSuspendData(
+      attemptManifest,
+      {
+        pages: {
+          alpha: {
+            visited: true,
+            questionnaireAttempts: { 'quiz-a': [1, 0] },
+            finalizedQuestionnaires: ['quiz-a'],
+            // A finalized questionnaire can no longer be retried, so an active
+            // retry marker beside the finalization must not persist an r key.
+            activeQuestionnaireRetries: ['quiz-a']
+          },
+          beta: { questionnaireAttempts: { 'quiz-c': [1] } }
+        }
+      },
+      0
+    )
+    expect(encoded).toEqual({
+      v: 1,
+      p: 0,
+      x: '10',
+      d: {
+        '0.q.0': [1, 0],
+        '0.f.0': 1,
+        '1.q.0': [1]
+      }
+    })
+
+    // A still-pending questionnaire keeps its retry flag instead of the
+    // finalization marker.
+    const stillPending = encodeSuspendData(
+      attemptManifest,
+      {
+        pages: {
+          alpha: {
+            questionnaireAttempts: { 'quiz-b': [0] },
+            activeQuestionnaireRetries: ['quiz-b']
+          }
+        }
+      },
+      0
+    )
+    expect(stillPending).toEqual({
+      v: 1,
+      p: 0,
+      x: '00',
+      d: { '0.q.1': [0], '0.r.1': 1 }
+    })
+  })
+
+  it('round-trips a finalized decision back into the same semantic state', () => {
+    const encoded = encodeSuspendData(
+      attemptManifest,
+      {
+        pages: {
+          alpha: {
+            visited: true,
+            questionnaireAttempts: { 'quiz-a': [1, 0] },
+            finalizedQuestionnaires: ['quiz-a']
+          },
+          beta: { questionnaireAttempts: { 'quiz-c': [0] } }
+        }
+      },
+      0
+    )
+    const restored = decodeSuspendData(attemptManifest, JSON.stringify(encoded))
+    expect(restored).toEqual({
+      pages: {
+        alpha: {
+          visited: true,
+          questionnaireAttempts: { 'quiz-a': [1, 0] },
+          finalizedQuestionnaires: ['quiz-a']
+        },
+        beta: { questionnaireAttempts: { 'quiz-c': [0] } }
+      }
+    })
+    expect(encodeSuspendData(attemptManifest, restored, 0)).toEqual(encoded)
+  })
+
+  it('decodes finalization markers only with a restored history and no retry', () => {
+    const restored = decodeSuspendData(attemptManifest, {
+      v: 1,
+      p: 0,
+      x: '10',
+      d: {
+        '0.q.0': [2, 1],
+        '0.f.0': 1,
+        // A finalized questionnaire is never retried, so this stale flag is
+        // not restored beside the finalization.
+        '0.r.0': 1,
+        // quiz-c stays pending: it carries no finalization marker.
+        '1.q.0': [0]
+      }
+    })
+    expect(restored).toEqual({
+      pages: {
+        alpha: {
+          visited: true,
+          questionnaireAttempts: { 'quiz-a': [2, 1] },
+          finalizedQuestionnaires: ['quiz-a']
+        },
+        beta: { questionnaireAttempts: { 'quiz-c': [0] } }
+      }
+    })
+  })
+
+  it('ignores finalization markers without history or usable questionnaire bounds', () => {
+    expect(
+      decodeSuspendData(attemptManifest, {
+        v: 1,
+        p: 0,
+        x: '10',
+        d: {
+          // Finalization requires a restored attempt history: without one the
+          // marker restores nothing, like any other malformed f key.
+          '0.f.0': 1,
+          '0.f.9': 1,
+          '0.f.00': 1,
+          '99.f.0': 1,
+          '0.f.1': 2,
+          '0.f': 1
+        }
+      })
+    ).toEqual({ pages: { alpha: { visited: true } } })
+
+    // The marker also follows the questionnaire's manifest bounds: an unusable
+    // cap or count is never finalizable.
+    const unusable = structuredClone(attemptManifest)
+    unusable.pages['0']!.questionnaires!['0']!.maxAttempts = 0
+    unusable.pages['1']!.questionnaires!['0']!.questionCount = -1
+    expect(
+      decodeSuspendData(unusable, {
+        v: 1,
+        p: 0,
+        x: '10',
+        d: { '0.q.0': [1], '0.f.0': 1, '1.q.0': [1], '1.f.0': 1 }
+      })
+    ).toEqual({ pages: { alpha: { visited: true } } })
   })
 })

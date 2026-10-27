@@ -7,6 +7,7 @@ import {
   isOptionSelected,
   submittedOptionResult
 } from '../lib/questionnaire'
+import { bestQuestionnaireAttemptCount } from '../lib/questionnaire-finalization'
 import { Card, CardContent } from './ui/card'
 import {
   Questionnaire,
@@ -130,16 +131,30 @@ function StepperQuestion({ node, value, submitted, onAnswer }: StepperQuestionPr
  * A retry is a new submission round: the owner clears this questionnaire's
  * answers and submitted status while keeping its attempt history and page
  * completion. Remounting the Root under a retry key makes the wizard start again
- * at the first question with every choice editable, while Try Again stays
- * available only while the history has an attempt left.
+ * at the first question with every choice editable.
+ *
+ * A retry-enabled result with attempts left stays pending after submission: the
+ * summary shows the best recorded attempt and offers Try Again or Use This
+ * Score. Finalization is automatic on a perfect result or an exhausted cap, and
+ * a finalized result stays submitted and reviewable without either action.
  */
 export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
-  const { answers, submitted, attempts, retrying, onAnswer, onSubmitted, onRetry } =
-    useQuestionnaireSession(node)
+  const {
+    answers,
+    submitted,
+    finalized,
+    attempts,
+    attemptLimit,
+    requiresFinalization,
+    retrying,
+    onAnswer,
+    onSubmitted,
+    onRetry,
+    onFinalize
+  } = useQuestionnaireSession(node)
   const intl = useIntl()
   const firstQuestionId = node.questions[0]?.id ?? ''
   const lastQuestionId = node.questions[node.questions.length - 1]?.id ?? ''
-  const maxAttempts = node.maxAttempts ?? 1
   const reviewing = submitted && !retrying
 
   const { answers: currentAnswers, answerQuestion } = useQuestionnaireAnswers({
@@ -154,7 +169,12 @@ export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
     result.correct,
     onSubmitted
   )
-  const canRetry = reviewing && maxAttempts > 1 && attempts.length < maxAttempts
+  const summaryCorrect = requiresFinalization
+    ? bestQuestionnaireAttemptCount(attempts, result.correct)
+    : result.correct
+  const pendingFinalization = reviewing && requiresFinalization && !finalized
+  const canRetry =
+    pendingFinalization && summaryCorrect < result.total && attempts.length < attemptLimit
 
   if (node.questions.length === 0) {
     return null
@@ -230,7 +250,12 @@ export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
       </Card>
 
       {reviewing && (
-        <QuestionnaireSubmissionResult {...result} onRetry={canRetry ? onRetry : undefined} />
+        <QuestionnaireSubmissionResult
+          correct={summaryCorrect}
+          total={result.total}
+          onRetry={canRetry ? onRetry : undefined}
+          onFinalize={pendingFinalization ? onFinalize : undefined}
+        />
       )}
     </>
   )

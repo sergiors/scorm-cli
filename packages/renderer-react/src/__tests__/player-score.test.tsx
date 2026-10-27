@@ -108,6 +108,73 @@ const optOutOnlyPackage: ContentPackage = {
 }
 
 const RETRY_QUIZ = 'questionnaire:quiz.mdx:1:1'
+const LIVE_QUIZ = 'questionnaire:quiz.mdx:3:1'
+const LIVE_SINGLE = 'question:quiz.mdx:3:1'
+
+/** A scored page mixing the retry-enabled quiz with a live-scored one. */
+const mixedPackage: ContentPackage = {
+  metadata: { title: 'Mixed quizzes' },
+  presentation: {
+    type: 'scroll',
+    pages: [
+      {
+        type: 'page',
+        id: PAGE_ID,
+        source: 'quiz.mdx',
+        metadata: { title: 'Quiz' },
+        content: [
+          {
+            type: 'questionnaire',
+            id: RETRY_QUIZ,
+            contributesToScore: true,
+            maxAttempts: 3,
+            questions: [
+              {
+                type: 'question',
+                id: SCORED_SINGLE,
+                questionType: 'single-choice',
+                prompt: '',
+                options: [
+                  { value: 'yes', correct: true, content: '' },
+                  { value: 'no', correct: false, content: '' }
+                ]
+              },
+              {
+                type: 'question',
+                id: SCORED_MULTIPLE,
+                questionType: 'multiple-choice',
+                prompt: '',
+                options: [
+                  { value: 'a', correct: true, content: '' },
+                  { value: 'b', correct: true, content: '' },
+                  { value: 'c', correct: false, content: '' }
+                ]
+              }
+            ]
+          },
+          {
+            type: 'questionnaire',
+            id: LIVE_QUIZ,
+            contributesToScore: true,
+            questions: [
+              {
+                type: 'question',
+                id: LIVE_SINGLE,
+                questionType: 'single-choice',
+                prompt: '',
+                options: [
+                  { value: 'yes', correct: true, content: '' },
+                  { value: 'no', correct: false, content: '' }
+                ]
+              }
+            ]
+          },
+          optOutQuestionnaire
+        ]
+      }
+    ]
+  }
+}
 
 /**
  * The scored questionnaire with an authored cap of three attempts, so the
@@ -291,42 +358,81 @@ describe('usePlayerSession score reporting', () => {
     }).not.toThrow()
   })
 
-  it('reports the best recorded attempt while a retry is in progress', () => {
+  it('leaves a pending retry assessment unreported', () => {
     const setScore = vi.fn()
     window.scormBridge = {
-      // A mid-retry restore has no saved answers, only its attempt history.
       restoreState: () => ({
-        pages: { [PAGE_ID]: { questionnaireAttempts: { [RETRY_QUIZ]: [1, 0] } } }
+        pages: {
+          [PAGE_ID]: {
+            submittedQuestionnaires: [RETRY_QUIZ],
+            questionnaireAttempts: { [RETRY_QUIZ]: [1, 0] },
+            answers: { [SCORED_SINGLE]: 'yes', [SCORED_MULTIPLE]: ['a', 'b'] }
+          }
+        }
       }),
       setScore
     }
 
     render(retryablePackage)
 
-    // Starting a retry must not reset the score to the cleared answers: the
-    // best recorded attempt stays the reported score.
-    expect(lastScore(setScore)).toEqual({ earned: 1, possible: 2 })
+    // Until the learner confirms Use This Score, the pending assessment is
+    // excluded from the reported score entirely — neither earned nor possible.
+    expect(lastScore(setScore)).toBeUndefined()
   })
 
-  it('does not decrease the score when a retry answers worse', () => {
+  it('reports the finalized best attempt and never a worse later one', () => {
     const setScore = vi.fn()
     window.scormBridge = {
       restoreState: () => ({
-        pages: { [PAGE_ID]: { questionnaireAttempts: { [RETRY_QUIZ]: [2, 0] } } }
+        pages: {
+          [PAGE_ID]: {
+            finalizedQuestionnaires: [RETRY_QUIZ],
+            questionnaireAttempts: { [RETRY_QUIZ]: [2, 0] }
+          }
+        }
       }),
       setScore
     }
 
     render(retryablePackage)
+
+    // The finalized result is the best recorded attempt; the worse latest
+    // attempt does not decrease it and cleared answers do not reset it.
     expect(lastScore(setScore)).toEqual({ earned: 2, possible: 2 })
 
-    // The retry round is answered worse; the best attempt keeps the reported
-    // score, so the point counts do not change and nothing is re-reported.
     const reportsAfterMount = setScore.mock.calls.length
     answer(SCORED_SINGLE, 'no')
     answer(SCORED_MULTIPLE, ['a'])
+    // Live answers stay irrelevant for a finalized retry-enabled quiz, so the
+    // point counts do not change and nothing is re-reported.
     expect(lastScore(setScore)).toEqual({ earned: 2, possible: 2 })
     expect(setScore.mock.calls.length).toBe(reportsAfterMount)
+  })
+
+  it('excludes a pending questionnaire beside a live-scored one until finalized', () => {
+    const setScore = vi.fn()
+    window.scormBridge = {
+      restoreState: () => ({
+        pages: {
+          [PAGE_ID]: {
+            submittedQuestionnaires: [RETRY_QUIZ],
+            questionnaireAttempts: { [RETRY_QUIZ]: [2, 0] },
+            answers: { [SCORED_SINGLE]: 'yes', [SCORED_MULTIPLE]: ['a', 'b'], [LIVE_SINGLE]: 'yes' }
+          }
+        }
+      }),
+      setScore
+    }
+
+    render(mixedPackage)
+
+    // Pending: only the single-attempt questionnaire counts, in both point
+    // counts; the pending quiz's two questions stay out of the aggregate.
+    expect(lastScore(setScore)).toEqual({ earned: 1, possible: 1 })
+
+    // Confirming Use This Score adopts the best recorded attempt.
+    act(() => session?.finalizeQuestionnaire(PAGE_ID, RETRY_QUIZ))
+    expect(lastScore(setScore)).toEqual({ earned: 3, possible: 3 })
   })
 
   it('scores saved answers instead of history for a single-attempt questionnaire', () => {

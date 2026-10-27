@@ -2,6 +2,11 @@ import { useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 import type { AnswerValue, QuestionnaireNode, QuestionNode } from '../types'
 import { allQuestionsAnswered, type SubmittedOptionResult } from '../lib/questionnaire'
+import {
+  isQuestionnaireFinalized,
+  questionnaireAttemptLimit,
+  questionnaireRequiresFinalization
+} from '../lib/questionnaire-finalization'
 import { usePageId, usePlayerActions, usePlayerState } from '../lib/player-context'
 import { QuestionnaireSummary } from './QuestionnaireSummary'
 import { Button } from './ui/button'
@@ -16,7 +21,10 @@ export function useQuestionnaireSession(node: QuestionnaireNode) {
   return {
     answers: pageState?.answers,
     submitted: pageState?.submittedQuestionnaires?.includes(node.id) ?? false,
+    finalized: isQuestionnaireFinalized(pageState, node.id),
     attempts: pageState?.questionnaireAttempts?.[node.id] ?? [],
+    attemptLimit: questionnaireAttemptLimit(node),
+    requiresFinalization: questionnaireRequiresFinalization(node),
     retrying: pageState?.activeQuestionnaireRetries?.includes(node.id) ?? false,
     onAnswer: pageId
       ? (questionId: string, value: AnswerValue) => actions.setAnswer(pageId, questionId, value)
@@ -33,7 +41,8 @@ export function useQuestionnaireSession(node: QuestionnaireNode) {
             Number.isSafeInteger(correctCount)
               ? Math.min(Math.max(correctCount, 0), node.questions.length)
               : 0,
-            node.maxAttempts
+            node.maxAttempts,
+            node.questions.length
           )
       : undefined,
     onRetry: pageId
@@ -44,7 +53,8 @@ export function useQuestionnaireSession(node: QuestionnaireNode) {
             node.questions.map((question) => question.id),
             node.maxAttempts
           )
-      : undefined
+      : undefined,
+    onFinalize: pageId ? () => actions.finalizeQuestionnaire(pageId, node.id) : undefined
   }
 }
 
@@ -132,30 +142,46 @@ export function submittedChoiceClassName(result: SubmittedOptionResult): string 
 }
 
 /**
- * The submitted summary shared by both presentations. Without a retry action
- * this renders exactly the summary used before retries existed, so a
- * questionnaire whose attempt limit is reached keeps the same UI. When an
- * attempt remains, Try Again follows the summary as a separate action.
+ * The submitted summary shared by both presentations. Without a pending
+ * decision this renders exactly the summary used before retries existed. While
+ * a retry-enabled result is pending, Try Again and Use This Score sit adjacent
+ * inside the summary card.
  */
 export function QuestionnaireSubmissionResult({
   correct,
   total,
-  onRetry
+  onRetry,
+  onFinalize
 }: {
   correct: number
   total: number
   onRetry?: () => void
+  onFinalize?: () => void
 }) {
-  if (!onRetry) {
+  if (!onRetry && !onFinalize) {
     return <QuestionnaireSummary correct={correct} total={total} />
   }
 
   return (
     <div className="grid gap-3">
       <QuestionnaireSummary correct={correct} total={total}>
-        <Button type="button" variant="outline" data-slot="questionnaire-retry" onClick={onRetry}>
-          <FormattedMessage id="questionnaire.tryAgain" />
-        </Button>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {onRetry ? (
+            <Button
+              type="button"
+              variant="outline"
+              data-slot="questionnaire-retry"
+              onClick={onRetry}
+            >
+              <FormattedMessage id="questionnaire.tryAgain" />
+            </Button>
+          ) : null}
+          {onFinalize ? (
+            <Button type="button" data-slot="questionnaire-use-score" onClick={onFinalize}>
+              <FormattedMessage id="questionnaire.useThisScore" />
+            </Button>
+          ) : null}
+        </div>
       </QuestionnaireSummary>
     </div>
   )
