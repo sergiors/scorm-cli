@@ -169,12 +169,7 @@ export function ExpandedQuestionnaire({ node }: { node: QuestionnaireNode }) {
     onAnswer
   })
   const result = getQuestionnaireResult(node, currentAnswers)
-  const submitQuestionnaire = useQuestionnaireSubmission(
-    node.id,
-    reviewing,
-    result.correct,
-    onSubmitted
-  )
+  const submitQuestionnaire = useQuestionnaireSubmission(node.id, reviewing, onSubmitted)
   const canSubmit = !reviewing && allAnswered
   const summaryCorrect = requiresFinalization
     ? bestQuestionnaireAttemptCount(attempts, result.correct)

@@ -2,7 +2,6 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useQuestionnaireSession } from '../../app/components/QuestionnaireShared'
 import { QuestionnaireView } from '../../app/components/QuestionnaireView'
 import { PageProvider, PlayerProvider } from '../../app/lib/player-context'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
@@ -73,7 +72,6 @@ let saveState: ReturnType<typeof vi.fn>
 let container: HTMLDivElement
 let root: Root
 let session: PlayerSession | undefined
-let probeSession: ReturnType<typeof useQuestionnaireSession> | undefined
 
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
@@ -89,7 +87,6 @@ afterEach(() => {
   act(() => root.unmount())
   container.remove()
   session = undefined
-  probeSession = undefined
   delete window.scormBridge
 })
 
@@ -123,16 +120,6 @@ function PlayerViews({
 /** Renders the session hook directly, without any presentation chrome. */
 function SessionHarness({ contentPackage }: { contentPackage: ContentPackage }) {
   session = usePlayerSession(contentPackage)
-  return null
-}
-
-/**
- * Reads the questionnaire session for one node so a test can drive the shared
- * reporting boundary directly. Reinitialized on every render, which lets a
- * loop report one count per fresh session.
- */
-function QuestionnaireSessionProbe({ node }: { node: QuestionnaireNode }) {
-  probeSession = useQuestionnaireSession(node)
   return null
 }
 
@@ -186,6 +173,15 @@ function summaryTextIn(scope: ParentNode): string {
   const text = summaryIn(scope)?.textContent ?? ''
   if (!text) throw new Error('Summary not found')
   return text
+}
+
+/** The visible percent text of the summary's progress circle. */
+function summaryPercentIn(scope: ParentNode): string {
+  const element = scope.querySelector<HTMLElement>(
+    '[data-slot="questionnaire-summary"] [aria-hidden="true"]'
+  )
+  if (!element) throw new Error('Summary percentage not found')
+  return element.textContent ?? ''
 }
 
 function retryIn(scope: ParentNode): HTMLButtonElement | null {
@@ -242,6 +238,29 @@ describe('questionnaire retry flow (stepper)', () => {
     expect(lastPageState()?.finalizedQuestionnaires).toBeUndefined()
   })
 
+  it('auto-finalizes an explicitly single-attempt questionnaire on its first submission', () => {
+    const explicitSingleQuestionnaire: QuestionnaireNode = {
+      ...questionnaireNode,
+      maxAttempts: 1
+    }
+    render(makePackage('scroll', [explicitSingleQuestionnaire]), [explicitSingleQuestionnaire])
+    const quiz = region('retryable')
+
+    submitStepperRound(quiz, 'first', 'alpha')
+
+    // The one attempt is recorded and the result is immediately final: neither
+    // decision appears, and the review stays read-only.
+    const page = lastPageState()
+    expect(page?.questionnaireAttempts).toEqual({ [explicitSingleQuestionnaire.id]: [2] })
+    expect(page?.finalizedQuestionnaires).toEqual([explicitSingleQuestionnaire.id])
+    expect(page?.activeQuestionnaireRetries).toBeUndefined()
+    expect(summaryTextIn(quiz)).toContain('2 of 2 correct answers')
+    expect(retryIn(quiz)).toBeNull()
+    expect(finalizeButtonIn(quiz)).toBeNull()
+    expect(itemsIn(quiz).every((item) => item.getAttribute('aria-readonly') === 'true')).toBe(true)
+    expect(visibleButtonIn(quiz, 'Submit questionnaire').disabled).toBe(true)
+  })
+
   it('clears only the retried answers and restarts the wizard on retry', () => {
     render(makePackage('scroll', [retryQuestionnaire]), [retryQuestionnaire])
     const quiz = region('retryable')
@@ -281,6 +300,7 @@ describe('questionnaire retry flow (stepper)', () => {
     submitStepperRound(quiz, 'second', 'beta')
     const summary = summaryIn(quiz)
     expect(summaryTextIn(quiz)).toContain('0 of 2 correct answers')
+    expect(summaryPercentIn(quiz)).toBe('0%')
     // Both decisions are children inside the summary card, not separate
     // actions beside it.
     expect(retryIn(quiz)?.closest('[data-slot="questionnaire-summary"]')).toBe(summary)
@@ -333,6 +353,7 @@ describe('questionnaire retry flow (stepper)', () => {
     // A perfect first attempt is final on its own: the summary shows without
     // either decision and the submission is marked finalized immediately.
     expect(summaryTextIn(quiz)).toContain('2 of 2 correct answers')
+    expect(summaryPercentIn(quiz)).toBe('100%')
     expect(retryIn(quiz)).toBeNull()
     expect(finalizeButtonIn(quiz)).toBeNull()
     expect(visibleButtonIn(quiz, 'Submit questionnaire').disabled).toBe(true)
@@ -392,6 +413,8 @@ describe('questionnaire retry flow (expanded)', () => {
     expect(finalizeButtonIn(quiz)?.closest('[data-slot="questionnaire-summary"]')).toBe(
       summaryIn(quiz)
     )
+    expect(summaryTextIn(quiz)).toContain('0 of 2 correct answers')
+    expect(summaryPercentIn(quiz)).toBe('0%')
     expect(lastPageState()?.finalizedQuestionnaires).toBeUndefined()
 
     act(() => retryIn(quiz)!.click())
@@ -411,6 +434,7 @@ describe('questionnaire retry flow (expanded)', () => {
     // The perfect retried result auto-finalizes: the summary shows without
     // either decision.
     expect(summaryTextIn(quiz)).toContain('2 of 2 correct answers')
+    expect(summaryPercentIn(quiz)).toBe('100%')
     expect(retryIn(quiz)).toBeNull()
     expect(finalizeButtonIn(quiz)).toBeNull()
     const finalized = lastPageState()
@@ -630,14 +654,7 @@ describe('usePlayerSession attempt transitions', () => {
     // Three submission rounds exhaust the cap; each round is followed by a
     // retry while an attempt remains, else the retry is refused.
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      act(() =>
-        session?.markQuestionnaireSubmitted(
-          PAGE_ID,
-          retryQuestionnaire.id,
-          0,
-          retryQuestionnaire.maxAttempts
-        )
-      )
+      act(() => session?.markQuestionnaireSubmitted(PAGE_ID, retryQuestionnaire.id))
       act(() =>
         session?.retryQuestionnaire(
           PAGE_ID,
@@ -658,18 +675,42 @@ describe('usePlayerSession attempt transitions', () => {
 
     // A further report on the submitted questionnaire writes nothing at all.
     const writes = saveState.mock.calls.length
-    act(() =>
-      session?.markQuestionnaireSubmitted(
-        PAGE_ID,
-        retryQuestionnaire.id,
-        2,
-        retryQuestionnaire.maxAttempts
-      )
-    )
+    act(() => session?.markQuestionnaireSubmitted(PAGE_ID, retryQuestionnaire.id))
     expect(saveState.mock.calls.length).toBe(writes)
     expect(session?.state.pages[PAGE_ID]?.questionnaireAttempts).toEqual({
       [retryQuestionnaire.id]: [0, 0, 0]
     })
+  })
+
+  it('derives the canonical result inside the submission write, never a stale count', () => {
+    const setScore = vi.fn()
+    window.scormBridge = { setScore }
+    act(() =>
+      root.render(<SessionHarness contentPackage={makePackage('scroll', [retryQuestionnaire])} />)
+    )
+
+    // One synchronous batch answers every question and reports the submission
+    // — and a duplicate report — without an intervening render, so any
+    // render-time count would still have seen an answerless questionnaire.
+    act(() => {
+      session?.setAnswer(PAGE_ID, singleChoiceQuestion.id, 'first')
+      session?.setAnswer(PAGE_ID, multipleChoiceQuestion.id, ['alpha'])
+      session?.markQuestionnaireSubmitted(PAGE_ID, retryQuestionnaire.id)
+      session?.markQuestionnaireSubmitted(PAGE_ID, retryQuestionnaire.id)
+    })
+
+    const page = session?.state.pages[PAGE_ID]
+    // The recorded attempt comes from the saved answers inside the write: a
+    // full two correct answers, exactly once.
+    expect(page?.questionnaireAttempts).toEqual({ [retryQuestionnaire.id]: [2] })
+    expect(page?.submittedQuestionnaires).toEqual([retryQuestionnaire.id])
+    // The perfect result auto-finalizes in the same write.
+    expect(page?.finalizedQuestionnaires).toEqual([retryQuestionnaire.id])
+    expect(page?.activeQuestionnaireRetries).toBeUndefined()
+
+    // The SCORM report path carries the finalized 100% best score.
+    const reported = setScore.mock.calls.at(-1)?.[0]
+    expect(reported).toEqual({ earned: 2, possible: 2 })
   })
 
   it('ignores a repeated retry while one is already active', () => {
@@ -865,68 +906,5 @@ describe('usePlayerSession attempt transitions', () => {
     // With the pending decision closed, the fully-visited package reports
     // completion.
     expect(completionBridge).toHaveBeenCalledTimes(1)
-  })
-})
-
-describe('reported correct counts are clamped before they reach history', () => {
-  const reportPackage = makePackage('scroll', [retryQuestionnaire])
-  let probeKey = 0
-
-  /**
-   * Exposes one questionnaire session so a test can report counts directly the
-   * way a composed presentation does, covering malformed public calls that the
-   * regular submission flow can never produce. A fresh provider key remounts
-   * the whole session, so each case starts from an untouched questionnaire.
-   */
-  function renderProbe(): void {
-    probeKey += 1
-    act(() =>
-      root.render(
-        <PlayerProvider key={`session-${probeKey}`} contentPackage={reportPackage}>
-          <PageProvider pageId={PAGE_ID}>
-            <QuestionnaireSessionProbe node={retryQuestionnaire} />
-          </PageProvider>
-        </PlayerProvider>
-      )
-    )
-  }
-
-  it('keeps in-range reported counts unchanged', () => {
-    // Every valid count lands in the history exactly as reported, one attempt
-    // per fresh session.
-    for (const validCount of [0, 1, 2]) {
-      renderProbe()
-      act(() => probeSession?.onSubmitted?.(retryQuestionnaire.id, validCount))
-      expect(lastPageState()?.questionnaireAttempts).toEqual({
-        [retryQuestionnaire.id]: [validCount]
-      })
-      // Only a perfect reported count finalizes the submission on its own.
-      expect(lastPageState()?.finalizedQuestionnaires).toEqual(
-        validCount === 2 ? [retryQuestionnaire.id] : undefined
-      )
-    }
-  })
-
-  it('clamps oversized counts and falls back to zero for malformed ones', () => {
-    for (const [reported, recorded] of [
-      [99, 2], // Above the authored question count.
-      [1.5, 0], // Not an integer point count.
-      [-4, 0], // Negative.
-      [Number.NaN, 0] // Not a number.
-    ] as const) {
-      renderProbe()
-      act(() => probeSession?.onSubmitted?.(retryQuestionnaire.id, reported))
-      // An out-of-bounds count would poison the history beyond the authored
-      // question count, so the compact codec could no longer persist the
-      // questionnaire's attempts after a refresh. The clamp keeps [recorded]
-      // inside the countable range instead; the clamped perfect count (99 → 2)
-      // even auto-finalizes the submission like any perfect result.
-      expect(lastPageState()?.questionnaireAttempts).toEqual({
-        [retryQuestionnaire.id]: [recorded]
-      })
-      expect(lastPageState()?.finalizedQuestionnaires).toEqual(
-        reported === 99 ? [retryQuestionnaire.id] : undefined
-      )
-    }
   })
 })

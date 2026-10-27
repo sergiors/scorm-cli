@@ -30,20 +30,7 @@ export function useQuestionnaireSession(node: QuestionnaireNode) {
       ? (questionId: string, value: AnswerValue) => actions.setAnswer(pageId, questionId, value)
       : undefined,
     onSubmitted: pageId
-      ? (questionnaireId: string, correctCount: number) =>
-          actions.markQuestionnaireSubmitted(
-            pageId,
-            questionnaireId,
-            // Keep the recorded count within the authored question count. A
-            // non-integer or negative count falls back to zero exactly as the
-            // action did before, while an oversized count is clamped here so
-            // the codec can still persist the attempt history.
-            Number.isSafeInteger(correctCount)
-              ? Math.min(Math.max(correctCount, 0), node.questions.length)
-              : 0,
-            node.maxAttempts,
-            node.questions.length
-          )
+      ? (questionnaireId: string) => actions.markQuestionnaireSubmitted(pageId, questionnaireId)
       : undefined,
     onRetry: pageId
       ? () =>
@@ -99,12 +86,15 @@ export function useQuestionnaireAnswers({
  * The guard is forgotten whenever the owner clears the submitted status. That is
  * exactly what happens when a retry starts, so the retry's next valid submission
  * is reported while repeated clicks within one submission still are not.
+ *
+ * The callback carries no render-time score: the state transition derives the
+ * canonical result from the latest saved answers, so an older render closure
+ * cannot record or finalize a stale count.
  */
 export function useQuestionnaireSubmission(
   id: string,
   submitted: boolean,
-  correctCount: number,
-  onSubmitted: ((id: string, correctCount: number) => void) | undefined
+  onSubmitted: ((id: string) => void) | undefined
 ): () => void {
   const submittedIdRef = useRef<string | null>(submitted ? id : null)
 
@@ -117,7 +107,7 @@ export function useQuestionnaireSubmission(
       return
     }
     submittedIdRef.current = id
-    onSubmitted?.(id, correctCount)
+    onSubmitted?.(id)
   }
 }
 

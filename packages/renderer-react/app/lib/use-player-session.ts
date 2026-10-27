@@ -13,6 +13,7 @@ import {
   findAuthoredQuestionnaire,
   questionnaireRequiresFinalization
 } from './questionnaire-finalization'
+import { getQuestionnaireResult } from './questionnaire'
 import {
   sanitizePlayerState,
   sameAnswer,
@@ -38,21 +39,16 @@ export interface PlayerSession {
   /** Persists a question answer for a node. */
   setAnswer(pageId: string, questionId: string, value: AnswerValue): void
   /**
-   * Records a successful questionnaire submission: appends its correct-answer
-   * count to the attempt history (never beyond `maxAttempts`), marks the
-   * questionnaire submitted, and clears any active retry. An explicitly
-   * retry-enabled questionnaire is finalized automatically when its score is
-   * perfect or its attempt cap is exhausted; an explicit single attempt is
-   * finalized immediately. An omitted cap keeps the immediate-final behavior
-   * without a finalization marker.
+   * Records a successful questionnaire submission from the latest page answers.
+   * The canonical result is evaluated inside the state transition, so a stale
+   * render-time score can never be recorded. Appends the correct-answer count to
+   * the attempt history (never beyond the authored cap), marks the questionnaire
+   * submitted, and clears any active retry. An explicitly retry-enabled
+   * questionnaire finalizes automatically when perfect or at the cap; an
+   * explicit single attempt finalizes immediately. An omitted cap keeps the
+   * immediate-final behavior without a finalization marker.
    */
-  markQuestionnaireSubmitted(
-    pageId: string,
-    questionnaireId: string,
-    correctCount: number,
-    maxAttempts?: number,
-    questionCount?: number
-  ): void
+  markQuestionnaireSubmitted(pageId: string, questionnaireId: string): void
   /**
    * Starts a retry for a submitted questionnaire whose history still has an
    * attempt left: clears only its answers, keeps the history and page
@@ -197,37 +193,17 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
     [applyState]
   )
 
-  // A successful submission is the only thing that consumes an attempt. The
-  // history append is capped here as well as in the UI, so a restored state at
-  // the attempt limit can never grow past it. Submission and the attempt are
-  // written together, and an active retry is cleared at the same time. For an
-  // explicitly retry-enabled questionnaire, a perfect result or an exhausted
-  // cap finalizes in the same write, so it never exposes a pointless decision.
+  // A successful submission is the only thing that consumes an attempt. Its
+  // canonical result is evaluated from the exact `page.answers` inside the
+  // transition, so the recorded count and the perfect/cap decision can never
+  // come from a stale render closure. The append is capped here as well as in
+  // the UI, and an active retry is cleared in the same write.
   const markQuestionnaireSubmitted = useCallback(
-    (
-      pageId: string,
-      questionnaireId: string,
-      correctCount: number,
-      maxAttempts?: number,
-      questionCount?: number
-    ) => {
+    (pageId: string, questionnaireId: string) => {
       const authored = findAuthoredQuestionnaire(contentPackage, pageId, questionnaireId)
-      const authoredMaxAttempts = authored?.maxAttempts
-      const attemptLimit = normalizeAttemptLimit(
-        authored === undefined ? maxAttempts : authoredMaxAttempts
-      )
-      const requiresFinalization =
-        authored === undefined
-          ? typeof maxAttempts === 'number' && maxAttempts > 1
-          : questionnaireRequiresFinalization(authored)
-      const explicitSingle = authored === undefined ? maxAttempts === 1 : authoredMaxAttempts === 1
-      const totalQuestions = authored?.questions.length ?? questionCount
-      const normalizedCorrect =
-        Number.isSafeInteger(correctCount) && correctCount >= 0 ? correctCount : 0
-      const correct =
-        totalQuestions === undefined
-          ? normalizedCorrect
-          : Math.min(normalizedCorrect, totalQuestions)
+      const attemptLimit = normalizeAttemptLimit(authored?.maxAttempts)
+      const requiresFinalization = authored ? questionnaireRequiresFinalization(authored) : false
+      const explicitSingle = authored?.maxAttempts === 1
 
       applyState((previous) =>
         updatePageState(previous, pageId, (page) => {
@@ -236,10 +212,18 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
             return page
           }
 
+          const correct = authored
+            ? getQuestionnaireResult(authored, page.answers).correct
+            : undefined
+          const totalQuestions = authored?.questions.length
           const history = page.questionnaireAttempts?.[questionnaireId] ?? []
-          const nextHistory = history.length < attemptLimit ? [...history, correct] : history
+          const nextHistory =
+            correct !== undefined && history.length < attemptLimit ? [...history, correct] : history
           const perfect =
-            totalQuestions !== undefined && totalQuestions > 0 && correct >= totalQuestions
+            correct !== undefined &&
+            totalQuestions !== undefined &&
+            totalQuestions > 0 &&
+            correct >= totalQuestions
           const shouldFinalize =
             explicitSingle ||
             (requiresFinalization && (perfect || nextHistory.length >= attemptLimit))
