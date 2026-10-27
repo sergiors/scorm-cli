@@ -23,6 +23,8 @@ interface AstNodeBase {
   type: string
   position?: AstPosition
   children?: AstNode[]
+  /** Source ranges of comment-only MDX expressions removed from this node's children. */
+  commentSpans?: AstPosition[]
 }
 
 export interface AstJsxAttribute {
@@ -50,7 +52,13 @@ export interface AstEstreeStatement {
 }
 
 export interface AstEstreeData {
-  estree?: { body?: AstEstreeStatement[] }
+  estree?: { body?: AstEstreeStatement[]; comments?: Array<{ type?: string }> }
+}
+
+export interface MdxExpressionAstNode extends AstNodeBase {
+  type: 'mdxFlowExpression' | 'mdxTextExpression'
+  value?: unknown
+  data?: AstEstreeData
 }
 
 export interface TextAstNode extends AstNodeBase {
@@ -191,6 +199,7 @@ export type AstNode =
   | HtmlAstNode
   | DefinitionAstNode
   | MdxjsEsmAstNode
+  | MdxExpressionAstNode
   | MdxJsxFlowElementAstNode
   | MdxJsxTextElementAstNode
   | UnknownAstNode
@@ -205,6 +214,19 @@ export function rawComponentName(node: AstNode): string {
 
 export function isMdxjsEsm(node: AstNode): node is MdxjsEsmAstNode {
   return node.type === 'mdxjsEsm'
+}
+
+/** Whether remark-mdx parsed an expression containing only JSX block comments. */
+export function isJsxCommentExpression(node: AstNode): node is MdxExpressionAstNode {
+  if (node.type !== 'mdxFlowExpression' && node.type !== 'mdxTextExpression') return false
+  const estree = (node as MdxExpressionAstNode).data?.estree
+  return (
+    Array.isArray(estree?.body) &&
+    estree.body.length === 0 &&
+    Array.isArray(estree.comments) &&
+    estree.comments.length > 0 &&
+    estree.comments.every((comment) => comment.type === 'Block')
+  )
 }
 
 export function isText(node: AstNode): node is TextAstNode {

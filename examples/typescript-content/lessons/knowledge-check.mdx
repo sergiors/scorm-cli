@@ -6,7 +6,8 @@ import { Questionnaire, Question, Prompt, Option } from 'scorm-cli/authoring'
 
 # Final questions
 
-<Questionnaire>
+<Questionnaire maxAttempts={3}>
+  {/* Question 1 */}
   <Question type="multiple-choice">
     <Prompt>
       Consider `const count: number = 'three';`. When does TypeScript catch this incompatible
@@ -22,6 +23,7 @@ import { Questionnaire, Question, Prompt, Option } from 'scorm-cli/authoring'
       Only while a user is filling out a form
     </Option>
   </Question>
+  {/* Question 2 */}
   <Question type="single-choice">
     <Prompt>What does TypeScript add to JavaScript?</Prompt>
     <Option value="runtime" correct={false}>

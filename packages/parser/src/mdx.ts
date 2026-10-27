@@ -1,8 +1,21 @@
 import remarkMdx from 'remark-mdx'
 import remarkParse from 'remark-parse'
 import { unified } from 'unified'
-import type { AstNode, ImageReferenceAstNode, LinkReferenceAstNode, MdxjsEsmAstNode } from './ast'
-import { isDefinition, isJsx, isLinkReference, isMdxjsEsm, isReference } from './ast'
+import type {
+  AstNode,
+  AstPosition,
+  ImageReferenceAstNode,
+  LinkReferenceAstNode,
+  MdxjsEsmAstNode
+} from './ast'
+import {
+  isDefinition,
+  isJsx,
+  isJsxCommentExpression,
+  isLinkReference,
+  isMdxjsEsm,
+  isReference
+} from './ast'
 import { isAuthoringComponent } from './components'
 import { sourceLocation } from './shared'
 
@@ -132,6 +145,37 @@ function resolveComponentNames(
   })
 }
 
+/** Removes comment-only MDX expressions while retaining their source ranges on their parent. */
+function normalizeCommentExpressions(nodes: AstNode[]): AstNode[] {
+  return nodes.flatMap((node) => {
+    if (isJsxCommentExpression(node)) return []
+
+    let childrenChanged = false
+    const removedSpans: AstPosition[] = []
+    const children = node.children?.flatMap((child) => {
+      if (isJsxCommentExpression(child)) {
+        childrenChanged = true
+        if (child.position) removedSpans.push(child.position)
+        return []
+      }
+      const [normalized] = normalizeCommentExpressions([child])
+      if (normalized !== child) childrenChanged = true
+      return normalized ? [normalized] : []
+    })
+    if (!childrenChanged) return [node]
+
+    return [
+      {
+        ...node,
+        ...(node.children ? { children: children ?? [] } : {}),
+        ...(removedSpans.length
+          ? { commentSpans: [...(node.commentSpans ?? []), ...removedSpans] }
+          : {})
+      }
+    ]
+  })
+}
+
 export function parseMdx(
   source: string,
   file: string
@@ -178,7 +222,7 @@ export function parseMdx(
         : resolved
     })
 
-  const referencedChildren = resolveReferences(tree.children)
+  const referencedChildren = normalizeCommentExpressions(resolveReferences(tree.children))
   const bindings = collectImportBindings(referencedChildren, file)
   const normalizedChildren = resolveComponentNames(referencedChildren, bindings, file)
   // Import declarations are inert metadata: `scorm-cli/authoring` imports drive

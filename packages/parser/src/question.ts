@@ -1,9 +1,9 @@
 import type { QuestionNode, QuestionOption, QuestionType, QuestionnaireNode } from '@scorm-cli/core'
 import { sourceNodeId } from './io'
-import type { ContentSource } from './ast'
+import type { AstPosition, ContentSource } from './ast'
 import { componentName } from './component-name'
 import type { AstNode } from './ast'
-import { isJsx, rawComponentName, whitespace } from './ast'
+import { isJsx, isJsxCommentExpression, rawComponentName, whitespace } from './ast'
 import { assertAttributes, attrs, requiredString, sourceLocation } from './shared'
 
 interface AnswerCountRule {
@@ -142,10 +142,16 @@ function sourceOffset(
 
 function rawFieldText(node: AstNode, context: ContentSource): string {
   const children = node.children ?? []
+  const commentSpans: AstPosition[] = [...(node.commentSpans ?? [])]
   for (const child of children) {
     const stack = [child]
     while (stack.length) {
       const nested = stack.pop()!
+      commentSpans.push(...(nested.commentSpans ?? []))
+      if (isJsxCommentExpression(nested)) {
+        if (nested.position) commentSpans.push(nested.position)
+        continue
+      }
       if (
         nested.type === 'html' ||
         nested.type === 'mdxjsEsm' ||
@@ -163,15 +169,52 @@ function rawFieldText(node: AstNode, context: ContentSource): string {
     }
   }
 
-  if (!children.length) return ''
-  const start = sourceOffset(context.sourceText, children[0]?.position?.start)
-  const end = sourceOffset(context.sourceText, children.at(-1)?.position?.end)
-  if (start === undefined || end === undefined || end < start) {
+  const spans = commentSpans.map((position) => ({
+    start: sourceOffset(context.sourceText, position.start),
+    end: sourceOffset(context.sourceText, position.end)
+  }))
+  if (
+    spans.some(
+      (span) =>
+        span.start === undefined ||
+        span.end === undefined ||
+        span.start < 0 ||
+        span.end > context.sourceText.length ||
+        span.end < span.start
+    )
+  ) {
     throw new Error(
       `${sourceLocation(context.sourceFile, node)}: unable to extract raw Prompt or Option text from the MDX source`
     )
   }
-  const raw = context.sourceText.slice(start, Math.max(start, end))
+  if (!children.length && !spans.length) return ''
+
+  const childStart = sourceOffset(context.sourceText, children[0]?.position?.start)
+  const childEnd = sourceOffset(context.sourceText, children.at(-1)?.position?.end)
+  if (
+    (children.length && (childStart === undefined || childEnd === undefined)) ||
+    (spans.length === 0 && childStart === undefined)
+  ) {
+    throw new Error(
+      `${sourceLocation(context.sourceFile, node)}: unable to extract raw Prompt or Option text from the MDX source`
+    )
+  }
+  const validSpans = spans as Array<{ start: number; end: number }>
+  const start = Math.min(
+    childStart ?? Number.POSITIVE_INFINITY,
+    ...validSpans.map((span) => span.start)
+  )
+  const end = Math.max(childEnd ?? Number.NEGATIVE_INFINITY, ...validSpans.map((span) => span.end))
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+    throw new Error(
+      `${sourceLocation(context.sourceFile, node)}: unable to extract raw Prompt or Option text from the MDX source`
+    )
+  }
+
+  let raw = context.sourceText.slice(start, end)
+  for (const span of [...validSpans].sort((a, b) => b.start - a.start)) {
+    raw = raw.slice(0, span.start - start) + raw.slice(span.end - start)
+  }
   return raw.replace(/\r\n?/g, '\n').replace(/\s+/g, ' ').trim()
 }
 
