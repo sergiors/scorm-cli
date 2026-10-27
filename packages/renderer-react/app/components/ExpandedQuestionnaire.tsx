@@ -41,7 +41,7 @@ function QuestionnaireQuestion({ node, value, submitted, onAnswer }: Questionnai
     <fieldset
       data-slot="questionnaire-item"
       aria-labelledby={titleId}
-      className="not-prose flex min-w-0 flex-col gap-5 border-0 p-0 outline-none"
+      className="flex min-w-0 flex-col gap-5 border-0 p-0 outline-none"
     >
       <legend
         id={titleId}
@@ -151,7 +151,7 @@ export function ExpandedQuestionnaire({ node }: { node: QuestionnaireNode }) {
 
   return (
     <>
-      <Card>
+      <Card className="not-prose">
         <CardContent>
           <form
             data-slot="questionnaire"

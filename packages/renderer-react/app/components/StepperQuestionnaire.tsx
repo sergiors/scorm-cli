@@ -164,7 +164,7 @@ export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
 
   return (
     <>
-      <Card>
+      <Card className="not-prose">
         <CardContent>
           <Questionnaire
             defaultItem={submitted ? lastQuestionId : firstQuestionId}

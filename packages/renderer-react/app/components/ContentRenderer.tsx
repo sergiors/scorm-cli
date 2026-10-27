@@ -216,7 +216,7 @@ function VideoView({ node }: ContentNodeViewProps<'video'>) {
 /** Delegates a questionnaire block to the context-aware {@link QuestionnaireView}. */
 function QuestionnaireBlockView({ node }: ContentNodeViewProps<'questionnaire'>) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 sm:space-y-6">
       <QuestionnaireView node={node} />
     </div>
   )
