@@ -11,7 +11,7 @@ type CompactValue = number | readonly number[]
  * Compact suspend-data payload. Keys in `d` are
  * `<pageIndex>.<kind>.<entityIndex>` where `kind` is `a` (answer), `t`
  * (video position), `q` (questionnaire attempt history), `r` (active retry),
- * or `f` (finalized questionnaire).
+ * or `c` (completed questionnaire).
  */
 export interface CompactSuspendData {
   readonly v: 1
@@ -39,22 +39,22 @@ function createSuspendDataCodec() {
   /** Builds the single flat data key for a manifest page/kind/entity. */
   const makeDataKey = (
     pageIndex: string,
-    kind: 'a' | 't' | 'q' | 'r' | 'f',
+    kind: 'a' | 't' | 'q' | 'r' | 'c',
     entityIndex: string
   ): string => `${pageIndex}.${kind}.${entityIndex}`
 
   /**
    * Parses a flat data key. Returns undefined unless it is exactly three
    * segments: two canonical non-negative safe-integer indexes around a kind of
-   * `a`, `t`, `q`, `r`, or `f`.
+   * `a`, `t`, `q`, `r`, or `c`.
    */
   const parseDataKey = (
     key: string
-  ): { pageIndex: string; kind: 'a' | 't' | 'q' | 'r' | 'f'; entityIndex: string } | undefined => {
+  ): { pageIndex: string; kind: 'a' | 't' | 'q' | 'r' | 'c'; entityIndex: string } | undefined => {
     const segments = key.split('.')
     if (segments.length !== 3) return undefined
     const [pageIndex, kind, entityIndex] = segments as [string, string, string]
-    if (kind !== 'a' && kind !== 't' && kind !== 'q' && kind !== 'r' && kind !== 'f') {
+    if (kind !== 'a' && kind !== 't' && kind !== 'q' && kind !== 'r' && kind !== 'c') {
       return undefined
     }
     if (!canonicalIndex(pageIndex) || !canonicalIndex(entityIndex)) return undefined
@@ -114,7 +114,7 @@ function createSuspendDataCodec() {
       if (safeKey(page.id)) pagesByIndex.set(pageIndex, page)
     })
     const retryCandidates: Array<{ page: ManifestPage; questionnaireIndex: string }> = []
-    const finalizedCandidates: Array<{ page: ManifestPage; questionnaireIndex: string }> = []
+    const completedCandidates: Array<{ page: ManifestPage; questionnaireIndex: string }> = []
     Object.entries(encoded).forEach(([key, value]) => {
       const parsedKey = parseDataKey(key)
       if (!parsedKey) return
@@ -159,12 +159,12 @@ function createSuspendDataCodec() {
       } else if (parsedKey.kind === 'r') {
         if (!pageIndexed || value !== 1) return
         retryCandidates.push({ page, questionnaireIndex: parsedKey.entityIndex })
-      } else if (parsedKey.kind === 'f') {
+      } else if (parsedKey.kind === 'c') {
         if (!pageIndexed || value !== 1) return
-        finalizedCandidates.push({ page, questionnaireIndex: parsedKey.entityIndex })
+        completedCandidates.push({ page, questionnaireIndex: parsedKey.entityIndex })
       }
     })
-    finalizedCandidates.forEach(({ page, questionnaireIndex }) => {
+    completedCandidates.forEach(({ page, questionnaireIndex }) => {
       const questionnaire = page.questionnaires?.[questionnaireIndex]
       if (
         !questionnaire ||
@@ -179,9 +179,9 @@ function createSuspendDataCodec() {
       const history = fresh.pages[page.id]?.questionnaireAttempts?.[questionnaire.id]
       if (!history || history.length === 0 || history.length > questionnaire.maxAttempts) return
       const pageState = fresh.pages[page.id] ?? (fresh.pages[page.id] = {})
-      const finalized =
-        pageState.finalizedQuestionnaires ?? (pageState.finalizedQuestionnaires = [])
-      finalized.push(questionnaire.id)
+      const completed =
+        pageState.completedQuestionnaires ?? (pageState.completedQuestionnaires = [])
+      completed.push(questionnaire.id)
     })
     retryCandidates.forEach(({ page, questionnaireIndex }) => {
       const questionnaire = page.questionnaires?.[questionnaireIndex]
@@ -191,7 +191,7 @@ function createSuspendDataCodec() {
         !history ||
         history.length === 0 ||
         history.length >= questionnaire.maxAttempts ||
-        fresh.pages[page.id]?.finalizedQuestionnaires?.includes(questionnaire.id)
+        fresh.pages[page.id]?.completedQuestionnaires?.includes(questionnaire.id)
       ) {
         return
       }
@@ -256,9 +256,9 @@ function createSuspendDataCodec() {
           return
         }
         data[makeDataKey(pageIndex, 'q', questionnaireIndex)] = [...history]
-        const isFinalized = pageState?.finalizedQuestionnaires?.includes(questionnaire.id) === true
-        if (isFinalized) {
-          data[makeDataKey(pageIndex, 'f', questionnaireIndex)] = 1
+        const isCompleted = pageState?.completedQuestionnaires?.includes(questionnaire.id) === true
+        if (isCompleted) {
+          data[makeDataKey(pageIndex, 'c', questionnaireIndex)] = 1
         } else if (
           pageState?.activeQuestionnaireRetries?.includes(questionnaire.id) &&
           history.length < questionnaire.maxAttempts

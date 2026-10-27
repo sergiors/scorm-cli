@@ -34,6 +34,7 @@ describe('content manifest', () => {
                 type: 'questionnaire',
                 id: 'quiz',
                 contributesToScore: true,
+                maxAttempts: 1,
                 questions: [
                   {
                     ...question('multi', 'Pick **two**', [
@@ -77,6 +78,7 @@ describe('content manifest', () => {
                 type: 'questionnaire',
                 id: 'quiz-2',
                 contributesToScore: false,
+                maxAttempts: 1,
                 questions: [
                   question('single', '', [
                     {
@@ -200,6 +202,7 @@ describe('content manifest', () => {
                             type: 'questionnaire',
                             id: 'quiz-a',
                             contributesToScore: true,
+                            maxAttempts: 1,
                             questions: [
                               question('q1', 'Choose *one*', [
                                 {
@@ -226,6 +229,7 @@ describe('content manifest', () => {
                 type: 'questionnaire',
                 id: 'quiz-b',
                 contributesToScore: true,
+                maxAttempts: 1,
                 questions: [question('q3', 'Third')]
               }
             ]
@@ -310,6 +314,7 @@ describe('content manifest', () => {
                 type: 'questionnaire',
                 id: 'quiz-toplevel',
                 contributesToScore: true,
+                maxAttempts: 1,
                 questions: [question('t1', 'Third')]
               }
             ]
@@ -360,6 +365,7 @@ describe('content manifest', () => {
                             type: 'questionnaire',
                             id: 'quiz',
                             contributesToScore: false,
+                            maxAttempts: 1,
                             questions: [
                               question('q', 'video prompt', [
                                 {
@@ -473,6 +479,7 @@ describe('content manifest', () => {
                 type: 'questionnaire',
                 id: 'quiz',
                 contributesToScore: true,
+                maxAttempts: 1,
                 questions: [question('stable-question-id', '')]
               }
             ]
@@ -505,6 +512,7 @@ describe('content manifest', () => {
                 type: 'questionnaire',
                 id: 'quiz-tight',
                 contributesToScore: true,
+                maxAttempts: 1,
                 questions: [question('q-tight', 'See `raw` **Markdown**')]
               }
             ]
@@ -545,6 +553,7 @@ describe('content manifest', () => {
                         type: 'questionnaire',
                         id: 'quiz-nested',
                         contributesToScore: true,
+                        maxAttempts: 1,
                         questions: [question('q-nested', 'Nested')]
                       }
                     ]

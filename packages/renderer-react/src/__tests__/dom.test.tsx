@@ -362,6 +362,7 @@ function sharedQuestionnaire(source: string): QuestionnaireNode {
     type: 'questionnaire',
     id: `questionnaire:${source}`,
     contributesToScore: true,
+    maxAttempts: 1,
     questions: [
       {
         type: 'question',
@@ -1798,6 +1799,10 @@ describe('PackageView scroll persistence', () => {
               'question:intro.mdx:1:1': 'first',
               'question:intro.mdx:1:2': ['alpha']
             },
+            // The persisted questionnaire state mirrors what the session
+            // records: one recorded attempt and the completion decision.
+            questionnaireAttempts: { 'questionnaire:intro.mdx:1:1': [2] },
+            completedQuestionnaires: ['questionnaire:intro.mdx:1:1'],
             submittedQuestionnaires: ['questionnaire:intro.mdx:1:1']
           }
         }
@@ -1958,6 +1963,10 @@ describe('PackageView scroll persistence', () => {
               'question:intro.mdx:1:1': 'first',
               'question:intro.mdx:1:2': ['alpha']
             },
+            // Page completion only survives the sanitizer while every authored
+            // questionnaire carries its persisted completion.
+            questionnaireAttempts: { 'questionnaire:intro.mdx:1:1': [2] },
+            completedQuestionnaires: ['questionnaire:intro.mdx:1:1'],
             submittedQuestionnaires: ['questionnaire:intro.mdx:1:1']
           }
         }
@@ -1995,7 +2004,10 @@ describe('PackageView scroll persistence', () => {
       restoreState: () => ({
         location: 'page:b.mdx',
         pages: {
-          'page:a.mdx': { completed: true },
+          'page:a.mdx': {
+            completed: true,
+            completedQuestionnaires: ['questionnaire:a.mdx']
+          },
           'page:b.mdx': { visited: true, answers: { 'question:shared': 'yes' } }
         }
       }),

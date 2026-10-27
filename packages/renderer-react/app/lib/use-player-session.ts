@@ -8,11 +8,11 @@ import {
   isPackageComplete
 } from './content-helpers'
 import {
+  arePackageQuestionnairesComplete,
   arePageQuestionnairesComplete,
-  areRetryQuestionnairesFinalized,
   findAuthoredQuestionnaire,
-  questionnaireRequiresFinalization
-} from './questionnaire-finalization'
+  questionnaireAttemptsRemaining
+} from './questionnaire-completion'
 import { getQuestionnaireResult } from './questionnaire'
 import {
   sanitizePlayerState,
@@ -41,32 +41,27 @@ export interface PlayerSession {
   /**
    * Records a successful questionnaire submission from the latest page answers.
    * The canonical result is evaluated inside the state transition, so a stale
-   * render-time score can never be recorded. Appends the correct-answer count to
-   * the attempt history (never beyond the authored cap), marks the questionnaire
-   * submitted, and clears any active retry. An explicitly retry-enabled
-   * questionnaire finalizes automatically when perfect or at the cap; an
-   * explicit single attempt finalizes immediately. An omitted cap keeps the
-   * immediate-final behavior without a finalization marker.
+   * render-time score can never be recorded. Appends exactly one correct-answer
+   * count to the attempt history (never beyond the authored cap), marks the
+   * questionnaire submitted, and clears any active retry. The same write
+   * completes the result when every question is correct or no attempt remains;
+   * an imperfect result with attempts left stays pending until the learner
+   * completes it manually.
    */
   markQuestionnaireSubmitted(pageId: string, questionnaireId: string): void
   /**
    * Starts a retry for a submitted questionnaire whose history still has an
    * attempt left: clears only its answers, keeps the history and page
    * completion, removes the submitted status, and marks it actively retrying.
-   * A finalized questionnaire can never be retried.
+   * A completed questionnaire can never be retried.
    */
-  retryQuestionnaire(
-    pageId: string,
-    questionnaireId: string,
-    questionIds: readonly string[],
-    maxAttempts?: number
-  ): void
+  retryQuestionnaire(pageId: string, questionnaireId: string, questionIds: readonly string[]): void
   /**
-   * Finalizes a pending submitted result without recording another attempt.
-   * Idempotent, and the only transition that makes a retry-enabled
-   * questionnaire count toward page completion and the aggregate score.
+   * Completes a pending submitted result without recording another attempt.
+   * Idempotent, and the transition that makes an early result count toward page
+   * completion and the aggregate score.
    */
-  finalizeQuestionnaire(pageId: string, questionnaireId: string): void
+  completeQuestionnaire(pageId: string, questionnaireId: string): void
   /**
    * Persists a video's semantic playback position in seconds, scoped to the
    * page/item that owns the video. Non-finite and negative positions are
@@ -74,11 +69,6 @@ export interface PlayerSession {
    * no-op.
    */
   setVideoPosition(pageId: string, videoId: string, seconds: number): void
-}
-
-/** The effective attempt cap, falling back to one for older ASTs. */
-function normalizeAttemptLimit(value: number | undefined): number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : 1
 }
 
 /**
@@ -102,13 +92,13 @@ function normalizeAttemptLimit(value: number | undefined): number {
  * - Scroll and Slides pages are visited as soon as they are displayed. A page
  *   completes once its own completion rule is met (for Scroll, its end boundary
  *   was reached; for Slides, it is simply displayed) and every questionnaire on
- *   the page has satisfied its gate: submitted, and finalized too when its
- *   authored attempt cap explicitly exceeds one. The page being viewed is
- *   stored as the lesson location. Both resume on that page after a refresh: the location the runtime
- *   read back (SCORM 1.2 `cmi.core.lesson_location` / SCORM 2004 `cmi.location`,
- *   normalized to `PlayerState.location`) seeds the initial reading position,
- *   while restored answers, submissions and progress are unaffected. The package
- *   is complete once every page is completed.
+ *   the page has satisfied its gate: submitted and completed. The page being
+ *   viewed is stored as the lesson location. Both resume on that page after a
+ *   refresh: the location the runtime read back (SCORM 1.2
+ *   `cmi.core.lesson_location` / SCORM 2004 `cmi.location`, normalized to
+ *   `PlayerState.location`) seeds the initial reading position, while restored
+ *   answers, submissions and progress are unaffected. The package is complete
+ *   once every page is completed.
  * - Tiles items are visited (and stored as the location) as they are opened;
  *   the package is complete once every item has been opened. A saved location
  *   reopens that item's dialog on mount.
@@ -195,15 +185,15 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
 
   // A successful submission is the only thing that consumes an attempt. Its
   // canonical result is evaluated from the exact `page.answers` inside the
-  // transition, so the recorded count and the perfect/cap decision can never
-  // come from a stale render closure. The append is capped here as well as in
-  // the UI, and an active retry is cleared in the same write.
+  // transition, so the recorded count and the completion decision can never
+  // come from a stale render closure. Exactly one attempt is appended, never
+  // beyond the authored cap, and an active retry is cleared in the same write.
   const markQuestionnaireSubmitted = useCallback(
     (pageId: string, questionnaireId: string) => {
       const authored = findAuthoredQuestionnaire(contentPackage, pageId, questionnaireId)
-      const attemptLimit = normalizeAttemptLimit(authored?.maxAttempts)
-      const requiresFinalization = authored ? questionnaireRequiresFinalization(authored) : false
-      const explicitSingle = authored?.maxAttempts === 1
+      if (!authored) {
+        return
+      }
 
       applyState((previous) =>
         updatePageState(previous, pageId, (page) => {
@@ -212,37 +202,29 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
             return page
           }
 
-          const correct = authored
-            ? getQuestionnaireResult(authored, page.answers).correct
-            : undefined
-          const totalQuestions = authored?.questions.length
           const history = page.questionnaireAttempts?.[questionnaireId] ?? []
-          const nextHistory =
-            correct !== undefined && history.length < attemptLimit ? [...history, correct] : history
-          const perfect =
-            correct !== undefined &&
-            totalQuestions !== undefined &&
-            totalQuestions > 0 &&
-            correct >= totalQuestions
-          const shouldFinalize =
-            explicitSingle ||
-            (requiresFinalization && (perfect || nextHistory.length >= attemptLimit))
-          const nextPage = {
-            ...page,
-            submittedQuestionnaires: [...submitted, questionnaireId]
+          if (history.length >= authored.maxAttempts) {
+            return page
           }
 
-          if (nextHistory !== history) {
-            nextPage.questionnaireAttempts = {
+          const result = getQuestionnaireResult(authored, page.answers)
+          const nextHistory = [...history, result.correct]
+          const isComplete =
+            result.correct === result.total ||
+            questionnaireAttemptsRemaining(authored, nextHistory) === 0
+          const nextPage = {
+            ...page,
+            submittedQuestionnaires: [...submitted, questionnaireId],
+            questionnaireAttempts: {
               ...page.questionnaireAttempts,
               [questionnaireId]: nextHistory
             }
           }
 
-          if (shouldFinalize) {
-            const finalized = page.finalizedQuestionnaires ?? []
-            if (!finalized.includes(questionnaireId)) {
-              nextPage.finalizedQuestionnaires = [...finalized, questionnaireId]
+          if (isComplete) {
+            const completed = page.completedQuestionnaires ?? []
+            if (!completed.includes(questionnaireId)) {
+              nextPage.completedQuestionnaires = [...completed, questionnaireId]
             }
           }
 
@@ -267,23 +249,25 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
   // flag intact, but clears the submitted status and that questionnaire's own
   // answers so both presentations render it editable again. The active retry
   // marker is separate from submission on purpose: a restored completed page
-  // must not infer this questionnaire back to submitted.
+  // must not infer this questionnaire back to submitted. A completed
+  // questionnaire can never start a retry.
   const retryQuestionnaire = useCallback(
-    (
-      pageId: string,
-      questionnaireId: string,
-      questionIds: readonly string[],
-      maxAttempts?: number
-    ) => {
-      const attemptLimit = normalizeAttemptLimit(maxAttempts)
+    (pageId: string, questionnaireId: string, questionIds: readonly string[]) => {
+      const authored = findAuthoredQuestionnaire(contentPackage, pageId, questionnaireId)
+      if (!authored) {
+        return
+      }
+
       applyState((previous) =>
         updatePageState(previous, pageId, (page) => {
-          const historyLength = page.questionnaireAttempts?.[questionnaireId]?.length ?? 0
+          const history = page.questionnaireAttempts?.[questionnaireId] ?? []
           const retries = page.activeQuestionnaireRetries ?? []
-          const finalized = page.finalizedQuestionnaires ?? []
+          const completed = page.completedQuestionnaires ?? []
+          const submitted = page.submittedQuestionnaires ?? []
           if (
-            finalized.includes(questionnaireId) ||
-            historyLength >= attemptLimit ||
+            !submitted.includes(questionnaireId) ||
+            completed.includes(questionnaireId) ||
+            questionnaireAttemptsRemaining(authored, history) === 0 ||
             retries.includes(questionnaireId)
           ) {
             return page
@@ -293,9 +277,7 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
           for (const questionId of questionIds) {
             delete answers[questionId]
           }
-          const submitted = (page.submittedQuestionnaires ?? []).filter(
-            (id) => id !== questionnaireId
-          )
+          const nextSubmitted = submitted.filter((id) => id !== questionnaireId)
           const nextPage: typeof page = {
             ...page,
             activeQuestionnaireRetries: [...retries, questionnaireId]
@@ -307,8 +289,8 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
             delete nextPage.answers
           }
 
-          if (submitted.length > 0) {
-            nextPage.submittedQuestionnaires = submitted
+          if (nextSubmitted.length > 0) {
+            nextPage.submittedQuestionnaires = nextSubmitted
           } else {
             delete nextPage.submittedQuestionnaires
           }
@@ -320,22 +302,22 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
     [applyState]
   )
 
-  // Finalizing keeps the submitted attempt and its history exactly as they are;
+  // Completing keeps the submitted attempt and its history exactly as they are;
   // it only records the learner's decision that the result is final. The write
-  // is idempotent, and a finalized questionnaire is no longer eligible for a
+  // is idempotent, and a completed questionnaire is no longer eligible for a
   // retry.
-  const finalizeQuestionnaire = useCallback(
+  const completeQuestionnaire = useCallback(
     (pageId: string, questionnaireId: string) => {
       applyState((previous) =>
         updatePageState(previous, pageId, (page) => {
           const submitted = page.submittedQuestionnaires ?? []
-          const finalized = page.finalizedQuestionnaires ?? []
-          if (!submitted.includes(questionnaireId) || finalized.includes(questionnaireId)) {
+          const completed = page.completedQuestionnaires ?? []
+          if (!submitted.includes(questionnaireId) || completed.includes(questionnaireId)) {
             return page
           }
           return {
             ...page,
-            finalizedQuestionnaires: [...finalized, questionnaireId]
+            completedQuestionnaires: [...completed, questionnaireId]
           }
         })
       )
@@ -368,21 +350,20 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
   )
 
   // Package completion reuses the canonical done-node rule for every
-  // presentation, but additionally requires every authored explicitly
-  // retry-enabled questionnaire to be finalized. Tiles mark an item done as soon
-  // as it is opened, so without this gate an open tile with a pending retry
-  // assessment could report the whole package complete. Progress, done-node IDs
-  // and Tiles navigation intentionally keep their existing semantics.
+  // presentation, but additionally requires every authored questionnaire to be
+  // completed. Tiles mark an item done as soon as it is opened, so without this
+  // gate an open tile with a pending assessment could report the whole package
+  // complete. Progress, done-node IDs and Tiles navigation intentionally keep
+  // their existing semantics.
   const packageComplete =
     isPackageComplete(contentPackage, getDoneNodeIds(contentPackage, state)) &&
-    areRetryQuestionnairesFinalized(contentPackage, state)
+    arePackageQuestionnairesComplete(contentPackage, state)
   useScormBridge(packageComplete)
 
   // The score is derived by core from the authored AST and the owned state on
-  // every render — never stored separately. Core excludes a retry-enabled
-  // questionnaire until it is finalized, then uses its best submitted attempt;
-  // single-attempt questionnaires keep scoring saved answers. The reporting
-  // effect keys off the point counts, so it fires on mount and on genuine score
+  // every render — never stored separately. Core excludes a questionnaire until
+  // it is completed, then uses its best submitted attempt. The reporting effect
+  // keys off the point counts, so it fires on mount and on genuine score
   // changes, not on unrelated renders. No scored questions yields `undefined`,
   // never a zero.
   useScormScore(getAggregateQuestionnaireScore(contentPackage, state))
@@ -394,7 +375,7 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
     setAnswer,
     markQuestionnaireSubmitted,
     retryQuestionnaire,
-    finalizeQuestionnaire,
+    completeQuestionnaire,
     setVideoPosition
   }
 }

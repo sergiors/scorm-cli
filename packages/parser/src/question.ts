@@ -282,7 +282,7 @@ export async function parseQuestionnaire(
     type: 'questionnaire',
     id: sourceNodeId('questionnaire', node, file, root, sourceLineOffset),
     contributesToScore: values.contributesToScore !== false,
-    ...(values.maxAttempts !== undefined ? { maxAttempts: values.maxAttempts } : {}),
+    maxAttempts: values.maxAttempts ?? 1,
     expanded: values.expanded === true,
     questions
   }

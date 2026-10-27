@@ -89,9 +89,9 @@ export function collectQuestionnaireIds(nodes: ContentNode[]): string[] {
 
 /**
  * Whether every questionnaire in `questionnaireIds` has been submitted, ignoring
- * any submitted ids that no longer name a reachable questionnaire. A page whose
- * questionnaire has an explicit retry cap also requires finalization; that
- * higher-level gate lives in `questionnaire-finalization`.
+ * any submitted ids that no longer name a reachable questionnaire. Page
+ * completion additionally requires each questionnaire's result to be completed;
+ * that higher-level gate lives in `questionnaire-completion`.
  */
 export function areQuestionnairesSubmitted(
   questionnaireIds: readonly string[],

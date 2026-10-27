@@ -3,10 +3,9 @@ import { FormattedMessage } from 'react-intl'
 import type { AnswerValue, QuestionnaireNode, QuestionNode } from '../types'
 import { allQuestionsAnswered, type SubmittedOptionResult } from '../lib/questionnaire'
 import {
-  isQuestionnaireFinalized,
-  questionnaireAttemptLimit,
-  questionnaireRequiresFinalization
-} from '../lib/questionnaire-finalization'
+  isQuestionnaireCompleted,
+  questionnaireAttemptsRemaining
+} from '../lib/questionnaire-completion'
 import { usePageId, usePlayerActions, usePlayerState } from '../lib/player-context'
 import { QuestionnaireSummary } from './QuestionnaireSummary'
 import { Button } from './ui/button'
@@ -17,14 +16,14 @@ export function useQuestionnaireSession(node: QuestionnaireNode) {
   const state = usePlayerState()
   const actions = usePlayerActions()
   const pageState = pageId ? state.pages[pageId] : undefined
+  const attempts = pageState?.questionnaireAttempts?.[node.id] ?? []
 
   return {
     answers: pageState?.answers,
     submitted: pageState?.submittedQuestionnaires?.includes(node.id) ?? false,
-    finalized: isQuestionnaireFinalized(pageState, node.id),
-    attempts: pageState?.questionnaireAttempts?.[node.id] ?? [],
-    attemptLimit: questionnaireAttemptLimit(node),
-    requiresFinalization: questionnaireRequiresFinalization(node),
+    completed: isQuestionnaireCompleted(pageState, node.id),
+    attempts,
+    attemptsRemaining: questionnaireAttemptsRemaining(node, attempts),
     retrying: pageState?.activeQuestionnaireRetries?.includes(node.id) ?? false,
     onAnswer: pageId
       ? (questionId: string, value: AnswerValue) => actions.setAnswer(pageId, questionId, value)
@@ -37,11 +36,10 @@ export function useQuestionnaireSession(node: QuestionnaireNode) {
           actions.retryQuestionnaire(
             pageId,
             node.id,
-            node.questions.map((question) => question.id),
-            node.maxAttempts
+            node.questions.map((question) => question.id)
           )
       : undefined,
-    onFinalize: pageId ? () => actions.finalizeQuestionnaire(pageId, node.id) : undefined
+    onComplete: pageId ? () => actions.completeQuestionnaire(pageId, node.id) : undefined
   }
 }
 
@@ -89,7 +87,7 @@ export function useQuestionnaireAnswers({
  *
  * The callback carries no render-time score: the state transition derives the
  * canonical result from the latest saved answers, so an older render closure
- * cannot record or finalize a stale count.
+ * cannot record or complete a stale count.
  */
 export function useQuestionnaireSubmission(
   id: string,
@@ -132,23 +130,24 @@ export function submittedChoiceClassName(result: SubmittedOptionResult): string 
 }
 
 /**
- * The submitted summary shared by both presentations. Without a pending
- * decision this renders exactly the summary used before retries existed. While
- * a retry-enabled result is pending, Try Again and Use This Score sit adjacent
- * inside the summary card.
+ * The submitted summary shared by both presentations. Without a pending result
+ * this renders the read-only latest result. While a submitted result is
+ * still open, Try Again and Complete sit adjacent inside the summary card.
  */
 export function QuestionnaireSubmissionResult({
   correct,
   total,
+  attemptsRemaining,
   onRetry,
-  onFinalize
+  onComplete
 }: {
   correct: number
   total: number
+  attemptsRemaining: number
   onRetry?: () => void
-  onFinalize?: () => void
+  onComplete?: () => void
 }) {
-  if (!onRetry && !onFinalize) {
+  if (!onRetry && !onComplete) {
     return <QuestionnaireSummary correct={correct} total={total} />
   }
 
@@ -163,11 +162,11 @@ export function QuestionnaireSubmissionResult({
               data-slot="questionnaire-retry"
               onClick={onRetry}
             >
-              <FormattedMessage id="questionnaire.tryAgain" />
+              <FormattedMessage id="questionnaire.tryAgain" values={{ count: attemptsRemaining }} />
             </Button>
           ) : null}
-          {onFinalize ? (
-            <Button type="button" data-slot="questionnaire-use-score" onClick={onFinalize}>
+          {onComplete ? (
+            <Button type="button" data-slot="questionnaire-complete" onClick={onComplete}>
               <FormattedMessage id="questionnaire.useThisScore" />
             </Button>
           ) : null}

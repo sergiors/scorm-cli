@@ -9,10 +9,6 @@ import type {
   ItemNode
 } from '../types'
 import { collectQuestionnaires, collectVideoNodes } from './content-helpers'
-import {
-  questionnaireAttemptLimit,
-  questionnaireRequiresFinalization
-} from './questionnaire-finalization'
 
 /** A fresh player state with no location and no recorded pages. */
 export function emptyPlayerState(): PlayerState {
@@ -54,7 +50,6 @@ function sanitizeAnswer(question: QuestionNode, value: unknown): AnswerValue | u
 function sanitizePageState(
   node: PageNode | ItemNode,
   raw: Record<string, unknown>,
-  completedImpliesSubmitted: boolean,
   videoIds: ReadonlySet<string>
 ): PlayerPageState | undefined {
   const questionnaires = collectQuestionnaires(node.content)
@@ -73,26 +68,25 @@ function sanitizePageState(
   if (raw.visited === true) page.visited = true
   const completedWasPersisted = raw.completed === true
 
-  // Finalization is restored strictly from its own persisted field. It is never
+  // Completion is restored strictly from its own persisted field. It is never
   // inferred from attempt history, submission status, or page completion.
-  const finalized = new Set<string>()
-  if (Array.isArray(raw.finalizedQuestionnaires)) {
-    for (const questionnaireId of raw.finalizedQuestionnaires) {
+  const completed = new Set<string>()
+  if (Array.isArray(raw.completedQuestionnaires)) {
+    for (const questionnaireId of raw.completedQuestionnaires) {
       if (typeof questionnaireId === 'string' && questionnaireById.has(questionnaireId)) {
-        finalized.add(questionnaireId)
+        completed.add(questionnaireId)
       }
     }
   }
 
-  // A page cannot be complete while an explicitly retry-enabled questionnaire
-  // has no finalized result. Older suspend data could carry such a stale flag,
-  // so drop it and let the presentation reporter restore completion only after
-  // the questionnaire is finalized.
-  const hasPendingFinalization = questionnaires.some(
-    (questionnaire) =>
-      questionnaireRequiresFinalization(questionnaire) && !finalized.has(questionnaire.id)
+  // A page cannot be complete while any authored questionnaire still has a
+  // pending result. Older suspend data could carry such a stale flag, so drop
+  // it and let the presentation reporter restore completion only after every
+  // questionnaire is completed.
+  const hasPendingQuestionnaire = questionnaires.some(
+    (questionnaire) => !completed.has(questionnaire.id)
   )
-  if (completedWasPersisted && !hasPendingFinalization) page.completed = true
+  if (completedWasPersisted && !hasPendingQuestionnaire) page.completed = true
 
   if (isRecord(raw.answers)) {
     const answers: Record<string, AnswerValue> = {}
@@ -114,7 +108,7 @@ function sanitizePageState(
     for (const [questionnaireId, value] of Object.entries(raw.questionnaireAttempts)) {
       const questionnaire = questionnaireById.get(questionnaireId)
       if (!questionnaire || !Array.isArray(value)) continue
-      if (value.length === 0 || value.length > questionnaireAttemptLimit(questionnaire)) continue
+      if (value.length === 0 || value.length > questionnaire.maxAttempts) continue
       if (
         !value.every(
           (count) =>
@@ -132,16 +126,16 @@ function sanitizePageState(
   }
 
   // An in-progress retry is only meaningful with a recorded history that still
-  // has an attempt left. A finalized questionnaire can never be retried, so its
+  // has an attempt left. A completed questionnaire can never be retried, so its
   // stale marker is dropped here.
   const retries = new Set<string>()
   if (Array.isArray(raw.activeQuestionnaireRetries)) {
     for (const questionnaireId of raw.activeQuestionnaireRetries) {
       if (typeof questionnaireId !== 'string') continue
       const questionnaire = questionnaireById.get(questionnaireId)
-      if (!questionnaire || finalized.has(questionnaireId)) continue
+      if (!questionnaire || completed.has(questionnaireId)) continue
       const history = attempts[questionnaireId]
-      if (!history || history.length >= questionnaireAttemptLimit(questionnaire)) continue
+      if (!history || history.length >= questionnaire.maxAttempts) continue
       retries.add(questionnaireId)
     }
   }
@@ -162,10 +156,9 @@ function sanitizePageState(
 
   // Normalise submissions against the questionnaires this node actually owns.
   // A recorded attempt restores a submitted (possibly pending) result even
-  // though suspend data never encoded `submittedQuestionnaires`; finalization
-  // is still read only from its own field above. A completed sequential page
-  // continues to imply submission for questionnaires that do not require an
-  // explicit final decision. An active retry intentionally has no submission.
+  // though suspend data never encoded `submittedQuestionnaires`; completion is
+  // still read only from its own field above. An active retry intentionally has
+  // no submission.
   const provided = new Set(
     Array.isArray(raw.submittedQuestionnaires)
       ? raw.submittedQuestionnaires.filter((id): id is string => typeof id === 'string')
@@ -174,29 +167,19 @@ function sanitizePageState(
   const submitted: string[] = []
   for (const id of wrapperIds) {
     if (retries.has(id)) continue
-    const questionnaire = questionnaireById.get(id)
-    if (!questionnaire) continue
     const history = attempts[id]
-    if (
-      provided.has(id) ||
-      finalized.has(id) ||
-      (history !== undefined && history.length > 0) ||
-      (!questionnaireRequiresFinalization(questionnaire) &&
-        completedImpliesSubmitted &&
-        completedWasPersisted)
-    ) {
+    if (provided.has(id) || completed.has(id) || (history !== undefined && history.length > 0)) {
       submitted.push(id)
     }
   }
 
   // Legacy suspend data did not store attempt history. When submission is
   // nevertheless known, seed its single historical score from the sanitized
-  // answers so retries do not grant a fresh full allowance after an upgrade.
-  // Never infer history for an active retry or a one-attempt questionnaire.
+  // answers so a resumed questionnaire never grants a fresh full allowance.
+  // Never infer history for an active retry.
   const submittedIds = new Set(submitted)
   for (const questionnaire of questionnaires) {
     if (
-      questionnaireAttemptLimit(questionnaire) <= 1 ||
       attempts[questionnaire.id] ||
       !submittedIds.has(questionnaire.id) ||
       retries.has(questionnaire.id)
@@ -224,15 +207,15 @@ function sanitizePageState(
   }
   if (Object.keys(attempts).length > 0) page.questionnaireAttempts = attempts
 
-  if (finalized.size > 0) {
-    page.finalizedQuestionnaires = [...finalized]
+  if (completed.size > 0) {
+    page.completedQuestionnaires = [...completed]
   }
 
   if (submitted.length > 0) {
     page.submittedQuestionnaires = submitted
   }
 
-  const activeRetries = [...retries].filter((id) => !submittedIds.has(id) && !finalized.has(id))
+  const activeRetries = [...retries].filter((id) => !submittedIds.has(id) && !completed.has(id))
   if (activeRetries.length > 0) {
     page.activeQuestionnaireRetries = activeRetries
   }
@@ -250,16 +233,14 @@ function sanitizePageState(
  * validated against the authored attempt cap and question count, and an active
  * retry survives only while its history still has an attempt left. A recorded
  * attempt restores its submitted result even though suspend data never encoded
- * submissions, while finalization is restored only from its own field. Video
+ * submissions, while completion is restored only from its own field. Video
  * positions are scoped to the page/item that owns the video, so a video moved to
- * another node never retains a position under its old node. A completed
- * sequential page is normalized to have all of its non-retry questionnaires
- * submitted, but a pending explicitly retry-enabled questionnaire keeps the page
- * incomplete until it is finalized; an in-progress retry likewise stays
- * unsubmitted. A submitted retry-enabled questionnaire with no legacy history is
- * seeded with one score from its sanitized answers. The result is always a plain
- * in-memory state — never the raw persisted object — so the renderer can mutate
- * it without touching whatever the bridge returned.
+ * another node never retains a position under its old node. A persisted page
+ * completion survives only when every authored questionnaire has completed its
+ * result; an in-progress retry stays unsubmitted. A submitted questionnaire with
+ * no legacy history is seeded with one score from its sanitized answers. The
+ * result is always a plain in-memory state — never the raw persisted object — so
+ * the renderer can mutate it without touching whatever the bridge returned.
  */
 export function sanitizePlayerState(contentPackage: ContentPackage, raw: unknown): PlayerState {
   const { presentation } = contentPackage
@@ -282,7 +263,7 @@ export function sanitizePlayerState(contentPackage: ContentPackage, raw: unknown
   for (const [pageId, pageRaw] of Object.entries(raw.pages)) {
     const node = byId.get(pageId)
     if (!node || !isRecord(pageRaw)) continue
-    const page = sanitizePageState(node, pageRaw, presentation.type !== 'tiles', nodeVideoIds(node))
+    const page = sanitizePageState(node, pageRaw, nodeVideoIds(node))
     if (page) state.pages[pageId] = page
   }
 

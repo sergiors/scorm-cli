@@ -33,6 +33,7 @@ const packageContent: ContentPackage = {
           type: 'questionnaire',
           id: `quiz-${pageIndex}`,
           contributesToScore: true,
+          maxAttempts: 1,
           questions: [
             {
               type: 'question',
@@ -407,6 +408,7 @@ describe('compact suspend-data codec', () => {
                 type: 'questionnaire',
                 id: 'q',
                 contributesToScore: true,
+                maxAttempts: 1,
                 questions: [
                   {
                     type: 'question',
@@ -828,10 +830,12 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
           metadata: { title: 'Beta' },
           content: [
             {
-              // No authored maxAttempts: the manifest records the default cap.
+              // The parser normalizes the single-attempt default to an explicit
+              // cap of one, which the manifest records unchanged.
               type: 'questionnaire',
               id: 'quiz-c',
               contributesToScore: true,
+              maxAttempts: 1,
               questions: [
                 {
                   type: 'question',
@@ -1054,18 +1058,18 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
 
   it('drops page-indexed attempts when the visited bitmap is oversized', () => {
     // A three-bit visited string cannot belong to a two-page manifest, so its
-    // page-indexed q/r/f data is meaningless and restores nothing.
+    // page-indexed q/r/c data is meaningless and restores nothing.
     expect(
       decodeSuspendData(attemptManifest, {
         v: 1,
         p: 0,
         x: '100',
-        d: { '0.q.0': [1], '0.r.0': 1, '0.f.0': 1 }
+        d: { '0.q.0': [1], '0.r.0': 1, '0.c.0': 1 }
       })
     ).toEqual({ pages: {} })
   })
 
-  it('encodes finalization with the history and never a stale retry flag', () => {
+  it('encodes completion with the history and never a stale retry flag', () => {
     const encoded = encodeSuspendData(
       attemptManifest,
       {
@@ -1073,9 +1077,9 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
           alpha: {
             visited: true,
             questionnaireAttempts: { 'quiz-a': [1, 0] },
-            finalizedQuestionnaires: ['quiz-a'],
-            // A finalized questionnaire can no longer be retried, so an active
-            // retry marker beside the finalization must not persist an r key.
+            completedQuestionnaires: ['quiz-a'],
+            // A completed questionnaire can no longer be retried, so an active
+            // retry marker beside the completion must not persist an r key.
             activeQuestionnaireRetries: ['quiz-a']
           },
           beta: { questionnaireAttempts: { 'quiz-c': [1] } }
@@ -1089,13 +1093,13 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
       x: '10',
       d: {
         '0.q.0': [1, 0],
-        '0.f.0': 1,
+        '0.c.0': 1,
         '1.q.0': [1]
       }
     })
 
     // A still-pending questionnaire keeps its retry flag instead of the
-    // finalization marker.
+    // completion marker.
     const stillPending = encodeSuspendData(
       attemptManifest,
       {
@@ -1116,7 +1120,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
     })
   })
 
-  it('round-trips a finalized decision back into the same semantic state', () => {
+  it('round-trips a completed decision back into the same semantic state', () => {
     const encoded = encodeSuspendData(
       attemptManifest,
       {
@@ -1124,7 +1128,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
           alpha: {
             visited: true,
             questionnaireAttempts: { 'quiz-a': [1, 0] },
-            finalizedQuestionnaires: ['quiz-a']
+            completedQuestionnaires: ['quiz-a']
           },
           beta: { questionnaireAttempts: { 'quiz-c': [0] } }
         }
@@ -1137,7 +1141,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
         alpha: {
           visited: true,
           questionnaireAttempts: { 'quiz-a': [1, 0] },
-          finalizedQuestionnaires: ['quiz-a']
+          completedQuestionnaires: ['quiz-a']
         },
         beta: { questionnaireAttempts: { 'quiz-c': [0] } }
       }
@@ -1145,18 +1149,75 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
     expect(encodeSuspendData(attemptManifest, restored, 0)).toEqual(encoded)
   })
 
-  it('decodes finalization markers only with a restored history and no retry', () => {
+  it('restores separate completion markers for each questionnaire index', () => {
+    // quiz-a's result completed after a better retry while quiz-b's single
+    // attempt completed immediately; each marker is page-local and keyed by its
+    // own questionnaire index.
+    const restored = decodeSuspendData(attemptManifest, {
+      v: 1,
+      p: 0,
+      x: '10',
+      d: {
+        '0.q.0': [1, 2],
+        '0.c.0': 1,
+        '0.q.1': [0],
+        '0.c.1': 1
+      }
+    })
+    expect(restored).toEqual({
+      pages: {
+        alpha: {
+          visited: true,
+          questionnaireAttempts: { 'quiz-a': [1, 2], 'quiz-b': [0] },
+          completedQuestionnaires: ['quiz-a', 'quiz-b']
+        }
+      }
+    })
+    // Re-encoding emits one c flag per completed questionnaire.
+    expect(encodeSuspendData(attemptManifest, restored, 0)).toEqual({
+      v: 1,
+      p: 0,
+      x: '10',
+      d: {
+        '0.q.0': [1, 2],
+        '0.c.0': 1,
+        '0.q.1': [0],
+        '0.c.1': 1
+      }
+    })
+
+    // One pending questionnaire keeps the page's other completion intact.
+    const oneCompleted = { ...restored }
+    oneCompleted.pages = { ...restored.pages }
+    oneCompleted.pages.alpha = {
+      visited: true,
+      questionnaireAttempts: { 'quiz-a': [1, 2], 'quiz-b': [0] },
+      completedQuestionnaires: ['quiz-a']
+    }
+    expect(encodeSuspendData(attemptManifest, oneCompleted, 0)).toEqual({
+      v: 1,
+      p: 0,
+      x: '10',
+      d: {
+        '0.q.0': [1, 2],
+        '0.c.0': 1,
+        '0.q.1': [0]
+      }
+    })
+  })
+
+  it('decodes completion markers only with a restored history and no retry', () => {
     const restored = decodeSuspendData(attemptManifest, {
       v: 1,
       p: 0,
       x: '10',
       d: {
         '0.q.0': [2, 1],
-        '0.f.0': 1,
-        // A finalized questionnaire is never retried, so this stale flag is
-        // not restored beside the finalization.
+        '0.c.0': 1,
+        // A completed questionnaire is never retried, so this stale flag is
+        // not restored beside the completion.
         '0.r.0': 1,
-        // quiz-c stays pending: it carries no finalization marker.
+        // quiz-c stays pending: it carries no completion marker.
         '1.q.0': [0]
       }
     })
@@ -1165,34 +1226,34 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
         alpha: {
           visited: true,
           questionnaireAttempts: { 'quiz-a': [2, 1] },
-          finalizedQuestionnaires: ['quiz-a']
+          completedQuestionnaires: ['quiz-a']
         },
         beta: { questionnaireAttempts: { 'quiz-c': [0] } }
       }
     })
   })
 
-  it('ignores finalization markers without history or usable questionnaire bounds', () => {
+  it('ignores completion markers without history or usable questionnaire bounds', () => {
     expect(
       decodeSuspendData(attemptManifest, {
         v: 1,
         p: 0,
         x: '10',
         d: {
-          // Finalization requires a restored attempt history: without one the
-          // marker restores nothing, like any other malformed f key.
-          '0.f.0': 1,
-          '0.f.9': 1,
-          '0.f.00': 1,
-          '99.f.0': 1,
-          '0.f.1': 2,
-          '0.f': 1
+          // Completion requires a restored attempt history: without one the
+          // marker restores nothing, like any other malformed c key.
+          '0.c.0': 1,
+          '0.c.9': 1,
+          '0.c.00': 1,
+          '99.c.0': 1,
+          '0.c.1': 2,
+          '0.c': 1
         }
       })
     ).toEqual({ pages: { alpha: { visited: true } } })
 
     // The marker also follows the questionnaire's manifest bounds: an unusable
-    // cap or count is never finalizable.
+    // cap or count is never completable.
     const unusable = structuredClone(attemptManifest)
     unusable.pages['0']!.questionnaires!['0']!.maxAttempts = 0
     unusable.pages['1']!.questionnaires!['0']!.questionCount = -1
@@ -1201,7 +1262,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
         v: 1,
         p: 0,
         x: '10',
-        d: { '0.q.0': [1], '0.f.0': 1, '1.q.0': [1], '1.f.0': 1 }
+        d: { '0.q.0': [1], '0.c.0': 1, '1.q.0': [1], '1.c.0': 1 }
       })
     ).toEqual({ pages: { alpha: { visited: true } } })
   })

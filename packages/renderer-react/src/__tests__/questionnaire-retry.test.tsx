@@ -29,6 +29,15 @@ const expandedRetryQuestionnaire: QuestionnaireNode = {
   expanded: true
 }
 
+/** The default single-attempt cap the parser normalizes omitted props to. */
+const defaultSingleQuestionnaire: QuestionnaireNode = { ...questionnaireNode }
+
+/** An explicitly single-attempt questionnaire so both caps render the same. */
+const explicitSingleQuestionnaire: QuestionnaireNode = {
+  ...questionnaireNode,
+  maxAttempts: 1
+}
+
 /** A second, single-attempt questionnaire so a retry cannot leak across nodes. */
 const otherQuestion: QuestionNode = {
   type: 'question',
@@ -44,6 +53,7 @@ const otherQuestionnaire: QuestionnaireNode = {
   type: 'questionnaire',
   id: 'questionnaire:other.mdx:1:1',
   contributesToScore: true,
+  maxAttempts: 1,
   questions: [otherQuestion]
 }
 
@@ -188,8 +198,8 @@ function retryIn(scope: ParentNode): HTMLButtonElement | null {
   return scope.querySelector<HTMLButtonElement>('[data-slot="questionnaire-retry"]')
 }
 
-function finalizeButtonIn(scope: ParentNode): HTMLButtonElement | null {
-  return scope.querySelector<HTMLButtonElement>('[data-slot="questionnaire-use-score"]')
+function completeButtonIn(scope: ParentNode): HTMLButtonElement | null {
+  return scope.querySelector<HTMLButtonElement>('[data-slot="questionnaire-complete"]')
 }
 
 function activeItemIn(scope: ParentNode): HTMLElement {
@@ -207,6 +217,11 @@ function lastPageState(): PlayerPageState | undefined {
   return (lastState as PlayerState | undefined)?.pages[PAGE_ID]
 }
 
+/** The score forwarded to the most recent `setScore` bridge call. */
+function lastReportedScore(setScore: { mock: { calls: unknown[][] } }): unknown {
+  return setScore.mock.calls.at(-1)?.[0]
+}
+
 /**
  * Answers both wizard questions and submits. Each retry round remounts the
  * wizard at its first question, so the same click sequence works every round.
@@ -218,49 +233,53 @@ function submitStepperRound(scope: ParentNode, singleValue: string, multipleValu
   act(() => clickableButtonIn(scope, 'Submit questionnaire').click())
 }
 
-describe('questionnaire retry flow (stepper)', () => {
-  it('keeps a single submission final when no higher attempt cap is authored', () => {
-    render(makePackage('scroll', [questionnaireNode]), [questionnaireNode])
+describe('questionnaire submission caps (stepper)', () => {
+  it('completes the parser-normalized single attempt immediately', () => {
+    render(makePackage('scroll', [defaultSingleQuestionnaire]), [defaultSingleQuestionnaire])
     const quiz = region('retryable')
 
     submitStepperRound(quiz, 'first', 'alpha')
     expect(summaryTextIn(quiz)).toContain('2 of 2 correct answers')
-    // Without maxAttempts the summary is the end of the flow: no retry action,
-    // read-only review items, and a disabled Submit — exactly like before
-    // retries existed.
+    // With the normalized single-attempt cap the summary is the end of the
+    // flow: no retry or Complete action, read-only review items, and a
+    // disabled Submit — exactly like before retries existed.
     expect(retryIn(quiz)).toBeNull()
+    expect(completeButtonIn(quiz)).toBeNull()
     expect(itemsIn(quiz).every((item) => item.getAttribute('aria-readonly') === 'true')).toBe(true)
     expect(visibleButtonIn(quiz, 'Submit questionnaire').disabled).toBe(true)
-    expect(lastPageState()?.questionnaireAttempts).toEqual({ [questionnaireNode.id]: [2] })
+    // The attempt is recorded and the resulting state completes it in the same
+    // write, because submitting an explicit cap consumes the last attempt.
+    expect(lastPageState()?.questionnaireAttempts).toEqual({
+      [defaultSingleQuestionnaire.id]: [2]
+    })
+    expect(lastPageState()?.completedQuestionnaires).toEqual([defaultSingleQuestionnaire.id])
+    expect(lastPageState()?.submittedQuestionnaires).toEqual([defaultSingleQuestionnaire.id])
     expect(lastPageState()?.activeQuestionnaireRetries).toBeUndefined()
-    // An omitted cap keeps the immediate-final behavior without ever recording
-    // a finalization decision.
-    expect(lastPageState()?.finalizedQuestionnaires).toBeUndefined()
   })
 
-  it('auto-finalizes an explicitly single-attempt questionnaire on its first submission', () => {
-    const explicitSingleQuestionnaire: QuestionnaireNode = {
-      ...questionnaireNode,
-      maxAttempts: 1
-    }
+  it('completes an explicitly single-attempt questionnaire the same way', () => {
     render(makePackage('scroll', [explicitSingleQuestionnaire]), [explicitSingleQuestionnaire])
     const quiz = region('retryable')
 
     submitStepperRound(quiz, 'first', 'alpha')
 
-    // The one attempt is recorded and the result is immediately final: neither
-    // decision appears, and the review stays read-only.
+    // The explicit single attempt is recorded and completed immediately: no
+    // decision appears, and the review stays read-only. It renders exactly
+    // like the omitted-cap default above.
     const page = lastPageState()
     expect(page?.questionnaireAttempts).toEqual({ [explicitSingleQuestionnaire.id]: [2] })
-    expect(page?.finalizedQuestionnaires).toEqual([explicitSingleQuestionnaire.id])
+    expect(page?.completedQuestionnaires).toEqual([explicitSingleQuestionnaire.id])
+    expect(page?.submittedQuestionnaires).toEqual([explicitSingleQuestionnaire.id])
     expect(page?.activeQuestionnaireRetries).toBeUndefined()
     expect(summaryTextIn(quiz)).toContain('2 of 2 correct answers')
     expect(retryIn(quiz)).toBeNull()
-    expect(finalizeButtonIn(quiz)).toBeNull()
+    expect(completeButtonIn(quiz)).toBeNull()
     expect(itemsIn(quiz).every((item) => item.getAttribute('aria-readonly') === 'true')).toBe(true)
     expect(visibleButtonIn(quiz, 'Submit questionnaire').disabled).toBe(true)
   })
+})
 
+describe('questionnaire retry flow (stepper)', () => {
   it('clears only the retried answers and restarts the wizard on retry', () => {
     render(makePackage('scroll', [retryQuestionnaire]), [retryQuestionnaire])
     const quiz = region('retryable')
@@ -293,7 +312,13 @@ describe('questionnaire retry flow (stepper)', () => {
     expect(inputIn(quiz, 'first').checked).toBe(true)
   })
 
-  it('offers Try Again and Use This Score for a pending below-full result', () => {
+  it('offers Try Again and Complete for a pending below-full result', () => {
+    const setScore = vi.fn()
+    window.scormBridge = {
+      restoreState: () => restoredState,
+      saveState,
+      setScore
+    }
     render(makePackage('scroll', [retryQuestionnaire]), [retryQuestionnaire])
     const quiz = region('retryable')
 
@@ -304,65 +329,110 @@ describe('questionnaire retry flow (stepper)', () => {
     // Both decisions are children inside the summary card, not separate
     // actions beside it.
     expect(retryIn(quiz)?.closest('[data-slot="questionnaire-summary"]')).toBe(summary)
-    expect(finalizeButtonIn(quiz)?.closest('[data-slot="questionnaire-summary"]')).toBe(summary)
+    expect(completeButtonIn(quiz)?.closest('[data-slot="questionnaire-summary"]')).toBe(summary)
     expect(visibleButtonIn(quiz, 'Submit questionnaire').disabled).toBe(true)
 
-    // The submission stays pending: one recorded attempt, no final decision
-    // yet, and no active retry until one is requested.
+    // The submission stays pending: one recorded attempt, no completed
+    // decision yet, and no active retry until one is requested.
     const pending = lastPageState()
     expect(pending?.questionnaireAttempts).toEqual({ [retryQuestionnaire.id]: [0] })
-    expect(pending?.finalizedQuestionnaires).toBeUndefined()
+    expect(pending?.completedQuestionnaires).toBeUndefined()
+    expect(pending?.submittedQuestionnaires).toEqual([retryQuestionnaire.id])
     expect(pending?.activeQuestionnaireRetries).toBeUndefined()
+    // A pending result also reports no aggregate score at all.
+    expect(lastReportedScore(setScore)).toBeUndefined()
 
-    // Use This Score finalizes the decision without recording another attempt.
-    act(() => finalizeButtonIn(quiz)!.click())
-    const finalized = lastPageState()
-    expect(finalized?.questionnaireAttempts).toEqual({ [retryQuestionnaire.id]: [0] })
-    expect(finalized?.finalizedQuestionnaires).toEqual([retryQuestionnaire.id])
-    expect(finalized?.submittedQuestionnaires).toEqual([retryQuestionnaire.id])
+    // Complete closes the decision without recording another attempt.
+    act(() => completeButtonIn(quiz)!.click())
+    const completed = lastPageState()
+    expect(completed?.questionnaireAttempts).toEqual({ [retryQuestionnaire.id]: [0] })
+    expect(completed?.completedQuestionnaires).toEqual([retryQuestionnaire.id])
+    expect(completed?.submittedQuestionnaires).toEqual([retryQuestionnaire.id])
 
-    // The finalized review keeps its summary and loses both decisions.
+    // The completed review keeps its summary and loses both decisions.
     expect(summaryTextIn(quiz)).toContain('0 of 2 correct answers')
     expect(retryIn(quiz)).toBeNull()
-    expect(finalizeButtonIn(quiz)).toBeNull()
+    expect(completeButtonIn(quiz)).toBeNull()
+    // The completed result finally counts toward the aggregate score: the
+    // best — and here the only — recorded attempt.
+    expect(lastReportedScore(setScore)).toEqual({ earned: 0, possible: 2 })
   })
 
-  it('shows the best pending attempt after a worse retry', () => {
+  it('shows the latest pending attempt in the summary, keeping the best score separate', () => {
+    const setScore = vi.fn()
+    window.scormBridge = {
+      restoreState: () => restoredState,
+      saveState,
+      setScore
+    }
     render(makePackage('scroll', [retryQuestionnaire]), [retryQuestionnaire])
     const quiz = region('retryable')
 
     // Attempt 1 scores one point and stays pending with attempts left.
     submitStepperRound(quiz, 'first', 'beta')
-    act(() => retryIn(quiz)!.click())
-
-    // Attempt 2 scores lower; the pending summary keeps reporting the best
-    // recorded attempt while the decision stays open.
-    submitStepperRound(quiz, 'second', 'beta')
     expect(summaryTextIn(quiz)).toContain('1 of 2 correct answers')
     expect(retryIn(quiz)).not.toBeNull()
-    expect(finalizeButtonIn(quiz)).not.toBeNull()
+    act(() => retryIn(quiz)!.click())
+
+    // Attempt 2 scores lower; the open summary keeps reporting the LATEST
+    // recorded attempt while the decision stays open.
+    submitStepperRound(quiz, 'second', 'beta')
+    expect(summaryTextIn(quiz)).toContain('0 of 2 correct answers')
+    expect(summaryPercentIn(quiz)).toBe('0%')
     expect(lastPageState()?.questionnaireAttempts).toEqual({ [retryQuestionnaire.id]: [1, 0] })
+
+    // Completing keeps that summary text but starts reporting the aggregate
+    // score, which is the best recorded attempt — never the displayed one.
+    expect(lastReportedScore(setScore)).toBeUndefined()
+    act(() => completeButtonIn(quiz)!.click())
+    expect(summaryTextIn(quiz)).toContain('0 of 2 correct answers')
+    expect(lastReportedScore(setScore)).toEqual({ earned: 1, possible: 2 })
   })
 
-  it('auto-finalizes a perfect submission without offering decisions', () => {
+  it('shows the latest pending attempt after an improving retry', () => {
+    render(makePackage('scroll', [retryQuestionnaire]), [retryQuestionnaire])
+    const quiz = region('retryable')
+
+    // Attempt 1 is wrong; the retry stays open with attempts left.
+    submitStepperRound(quiz, 'second', 'beta')
+    act(() => retryIn(quiz)!.click())
+
+    // Attempt 2 scores higher; the open summary reports that latest attempt.
+    submitStepperRound(quiz, 'first', 'beta')
+    expect(summaryTextIn(quiz)).toContain('1 of 2 correct answers')
+    expect(summaryPercentIn(quiz)).toBe('50%')
+    expect(retryIn(quiz)).not.toBeNull()
+    expect(completeButtonIn(quiz)).not.toBeNull()
+    expect(lastPageState()?.questionnaireAttempts).toEqual({ [retryQuestionnaire.id]: [0, 1] })
+  })
+
+  it('completes a perfect submission automatically without offering decisions', () => {
+    const setScore = vi.fn()
+    window.scormBridge = {
+      restoreState: () => restoredState,
+      saveState,
+      setScore
+    }
     render(makePackage('scroll', [retryQuestionnaire]), [retryQuestionnaire])
     const quiz = region('retryable')
 
     submitStepperRound(quiz, 'first', 'alpha')
 
-    // A perfect first attempt is final on its own: the summary shows without
-    // either decision and the submission is marked finalized immediately.
+    // A perfect first attempt closes the result on its own: the summary shows
+    // without either decision and the result is marked completed immediately.
     expect(summaryTextIn(quiz)).toContain('2 of 2 correct answers')
     expect(summaryPercentIn(quiz)).toBe('100%')
     expect(retryIn(quiz)).toBeNull()
-    expect(finalizeButtonIn(quiz)).toBeNull()
+    expect(completeButtonIn(quiz)).toBeNull()
     expect(visibleButtonIn(quiz, 'Submit questionnaire').disabled).toBe(true)
-    const finalized = lastPageState()
-    expect(finalized?.questionnaireAttempts).toEqual({ [retryQuestionnaire.id]: [2] })
-    expect(finalized?.finalizedQuestionnaires).toEqual([retryQuestionnaire.id])
+    const completed = lastPageState()
+    expect(completed?.questionnaireAttempts).toEqual({ [retryQuestionnaire.id]: [2] })
+    expect(completed?.completedQuestionnaires).toEqual([retryQuestionnaire.id])
+    // The perfect best attempt is reported to the bridge in the same flow.
+    expect(lastReportedScore(setScore)).toEqual({ earned: 2, possible: 2 })
   })
 
-  it('auto-finalizes at the exhausted cap after imperfect attempts', () => {
+  it('completes automatically at the exhausted cap after imperfect attempts', () => {
     render(makePackage('scroll', [retryQuestionnaire]), [retryQuestionnaire])
     const quiz = region('retryable')
 
@@ -376,15 +446,39 @@ describe('questionnaire retry flow (stepper)', () => {
     // no decision and hides both actions.
     expect(summaryTextIn(quiz)).toContain('0 of 2 correct answers')
     expect(retryIn(quiz)).toBeNull()
-    expect(finalizeButtonIn(quiz)).toBeNull()
-    const finalized = lastPageState()
-    expect(finalized?.questionnaireAttempts).toEqual({ [retryQuestionnaire.id]: [0, 0, 0] })
-    expect(finalized?.finalizedQuestionnaires).toEqual([retryQuestionnaire.id])
+    expect(completeButtonIn(quiz)).toBeNull()
+    const completed = lastPageState()
+    expect(completed?.questionnaireAttempts).toEqual({ [retryQuestionnaire.id]: [0, 0, 0] })
+    expect(completed?.completedQuestionnaires).toEqual([retryQuestionnaire.id])
+  })
+
+  it('stops offering Try Again after the last attempt is consumed', () => {
+    render(makePackage('scroll', [retryQuestionnaire]), [retryQuestionnaire])
+    const quiz = region('retryable')
+
+    submitStepperRound(quiz, 'second', 'beta')
+    act(() => retryIn(quiz)!.click())
+    submitStepperRound(quiz, 'first', 'beta')
+
+    // One attempt remains, so both decisions are offered. The history records
+    // both submissions: the wrong one first, this better one second.
+    expect(lastPageState()?.questionnaireAttempts).toEqual({ [retryQuestionnaire.id]: [0, 1] })
+    expect(retryIn(quiz)).not.toBeNull()
+    expect(completeButtonIn(quiz)).not.toBeNull()
+    act(() => retryIn(quiz)!.click())
+
+    // The final submission exhausts the cap and completes automatically: no
+    // decision is offered anymore.
+    submitStepperRound(quiz, 'first', 'beta')
+    expect(summaryTextIn(quiz)).toContain('1 of 2 correct answers')
+    expect(retryIn(quiz)).toBeNull()
+    expect(completeButtonIn(quiz)).toBeNull()
+    expect(lastPageState()?.completedQuestionnaires).toEqual([retryQuestionnaire.id])
   })
 })
 
 describe('questionnaire retry flow (expanded)', () => {
-  it('keeps a single submission final when no higher attempt cap is authored', () => {
+  it('completes a single submission immediately when no higher cap is authored', () => {
     const singleAttempt: QuestionnaireNode = { ...questionnaireNode, expanded: true }
     render(makePackage('scroll', [singleAttempt]), [singleAttempt])
     const quiz = region('retryable')
@@ -395,10 +489,12 @@ describe('questionnaire retry flow (expanded)', () => {
 
     expect(summaryTextIn(quiz)).toContain('2 of 2 correct answers')
     expect(retryIn(quiz)).toBeNull()
+    expect(completeButtonIn(quiz)).toBeNull()
+    expect(lastPageState()?.completedQuestionnaires).toEqual([singleAttempt.id])
     expect(visibleButtonIn(quiz, 'Submit questionnaire').disabled).toBe(true)
   })
 
-  it('makes every question editable again on retry and records the new attempt', () => {
+  it('makes every question editable again on retry, completes early, and records the new attempt', () => {
     render(makePackage('scroll', [expandedRetryQuestionnaire]), [expandedRetryQuestionnaire])
     const quiz = region('retryable')
 
@@ -407,15 +503,15 @@ describe('questionnaire retry flow (expanded)', () => {
     act(() => clickableButtonIn(quiz, 'Submit questionnaire').click())
     expect(summaryIn(quiz)).not.toBeNull()
     expect(retryIn(quiz)).not.toBeNull()
-    // The pending expanded result offers both decisions as children inside the
+    // The open expanded result offers both decisions as children inside the
     // summary card rather than as separate sibling actions.
     expect(retryIn(quiz)?.closest('[data-slot="questionnaire-summary"]')).toBe(summaryIn(quiz))
-    expect(finalizeButtonIn(quiz)?.closest('[data-slot="questionnaire-summary"]')).toBe(
+    expect(completeButtonIn(quiz)?.closest('[data-slot="questionnaire-summary"]')).toBe(
       summaryIn(quiz)
     )
     expect(summaryTextIn(quiz)).toContain('0 of 2 correct answers')
     expect(summaryPercentIn(quiz)).toBe('0%')
-    expect(lastPageState()?.finalizedQuestionnaires).toBeUndefined()
+    expect(lastPageState()?.completedQuestionnaires).toBeUndefined()
 
     act(() => retryIn(quiz)!.click())
 
@@ -431,17 +527,44 @@ describe('questionnaire retry flow (expanded)', () => {
     act(() => inputIn(quiz, 'alpha').click())
     act(() => clickableButtonIn(quiz, 'Submit questionnaire').click())
 
-    // The perfect retried result auto-finalizes: the summary shows without
-    // either decision.
+    // The perfect retried result completes automatically: the summary shows
+    // without either decision.
     expect(summaryTextIn(quiz)).toContain('2 of 2 correct answers')
     expect(summaryPercentIn(quiz)).toBe('100%')
     expect(retryIn(quiz)).toBeNull()
-    expect(finalizeButtonIn(quiz)).toBeNull()
-    const finalized = lastPageState()
-    expect(finalized?.questionnaireAttempts).toEqual({
+    expect(completeButtonIn(quiz)).toBeNull()
+    const completed = lastPageState()
+    expect(completed?.questionnaireAttempts).toEqual({
       [expandedRetryQuestionnaire.id]: [0, 2]
     })
-    expect(finalized?.finalizedQuestionnaires).toEqual([expandedRetryQuestionnaire.id])
+    expect(completed?.completedQuestionnaires).toEqual([expandedRetryQuestionnaire.id])
+  })
+
+  it('lets the learner complete an imperfect expanded result while attempts remain', () => {
+    render(makePackage('scroll', [expandedRetryQuestionnaire]), [expandedRetryQuestionnaire])
+    const quiz = region('retryable')
+
+    act(() => inputIn(quiz, 'second').click())
+    act(() => inputIn(quiz, 'alpha').click())
+    act(() => clickableButtonIn(quiz, 'Submit questionnaire').click())
+
+    // One correct answer with two attempts left: the open summary offers both
+    // decisions around the latest attempt's score.
+    expect(summaryTextIn(quiz)).toContain('1 of 2 correct answers')
+    expect(summaryPercentIn(quiz)).toBe('50%')
+    expect(lastPageState()?.questionnaireAttempts).toEqual({ [expandedRetryQuestionnaire.id]: [1] })
+
+    act(() => completeButtonIn(quiz)!.click())
+
+    // Completing keeps the submitted attempt and the displayed latest score;
+    // only the completed decision flips, closing both actions.
+    const completed = lastPageState()
+    expect(completed?.completedQuestionnaires).toEqual([expandedRetryQuestionnaire.id])
+    expect(completed?.questionnaireAttempts).toEqual({ [expandedRetryQuestionnaire.id]: [1] })
+    expect(completed?.submittedQuestionnaires).toEqual([expandedRetryQuestionnaire.id])
+    expect(summaryTextIn(quiz)).toContain('1 of 2 correct answers')
+    expect(retryIn(quiz)).toBeNull()
+    expect(completeButtonIn(quiz)).toBeNull()
   })
 })
 
@@ -470,6 +593,7 @@ describe('retry clears only its own answers', () => {
     expect(otherInput.checked).toBe(true)
     expect(summaryTextIn(other)).toContain('1 of 1 correct answers')
     expect(retryIn(other)).toBeNull()
+    expect(completeButtonIn(other)).toBeNull()
 
     const retrying = lastPageState()
     expect(retrying?.answers).toEqual({ [otherQuestion.id]: 'good' })
@@ -481,6 +605,8 @@ describe('retry clears only its own answers', () => {
       [retryQuestionnaire.id]: [0],
       [otherQuestionnaire.id]: [1]
     })
+    // The single-attempt questionnaire auto-completed with its submission.
+    expect(retrying?.completedQuestionnaires).toEqual([otherQuestionnaire.id])
   })
 })
 
@@ -526,25 +652,28 @@ describe('pending decisions across a refresh', () => {
       expect(summaryTextIn(other)).toContain('1 of 1 correct answers')
 
       // The restored attempt history is kept, so finishing the retry round
-      // appends the second attempt. The perfect result finalizes itself, and
+      // appends the second attempt. The perfect result completes itself, and
       // the stale persisted completion flag stays dropped: page completion is
       // re-derived by the presentation only after the decision is closed.
       submitStepperRound(quiz, 'first', 'alpha')
       expect(summaryTextIn(quiz)).toContain('2 of 2 correct answers')
       expect(retryIn(quiz)).toBeNull()
-      expect(finalizeButtonIn(quiz)).toBeNull()
-      const afterFinalize = lastPageState()
-      expect(afterFinalize?.completed).toBeUndefined()
-      expect(afterFinalize?.questionnaireAttempts).toEqual({ [retryQuestionnaire.id]: [0, 2] })
-      expect(afterFinalize?.finalizedQuestionnaires).toEqual([retryQuestionnaire.id])
+      expect(completeButtonIn(quiz)).toBeNull()
+      const afterComplete = lastPageState()
+      expect(afterComplete?.completed).toBeUndefined()
+      expect(afterComplete?.questionnaireAttempts).toEqual({
+        [retryQuestionnaire.id]: [0, 2],
+        [otherQuestionnaire.id]: [1]
+      })
+      expect(afterComplete?.completedQuestionnaires).toEqual([retryQuestionnaire.id])
       // Finishing the retry adds the questionnaire back to the submitted list
       // while the other questionnaire's submission was never disturbed.
-      expect(afterFinalize?.submittedQuestionnaires).toEqual([
+      expect(afterComplete?.submittedQuestionnaires).toEqual([
         otherQuestionnaire.id,
         retryQuestionnaire.id
       ])
-      expect(afterFinalize?.activeQuestionnaireRetries).toBeUndefined()
-      expect(afterFinalize?.answers).toEqual({
+      expect(afterComplete?.activeQuestionnaireRetries).toBeUndefined()
+      expect(afterComplete?.answers).toEqual({
         [otherQuestion.id]: 'good',
         [singleChoiceQuestion.id]: 'first',
         [multipleChoiceQuestion.id]: ['alpha']
@@ -552,7 +681,7 @@ describe('pending decisions across a refresh', () => {
     }
   )
 
-  it('restores an exhausted pending questionnaire with Use This Score only', () => {
+  it('restores an exhausted pending result without any decision actions', () => {
     restoredState = {
       pages: {
         [PAGE_ID]: {
@@ -573,49 +702,32 @@ describe('pending decisions across a refresh', () => {
     const quiz = region('retryable')
     const other = region('other')
 
-    // The restored submission is pending: every saved answer is read-only
-    // feedback, the exhausted cap leaves no Try Again, and only the final
-    // decision remains.
+    // The restored submission stays open: every saved answer is read-only
+    // feedback, and neither decision is offered — the cap is exhausted so a
+    // retry is impossible, and a live submission would have completed this
+    // result itself, so no recorded write can carry this shape.
     expect(inputIn(quiz, 'second').checked).toBe(true)
     expect(itemsIn(quiz).every((item) => item.getAttribute('aria-readonly') === 'true')).toBe(true)
     expect(summaryTextIn(quiz)).toContain('0 of 2 correct answers')
     expect(retryIn(quiz)).toBeNull()
-    expect(finalizeButtonIn(quiz)?.closest('[data-slot="questionnaire-summary"]')).toBe(
-      summaryIn(quiz)
-    )
+    expect(completeButtonIn(quiz)).toBeNull()
 
     // The other questionnaire keeps its submission from the restored state.
     const otherInput = inputIn(other, 'good')
     expect(otherInput.checked).toBe(true)
     expect(itemsIn(other).every((item) => item.getAttribute('aria-readonly') === 'true')).toBe(true)
     expect(summaryTextIn(other)).toContain('1 of 1 correct answers')
-
-    // Finalizing records the decision without adding an attempt; the dropped
-    // stale completion flag is only re-derived by the presentation.
-    act(() => finalizeButtonIn(quiz)!.click())
-    const finalizedRestore = lastPageState()
-    expect(finalizedRestore?.questionnaireAttempts).toEqual({
-      [retryQuestionnaire.id]: [0, 0, 0]
-    })
-    expect(finalizedRestore?.finalizedQuestionnaires).toEqual([retryQuestionnaire.id])
-    expect(finalizedRestore?.submittedQuestionnaires).toEqual([
-      retryQuestionnaire.id,
-      otherQuestionnaire.id
-    ])
-    expect(finalizedRestore?.completed).toBeUndefined()
-    expect(retryIn(quiz)).toBeNull()
-    expect(finalizeButtonIn(quiz)).toBeNull()
   })
 
-  it('restores a finalized decision as read-only review without decisions', () => {
+  it('restores a completed decision as read-only review without decisions', () => {
     restoredState = {
       pages: {
         [PAGE_ID]: {
           visited: true,
           completed: true,
-          finalizedQuestionnaires: [retryQuestionnaire.id],
+          completedQuestionnaires: [retryQuestionnaire.id, otherQuestionnaire.id],
           submittedQuestionnaires: [otherQuestionnaire.id],
-          questionnaireAttempts: { [retryQuestionnaire.id]: [0, 2] },
+          questionnaireAttempts: { [retryQuestionnaire.id]: [0, 2], [otherQuestionnaire.id]: [1] },
           answers: {
             [otherQuestion.id]: 'good',
             [singleChoiceQuestion.id]: 'first',
@@ -628,15 +740,16 @@ describe('pending decisions across a refresh', () => {
     const quiz = region('retryable')
     const other = region('other')
 
-    // After the refresh a finalized result is read-only review: no pending
-    // decision, no retry eligibility, and the persisted completion is valid.
+    // After the refresh a completed result is read-only review: no pending
+    // decision, no retry eligibility, and the persisted page completion is
+    // valid because every authored questionnaire completed its result.
     expect(inputIn(quiz, 'first').checked).toBe(true)
     expect(inputIn(quiz, 'alpha').checked).toBe(true)
     expect(inputIn(quiz, 'second').checked).toBe(false)
     expect(itemsIn(quiz).every((item) => item.getAttribute('aria-readonly') === 'true')).toBe(true)
     expect(summaryTextIn(quiz)).toContain('2 of 2 correct answers')
     expect(retryIn(quiz)).toBeNull()
-    expect(finalizeButtonIn(quiz)).toBeNull()
+    expect(completeButtonIn(quiz)).toBeNull()
 
     const otherInput = inputIn(other, 'good')
     expect(otherInput.checked).toBe(true)
@@ -644,10 +757,48 @@ describe('pending decisions across a refresh', () => {
     expect(inputIn(other, 'good').disabled).toBe(false)
     expect(itemsIn(other).every((item) => item.getAttribute('aria-readonly') === 'true')).toBe(true)
   })
+
+  it('restores the latest attempt into the summary while the best score stays separate', () => {
+    const setScore = vi.fn()
+    restoredState = {
+      pages: {
+        [PAGE_ID]: {
+          visited: true,
+          completedQuestionnaires: [retryQuestionnaire.id],
+          submittedQuestionnaires: [retryQuestionnaire.id],
+          questionnaireAttempts: { [retryQuestionnaire.id]: [1, 2, 0] },
+          answers: {
+            [singleChoiceQuestion.id]: 'second',
+            [multipleChoiceQuestion.id]: ['beta']
+          }
+        }
+      }
+    }
+    window.scormBridge = {
+      restoreState: () => restoredState,
+      saveState,
+      setScore
+    }
+    render(makePackage('scroll', [retryQuestionnaire]), [retryQuestionnaire])
+    const quiz = region('retryable')
+
+    // The restored result completed its third attempt, so the review is
+    // read-only and shows the LATEST attempt (0) rather than the best (2).
+    expect(inputIn(quiz, 'second').checked).toBe(true)
+    expect(inputIn(quiz, 'beta').checked).toBe(true)
+    expect(summaryTextIn(quiz)).toContain('0 of 2 correct answers')
+    expect(summaryPercentIn(quiz)).toBe('0%')
+    expect(retryIn(quiz)).toBeNull()
+    expect(completeButtonIn(quiz)).toBeNull()
+
+    // The reported SCORM score is the best recorded attempt, kept separate
+    // from the displayed latest one.
+    expect(lastReportedScore(setScore)).toEqual({ earned: 2, possible: 2 })
+  })
 })
 
 describe('usePlayerSession attempt transitions', () => {
-  it('never records a submission past the authored attempt cap and finalizes it', () => {
+  it('never records a submission past the authored attempt cap and completes it', () => {
     const quizPage = makePackage('scroll', [retryQuestionnaire])
     act(() => root.render(<SessionHarness contentPackage={quizPage} />))
 
@@ -656,21 +807,19 @@ describe('usePlayerSession attempt transitions', () => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       act(() => session?.markQuestionnaireSubmitted(PAGE_ID, retryQuestionnaire.id))
       act(() =>
-        session?.retryQuestionnaire(
-          PAGE_ID,
-          retryQuestionnaire.id,
-          [singleChoiceQuestion.id, multipleChoiceQuestion.id],
-          retryQuestionnaire.maxAttempts
-        )
+        session?.retryQuestionnaire(PAGE_ID, retryQuestionnaire.id, [
+          singleChoiceQuestion.id,
+          multipleChoiceQuestion.id
+        ])
       )
     }
 
     const page = session?.state.pages[PAGE_ID]
     expect(page?.submittedQuestionnaires).toEqual([retryQuestionnaire.id])
     // The history stops exactly at the cap instead of growing beyond it, and
-    // the exhausted submission finalizes on its own without a decision.
+    // the exhausted submission completes on its own without a decision.
     expect(page?.questionnaireAttempts).toEqual({ [retryQuestionnaire.id]: [0, 0, 0] })
-    expect(page?.finalizedQuestionnaires).toEqual([retryQuestionnaire.id])
+    expect(page?.completedQuestionnaires).toEqual([retryQuestionnaire.id])
     expect(page?.activeQuestionnaireRetries).toBeUndefined()
 
     // A further report on the submitted questionnaire writes nothing at all.
@@ -704,11 +853,11 @@ describe('usePlayerSession attempt transitions', () => {
     // full two correct answers, exactly once.
     expect(page?.questionnaireAttempts).toEqual({ [retryQuestionnaire.id]: [2] })
     expect(page?.submittedQuestionnaires).toEqual([retryQuestionnaire.id])
-    // The perfect result auto-finalizes in the same write.
-    expect(page?.finalizedQuestionnaires).toEqual([retryQuestionnaire.id])
+    // The perfect result completes automatically in the same write.
+    expect(page?.completedQuestionnaires).toEqual([retryQuestionnaire.id])
     expect(page?.activeQuestionnaireRetries).toBeUndefined()
 
-    // The SCORM report path carries the finalized 100% best score.
+    // The SCORM report path carries the completed 100% best score.
     const reported = setScore.mock.calls.at(-1)?.[0]
     expect(reported).toEqual({ earned: 2, possible: 2 })
   })
@@ -727,23 +876,19 @@ describe('usePlayerSession attempt transitions', () => {
     )
 
     act(() =>
-      session?.retryQuestionnaire(
-        PAGE_ID,
-        retryQuestionnaire.id,
-        [singleChoiceQuestion.id, multipleChoiceQuestion.id],
-        retryQuestionnaire.maxAttempts
-      )
+      session?.retryQuestionnaire(PAGE_ID, retryQuestionnaire.id, [
+        singleChoiceQuestion.id,
+        multipleChoiceQuestion.id
+      ])
     )
     const afterFirstRetry = session?.state
     const writes = saveState.mock.calls.length
 
     act(() =>
-      session?.retryQuestionnaire(
-        PAGE_ID,
-        retryQuestionnaire.id,
-        [singleChoiceQuestion.id, multipleChoiceQuestion.id],
-        retryQuestionnaire.maxAttempts
-      )
+      session?.retryQuestionnaire(PAGE_ID, retryQuestionnaire.id, [
+        singleChoiceQuestion.id,
+        multipleChoiceQuestion.id
+      ])
     )
 
     // The second retry is a no-op: the state object is unchanged and no extra
@@ -754,7 +899,7 @@ describe('usePlayerSession attempt transitions', () => {
     expect(session?.state.pages[PAGE_ID]?.completed).toBeUndefined()
   })
 
-  it('finalizes a pending result idempotently without adding an attempt', () => {
+  it('completes a pending result idempotently without adding an attempt', () => {
     restoredState = {
       pages: {
         [PAGE_ID]: {
@@ -767,30 +912,30 @@ describe('usePlayerSession attempt transitions', () => {
       root.render(<SessionHarness contentPackage={makePackage('scroll', [retryQuestionnaire])} />)
     )
 
-    act(() => session?.finalizeQuestionnaire(PAGE_ID, retryQuestionnaire.id))
+    act(() => session?.completeQuestionnaire(PAGE_ID, retryQuestionnaire.id))
 
-    const afterFinalize = session?.state
-    expect(afterFinalize?.pages[PAGE_ID]?.finalizedQuestionnaires).toEqual([retryQuestionnaire.id])
+    const afterComplete = session?.state
+    expect(afterComplete?.pages[PAGE_ID]?.completedQuestionnaires).toEqual([retryQuestionnaire.id])
     // The recorded attempt is kept exactly as it was.
-    expect(afterFinalize?.pages[PAGE_ID]?.questionnaireAttempts).toEqual({
+    expect(afterComplete?.pages[PAGE_ID]?.questionnaireAttempts).toEqual({
       [retryQuestionnaire.id]: [1]
     })
 
     const writes = saveState.mock.calls.length
-    act(() => session?.finalizeQuestionnaire(PAGE_ID, retryQuestionnaire.id))
+    act(() => session?.completeQuestionnaire(PAGE_ID, retryQuestionnaire.id))
 
-    // A second finalization changes nothing and writes nothing.
-    expect(session?.state).toBe(afterFinalize)
+    // A second completion changes nothing and writes nothing.
+    expect(session?.state).toBe(afterComplete)
     expect(saveState.mock.calls.length).toBe(writes)
   })
 
-  it('never allows a retry of a finalized questionnaire', () => {
+  it('never allows a retry of a completed questionnaire', () => {
     restoredState = {
       pages: {
         [PAGE_ID]: {
           submittedQuestionnaires: [retryQuestionnaire.id],
           questionnaireAttempts: { [retryQuestionnaire.id]: [1] },
-          finalizedQuestionnaires: [retryQuestionnaire.id],
+          completedQuestionnaires: [retryQuestionnaire.id],
           answers: { [singleChoiceQuestion.id]: 'first' }
         }
       }
@@ -800,24 +945,22 @@ describe('usePlayerSession attempt transitions', () => {
     )
 
     act(() =>
-      session?.retryQuestionnaire(
-        PAGE_ID,
-        retryQuestionnaire.id,
-        [singleChoiceQuestion.id, multipleChoiceQuestion.id],
-        retryQuestionnaire.maxAttempts
-      )
+      session?.retryQuestionnaire(PAGE_ID, retryQuestionnaire.id, [
+        singleChoiceQuestion.id,
+        multipleChoiceQuestion.id
+      ])
     )
 
     // The retry is refused: no active marker appears, the saved answers and
-    // the finalized decision survive untouched.
+    // the completed decision survive untouched.
     const page = session?.state.pages[PAGE_ID]
     expect(page?.activeQuestionnaireRetries).toBeUndefined()
     expect(page?.submittedQuestionnaires).toEqual([retryQuestionnaire.id])
-    expect(page?.finalizedQuestionnaires).toEqual([retryQuestionnaire.id])
+    expect(page?.completedQuestionnaires).toEqual([retryQuestionnaire.id])
     expect(page?.answers).toEqual({ [singleChoiceQuestion.id]: 'first' })
   })
 
-  it('gates page completion on the pending decision and reports it after finalize', () => {
+  it('gates page completion on the completed decision and reports it after completing', () => {
     const completionBridge = vi.fn()
     window.scormBridge = {
       restoreState: () => restoredState,
@@ -842,7 +985,7 @@ describe('usePlayerSession attempt transitions', () => {
     expect(session?.state.pages[PAGE_ID]?.completed).toBeUndefined()
     expect(completionBridge.mock.calls.length).toBe(0)
 
-    act(() => session?.finalizeQuestionnaire(PAGE_ID, retryQuestionnaire.id))
+    act(() => session?.completeQuestionnaire(PAGE_ID, retryQuestionnaire.id))
     act(() => session?.markCompleted(PAGE_ID))
 
     // With the decision closed, the page completes again and the package
@@ -851,11 +994,11 @@ describe('usePlayerSession attempt transitions', () => {
     expect(completionBridge.mock.calls.length).toBe(1)
   })
 
-  it('delays a Tiles package completion report until its pending decision finalizes', () => {
+  it('delays a Tiles package completion report until its pending decision completes', () => {
     const QUIZ_ITEM_ID = 'item:quiz.mdx'
     const PLAIN_ITEM_ID = 'item:plain.mdx'
     const tilesPackage: ContentPackage = {
-      metadata: { title: 'Tiles finalization' },
+      metadata: { title: 'Tiles completion' },
       presentation: {
         type: 'tiles',
         columns: 2,
@@ -879,7 +1022,7 @@ describe('usePlayerSession attempt transitions', () => {
     }
     const completionBridge = vi.fn()
     // Valid session state: both items were opened, and the quiz item holds a
-    // submitted-but-pending retry assessment.
+    // submitted-but-open assessment.
     restoredState = {
       pages: {
         [QUIZ_ITEM_ID]: {
@@ -901,7 +1044,7 @@ describe('usePlayerSession attempt transitions', () => {
     // package from reporting completion to the bridge.
     expect(completionBridge).not.toHaveBeenCalled()
 
-    act(() => session?.finalizeQuestionnaire(QUIZ_ITEM_ID, retryQuestionnaire.id))
+    act(() => session?.completeQuestionnaire(QUIZ_ITEM_ID, retryQuestionnaire.id))
 
     // With the pending decision closed, the fully-visited package reports
     // completion.

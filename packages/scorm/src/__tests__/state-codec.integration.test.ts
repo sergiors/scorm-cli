@@ -34,7 +34,13 @@ function question(
 }
 
 function questionnaire(id: string, questions: QuestionNode[]) {
-  return { type: 'questionnaire' as const, id, contributesToScore: true, questions }
+  return {
+    type: 'questionnaire' as const,
+    id,
+    contributesToScore: true,
+    maxAttempts: 1,
+    questions
+  }
 }
 
 // Mirrors what the parser produces for authored Question components: option
@@ -476,17 +482,18 @@ describe('suspend-data codec integration', () => {
     })
   })
 
-  it('matches browser and Node codecs for finalization markers', () => {
+  it('matches browser and Node codecs for completed questionnaire markers', () => {
     const finalizingManifest = structuredClone(manifest)
     finalizingManifest.pages['3']!.questionnaires!['0']!.maxAttempts = 3
 
-    // quiz-3 is finalized beside a stale retry marker; quiz-4 stays pending.
+    // quiz-3 has a completed result beside a stale retry marker; quiz-4 stays
+    // pending.
     const finalizing: PlayerState = {
       pages: {
         'page-3': {
           visited: true,
           questionnaireAttempts: { 'quiz-3': [2, 1] },
-          finalizedQuestionnaires: ['quiz-3'],
+          completedQuestionnaires: ['quiz-3'],
           activeQuestionnaireRetries: ['quiz-3']
         },
         'page-4': { questionnaireAttempts: { 'quiz-4': [0] } }
@@ -508,7 +515,7 @@ describe('suspend-data codec integration', () => {
       v: 1,
       p: 0,
       x: '00010',
-      d: { '3.q.0': [2, 1], '3.f.0': 1, '4.q.0': [0] }
+      d: { '3.q.0': [2, 1], '3.c.0': 1, '4.q.0': [0] }
     })
     expect(JSON.parse(browserEncode(finalizingManifest, finalizing, 0))).toEqual(encoded)
 
@@ -516,7 +523,7 @@ describe('suspend-data codec integration', () => {
       v: 1,
       p: 0,
       x: '00010',
-      d: { '3.q.0': [2, 1], '3.f.0': 1, '3.r.0': 1, '4.q.0': [0] }
+      d: { '3.q.0': [2, 1], '3.c.0': 1, '3.r.0': 1, '4.q.0': [0] }
     })
     const nodeRestored = decodeSuspendData(finalizingManifest, payload)
     expect(nodeRestored).toEqual({
@@ -524,7 +531,7 @@ describe('suspend-data codec integration', () => {
         'page-3': {
           visited: true,
           questionnaireAttempts: { 'quiz-3': [2, 1] },
-          finalizedQuestionnaires: ['quiz-3']
+          completedQuestionnaires: ['quiz-3']
         },
         'page-4': { questionnaireAttempts: { 'quiz-4': [0] } }
       }
@@ -537,7 +544,7 @@ describe('suspend-data codec integration', () => {
       v: 1,
       p: 0,
       x: '00010',
-      d: { '3.f.0': 2, '4.f.0': 1, '3.z.0': 1, '4.q.0': [] }
+      d: { '3.c.0': 2, '4.c.0': 1, '3.z.0': 1, '4.q.0': [] }
     })
     expect(normalize(browserDecode(finalizingManifest, malformed))).toEqual(
       decodeSuspendData(finalizingManifest, malformed)
@@ -545,6 +552,60 @@ describe('suspend-data codec integration', () => {
     expect(decodeSuspendData(finalizingManifest, malformed)).toEqual({
       pages: { 'page-3': { visited: true } }
     })
+  })
+
+  it('encodes scalar option indexes for single-choice and true-false alike', () => {
+    // The authored true/false values are ordinary options: the persisted index
+    // must follow their source order ('true' first), never the string itself.
+    const trueFalseContent: ContentPackage = {
+      metadata: { title: 'True false' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'page-tf',
+            source: 'tf.mdx',
+            metadata: { title: 'TF' },
+            content: [
+              questionnaire('quiz-tf', [
+                question('q-tf-single', 'single-choice', [
+                  ['no', 'No'],
+                  ['yes', 'Yes']
+                ]),
+                question('q-tf', 'true-false', [
+                  ['false', 'False'],
+                  ['true', 'True']
+                ])
+              ])
+            ]
+          }
+        ]
+      }
+    }
+    const trueFalseManifest = createContentManifest(trueFalseContent)
+
+    const answering: PlayerState = {
+      pages: { 'page-tf': { answers: { 'q-tf-single': 'yes', 'q-tf': 'false' } } }
+    }
+    // Both scalar answers encode as page-local index scalars: single-choice
+    // index 1 ('yes') and true-false index 0 ('false').
+    const encoded = encodeSuspendData(trueFalseManifest, answering, 0)
+    expect(encoded).toEqual({
+      v: 1,
+      p: 0,
+      x: '0',
+      d: { '0.a.0': 1, '0.a.1': 0 }
+    })
+    expect(JSON.stringify(encoded)).not.toMatch(/true|false|yes|no/i)
+
+    // The same indexes decode back into the semantic option values, so a
+    // suspended true-false answer resumes as the string, not the index.
+    const decoded = decodeSuspendData(trueFalseManifest, JSON.stringify(encoded))
+    expect(decoded).toEqual({
+      pages: { 'page-tf': { answers: { 'q-tf-single': 'yes', 'q-tf': 'false' } } }
+    })
+    expect(encodeSuspendData(trueFalseManifest, decoded, 0)).toEqual(encoded)
   })
 
   it('saves compact suspend data without values and keeps location separate', () => {

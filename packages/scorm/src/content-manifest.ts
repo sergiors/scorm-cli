@@ -117,7 +117,7 @@ export function createContentManifest(contentPackage: ContentPackage): ContentMa
         String(questionnaireIndex),
         {
           id: questionnaire.id,
-          maxAttempts: questionnaire.maxAttempts ?? 1,
+          maxAttempts: questionnaire.maxAttempts,
           questionCount: questionnaire.questions.length
         }
       ])

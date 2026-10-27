@@ -25,6 +25,7 @@ const optOutQuestionnaire: QuestionnaireNode = {
   type: 'questionnaire',
   id: 'questionnaire:quiz.mdx:2:1',
   contributesToScore: false,
+  maxAttempts: 1,
   questions: [
     {
       type: 'question',
@@ -59,6 +60,7 @@ const scoredPackage: ContentPackage = {
             type: 'questionnaire',
             id: 'questionnaire:quiz.mdx:1:1',
             contributesToScore: true,
+            maxAttempts: 1,
             questions: [
               {
                 type: 'question',
@@ -111,7 +113,7 @@ const RETRY_QUIZ = 'questionnaire:quiz.mdx:1:1'
 const LIVE_QUIZ = 'questionnaire:quiz.mdx:3:1'
 const LIVE_SINGLE = 'question:quiz.mdx:3:1'
 
-/** A scored page mixing the retry-enabled quiz with a live-scored one. */
+/** A scored page mixing the uncompleted quiz with a completed one. */
 const mixedPackage: ContentPackage = {
   metadata: { title: 'Mixed quizzes' },
   presentation: {
@@ -156,6 +158,7 @@ const mixedPackage: ContentPackage = {
             type: 'questionnaire',
             id: LIVE_QUIZ,
             contributesToScore: true,
+            maxAttempts: 1,
             questions: [
               {
                 type: 'question',
@@ -270,7 +273,7 @@ function lastScore(setScore: { mock: { calls: unknown[][] } }): AggregateScore |
 }
 
 describe('usePlayerSession score reporting', () => {
-  it('reports the score restored from saved answers on mount', () => {
+  it('excludes saved answers entirely, so uncompleted questionnaires score nothing', () => {
     const setScore = vi.fn()
     window.scormBridge = {
       restoreState: () => ({
@@ -285,28 +288,80 @@ describe('usePlayerSession score reporting', () => {
 
     render(scoredPackage)
 
-    // Both scored questions are correct; the multiple-choice answer is
-    // all-or-nothing and the opted-out questionnaire is ignored.
-    expect(lastScore(setScore)).toEqual({ earned: 2, possible: 2 })
+    // Saved answers are never a score: without a completed result the
+    // questionnaire contributes neither earned nor possible points, so no
+    // aggregate exists at all.
+    expect(lastScore(setScore)).toBeUndefined()
   })
 
-  it('derives the score from the current answers and reports each change', () => {
+  it('reports the best attempt restored for a completed questionnaire on mount', () => {
     const setScore = vi.fn()
-    window.scormBridge = { setScore }
+    window.scormBridge = {
+      restoreState: () => ({
+        pages: {
+          [PAGE_ID]: {
+            completedQuestionnaires: ['questionnaire:quiz.mdx:1:1'],
+            questionnaireAttempts: { 'questionnaire:quiz.mdx:1:1': [2] }
+          }
+        }
+      }),
+      setScore
+    }
 
     render(scoredPackage)
 
-    // Nothing is answered yet, but both scored questions stay in the denominator.
+    // Both scored questions were correct in the recorded attempt; the
+    // opted-out questionnaire is ignored. No saved answers are needed.
+    expect(lastScore(setScore)).toEqual({ earned: 2, possible: 2 })
+  })
+
+  it('answers never lower or raise the recorded best attempt of a completed questionnaire', () => {
+    const setScore = vi.fn()
+    window.scormBridge = {
+      restoreState: () => ({
+        pages: {
+          [PAGE_ID]: {
+            completedQuestionnaires: ['questionnaire:quiz.mdx:1:1'],
+            questionnaireAttempts: { 'questionnaire:quiz.mdx:1:1': [0] }
+          }
+        }
+      }),
+      setScore
+    }
+
+    render(scoredPackage)
+
+    // The completed result keeps its recorded zero even though correct saved
+    // answers exist: live answers never override a completed attempt.
     expect(lastScore(setScore)).toEqual({ earned: 0, possible: 2 })
+  })
 
-    answer(SCORED_SINGLE, 'yes')
-    expect(lastScore(setScore)).toEqual({ earned: 1, possible: 2 })
+  it('reports a score only through recorded attempts, never while answering', () => {
+    const setScore = vi.fn()
+    window.scormBridge = { setScore }
 
-    // A partial multiple-choice selection earns nothing.
-    answer(SCORED_MULTIPLE, ['a'])
-    expect(lastScore(setScore)).toEqual({ earned: 1, possible: 2 })
+    render(retryablePackage)
 
-    answer(SCORED_MULTIPLE, ['a', 'b'])
+    // Answering without a completed result reports no score: the bridge only
+    // ever sees `undefined`, not a tally derived from live answers.
+    act(() => session?.setAnswer(PAGE_ID, SCORED_SINGLE, 'yes'))
+    expect(setScore.mock.calls.every((call) => call[0] === undefined)).toBe(true)
+
+    // An imperfect submission keeps the result pending: the recorded attempt
+    // is one correct answer, but neither point count exists yet.
+    act(() => session?.markQuestionnaireSubmitted(PAGE_ID, RETRY_QUIZ))
+    expect(setScore.mock.calls.every((call) => call[0] === undefined)).toBe(true)
+    const page = session?.state.pages[PAGE_ID]
+    expect(page?.questionnaireAttempts).toEqual({ [RETRY_QUIZ]: [1] })
+    expect(page?.completedQuestionnaires).toBeUndefined()
+
+    // Starting a retry and re-answering both questions right records a perfect
+    // second attempt, which auto-completes: only then does the aggregate reach
+    // the bridge.
+    act(() => session?.retryQuestionnaire(PAGE_ID, RETRY_QUIZ, [SCORED_SINGLE, SCORED_MULTIPLE]))
+    act(() => session?.setAnswer(PAGE_ID, SCORED_SINGLE, 'yes'))
+    act(() => session?.setAnswer(PAGE_ID, SCORED_MULTIPLE, ['a', 'b']))
+    act(() => session?.markQuestionnaireSubmitted(PAGE_ID, RETRY_QUIZ))
     expect(lastScore(setScore)).toEqual({ earned: 2, possible: 2 })
   })
 
@@ -314,7 +369,13 @@ describe('usePlayerSession score reporting', () => {
     const setScore = vi.fn()
     window.scormBridge = {
       restoreState: () => ({
-        pages: { [PAGE_ID]: { answers: { [SCORED_SINGLE]: 'yes', [OPT_OUT]: 'yes' } } }
+        pages: {
+          [PAGE_ID]: {
+            completedQuestionnaires: ['questionnaire:quiz.mdx:1:1'],
+            questionnaireAttempts: { 'questionnaire:quiz.mdx:1:1': [1] },
+            answers: { [SCORED_SINGLE]: 'yes', [OPT_OUT]: 'yes' }
+          }
+        }
       }),
       setScore
     }
@@ -322,7 +383,8 @@ describe('usePlayerSession score reporting', () => {
     render(scoredPackage)
 
     // The opted-out answer earns nothing and adds no possible point, while the
-    // unanswered multiple-choice question still counts.
+    // unanswered multiple-choice question still counts toward the recorded
+    // attempt's denominator.
     expect(lastScore(setScore)).toEqual({ earned: 1, possible: 2 })
   })
 
@@ -338,15 +400,28 @@ describe('usePlayerSession score reporting', () => {
 
   it('does not re-report when an answer change leaves the score unchanged', () => {
     const setScore = vi.fn()
-    window.scormBridge = { setScore }
+    window.scormBridge = {
+      restoreState: () => ({
+        pages: {
+          [PAGE_ID]: {
+            completedQuestionnaires: ['questionnaire:quiz.mdx:1:1'],
+            questionnaireAttempts: { 'questionnaire:quiz.mdx:1:1': [1] }
+          }
+        }
+      }),
+      setScore
+    }
 
     render(scoredPackage)
     const reportsAfterMount = setScore.mock.calls.length
 
-    // A wrong answer keeps earned/possible identical, so nothing is re-reported.
-    answer(SCORED_SINGLE, 'no')
+    // Answering cannot move a completed questionnaire's recorded attempt, so
+    // the point counts stay { earned: 1, possible: 2 } and nothing re-reports.
+    answer(SCORED_SINGLE, 'yes')
+    answer(SCORED_MULTIPLE, ['a', 'b'])
 
     expect(setScore.mock.calls.length).toBe(reportsAfterMount)
+    expect(lastScore(setScore)).toEqual({ earned: 1, possible: 2 })
   })
 
   it('does not throw and stays silent without a score bridge', () => {
@@ -358,65 +433,44 @@ describe('usePlayerSession score reporting', () => {
     }).not.toThrow()
   })
 
-  it('leaves a pending retry assessment unreported', () => {
+  it('reports the best attempt whether the history improves or worsens', () => {
+    const setScore = vi.fn()
+
+    for (const history of [
+      [1, 0],
+      [0, 1]
+    ] as const) {
+      act(() => root.unmount())
+      root = createRoot(container)
+      window.scormBridge = {
+        restoreState: () => ({
+          pages: {
+            [PAGE_ID]: {
+              completedQuestionnaires: [RETRY_QUIZ],
+              questionnaireAttempts: { [RETRY_QUIZ]: [...history] }
+            }
+          }
+        }),
+        setScore
+      }
+
+      act(() => root.render(<Harness contentPackage={retryablePackage} />))
+
+      // The score is the best recorded attempt in both directions, so a worse
+      // later attempt [1, 0] and a better later one [0, 1] both report 1/2.
+      expect(lastScore(setScore)).toEqual({ earned: 1, possible: 2 })
+    }
+  })
+
+  it('excludes a pending questionnaire beside a completed one until completed', () => {
     const setScore = vi.fn()
     window.scormBridge = {
       restoreState: () => ({
         pages: {
           [PAGE_ID]: {
             submittedQuestionnaires: [RETRY_QUIZ],
-            questionnaireAttempts: { [RETRY_QUIZ]: [1, 0] },
-            answers: { [SCORED_SINGLE]: 'yes', [SCORED_MULTIPLE]: ['a', 'b'] }
-          }
-        }
-      }),
-      setScore
-    }
-
-    render(retryablePackage)
-
-    // Until the learner confirms Use This Score, the pending assessment is
-    // excluded from the reported score entirely — neither earned nor possible.
-    expect(lastScore(setScore)).toBeUndefined()
-  })
-
-  it('reports the finalized best attempt and never a worse later one', () => {
-    const setScore = vi.fn()
-    window.scormBridge = {
-      restoreState: () => ({
-        pages: {
-          [PAGE_ID]: {
-            finalizedQuestionnaires: [RETRY_QUIZ],
-            questionnaireAttempts: { [RETRY_QUIZ]: [2, 0] }
-          }
-        }
-      }),
-      setScore
-    }
-
-    render(retryablePackage)
-
-    // The finalized result is the best recorded attempt; the worse latest
-    // attempt does not decrease it and cleared answers do not reset it.
-    expect(lastScore(setScore)).toEqual({ earned: 2, possible: 2 })
-
-    const reportsAfterMount = setScore.mock.calls.length
-    answer(SCORED_SINGLE, 'no')
-    answer(SCORED_MULTIPLE, ['a'])
-    // Live answers stay irrelevant for a finalized retry-enabled quiz, so the
-    // point counts do not change and nothing is re-reported.
-    expect(lastScore(setScore)).toEqual({ earned: 2, possible: 2 })
-    expect(setScore.mock.calls.length).toBe(reportsAfterMount)
-  })
-
-  it('excludes a pending questionnaire beside a live-scored one until finalized', () => {
-    const setScore = vi.fn()
-    window.scormBridge = {
-      restoreState: () => ({
-        pages: {
-          [PAGE_ID]: {
-            submittedQuestionnaires: [RETRY_QUIZ],
-            questionnaireAttempts: { [RETRY_QUIZ]: [2, 0] },
+            questionnaireAttempts: { [RETRY_QUIZ]: [2, 0], [LIVE_QUIZ]: [1] },
+            completedQuestionnaires: [LIVE_QUIZ],
             answers: { [SCORED_SINGLE]: 'yes', [SCORED_MULTIPLE]: ['a', 'b'], [LIVE_SINGLE]: 'yes' }
           }
         }
@@ -426,33 +480,13 @@ describe('usePlayerSession score reporting', () => {
 
     render(mixedPackage)
 
-    // Pending: only the single-attempt questionnaire counts, in both point
-    // counts; the pending quiz's two questions stay out of the aggregate.
+    // Pending: only the completed questionnaire counts, in both point counts;
+    // the pending quiz's two questions stay out of the aggregate.
     expect(lastScore(setScore)).toEqual({ earned: 1, possible: 1 })
 
-    // Confirming Use This Score adopts the best recorded attempt.
-    act(() => session?.finalizeQuestionnaire(PAGE_ID, RETRY_QUIZ))
+    // Completing the pending result adopts the best recorded attempt, never
+    // the worse latest one.
+    act(() => session?.completeQuestionnaire(PAGE_ID, RETRY_QUIZ))
     expect(lastScore(setScore)).toEqual({ earned: 3, possible: 3 })
-  })
-
-  it('scores saved answers instead of history for a single-attempt questionnaire', () => {
-    const setScore = vi.fn()
-    window.scormBridge = {
-      // The scored questionnaire has no maxAttempts, so its recorded history
-      // must never override the learner's saved answers.
-      restoreState: () => ({
-        pages: {
-          [PAGE_ID]: {
-            answers: { [SCORED_SINGLE]: 'yes', [SCORED_MULTIPLE]: ['a', 'b'] },
-            questionnaireAttempts: { [RETRY_QUIZ]: [0] }
-          }
-        }
-      }),
-      setScore
-    }
-
-    render(scoredPackage)
-
-    expect(lastScore(setScore)).toEqual({ earned: 2, possible: 2 })
   })
 })

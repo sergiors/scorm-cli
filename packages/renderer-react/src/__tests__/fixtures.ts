@@ -54,12 +54,13 @@ export const multipleChoiceQuestion: QuestionNode = {
 /**
  * A grouped questionnaire (single- then multiple-choice) with plain-text
  * prompts and options. Shared by the questionnaire component and presentation
- * tests.
+ * tests. The cap matches the parser's normalized single-attempt default.
  */
 export const questionnaireNode: QuestionnaireNode = {
   type: 'questionnaire',
   id: 'questionnaire:intro.mdx:1:1',
   contributesToScore: true,
+  maxAttempts: 1,
   questions: [singleChoiceQuestion, multipleChoiceQuestion]
 }
 

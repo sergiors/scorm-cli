@@ -313,6 +313,7 @@ describe('sanitizePlayerState videos', () => {
                 type: 'questionnaire',
                 id: 'questionnaire:nested.mdx:1:1',
                 contributesToScore: false,
+                maxAttempts: 1,
                 questions: [
                   {
                     type: 'question',
@@ -376,12 +377,12 @@ describe('sanitizePlayerState attempt history', () => {
   }
 
   it.each(['scroll', 'slides'] as const)(
-    'keeps a completed %s page pending without history and finalization',
+    'keeps a completed %s page pending without history and completion',
     (presentation) => {
-      // A legacy completed page predates attempt history and finalization. Its
-      // retry-enabled questionnaire has no final decision recorded, so the
-      // stale completion flag is dropped and nothing is inferred submitted —
-      // the pending decision is what the learner sees after the refresh.
+      // A legacy completed page predates attempt history and completion. Its
+      // questionnaire has no completed result recorded, so the stale completion
+      // flag is dropped and nothing is inferred submitted — the pending
+      // decision is what the learner sees after the refresh.
       const state = sanitizePlayerState(attemptPackage(presentation), {
         pages: {
           'page:intro.mdx': {
@@ -434,23 +435,23 @@ describe('sanitizePlayerState attempt history', () => {
     })
   })
 
-  it('restores finalization only from its own persisted field', () => {
+  it('restores completion only from its own persisted field', () => {
     const state = sanitizePlayerState(attemptPackage(), {
       pages: {
         'page:intro.mdx': {
-          // Finalization is never derived from submissions, history, or page
+          // Completion is never derived from submissions, history, or page
           // completion; it is also scoped to reachable questionnaires.
           submittedQuestionnaires: [retryQuestionnaire.id],
-          finalizedQuestionnaires: [retryQuestionnaire.id, 'questionnaire:missing'],
+          completedQuestionnaires: [retryQuestionnaire.id, 'questionnaire:missing'],
           questionnaireAttempts: { [retryQuestionnaire.id]: [1] }
         }
       }
     })
 
-    expect(state.pages['page:intro.mdx']?.finalizedQuestionnaires).toEqual([retryQuestionnaire.id])
+    expect(state.pages['page:intro.mdx']?.completedQuestionnaires).toEqual([retryQuestionnaire.id])
   })
 
-  it('never infers finalization from submission, history, or page completion', () => {
+  it('never infers completion from submission, history, or page completion', () => {
     const state = sanitizePlayerState(attemptPackage(), {
       pages: {
         'page:intro.mdx': {
@@ -464,12 +465,12 @@ describe('sanitizePlayerState attempt history', () => {
 
     const page = state.pages['page:intro.mdx']
     // Submission is inferred from the recorded attempt history, but the result
-    // stays pending: without the persisted finalization field (or a Use This
-    // Score click after the restore) no final decision may appear, and the
-    // stale page completion is dropped so the page cannot complete early.
+    // stays pending: without the persisted completion field (or a Complete
+    // click after the restore) no completed decision may appear, and the stale
+    // page completion is dropped so the page cannot complete early.
     expect(page?.submittedQuestionnaires).toEqual([retryQuestionnaire.id])
     expect(page?.questionnaireAttempts).toEqual({ [retryQuestionnaire.id]: [2] })
-    expect(page?.finalizedQuestionnaires).toBeUndefined()
+    expect(page?.completedQuestionnaires).toBeUndefined()
     expect(page?.completed).toBeUndefined()
   })
 
@@ -494,13 +495,13 @@ describe('sanitizePlayerState attempt history', () => {
     })
   })
 
-  it('restores a finalized result to read-only review and drops its stale retry', () => {
+  it('restores a completed result to read-only review and drops its stale retry', () => {
     const state = sanitizePlayerState(attemptPackage(), {
       pages: {
         'page:intro.mdx': {
           visited: true,
           completed: true,
-          finalizedQuestionnaires: [retryQuestionnaire.id],
+          completedQuestionnaires: [retryQuestionnaire.id],
           activeQuestionnaireRetries: [retryQuestionnaire.id],
           questionnaireAttempts: { [retryQuestionnaire.id]: [0, 2] },
           answers: { [single.id]: 'first', [multiple.id]: ['alpha'] }
@@ -508,14 +509,14 @@ describe('sanitizePlayerState attempt history', () => {
       }
     })
 
-    // A finalized questionnaire can never be retried, and with no pending
-    // final decision the persisted page completion is restored as saved.
+    // A completed questionnaire can never be retried, and with no pending
+    // decision the persisted page completion is restored as saved.
     expect(state.pages['page:intro.mdx']).toEqual({
       visited: true,
       completed: true,
       answers: { [single.id]: 'first', [multiple.id]: ['alpha'] },
       questionnaireAttempts: { [retryQuestionnaire.id]: [0, 2] },
-      finalizedQuestionnaires: [retryQuestionnaire.id],
+      completedQuestionnaires: [retryQuestionnaire.id],
       submittedQuestionnaires: [retryQuestionnaire.id]
     })
   })
@@ -582,7 +583,7 @@ describe('sanitizePlayerState attempt history', () => {
     expect(state.pages['page:intro.mdx']?.submittedQuestionnaires).toEqual([retryQuestionnaire.id])
   })
 
-  it('does not seed a one-attempt questionnaire', () => {
+  it('seeds a single attempt even for a one-attempt submitted questionnaire', () => {
     const state = sanitizePlayerState(questionnairePackage, {
       pages: {
         'page:intro.mdx': {
@@ -592,10 +593,14 @@ describe('sanitizePlayerState attempt history', () => {
       }
     })
 
-    // A single-attempt questionnaire has no retry allowance to protect, so a
-    // legacy submission without history must stay history-free.
+    // A legacy submission without history is seeded with one score from its
+    // sanitized answers so a resumed questionnaire never grants a fresh full
+    // allowance. The result stays pending: completion is never inferred.
     expect(state.pages['page:intro.mdx']?.submittedQuestionnaires).toEqual([questionnaireNode.id])
-    expect(state.pages['page:intro.mdx']?.questionnaireAttempts).toBeUndefined()
+    expect(state.pages['page:intro.mdx']?.questionnaireAttempts).toEqual({
+      [questionnaireNode.id]: [2]
+    })
+    expect(state.pages['page:intro.mdx']?.completedQuestionnaires).toBeUndefined()
   })
 })
 

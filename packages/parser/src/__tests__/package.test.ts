@@ -591,8 +591,9 @@ describe('parsePackage', () => {
         type: 'questionnaire',
         id: 'questionnaire:lesson.mdx:4:1',
         contributesToScore: true,
-        // Omitted `maxAttempts` is left out: the single-attempt default is a
-        // runtime concern, not parser output.
+        // An omitted `maxAttempts` normalizes to the single-attempt default,
+        // so every parsed questionnaire carries an explicit cap.
+        maxAttempts: 1,
         expanded: false,
         questions: [
           {
@@ -882,9 +883,9 @@ describe('parsePackage', () => {
     }
   })
 
-  it('omits maxAttempts when not authored and accepts only positive integer literals', async () => {
+  it('defaults maxAttempts to 1 when not authored and accepts only positive integer literals', async () => {
     for (const [attribute, expected] of [
-      ['', undefined],
+      ['', 1],
       [' maxAttempts={1}', 1],
       [' maxAttempts={3}', 3]
     ] as const) {
@@ -892,12 +893,7 @@ describe('parsePackage', () => {
         `<Questionnaire${attribute}><Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>`
       )
       const content = await lessonContent(root)
-      const authored =
-        content[0]?.type === 'questionnaire'
-          ? 'maxAttempts' in content[0]
-            ? content[0].maxAttempts
-            : undefined
-          : false
+      const authored = content[0]?.type === 'questionnaire' ? content[0].maxAttempts : false
       expect(authored).toBe(expected)
       await rm(root, { recursive: true, force: true })
       temp = ''

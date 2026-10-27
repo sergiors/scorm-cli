@@ -24,6 +24,7 @@ function questionnaire(id: string): QuestionnaireNode {
     type: 'questionnaire',
     id,
     contributesToScore: true,
+    maxAttempts: 1,
     questions: [
       {
         type: 'question',
@@ -170,6 +171,7 @@ describe('collectQuestionnaireIds', () => {
       type: 'questionnaire',
       id: 'questionnaire:nested.mdx:1:1',
       contributesToScore: true,
+      maxAttempts: 1,
       questions: [questionnaireNode.questions[0]]
     }
     const nodes: ContentNode[] = [
@@ -221,6 +223,7 @@ describe('collectQuestionnaireIds', () => {
       type: 'questionnaire',
       id: 'outer',
       contributesToScore: true,
+      maxAttempts: 1,
       questions: [
         {
           type: 'question',

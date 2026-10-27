@@ -7,7 +7,6 @@ import {
   isOptionSelected,
   submittedOptionResult
 } from '../lib/questionnaire'
-import { bestQuestionnaireAttemptCount } from '../lib/questionnaire-finalization'
 import { cn } from '../lib/utils'
 import type { AnswerValue, QuestionNode, QuestionnaireNode } from '../types'
 import { Button } from './ui/button'
@@ -137,25 +136,24 @@ function QuestionnaireQuestion({ node, value, submitted, onAnswer }: Questionnai
  * keeping its attempt history and page completion, so every question becomes
  * editable at once again.
  *
- * A retry-enabled result with attempts left stays pending after submission: the
- * summary shows the best recorded attempt and offers Try Again or Use This
- * Score. Finalization is automatic on a perfect result or an exhausted cap, and
- * a finalized result stays submitted and reviewable without either action.
+ * A submitted result with attempts left stays open after submission: the summary
+ * shows the latest recorded attempt and offers Try Again or Complete.
+ * Completion is automatic on a perfect result or an exhausted cap, and a
+ * completed result stays submitted and reviewable without either action.
  */
 export function ExpandedQuestionnaire({ node }: { node: QuestionnaireNode }) {
   const intl = useIntl()
   const {
     answers,
     submitted,
-    finalized,
+    completed,
     attempts,
-    attemptLimit,
-    requiresFinalization,
+    attemptsRemaining,
     retrying,
     onAnswer,
     onSubmitted,
     onRetry,
-    onFinalize
+    onComplete
   } = useQuestionnaireSession(node)
   const reviewing = submitted && !retrying
 
@@ -171,12 +169,8 @@ export function ExpandedQuestionnaire({ node }: { node: QuestionnaireNode }) {
   const result = getQuestionnaireResult(node, currentAnswers)
   const submitQuestionnaire = useQuestionnaireSubmission(node.id, reviewing, onSubmitted)
   const canSubmit = !reviewing && allAnswered
-  const summaryCorrect = requiresFinalization
-    ? bestQuestionnaireAttemptCount(attempts, result.correct)
-    : result.correct
-  const pendingFinalization = reviewing && requiresFinalization && !finalized
-  const canRetry =
-    pendingFinalization && summaryCorrect < result.total && attempts.length < attemptLimit
+  const summaryCorrect = attempts[attempts.length - 1] ?? result.correct
+  const showActions = reviewing && !completed && attemptsRemaining > 0
 
   return (
     <>
@@ -229,8 +223,9 @@ export function ExpandedQuestionnaire({ node }: { node: QuestionnaireNode }) {
         <QuestionnaireSubmissionResult
           correct={summaryCorrect}
           total={result.total}
-          onRetry={canRetry ? onRetry : undefined}
-          onFinalize={pendingFinalization ? onFinalize : undefined}
+          attemptsRemaining={attemptsRemaining}
+          onRetry={showActions ? onRetry : undefined}
+          onComplete={showActions ? onComplete : undefined}
         />
       )}
     </>

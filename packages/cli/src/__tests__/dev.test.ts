@@ -145,6 +145,7 @@ describe('CLI dev orchestration', () => {
                 type: 'questionnaire',
                 id: 'questionnaire:intro.mdx:1:1',
                 contributesToScore: true,
+                maxAttempts: 1,
                 questions: [
                   {
                     type: 'question',

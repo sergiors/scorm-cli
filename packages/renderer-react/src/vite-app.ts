@@ -54,9 +54,10 @@ function presentationNodes(contentPackage: ContentPackage): Array<PageNode | Ite
 /**
  * Reduces one authored node's content to the minimal, semantic AST the session
  * layer needs. The player's scoring, resume sanitisation and completion gating
- * only ever inspect questionnaires (ids, question types, option values and
- * correctness) and video ids; everything else is presentation and travels with
- * the node's lazily loaded module. Keeping this summary in the initial package
+ * only ever inspect questionnaires (ids, attempt cap, question types, option
+ * values and correctness) and video ids; everything else is presentation and
+ * travels with the node's lazily loaded module. Keeping this summary in the
+ * initial package
  * means no page or item body lands in the entry chunk, while the shared core
  * helpers keep operating on ordinary content nodes.
  *
@@ -73,6 +74,7 @@ function semanticNodeContent(content: readonly ContentNode[]): ContentNode[] {
             type: 'questionnaire',
             id: node.id,
             contributesToScore: node.contributesToScore,
+            maxAttempts: node.maxAttempts,
             questions: node.questions.map((question) => ({
               type: 'question',
               id: question.id,

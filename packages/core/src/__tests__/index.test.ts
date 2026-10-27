@@ -67,7 +67,7 @@ function questionnaire(
   questions: QuestionNode[],
   contributesToScore = true
 ): QuestionnaireNode {
-  return { type: 'questionnaire', id, contributesToScore, questions }
+  return { type: 'questionnaire', id, contributesToScore, maxAttempts: 1, questions }
 }
 
 describe('core package helpers', () => {
@@ -334,6 +334,7 @@ describe('core package helpers', () => {
                 type: 'questionnaire',
                 id: 'questionnaire:nested.mdx:1:1',
                 contributesToScore: true,
+                maxAttempts: 1,
                 questions: [
                   {
                     type: 'question',
@@ -414,6 +415,7 @@ describe('collectVideoNodes', () => {
                             type: 'questionnaire',
                             id: 'quiz',
                             contributesToScore: false,
+                            maxAttempts: 1,
                             questions: [
                               {
                                 type: 'question',
@@ -449,7 +451,7 @@ describe('collectVideoNodes', () => {
 })
 
 describe('aggregate questionnaire score', () => {
-  it('does not award an empty answer for a multiple-choice question with no correct options', () => {
+  it('scores a recorded zero attempt without awarding it, even with no correct options', () => {
     const content: ContentPackage = {
       metadata: { title: 'Malformed score question' },
       presentation: {
@@ -470,7 +472,15 @@ describe('aggregate questionnaire score', () => {
 
     expect(
       getAggregateQuestionnaireScore(content, {
-        pages: { page: { answers: { 'empty-correct-set': [] } } }
+        pages: {
+          page: {
+            completedQuestionnaires: ['quiz'],
+            // The empty answer never earned credit, so the recorded attempt is
+            // zero while the question still fills the possible count.
+            questionnaireAttempts: { quiz: [0] },
+            answers: { 'empty-correct-set': [] }
+          }
+        }
       })
     ).toEqual({ earned: 0, possible: 1 })
   })
@@ -546,6 +556,10 @@ describe('aggregate questionnaire score', () => {
     const score = getAggregateQuestionnaireScore(content, {
       pages: {
         'page-one': {
+          // Every scored questionnaire contributes through its completed best
+          // attempt, recorded by the session layer from these same answers.
+          completedQuestionnaires: ['q-one', 'q-nested'],
+          questionnaireAttempts: { 'q-one': [2], 'q-nested': [0] },
           answers: {
             single: 'yes',
             'true-false': 'false',
@@ -554,9 +568,10 @@ describe('aggregate questionnaire score', () => {
             'multiple-extra': ['x', 'y', 'z'],
             excluded: 'right'
           }
-          // No submission is required to calculate a score from the saved answers.
         },
         'page-two': {
+          completedQuestionnaires: ['q-page-two'],
+          questionnaireAttempts: { 'q-page-two': [1] },
           answers: { 'page-two-question': ['b'], excluded: 'right' },
           submittedQuestionnaires: ['opted-out']
         }
@@ -564,6 +579,23 @@ describe('aggregate questionnaire score', () => {
     })
 
     expect(score).toEqual({ earned: 3, possible: 7 })
+
+    // The answered values no longer matter: the same aggregate derives from
+    // the recorded attempts alone.
+    expect(
+      getAggregateQuestionnaireScore(content, {
+        pages: {
+          'page-one': {
+            completedQuestionnaires: ['q-one', 'q-nested'],
+            questionnaireAttempts: { 'q-one': [2], 'q-nested': [0] }
+          },
+          'page-two': {
+            completedQuestionnaires: ['q-page-two'],
+            questionnaireAttempts: { 'q-page-two': [1] }
+          }
+        }
+      })
+    ).toEqual({ earned: 3, possible: 7 })
   })
 
   it('aggregates tiles and returns undefined when there are no eligible questions', () => {
@@ -606,8 +638,16 @@ describe('aggregate questionnaire score', () => {
     expect(
       getAggregateQuestionnaireScore(content, {
         pages: {
-          'item-one': { answers: { 'item-question': 'false' } },
-          'item-two': { answers: { 'item-two-question': 'a' } }
+          'item-one': {
+            completedQuestionnaires: ['included'],
+            questionnaireAttempts: { included: [1] },
+            answers: { 'item-question': 'false' }
+          },
+          'item-two': {
+            completedQuestionnaires: ['included-two'],
+            questionnaireAttempts: { 'included-two': [1] },
+            answers: { 'item-two-question': 'a' }
+          }
         }
       })
     ).toEqual({ earned: 2, possible: 2 })
@@ -636,7 +676,7 @@ describe('aggregate questionnaire score', () => {
     expect(getAggregateQuestionnaireScore(noEligibleQuestions, { pages: {} })).toBeUndefined()
   })
 
-  it('scores the best recorded attempt once the questionnaire is finalized', () => {
+  it('scores the best recorded attempt once the questionnaire is completed', () => {
     const content: ContentPackage = {
       metadata: { title: 'Retries' },
       presentation: {
@@ -664,38 +704,43 @@ describe('aggregate questionnaire score', () => {
       pages: { page }
     })
 
-    // Finalized: the best recorded attempt is the score, even when the current
+    // Completed: the best recorded attempt is the score, even when the current
     // answers were cleared for a retry in progress.
     expect(
       getAggregateQuestionnaireScore(
         content,
-        stateFor({ finalizedQuestionnaires: ['quiz'], questionnaireAttempts: { quiz: [1, 0] } })
+        stateFor({ completedQuestionnaires: ['quiz'], questionnaireAttempts: { quiz: [1, 0] } })
       )
     ).toEqual({ earned: 1, possible: 2 })
     expect(
       getAggregateQuestionnaireScore(
         content,
-        stateFor({ finalizedQuestionnaires: ['quiz'], questionnaireAttempts: { quiz: [2, 0] } })
+        stateFor({ completedQuestionnaires: ['quiz'], questionnaireAttempts: { quiz: [2, 0] } })
       )
     ).toEqual({ earned: 2, possible: 2 })
     expect(
       getAggregateQuestionnaireScore(
         content,
-        stateFor({ finalizedQuestionnaires: ['quiz'], questionnaireAttempts: { quiz: [0, 1] } })
+        stateFor({ completedQuestionnaires: ['quiz'], questionnaireAttempts: { quiz: [0, 1] } })
       )
     ).toEqual({ earned: 1, possible: 2 })
 
     // A history beyond the authored cap is unusable and never grants a score,
-    // even a finalized one. With nothing else scoreable, this also means no
+    // even a completed one. With nothing else scoreable, this also means no
     // aggregate exists at all.
     expect(
       getAggregateQuestionnaireScore(
         content,
         stateFor({
-          finalizedQuestionnaires: ['quiz'],
+          completedQuestionnaires: ['quiz'],
           questionnaireAttempts: { quiz: [0, 0, 0, 0] }
         })
       )
+    ).toBeUndefined()
+
+    // Without the completed marker the history is never a score either.
+    expect(
+      getAggregateQuestionnaireScore(content, stateFor({ questionnaireAttempts: { quiz: [2] } }))
     ).toBeUndefined()
   })
 
@@ -729,18 +774,32 @@ describe('aggregate questionnaire score', () => {
 
     // The pending assessment contributes nothing in either direction — neither
     // its recorded attempts nor its saved in-progress answers count — while the
-    // single-attempt questionnaire keeps its live score.
+    // completed single-attempt questionnaire scores its own recorded attempt.
     expect(
       getAggregateQuestionnaireScore(mixed, {
         pages: {
           page: {
             submittedQuestionnaires: ['quiz'],
-            questionnaireAttempts: { quiz: [2] },
+            completedQuestionnaires: ['single-quiz'],
+            questionnaireAttempts: { quiz: [2], 'single-quiz': [1] },
             answers: { repeat: 'right', choice: ['a'], once: 'yes' }
           }
         }
       })
     ).toEqual({ earned: 1, possible: 1 })
+
+    // Completing the pending result adopts its best recorded attempt into both
+    // point counts, never the worse latest one.
+    expect(
+      getAggregateQuestionnaireScore(mixed, {
+        pages: {
+          page: {
+            completedQuestionnaires: ['quiz', 'single-quiz'],
+            questionnaireAttempts: { quiz: [2, 0], 'single-quiz': [1] }
+          }
+        }
+      })
+    ).toEqual({ earned: 3, possible: 3 })
 
     // Even on a page whose only scoreable content is the pending questionnaire,
     // its questions stay out of the possible count entirely.
@@ -768,7 +827,7 @@ describe('aggregate questionnaire score', () => {
     ).toBeUndefined()
   })
 
-  it('falls back to current answers for histories outside the attempt rules', () => {
+  it('scores completed histories only and never salvages invalid ones', () => {
     const content: ContentPackage = {
       metadata: { title: 'Retries' },
       presentation: {
@@ -786,11 +845,21 @@ describe('aggregate questionnaire score', () => {
                 ]),
                 maxAttempts: 3
               },
-              // A single-attempt questionnaire keeps scoring live answers and
-              // ignores any recorded history.
               questionnaire('single', [
                 question('once', 'single-choice', ['right', 'wrong'], ['right'])
-              ])
+              ]),
+              {
+                ...questionnaire('junk', [
+                  question('junk-question', 'single-choice', ['right', 'wrong'], ['right'])
+                ]),
+                maxAttempts: 2
+              },
+              {
+                ...questionnaire('valid', [
+                  question('valid-question', 'single-choice', ['right', 'wrong'], ['right'])
+                ]),
+                maxAttempts: 3
+              }
             ]
           }
         ]
@@ -799,22 +868,20 @@ describe('aggregate questionnaire score', () => {
     const state: PlayerState = {
       pages: {
         page: {
-          answers: { repeat: 'wrong', once: 'right' },
+          // Saved answers are never a score: only completed histories count.
+          answers: { repeat: 'right', once: 'right', 'junk-question': 'right' },
+          completedQuestionnaires: ['quiz', 'single', 'junk', 'valid'],
           questionnaireAttempts: {
-            // Longer than maxAttempts and not finalized: the pending
-            // questionnaire contributes nothing in either direction.
-            quiz: [1, 0, 1, 0],
-            // A single-attempt questionnaire keeps scoring live answers and
-            // ignores any recorded history.
-            single: [0, 5, -1, 1.5]
+            quiz: [1, 0, 1, 0], // Four entries exceed maxAttempts 3.
+            single: [0], // A valid history of zero stays within the cap.
+            junk: [1.5, -1], // Both counts are outside the valid point range.
+            valid: [1, 0] // The best recorded attempt is the score.
           }
         }
       }
     }
 
-    // The pending retry contributes nothing; the single-attempt quiz scores
-    // its saved correct answer.
-    expect(getAggregateQuestionnaireScore(content, state)).toEqual({ earned: 1, possible: 1 })
+    expect(getAggregateQuestionnaireScore(content, state)).toEqual({ earned: 1, possible: 2 })
   })
 
   it('excludes an opted-out questionnaire and its attempts from the score', () => {
@@ -848,12 +915,30 @@ describe('aggregate questionnaire score', () => {
 
     const score = getAggregateQuestionnaireScore(content, {
       pages: {
-        page: { questionnaireAttempts: { excluded: [1] }, answers: { 'scored-question': 'a' } }
+        page: {
+          completedQuestionnaires: ['scored'],
+          questionnaireAttempts: { excluded: [1], scored: [1] },
+          answers: { 'scored-question': 'a' }
+        }
       }
     })
     // The opted-out questionnaire contributes no points in either direction,
-    // even when its attempt history holds a full result.
+    // even when its attempt history holds a full result and the answers are
+    // still saved.
     expect(score).toEqual({ earned: 1, possible: 1 })
+
+    // Even a completed marker on the opted-out questionnaire cannot earn or
+    // add possible points for it.
+    expect(
+      getAggregateQuestionnaireScore(content, {
+        pages: {
+          page: {
+            completedQuestionnaires: ['excluded', 'scored'],
+            questionnaireAttempts: { excluded: [1], scored: [1] }
+          }
+        }
+      })
+    ).toEqual({ earned: 1, possible: 1 })
   })
 })
 

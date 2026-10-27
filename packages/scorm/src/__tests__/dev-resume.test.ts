@@ -36,6 +36,7 @@ const content: ContentPackage = {
             type: 'questionnaire',
             id: 'types-check',
             contributesToScore: true,
+            maxAttempts: 1,
             questions: [
               {
                 type: 'question',
@@ -132,6 +133,7 @@ const scrollContent: ContentPackage = {
             type: 'questionnaire',
             id: 'two-check',
             contributesToScore: true,
+            maxAttempts: 1,
             questions: [
               {
                 type: 'question',

@@ -186,8 +186,8 @@ export interface QuestionnaireNode {
   type: 'questionnaire'
   id: string
   contributesToScore: boolean
-  /** Maximum number of submission attempts. Defaults to 1 for older ASTs. */
-  maxAttempts?: number
+  /** Maximum number of submission attempts. */
+  maxAttempts: number
   /**
    * Whether the questionnaire presents every question at once instead of one
    * at a time. Authoring may omit the prop; parser output always normalizes it
@@ -209,8 +209,8 @@ export interface PlayerPageState {
   submittedQuestionnaires?: string[]
   /** Correct-question counts for each completed submission, keyed by stable questionnaire ID. */
   questionnaireAttempts?: Record<string, number[]>
-  /** Questionnaires whose submitted result is final, keyed by stable questionnaire ID. */
-  finalizedQuestionnaires?: string[]
+  /** Questionnaires with a completed submission, keyed by stable questionnaire ID. */
+  completedQuestionnaires?: string[]
   /** Questionnaires currently being retried after an unsuccessful submission. */
   activeQuestionnaireRetries?: string[]
   /** Playback positions in semantic seconds, keyed by stable video node ID. */
@@ -386,72 +386,38 @@ interface QuestionnaireScore {
   possible: number
 }
 
-/**
- * Scores retry-enabled questionnaires by their best recorded submission when
- * history exists; otherwise scores currently saved answers.
- */
+/** Scores completed questionnaires by their best recorded submission. */
 function scoreQuestionnaire(
   questionnaire: QuestionnaireNode,
   pageState: PlayerPageState | undefined
 ): QuestionnaireScore {
   if (!questionnaire.contributesToScore) return { earned: 0, possible: 0 }
 
-  const maxAttempts = questionnaire.maxAttempts ?? 1
   const history = pageState?.questionnaireAttempts?.[questionnaire.id]
-  // A retryable questionnaire has no score until the learner explicitly
-  // finalizes it. Neither saved in-progress answers nor prior attempts are a
-  // temporary result. Once finalized, the best submitted attempt is final.
-  if (Number.isSafeInteger(maxAttempts) && maxAttempts > 1) {
-    if (
-      !pageState?.finalizedQuestionnaires?.includes(questionnaire.id) ||
-      !Array.isArray(history) ||
-      history.length === 0 ||
-      history.length > maxAttempts
-    ) {
-      return { earned: 0, possible: 0 }
-    }
-    const validCounts = history.filter(
-      (count) => Number.isInteger(count) && count >= 0 && count <= questionnaire.questions.length
-    )
-    if (validCounts.length === 0) return { earned: 0, possible: 0 }
-    return {
-      earned: Math.max(...validCounts),
-      possible: questionnaire.questions.length
-    }
+  if (
+    !pageState?.completedQuestionnaires?.includes(questionnaire.id) ||
+    !Number.isSafeInteger(questionnaire.maxAttempts) ||
+    questionnaire.maxAttempts < 1 ||
+    !Array.isArray(history) ||
+    history.length === 0 ||
+    history.length > questionnaire.maxAttempts
+  ) {
+    return { earned: 0, possible: 0 }
   }
-
-  // One-attempt questionnaires have no pending phase and keep the established
-  // live-answer scoring behavior. Older ASTs without maxAttempts also default
-  // to one attempt.
-  let earned = 0
-  for (const question of questionnaire.questions) {
-    const answer = pageState?.answers?.[question.id]
-    const correctValues = question.options
-      .filter((option) => option.correct)
-      .map((option) => option.value)
-
-    if (question.questionType === 'multiple-choice') {
-      // An empty selection must not earn credit for malformed zero-answer questions.
-      if (correctValues.length > 0 && Array.isArray(answer)) {
-        const selected = new Set(answer)
-        const correct = new Set(correctValues)
-        if (selected.size === correct.size && [...selected].every((value) => correct.has(value))) {
-          earned += 1
-        }
-      }
-    } else if (typeof answer === 'string' && correctValues.includes(answer)) {
-      earned += 1
-    }
+  const validCounts = history.filter(
+    (count) => Number.isSafeInteger(count) && count >= 0 && count <= questionnaire.questions.length
+  )
+  if (validCounts.length === 0) return { earned: 0, possible: 0 }
+  return {
+    earned: Math.max(...validCounts),
+    possible: questionnaire.questions.length
   }
-
-  return { earned, possible: questionnaire.questions.length }
 }
 
 /**
  * Calculates the aggregate one-point-per-question score across all eligible
- * questionnaires in every page or item. Retry-enabled questionnaires are
- * excluded until explicitly finalized, then use their best submitted history.
- * Single-attempt questionnaires continue to score currently saved answers.
+ * questionnaires in every page or item. A questionnaire contributes its best
+ * submitted attempt only after it is marked completed.
  */
 export function getAggregateQuestionnaireScore(
   contentPackage: ContentPackage,

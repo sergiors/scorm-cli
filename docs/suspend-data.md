@@ -75,8 +75,8 @@ export interface PlayerPageState {
   submittedQuestionnaires?: string[]
   /** Correct-question counts for completed submissions, keyed by questionnaire ID. */
   questionnaireAttempts?: Record<string, number[]>
-  /** IDs of questionnaires whose submitted result is explicitly final. */
-  finalizedQuestionnaires?: string[]
+  /** IDs of questionnaires whose submitted result is completed. */
+  completedQuestionnaires?: string[]
   /** IDs of questionnaires currently active in a retry. */
   activeQuestionnaireRetries?: string[]
   /** Playback positions in semantic seconds, keyed by stable video node ID. */
@@ -116,18 +116,18 @@ What the compact data does and does not preserve:
 - `d` is a single flat map for the current v1 format. Each key is
   `<pageIndex>.<kind>.<entityIndex>` where `kind` is `a` (answer), `t` (video
   position), `q` (questionnaire attempt history), `r` (active retry marker), or
-  `f` (finalized questionnaire marker). Answer selections are manifest option
+  `c` (completed questionnaire marker). Answer selections are manifest option
   indexes, video positions are integer deciseconds, and `q` values are arrays of
   correct-question counts for completed submissions, correct or not, in
   submission order. The array length is the number of consumed submissions;
   each count is bounded by the questionnaire's question count and authored
   `maxAttempts`.
   An `r` value of `1` marks a questionnaire currently being retried and is only
-  restored when its history leaves an attempt available. An `f` value of `1`
-  records explicit finalization; it is encoded only alongside a valid `q`
-  history and restored only when that history is valid for the current
-  questionnaire. `f` is a marker, not an attempt counter or score. A `q`
-  history alone never implies finalization. Answers do not store
+  restored when its history leaves an attempt available. A `c` value of `1`
+  records completion separately from submitted status; it is encoded only
+  alongside a valid `q` history and restored only when that history is valid for
+  the current questionnaire. `c` is a marker, not an attempt counter or score.
+  A `q` history alone never implies completion. Answers do not store
   question IDs, answer strings, labels, correctness, prompts, or questionnaire
   IDs. Video positions use page-local manifest video indexes in their keys;
   semantic positions are seconds rounded to tenths (for example, `132.5`
@@ -136,47 +136,47 @@ What the compact data does and does not preserve:
   positions, or questionnaire histories remain. The compact codec supports only
   the current flat layout; a payload using the earlier nested
   `d[pageIndex].a`/`.t` shape is not decoded and restores no answers, attempt
-  histories, retry/finalization markers, or video positions (see
+  histories, retry/completion markers, or video positions (see
   [Format versions](#format-versions)).
 - `submittedQuestionnaires` is not encoded. Codec decode alone restores valid
-  `q` history as `questionnaireAttempts` and a valid `f` marker as
-  `finalizedQuestionnaires`; it does not restore submission status. The renderer
-  sanitizer then infers submitted status from a valid `q` history unless that
-  questionnaire is in `activeQuestionnaireRetries`. An active retry remains
-  editable and is not submitted. For legacy completed sequential pages (Scroll
-  or Slides), the sanitizer may also infer submission for questionnaires that do
-  not require explicit finalization. When submission is known but legacy retry
-  history is absent, it seeds one history entry from current sanitized answers.
-  These submission rules never infer finalization: only `f`/explicit
-  `finalizedQuestionnaires` restores that state, never `q`, submission status, or
+  `q` history as `questionnaireAttempts` and a valid `c` marker as
+  `completedQuestionnaires`; it does not restore submission status. The renderer
+  sanitizer retains valid explicit submission IDs and otherwise infers submitted
+  status from a valid `q` history or completed state, unless that questionnaire
+  is in `activeQuestionnaireRetries`. An active retry remains editable and is not
+  submitted. If submission is known but legacy attempt history is absent, the
+  sanitizer seeds one history entry from current sanitized answers. These rules
+  never infer completion: only `c`/explicit
+  `completedQuestionnaires` restores that state, never `q`, submission status, or
   page completion.
 - `questionnaireAttempts` stores correct counts only for completed submissions,
   whether correct or not; an in-progress attempt does not append history. `activeQuestionnaireRetries`
   marks an in-progress retry separately from submitted status. Both are restored
   through current manifest questionnaire indexes and stable IDs.
-- `finalizedQuestionnaires` stores explicit finalization by stable questionnaire
-  ID. The codec restores it only from a valid `f` marker paired with valid `q`
-  history; it never infers finalization from history, submission status, or an
-  active retry marker.
-- Finalization gates completion separately from node progress. A Scroll/Slides
-  page cannot remain or become completed while it has a questionnaire requiring
-  finalization that is still pending. Package-completed status additionally
-  requires every authored retry-enabled questionnaire to be finalized across all
-  presentations, including Tiles. This does not change the existing done-node,
-  package-progress, or navigation rules: for example, a Tiles item still counts
+- `completedQuestionnaires` stores completion by stable questionnaire ID,
+  separately from submitted status. The codec restores it only from a valid `c`
+  marker paired with valid `q` history; it never infers completion from history,
+  submission status, or an active retry marker. Completion happens automatically
+  after a perfect submission or when the learner exhausts the attempt allowance;
+  the learner can also complete a submitted result manually before then.
+- Completion gates node completion separately from submission and node progress.
+  A Scroll/Slides page cannot remain or become completed while any questionnaire
+  result on it is pending. Package-completed status additionally requires every
+  authored questionnaire to be completed across all presentations, including
+  Tiles. This does not change the existing done-node, package-progress, or
+  navigation rules: for example, a Tiles item still counts
   as visited when opened, even if that keeps package completion gated.
 - There is no score field in `PlayerState` or compact suspend data. Aggregate
   questionnaire score is derived from current authored questions/options. A
-  questionnaire with effective `maxAttempts > 1` is pending until explicitly
-  finalized: while pending, it contributes neither earned nor possible points,
-  regardless of saved answers or prior history. After finalization it
-  contributes its best submitted correct-count result. Omitted `maxAttempts`
-  keeps the effective default of `1`; default and one-attempt questionnaires
-  have no pending phase, auto-finalize on the first submit, and retain the
-  existing live-answer scoring behavior.
-  `contributesToScore={false}` questionnaires remain excluded. The separate
-  SCORM bridge reports the aggregate through `setScore` and version-specific CMI
-  score fields.
+  questionnaire contributes neither earned nor possible points until completed,
+  regardless of saved answers or submitted history. Once completed, it contributes
+  its best submitted correct-count result. The UI summary shows the latest submitted
+  attempt, which can differ from the best attempt used by the aggregate.
+  The parser normalizes `maxAttempts` to a required numeric value, defaulting to
+  `1`; completion is automatic after a perfect submission or attempt exhaustion,
+  and can be manually selected earlier. `contributesToScore={false}` questionnaires
+  remain excluded. The separate SCORM bridge reports the aggregate through
+  `setScore` and version-specific CMI score fields.
 
 `emptyPlayerState()` in `packages/renderer-react/app/lib/player-state.ts`
 returns `{ pages: {} }`. The compact empty payload depends on the manifest: for
@@ -195,7 +195,7 @@ interface CompactSuspendData {
   x: string // manifest-order visited bits
   d?: {
     // key: `${pageIndex}.${kind}.${entityIndex}`
-    [key: string]: number | number[] // a: option indexes; t: deciseconds; q: correct counts; r/f: 1
+    [key: string]: number | number[] // a: option indexes; t: deciseconds; q: correct counts; r/c: 1
   }
 }
 ```
@@ -216,7 +216,7 @@ learner's selection order.
 
 - `v: 1` is the flat layout and the only supported version. `d` keys are
   `<pageIndex>.<kind>.<entityIndex>` with exactly three segments: two canonical
-  non-negative safe-integer indexes around a kind of `a`, `t`, `q`, `r`, or `f`.
+  non-negative safe-integer indexes around a kind of `a`, `t`, `q`, `r`, or `c`.
 - Any other `v` is unsupported: the whole payload is rejected and decoding
   returns a fresh `{ pages: {} }` state. There is no versioned decode path.
 
@@ -282,28 +282,32 @@ stored separately:
 The manifest maps that index to the semantic questionnaire ID and supplies its
 attempt/question bounds. History length, not a separate counter, determines how
 many submissions have been consumed. The `r` marker does not add to that count.
-An attempt history alone is not finalization: without an `f` marker, a
-retry-enabled questionnaire remains pending and is excluded from aggregate
-score, including its possible-question count.
+Attempt history is separate from completion: without a `c` marker, a submitted
+questionnaire can remain pending and is excluded from aggregate score, including
+its possible-question count. The marker is written automatically for a perfect
+submission or exhausted attempts, or when the learner completes the result
+manually earlier.
 
-### Finalized questionnaire
+### Completed questionnaire
 
-For a questionnaire whose valid attempt history is `[1, 2]`, an explicit
-finalization marker is stored alongside (not instead of) that history:
+For a questionnaire whose valid attempt history is `[1, 2]`, a completion marker
+is stored alongside (not instead of) that history:
 
 ```json
-{ "v": 1, "p": 0, "x": "0", "d": { "0.q.0": [1, 2], "0.f.0": 1 } }
+{ "v": 1, "p": 0, "x": "0", "d": { "0.q.0": [1, 2], "0.c.0": 1 } }
 ```
 
 On decode, the current manifest resolves the questionnaire index and ID. The
-codec restores `finalizedQuestionnaires` only if the matching `q` entry also
-passes its history bounds; an `f` marker without valid history, with a value
-other than `1`, or for an unknown/invalid questionnaire is ignored. The marker
-does not imply or restore `submittedQuestionnaires`, and `q` history without
-`f` never implies finalization. A finalized retry-enabled questionnaire scores
-using its best submitted history. For effective `maxAttempts` of `1` (including
-the omitted default), there is no pending score phase and existing
-first-submit finalization and live-answer scoring are unchanged.
+codec restores `completedQuestionnaires` only if the matching `q` entry also
+passes its history bounds; a `c` marker without valid history, with a value other
+than `1`, or for an unknown/invalid questionnaire is ignored. The marker does
+not directly encode submitted status, and `q` history without `c` never implies
+completion. The renderer separately infers submitted status from valid history.
+Once completed, the aggregate uses the best submitted history, while the UI
+summary displays the latest submitted attempt. `maxAttempts` is normalized to a
+required number with default `1`; even then, completion follows a perfect
+submission or attempt exhaustion (which occurs on the first submission), and
+manual completion is available earlier when more attempts remain.
 
 ### Video positions
 
@@ -390,14 +394,14 @@ In generated JSON, the outer page keys are stringified page/item indexes; nested
 question, option, questionnaire, and page-local video keys are likewise
 stringified indexes. Question and questionnaire collection walk nested block
 content in document order. Each questionnaire entry retains its stable semantic
-ID, authored `maxAttempts` (default `1`), and question count, allowing the codec
-to validate history length and correct-count bounds. Each question includes the
-semantic values of its correct options. Each page/item may include a `videos`
+ID, normalized numeric `maxAttempts` (default `1`), and question count, allowing
+the codec to validate history length and correct-count bounds. Each question
+includes the semantic values of its correct options. Each page/item may include a `videos`
 record keyed by deterministic traversal-order video index (`"0"`, `"1"`, ...);
 each static `{ id, src, provider }` entry retains its semantic `id`. Nesting
 identifies the owner, and the manifest maps compact local indexes back to
-semantic video IDs. Neither
-the manifest nor its video entries contain learner playback positions. `createContentManifest` includes
+semantic video IDs. Neither the manifest nor its video entries contain learner
+playback positions. `createContentManifest` includes
 the package title, language (default `en`), presentation type, page titles,
 plain-text question prompt/option labels, authored `correctAnswers`, questionnaire
 attempt bounds, and the static mappings. The SCORM
@@ -413,20 +417,20 @@ The codec validates compact values against that packaged manifest:
   must contain only `0` and `1`. A shorter `x` is accepted; missing trailing bits
   mean unvisited. If `x` is longer than the current manifest page count, the
   decoder skips page-indexed visited, progress, answers, attempt histories,
-  retry markers, and finalization markers. Video data is independently resolved through page/local-video
+  retry markers, and completion markers. Video data is independently resolved through page/local-video
   indexes.
 - An absent, non-object, or malformed `d` does not invalidate otherwise-valid
   progress. `d` is a flat map whose keys must be exactly
   `<pageIndex>.<kind>.<entityIndex>` with canonical non-negative safe-integer
-  page/entity indexes and a kind of `a`, `t`, `q`, `r`, or `f`. Malformed keys,
+  page/entity indexes and a kind of `a`, `t`, `q`, `r`, or `c`. Malformed keys,
   unknown pages or entities, and invalid values are ignored individually without
   affecting other entries. A `q` value must be a non-empty array of safe integer
   correct counts within the manifest's question count and attempt cap. An `r`
   value must be `1`, name a current questionnaire, and have a valid `q` history
-  with at least one attempt remaining. An `f` value must be `1`, name a current
+  with at least one attempt remaining. A `c` value must be `1`, name a current
   questionnaire with valid attempt/question bounds, and have a valid non-empty
-  `q` history; otherwise it is ignored. A restored `f` suppresses a conflicting
-  `r` marker. Neither `q` nor `r` implies finalization.
+  `q` history; otherwise it is ignored. A restored `c` suppresses a conflicting
+  `r` marker. Neither `q` nor `r` implies completion.
 - Unknown page/question indexes and invalid or unknown option indexes are
   ignored. A selection must be a safe-integer scalar or an array; array members
   that are not non-negative safe integers are filtered, then the rest are
@@ -442,9 +446,10 @@ The codec validates compact values against that packaged manifest:
   histories are ignored. A valid history is stored as
   `questionnaireAttempts[questionnaireId]`; retry markers are restored as
   `activeQuestionnaireRetries` only when history leaves an attempt available.
-  Finalization is restored separately as `finalizedQuestionnaires` only when a
-  valid `f` marker has matching valid history. `q` history alone does not
-  restore submission or finalization state.
+  Completion is restored separately as `completedQuestionnaires` only when a
+  valid `c` marker has matching valid history. `q` history alone does not
+  restore completion state. The renderer sanitizer infers submitted status from
+  valid history or completion, except during an active retry.
 - Unknown extra root sections are ignored; there is no root-level `t` field and
   root `t` values are not decoded. The codec has no rejection rule for extra
   properties beyond the required root fields.
@@ -462,12 +467,11 @@ dropped there; surviving video values are normalized to tenths of a second.
 Direct sanitizer input is not moved between pages: a position stored under the
 wrong page is rejected. Multiple-choice answers must be arrays whose
 every element is a current option value; valid arrays are deduplicated.
-Correctness is not consulted when validating answers. For a legacy completed
-Scroll/Slides page (or explicit submission) with a retry-enabled questionnaire
-and no recorded history, the sanitizer seeds one attempt's correct count from
-the current sanitized answers. This migration applies only when submitted status
-is known; an active retry is not treated as submitted, and a questionnaire with
-the default single attempt is unchanged.
+Correctness is not consulted when validating answers. For a questionnaire with
+known submitted status but no recorded history, the sanitizer seeds one attempt's
+correct count from the current sanitized answers. This compatibility behavior
+applies only when submitted status is known; an active retry is not treated as
+submitted.
 
 The compact codec cannot detect semantic removal/reordering for its numeric
 indexes. If a page, question, or option is removed and a new entry occupies its

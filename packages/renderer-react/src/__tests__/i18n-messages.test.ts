@@ -29,8 +29,12 @@ describe('player message catalogs', () => {
   })
 
   it('keeps ICU placeholders aligned across locales', () => {
+    // ICU arguments are simple `{name}` placeholders or typed arguments such
+    // as `{name, plural, ...}`. Both forms must appear under the same
+    // argument name in every locale, so the extractor accepts an optional
+    // type segment and ignores nested fragments inside the plural body.
     const placeholders = (value: string) =>
-      Array.from(value.matchAll(/\{(\w+)\}/g), (match) => match[1]).sort()
+      Array.from(value.matchAll(/\{\s*(\w+)\s*(?:,|\})/g), (match) => match[1]).sort()
 
     for (const id of Object.keys(en)) {
       expect(placeholders(ptBR[id as keyof typeof ptBR])).toEqual(

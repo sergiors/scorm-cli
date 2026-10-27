@@ -34,24 +34,18 @@ let saveState: ReturnType<typeof vi.fn>
 
 function QuestionnaireView({
   lang,
-  node
-}: ComponentProps<typeof QuestionnaireViewBase> & { lang?: string }) {
+  node,
+  contentPackage = questionPackage
+}: ComponentProps<typeof QuestionnaireViewBase> & {
+  lang?: string
+  contentPackage?: ContentPackage
+}) {
   return (
     <PlayerI18nProvider lang={lang}>
-      <PlayerProvider contentPackage={questionPackage}>
+      <PlayerProvider contentPackage={contentPackage}>
         <PageProvider pageId={PAGE_ID}>
           <QuestionnaireViewBase node={node} />
         </PageProvider>
-      </PlayerProvider>
-    </PlayerI18nProvider>
-  )
-}
-
-function StandaloneQuestionnaire() {
-  return (
-    <PlayerI18nProvider>
-      <PlayerProvider contentPackage={questionPackage}>
-        <QuestionnaireViewBase node={questionnaireNode} />
       </PlayerProvider>
     </PlayerI18nProvider>
   )
@@ -76,6 +70,44 @@ const trueFalse: QuestionNode = {
       content: 'False'
     }
   ]
+}
+
+/**
+ * A page whose questionnaire is the single-question node, so the player can
+ * author its submission (transitions now require the node in the page AST).
+ */
+const singleQuestionPackage: ContentPackage = {
+  metadata: { title: 'Single question' },
+  presentation: {
+    type: 'scroll',
+    pages: [
+      {
+        type: 'page',
+        id: PAGE_ID,
+        source: 'questionnaire-test.mdx',
+        metadata: { title: 'Questionnaire test' },
+        content: [
+          {
+            type: 'questionnaire',
+            id: 'questionnaire:check.mdx:1:1',
+            contributesToScore: true,
+            maxAttempts: 1,
+            questions: [trueFalse]
+          }
+        ]
+      }
+    ]
+  }
+}
+
+function StandaloneQuestionnaire() {
+  return (
+    <PlayerI18nProvider>
+      <PlayerProvider contentPackage={questionPackage}>
+        <QuestionnaireViewBase node={questionnaireNode} />
+      </PlayerProvider>
+    </PlayerI18nProvider>
+  )
 }
 
 let container: HTMLDivElement
@@ -387,8 +419,10 @@ describe('QuestionnaireView', () => {
             type: 'questionnaire',
             id: 'questionnaire:check.mdx:1:1',
             contributesToScore: true,
+            maxAttempts: 1,
             questions: [trueFalse]
           }}
+          contentPackage={singleQuestionPackage}
         />
       )
     )
@@ -420,6 +454,7 @@ describe('QuestionnaireView', () => {
       type: 'questionnaire',
       id: 'questionnaire:native.mdx:1:1',
       contributesToScore: true,
+      maxAttempts: 1,
       questions: [singleChoiceQuestion, multipleChoiceQuestion, trueFalse]
     }
 
@@ -517,8 +552,10 @@ describe('QuestionnaireView', () => {
             type: 'questionnaire',
             id: 'questionnaire:check.mdx:1:1',
             contributesToScore: true,
+            maxAttempts: 1,
             questions: [trueFalse]
           }}
+          contentPackage={singleQuestionPackage}
         />
       )
     )
