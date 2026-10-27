@@ -18,9 +18,7 @@ declare global {
 }
 
 const anchorTops = new Map<string, number>()
-const pageTops = new Map<string, number>()
-const animationFrames = new Map<number, FrameRequestCallback>()
-let nextAnimationFrameId = 0
+const scrollIntoViewCalls: Array<{ element: HTMLElement; options: ScrollIntoViewOptions }> = []
 
 function rect(top: number, height: number): DOMRect {
   return {
@@ -37,23 +35,33 @@ function rect(top: number, height: number): DOMRect {
 }
 
 let originalRect: typeof HTMLElement.prototype.getBoundingClientRect
+let originalScrollIntoView: PropertyDescriptor | undefined
 let container: HTMLDivElement
 let root: Root
+let animationFrameCallbacks: Map<number, FrameRequestCallback>
+let nextAnimationFrameId: number
 
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   virtuosoMock.reset()
-  anchorTops.clear()
-  pageTops.clear()
-  animationFrames.clear()
+  animationFrameCallbacks = new Map()
   nextAnimationFrameId = 0
-  vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
     const id = ++nextAnimationFrameId
-    animationFrames.set(id, callback)
+    animationFrameCallbacks.set(id, callback)
     return id
   })
-  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => {
-    animationFrames.delete(id)
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+    animationFrameCallbacks.delete(id)
+  })
+  anchorTops.clear()
+  scrollIntoViewCalls.length = 0
+  originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView')
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+    configurable: true,
+    value(this: HTMLElement, options: ScrollIntoViewOptions) {
+      scrollIntoViewCalls.push({ element: this, options })
+    }
   })
   originalRect = HTMLElement.prototype.getBoundingClientRect
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
@@ -62,10 +70,6 @@ beforeEach(() => {
     const anchor = this.getAttribute('data-reading-anchor')
     if (anchor !== null) {
       return rect(anchorTops.get(anchor) ?? 0, 40)
-    }
-    const page = this.getAttribute('data-reading-page')
-    if (page !== null) {
-      return rect(pageTops.get(page) ?? 0, 1000)
     }
     return rect(0, 0)
   })
@@ -79,8 +83,14 @@ afterEach(() => {
   act(() => root.unmount())
   container.remove()
   HTMLElement.prototype.getBoundingClientRect = originalRect
+  if (originalScrollIntoView) {
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView)
+  } else {
+    Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView')
+  }
   delete window.scormBridge
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 function heading(value: string): ContentNode {
@@ -163,35 +173,26 @@ function deferredProvider(contentPackage: ContentPackage) {
   return { provider, resolve, reject }
 }
 
-function advanceAnimationFrame(): void {
-  const callbacks = Array.from(animationFrames.values())
-  animationFrames.clear()
-  act(() => callbacks.forEach((callback) => callback(performance.now())))
-}
-
-function advanceAnimationFrames(count: number): void {
-  for (let frame = 0; frame < count; frame += 1) {
-    advanceAnimationFrame()
-  }
-}
-
-function scheduleAfterAnimationFrames(count: number, callback: () => void): void {
-  const advance = (remaining: number) => {
-    if (remaining === 0) {
-      callback()
-    } else {
-      window.requestAnimationFrame(() => advance(remaining - 1))
-    }
-  }
-  window.requestAnimationFrame(() => advance(count - 1))
-}
-
 async function flush(): Promise<void> {
+  await flushPromises()
+  for (let frame = 0; frame < 10 && animationFrameCallbacks.size > 0; frame += 1) {
+    advanceAnimationFrame()
+    await flushPromises()
+  }
+}
+
+async function flushPromises(): Promise<void> {
   await act(async () => {
     for (let tick = 0; tick < 12; tick += 1) {
       await Promise.resolve()
     }
   })
+}
+
+function advanceAnimationFrame(): void {
+  const callbacks = [...animationFrameCallbacks.values()]
+  animationFrameCallbacks.clear()
+  act(() => callbacks.forEach((callback) => callback(0)))
 }
 
 function saved(saveState: { mock: { calls: unknown[][] } }): PlayerState {
@@ -210,6 +211,69 @@ function render(contentPackage: ContentPackage, provider: ContentProvider): void
 }
 
 describe('Scroll anchor restoration', () => {
+  it('waits until Virtuoso finishes deferred initial positioning before restoring the anchor', async () => {
+    const anchor = readingAnchorsForPage('page:b.mdx', pageBContent).get('1')?.id
+    expect(anchor).toBeDefined()
+    anchorTops.set(anchor!, 250)
+    const saveState = vi.fn()
+    window.scormBridge = {
+      restoreState: () => ({
+        location: `page:b.mdx#${anchor}`,
+        pages: {
+          'page:a.mdx': { completed: true },
+          'page:b.mdx': { completed: true }
+        }
+      }),
+      saveState
+    }
+    if (scrollPackage.presentation.type !== 'scroll') {
+      throw new Error('Expected a scroll package')
+    }
+    const delayedPackage: ContentPackage = {
+      ...scrollPackage,
+      presentation: {
+        type: 'scroll',
+        pages: [
+          ...scrollPackage.presentation.pages,
+          {
+            type: 'page',
+            id: 'page:c.mdx',
+            source: 'c.mdx',
+            metadata: { title: 'Third' },
+            content: [heading('Third page')]
+          }
+        ]
+      }
+    }
+    const { provider, resolve } = deferredProvider(delayedPackage)
+    virtuosoMock.deferInitialPositioning = true
+    virtuosoMock.visibleCount = 2
+
+    render(delayedPackage, provider)
+    resolve('page:a.mdx')
+    resolve('page:b.mdx')
+    await flushPromises()
+
+    expect(virtuosoMock.initialPositionApplied).toBe(false)
+    expect(scrollIntoViewCalls).toHaveLength(0)
+    for (let frame = 0; frame < 4; frame += 1) {
+      advanceAnimationFrame()
+    }
+
+    // Virtuoso's initial scroll has fired, but restoration still owns the guard:
+    // the intermediate scroll must not save over the resume location.
+    expect(virtuosoMock.initialPositionApplied).toBe(true)
+    expect(scrollIntoViewCalls).toHaveLength(0)
+    expect(saveState).not.toHaveBeenCalled()
+
+    advanceAnimationFrame()
+
+    expect(scrollIntoViewCalls).toHaveLength(1)
+    expect(scrollIntoViewCalls[0]?.element.getAttribute('data-reading-anchor')).toBe(anchor)
+    expect(scrollIntoViewCalls[0]?.options).toEqual({ behavior: 'instant', block: 'start' })
+    expect(saved(saveState).location).toBe(`page:b.mdx#${anchor}`)
+  })
+
   it('waits for the saved virtualized page to load before restoring and saving', async () => {
     const anchor = readingAnchorsForPage('page:b.mdx', pageBContent).get('1')?.id
     expect(anchor).toBeDefined()
@@ -227,19 +291,23 @@ describe('Scroll anchor restoration', () => {
     render(scrollPackage, provider)
 
     expect(saveState).not.toHaveBeenCalled()
-    expect(window.scrollTo).not.toHaveBeenCalled()
+    expect(scrollIntoViewCalls).toHaveLength(0)
+
+    // A scroll observed while the virtualized target is still loading cannot
+    // replace the SCORM resume location.
+    act(() => window.dispatchEvent(new Event('scroll')))
+    expect(saveState).not.toHaveBeenCalled()
 
     resolve('page:b.mdx')
     await flush()
-    advanceAnimationFrames(6)
-    await flush()
 
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 250, behavior: 'auto' })
+    expect(scrollIntoViewCalls).toHaveLength(1)
+    expect(scrollIntoViewCalls[0]?.element.getAttribute('data-reading-anchor')).toBe(anchor)
+    expect(scrollIntoViewCalls[0]?.options).toEqual({ behavior: 'instant', block: 'start' })
     expect(saved(saveState).location).toBe(`page:b.mdx#${anchor}`)
   })
 
   it('falls back to the page beginning when the saved anchor no longer exists', async () => {
-    pageTops.set('page:b.mdx', 100)
     window.scormBridge = {
       restoreState: () => ({
         location: 'page:b.mdx#missing1',
@@ -251,10 +319,10 @@ describe('Scroll anchor restoration', () => {
     render(scrollPackage, provider)
     resolve('page:b.mdx')
     await flush()
-    advanceAnimationFrames(6)
-    await flush()
 
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 100, behavior: 'auto' })
+    expect(scrollIntoViewCalls).toHaveLength(1)
+    expect(scrollIntoViewCalls[0]?.element.getAttribute('data-reading-page')).toBe('page:b.mdx')
+    expect(scrollIntoViewCalls[0]?.element.hasAttribute('data-reading-anchor')).toBe(false)
   })
 
   it('moves the reading position to the earlier page on a scroll back after restore', async () => {
@@ -274,8 +342,6 @@ describe('Scroll anchor restoration', () => {
     render(scrollPackage, provider)
     resolve('page:b.mdx')
     await flush()
-    advanceAnimationFrames(6)
-    await flush()
 
     expect(saved(saveState).location).toBe(`page:b.mdx#${anchor}`)
 
@@ -291,38 +357,7 @@ describe('Scroll anchor restoration', () => {
     expect(JSON.stringify(saved(saveState))).not.toContain(anchor!)
   })
 
-  it('restores after Virtuoso v4.18.19’s deferred four-frame initial scroll', async () => {
-    const anchor = readingAnchorsForPage('page:b.mdx', pageBContent).get('1')?.id
-    expect(anchor).toBeDefined()
-    anchorTops.set(anchor!, 250)
-    pageTops.set('page:b.mdx', 100)
-    window.scormBridge = {
-      restoreState: () => ({
-        location: `page:b.mdx#${anchor}`,
-        pages: { 'page:a.mdx': { completed: true } }
-      })
-    }
-    const { provider, resolve } = deferredProvider(scrollPackage)
-
-    render(scrollPackage, provider)
-    resolve('page:b.mdx')
-    await flush()
-
-    // v4.18.19 queues its non-zero initial index positioning over four
-    // animation frames after list measurements. Model that browser ordering
-    // explicitly; the anchor restore must run after the queued list scroll.
-    scheduleAfterAnimationFrames(4, () => {
-      window.scrollTo({ top: 100, behavior: 'auto' })
-    })
-    advanceAnimationFrames(4)
-    expect(window.scrollTo).toHaveBeenLastCalledWith({ top: 100, behavior: 'auto' })
-    advanceAnimationFrame()
-
-    expect(window.scrollTo).toHaveBeenLastCalledWith({ top: 250, behavior: 'auto' })
-  })
-
   it('falls back to the failed page location and resumes scroll reporting', async () => {
-    pageTops.set('page:b.mdx', 180)
     for (const anchor of readingAnchorsForPage('page:a.mdx', pageAContent).values()) {
       anchorTops.set(anchor.id, 100)
     }
@@ -341,14 +376,14 @@ describe('Scroll anchor restoration', () => {
     resolve('page:a.mdx')
     reject('page:b.mdx')
     await flush()
-    advanceAnimationFrames(6)
-    await flush()
 
     expect(
       container.querySelector('[data-reading-page="page:b.mdx"][data-scroll-error]')
     ).not.toBeNull()
-    expect(window.scrollTo).toHaveBeenLastCalledWith({ top: 180, behavior: 'auto' })
-    expect(saveState).not.toHaveBeenCalled()
+    expect(scrollIntoViewCalls).toHaveLength(1)
+    expect(scrollIntoViewCalls[0]?.element.getAttribute('data-reading-page')).toBe('page:b.mdx')
+    expect(scrollIntoViewCalls[0]?.element.hasAttribute('data-reading-anchor')).toBe(false)
+    expect(saved(saveState).location).toBe('page:b.mdx')
 
     act(() => virtuosoMock.scrollToOffset?.(0))
     await flush()
@@ -356,7 +391,7 @@ describe('Scroll anchor restoration', () => {
     expect(JSON.stringify(saved(saveState))).not.toContain('abc12345')
   })
 
-  it('cancels a queued resume anchor when the learner navigates through a Path', async () => {
+  it('does not replay the restored anchor after a Path navigation', async () => {
     const anchor = readingAnchorsForPage('page:b.mdx', pageBContent).get('1')?.id
     expect(anchor).toBeDefined()
     if (scrollPackage.presentation.type !== 'scroll') {
@@ -389,11 +424,11 @@ describe('Scroll anchor restoration', () => {
     resolve('page:a.mdx')
     resolve('page:b.mdx')
     await flush()
+    expect(scrollIntoViewCalls).toHaveLength(1)
 
     const path = container.querySelector<HTMLButtonElement>('[data-path-entry]')
     expect(path).not.toBeNull()
     act(() => path?.click())
-    advanceAnimationFrames(6)
     await flush()
 
     expect(virtuosoMock.scrollToIndexCalls).toContainEqual({
@@ -401,7 +436,7 @@ describe('Scroll anchor restoration', () => {
       align: 'start',
       behavior: 'auto'
     })
-    expect(window.scrollTo).not.toHaveBeenCalled()
+    expect(scrollIntoViewCalls).toHaveLength(1)
   })
 })
 
@@ -422,15 +457,16 @@ describe('Slides anchor restoration', () => {
 
     render(slidesPackage, provider)
     expect(window.scrollTo).not.toHaveBeenCalled()
+    expect(scrollIntoViewCalls).toHaveLength(0)
 
     // The suppressed seen report never persisted a location while restoring.
     expect(saveState).not.toHaveBeenCalled()
 
     resolve('page:b.mdx')
     await flush()
-    advanceAnimationFrames(6)
-    await flush()
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 250, behavior: 'auto' })
+    expect(scrollIntoViewCalls).toHaveLength(1)
+    expect(scrollIntoViewCalls[0]?.element.getAttribute('data-reading-anchor')).toBe(anchor)
+    expect(scrollIntoViewCalls[0]?.options).toEqual({ behavior: 'instant', block: 'start' })
 
     // The restored slide's first semantic save keeps the resolved anchor and
     // nothing else about the viewport.
@@ -455,6 +491,71 @@ describe('Slides anchor restoration', () => {
     await flush()
 
     expect(window.scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: 'auto' })
+    expect(scrollIntoViewCalls).toHaveLength(1)
     expect(saved(saveState).location).toBe('page:b.mdx')
+  })
+
+  it('keeps a legacy page-only location at the page level', async () => {
+    const saveState = vi.fn()
+    window.scormBridge = {
+      restoreState: () => ({
+        location: 'page:b.mdx',
+        pages: { 'page:a.mdx': { completed: true } }
+      }),
+      saveState
+    }
+    const { provider, resolve } = deferredProvider(slidesPackage)
+
+    render(slidesPackage, provider)
+    resolve('page:b.mdx')
+    await flush()
+
+    expect(scrollIntoViewCalls).toHaveLength(0)
+    expect(saved(saveState).location).toBe('page:b.mdx')
+  })
+
+  it('restores a deep anchor in long slide content without pixel offsets', async () => {
+    const longContent = Array.from({ length: 80 }, (_, index) => heading(`Section ${index + 1}`))
+    const longPackage: ContentPackage = {
+      ...slidesPackage,
+      presentation: {
+        type: 'slides',
+        pages: [
+          {
+            type: 'page',
+            id: 'page:a.mdx',
+            source: 'a.mdx',
+            metadata: { title: 'First' },
+            content: pageAContent
+          },
+          {
+            type: 'page',
+            id: 'page:b.mdx',
+            source: 'b.mdx',
+            metadata: { title: 'Long slide' },
+            content: longContent
+          }
+        ]
+      }
+    }
+    const anchor = readingAnchorsForPage('page:b.mdx', longContent).get('79')!.id
+    const saveState = vi.fn()
+    window.scormBridge = {
+      restoreState: () => ({
+        location: `page:b.mdx#${anchor}`,
+        pages: { 'page:a.mdx': { completed: true } }
+      }),
+      saveState
+    }
+    const { provider, resolve } = deferredProvider(longPackage)
+
+    render(longPackage, provider)
+    resolve('page:b.mdx')
+    await flush()
+
+    expect(scrollIntoViewCalls).toHaveLength(1)
+    expect(scrollIntoViewCalls[0]?.element.getAttribute('data-reading-anchor')).toBe(anchor)
+    expect(scrollIntoViewCalls[0]?.options).toEqual({ behavior: 'instant', block: 'start' })
+    expect(JSON.stringify(saved(saveState))).not.toMatch(/scrollTop|offset|viewport/i)
   })
 })

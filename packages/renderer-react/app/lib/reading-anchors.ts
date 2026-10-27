@@ -105,8 +105,7 @@ function hashAnchor(value: string): string {
 
 /**
  * A compact, deterministic ID for one authored block. The page/item ID is part
- * of the hash; DOM IDs add an injective page identity separately because this
- * short hash can still collide across pages.
+ * of the hash, so persisted anchor values remain compact and page-specific.
  */
 export function readingAnchorId(pageId: string, node: ContentNode, occurrence = 0): string {
   const canonical = normalizedBlock(node)
@@ -192,14 +191,11 @@ export function readingAnchorAttributes(anchor: ReadingAnchor | undefined): {
 }
 
 /**
- * Encodes each UTF-16 code unit at a fixed width, making this identity
- * injective for page IDs while keeping the persisted anchor value unchanged.
+ * Keep rendered IDs short while namespacing identical anchor hashes on
+ * concurrently mounted pages. Persisted anchor values are unchanged.
  */
 function domReadingAnchorId(pageId: string, anchorId: string): string {
-  const encodedPageId = Array.from({ length: pageId.length }, (_, index) =>
-    pageId.charCodeAt(index).toString(16).padStart(4, '0')
-  ).join('')
-  return `reading-${encodedPageId}-${anchorId}`
+  return `reading-${hashAnchor(pageId)}-${anchorId}`
 }
 
 /** The anchor at an authored render path, if that block is anchorable. */

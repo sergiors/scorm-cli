@@ -9,10 +9,10 @@ export interface ReadingAnchorTrackingOptions {
 }
 
 /**
- * Keeps the latest reading anchor available without React state: a passive
- * scroll listener updates a callback ref only, so scrolling never commits or
- * persists anything. The page and callback live in refs so the listener is
- * attached once per scroller rather than re-created on every page change.
+ * Reports the anchor under the viewport through a passive scroll listener.
+ * Page, enabled state and callback live in refs so the listener is attached
+ * once per scroller; the session ignores unchanged anchors and persists only
+ * actual transitions.
  */
 export function useReadingAnchorTracking({
   pageId,

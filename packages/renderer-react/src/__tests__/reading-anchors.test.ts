@@ -162,11 +162,13 @@ describe('reading anchor IDs', () => {
   })
 
   it('exposes the DOM attributes for a rendered block', () => {
-    expect(readingAnchorAttributes({ id: 'abc12345', pageId: 'page:a.mdx' })).toEqual({
-      id: 'reading-0070006100670065003a0061002e006d00640078-abc12345',
+    const attributes = readingAnchorAttributes({ id: 'abc12345', pageId: 'page:a.mdx' })
+    expect(attributes).toEqual({
+      id: expect.stringMatching(/^reading-[0-9a-z]{8}-abc12345$/),
       'data-reading-anchor': 'abc12345',
       'data-reading-anchor-page': 'page:a.mdx'
     })
+    expect(attributes.id!.length).toBeLessThan(32)
     expect(readingAnchorAttributes(undefined)).toEqual({})
   })
 })

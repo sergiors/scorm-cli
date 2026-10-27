@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   hasReadingPage,
+  invalidateReadingAnchorCache,
   resolveReadingAnchor,
   scrollToReadingPosition
 } from '../../app/lib/reading-anchor-dom'
@@ -25,6 +26,7 @@ function anchor(pageId: string, id: string, top: number, height = 40): HTMLEleme
   element.setAttribute('data-reading-anchor', id)
   element.setAttribute('data-reading-anchor-page', pageId)
   element.getBoundingClientRect = () => rect(top, height)
+  element.scrollIntoView = vi.fn()
   document.body.appendChild(element)
   return element
 }
@@ -33,14 +35,14 @@ function page(pageId: string, top: number): HTMLElement {
   const element = document.createElement('div')
   element.setAttribute('data-reading-page', pageId)
   element.getBoundingClientRect = () => rect(top, 1000)
+  element.scrollIntoView = vi.fn()
   document.body.appendChild(element)
   return element
 }
 
 beforeEach(() => {
   document.body.innerHTML = ''
-  Object.defineProperty(window, 'scrollY', { value: 500, configurable: true })
-  vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+  invalidateReadingAnchorCache()
 })
 
 afterEach(() => {
@@ -69,22 +71,57 @@ describe('resolveReadingAnchor', () => {
     anchor('page:b.mdx', 'other001', -50)
     expect(resolveReadingAnchor('page:a.mdx')).toBeNull()
   })
+
+  it('reuses anchors while a page is mounted and refreshes on page change or remount', () => {
+    page('page:a.mdx', 0)
+    const oldAnchor = anchor('page:a.mdx', 'old00001', -10)
+    const queryAll = vi.spyOn(document, 'querySelectorAll')
+    const countAnchorQueries = () =>
+      queryAll.mock.calls.filter(([selector]) => selector === '[data-reading-anchor]').length
+
+    expect(resolveReadingAnchor('page:a.mdx')).toBe('old00001')
+    expect(resolveReadingAnchor('page:a.mdx')).toBe('old00001')
+    expect(countAnchorQueries()).toBe(1)
+
+    page('page:b.mdx', 0)
+    anchor('page:b.mdx', 'pageb001', -5)
+    expect(resolveReadingAnchor('page:b.mdx')).toBe('pageb001')
+    expect(countAnchorQueries()).toBe(2)
+
+    oldAnchor.remove()
+    anchor('page:a.mdx', 'new00001', -8)
+    invalidateReadingAnchorCache('page:a.mdx')
+    expect(resolveReadingAnchor('page:a.mdx')).toBe('new00001')
+    expect(countAnchorQueries()).toBe(3)
+  })
 })
 
 describe('scrollToReadingPosition', () => {
-  it('moves the actual scroller to the saved anchor and reports it', () => {
+  it('scrolls the matching anchor into view and reports it', () => {
     page('page:a.mdx', 100)
-    anchor('page:a.mdx', 'target01', 120)
+    const target = anchor('page:a.mdx', 'target01', 120)
 
     expect(scrollToReadingPosition('page:a.mdx', 'target01')).toBe('target01')
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 620, behavior: 'auto' })
+    expect(target.scrollIntoView).toHaveBeenCalledWith({ behavior: 'instant', block: 'start' })
   })
 
-  it('falls back to the page beginning for a missing anchor', () => {
-    page('page:a.mdx', 100)
+  it('scrolls the page wrapper for a page-only location or missing anchor', () => {
+    const wrapper = page('page:a.mdx', 100)
 
+    expect(scrollToReadingPosition('page:a.mdx', undefined)).toBeNull()
+    expect(wrapper.scrollIntoView).toHaveBeenCalledWith({ behavior: 'instant', block: 'start' })
+    vi.mocked(wrapper.scrollIntoView).mockClear()
     expect(scrollToReadingPosition('page:a.mdx', 'missing1')).toBeNull()
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 600, behavior: 'auto' })
+    expect(wrapper.scrollIntoView).toHaveBeenCalledWith({ behavior: 'instant', block: 'start' })
+  })
+
+  it('only targets an anchor owned by the requested page', () => {
+    anchor('page:a.mdx', 'shared01', 120)
+    const target = anchor('page:b.mdx', 'shared01', 120)
+    page('page:b.mdx', 100)
+
+    expect(scrollToReadingPosition('page:b.mdx', 'shared01')).toBe('shared01')
+    expect(target.scrollIntoView).toHaveBeenCalledWith({ behavior: 'instant', block: 'start' })
   })
 
   it('reports whether the target page is mounted', () => {

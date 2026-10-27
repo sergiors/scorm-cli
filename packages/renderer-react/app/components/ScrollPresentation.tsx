@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 import { Lock } from 'lucide-react'
 import { Virtuoso, type ListItem, type VirtuosoHandle } from 'react-virtuoso'
@@ -9,6 +9,7 @@ import { PageProvider, usePlayerActions, usePlayerState } from '../lib/player-co
 import { READING_PAGE_ATTRIBUTE } from '../lib/reading-anchors'
 import {
   hasReadingPage,
+  invalidateReadingAnchorCache,
   resolveReadingAnchor,
   scrollToReadingPosition
 } from '../lib/reading-anchor-dom'
@@ -39,12 +40,10 @@ const PAGE_COLUMN = 'mx-auto w-full max-w-3xl px-4 sm:px-6'
  */
 const PAGE_ITEM = 'py-4 sm:py-6'
 
-/**
- * react-virtuoso 4.18.19 completes its initial non-zero item positioning after
- * four animation frames once measurements are available. Keep anchor restoration
- * behind that queued position so its final scroll cannot replace the anchor.
- */
-const INITIAL_SCROLL_SETTLE_FRAMES = 5
+// Virtuoso v4.18.19 defers its initialTopMostItemIndex scroll by four animation
+// frames after the initial item is ready. Restore on the following frame so its
+// positioning cannot override the native anchor scroll.
+const RESTORE_AFTER_INITIAL_POSITION_FRAMES = 5
 
 /** The nodes whose own completion rule has been met, which advance the done prefix. */
 function donePageIds(
@@ -178,7 +177,6 @@ export function ScrollPresentation({ pages, contentProvider }: ScrollPresentatio
   restoringRef.current = restoring
   const restoreTargetRef = useRef(restoreTarget)
   const restoreFrameRef = useRef<number | null>(null)
-  const restoreScheduledRef = useRef(false)
 
   // The semantic current page starts at the restored item, so the first seen
   // report matches the restored location rather than overwriting it with page
@@ -201,13 +199,12 @@ export function ScrollPresentation({ pages, contentProvider }: ScrollPresentatio
   isLoadedRef.current = isLoaded
   hasErrorRef.current = hasError
 
-  // Restoration is deliberately gated on the target slot being mounted and
-  // settled. Until it resolves, no seen/scroll report may overwrite the saved
-  // location. A missing anchor falls back to the mounted page's beginning.
+  // Restoration waits for the target content and its virtualized page to mount.
+  // Until then, normal tracking cannot overwrite the saved location.
   const attemptRestoreRef = useRef<() => void>(() => {})
   attemptRestoreRef.current = () => {
     const target = restoreTargetRef.current
-    if (!restoringRef.current || target === null) {
+    if (!restoringRef.current || target === null || restoreFrameRef.current !== null) {
       return
     }
     if (!isLoadedRef.current(target.pageId) && !hasErrorRef.current(target.pageId)) {
@@ -216,39 +213,32 @@ export function ScrollPresentation({ pages, contentProvider }: ScrollPresentatio
     if (!hasReadingPage(target.pageId)) {
       return
     }
-    if (restoreScheduledRef.current) {
-      return
-    }
-    restoreScheduledRef.current = true
-    let framesRemaining = INITIAL_SCROLL_SETTLE_FRAMES
-    const restoreAfterInitialScroll = () => {
-      const pendingTarget = restoreTargetRef.current
-      if (!restoringRef.current || pendingTarget !== target) {
-        restoreScheduledRef.current = false
-        restoreFrameRef.current = null
+
+    let frames = 0
+    const restoreAfterInitialPosition = () => {
+      frames += 1
+      if (frames < RESTORE_AFTER_INITIAL_POSITION_FRAMES) {
+        restoreFrameRef.current = requestAnimationFrame(restoreAfterInitialPosition)
         return
       }
-      if (framesRemaining > 0) {
-        framesRemaining -= 1
-        if (framesRemaining > 0) {
-          restoreFrameRef.current = window.requestAnimationFrame(restoreAfterInitialScroll)
-          return
-        }
-      }
-      restoreScheduledRef.current = false
+
       restoreFrameRef.current = null
+      const currentTarget = restoreTargetRef.current
       if (
-        (!isLoadedRef.current(target.pageId) && !hasErrorRef.current(target.pageId)) ||
-        !hasReadingPage(target.pageId)
+        !restoringRef.current ||
+        currentTarget === null ||
+        (!isLoadedRef.current(currentTarget.pageId) && !hasErrorRef.current(currentTarget.pageId)) ||
+        !hasReadingPage(currentTarget.pageId)
       ) {
         return
       }
-      const resolved = scrollToReadingPosition(target.pageId, target.anchor)
-      recordReadingPosition(target.pageId, resolved)
+      const resolved = scrollToReadingPosition(currentTarget.pageId, currentTarget.anchor)
+      recordReadingPosition(currentTarget.pageId, resolved)
+      restoreTargetRef.current = null
       restoringRef.current = false
       setRestoring(false)
     }
-    restoreFrameRef.current = window.requestAnimationFrame(restoreAfterInitialScroll)
+    restoreFrameRef.current = requestAnimationFrame(restoreAfterInitialPosition)
   }
   useEffect(() => {
     attemptRestoreRef.current()
@@ -285,11 +275,6 @@ export function ScrollPresentation({ pages, contentProvider }: ScrollPresentatio
     if (restoringRef.current) {
       restoringRef.current = false
       restoreTargetRef.current = null
-      restoreScheduledRef.current = false
-      if (restoreFrameRef.current !== null) {
-        window.cancelAnimationFrame(restoreFrameRef.current)
-        restoreFrameRef.current = null
-      }
       setRestoring(false)
     }
     const navigation = (navigationRef.current += 1)
@@ -343,7 +328,8 @@ export function ScrollPresentation({ pages, contentProvider }: ScrollPresentatio
     return () => {
       mountedRef.current = false
       if (restoreFrameRef.current !== null) {
-        window.cancelAnimationFrame(restoreFrameRef.current)
+        cancelAnimationFrame(restoreFrameRef.current)
+        restoreFrameRef.current = null
       }
     }
   }, [])
@@ -663,6 +649,10 @@ function PageScene({
   const pageState = state.pages[page.id]
   const endRef = useRef<HTMLDivElement>(null)
   const [endReached, setEndReached] = useState(false)
+
+  useLayoutEffect(() => {
+    invalidateReadingAnchorCache(page.id)
+  }, [nodes, page.id])
 
   useEffect(() => {
     const element = endRef.current

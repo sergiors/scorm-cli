@@ -62,6 +62,7 @@ const samePagePathPackage: ContentPackage = {
 }
 
 const firstAnchor = readingAnchorsForPage('page:a.mdx', content).get('0')?.id
+const secondAnchor = readingAnchorsForPage('page:a.mdx', content).get('1')?.id
 const anchorTops = new Map<string, number>([[firstAnchor!, -50]])
 
 let originalRect: typeof HTMLElement.prototype.getBoundingClientRect
@@ -154,7 +155,7 @@ function saved(saveState: { mock: { calls: unknown[][] } }): PlayerState {
 }
 
 describe('latest reading anchor on existing saves', () => {
-  it('updates the anchor without a commit and includes it in the next save', () => {
+  it('persists once when the active anchor changes, but not for repeated pixel movement', () => {
     const saveState = vi.fn()
     window.scormBridge = { saveState }
     const provider = inlineContentProvider(contentPackage)
@@ -184,14 +185,27 @@ describe('latest reading anchor on existing saves', () => {
       virtuosoMock.scrollToOffset?.(300)
     })
 
-    // Scrolling only updates a ref; it neither commits nor persists.
-    expect(saveState).toHaveBeenCalledTimes(1)
+    expect(saveState).toHaveBeenCalledTimes(2)
+    expect(saved(saveState).location).toBe(`page:a.mdx#${firstAnchor}`)
+
+    act(() => {
+      virtuosoMock.scrollToOffset?.(360)
+    })
+    expect(saveState).toHaveBeenCalledTimes(2)
+
+    anchorTops.set(firstAnchor!, -100)
+    anchorTops.set(secondAnchor!, -10)
+    act(() => {
+      virtuosoMock.scrollToOffset?.(420)
+    })
+    expect(saveState).toHaveBeenCalledTimes(3)
+    expect(saved(saveState).location).toBe(`page:a.mdx#${secondAnchor}`)
 
     act(() => container.querySelector<HTMLButtonElement>('[data-complete]')?.click())
 
-    expect(saveState).toHaveBeenCalledTimes(2)
-    expect(saved(saveState).location).toBe(`page:a.mdx#${firstAnchor}`)
-    expect(JSON.stringify(saved(saveState))).not.toContain('300')
+    expect(saveState).toHaveBeenCalledTimes(4)
+    expect(saved(saveState).location).toBe(`page:a.mdx#${secondAnchor}`)
+    expect(JSON.stringify(saved(saveState))).not.toContain('420')
   })
 
   it('drops the prior anchor after a Path jump to the already-active page', () => {
@@ -217,9 +231,10 @@ describe('latest reading anchor on existing saves', () => {
     )
 
     act(() => virtuosoMock.scrollToOffset?.(300))
-    expect(saveState).toHaveBeenCalledTimes(1)
+    expect(saveState).toHaveBeenCalledTimes(2)
     act(() => container.querySelector<HTMLButtonElement>('[data-answer-first]')?.click())
     expect(saved(saveState).location).toBe(`page:a.mdx#${anchor}`)
+    expect(saveState).toHaveBeenCalledTimes(3)
 
     // Virtuoso may not emit a scroll when asked to jump to its active item.
     const dispatchEvent = window.dispatchEvent.bind(window)
@@ -237,10 +252,11 @@ describe('latest reading anchor on existing saves', () => {
       align: 'start',
       behavior: 'auto'
     })
-    expect(saveState).toHaveBeenCalledTimes(2)
+    expect(saveState).toHaveBeenCalledTimes(4)
 
     act(() => container.querySelector<HTMLButtonElement>('[data-answer-second]')?.click())
 
+    expect(saveState).toHaveBeenCalledTimes(5)
     expect(saved(saveState).location).toBe('page:a.mdx')
     expect(JSON.stringify(saved(saveState))).not.toContain(anchor)
   })
@@ -340,17 +356,21 @@ describe('Slides reading anchor tracking', () => {
 
     expect(saved(saveState).location).toBe('page:slide-one.mdx')
 
-    // Scrolling inside the slide only updates a ref: it neither commits nor
-    // persists anything.
+    // The active anchor transition persists, but the page identity in state is
+    // unchanged and no viewport geometry is included.
     const beforeScroll = saveState.mock.calls.length
     act(() => {
       window.dispatchEvent(new Event('scroll'))
     })
-    expect(saveState.mock.calls.length).toBe(beforeScroll)
+    expect(saveState.mock.calls.length).toBe(beforeScroll + 1)
+    expect(saved(saveState).location).toBe(`page:slide-one.mdx#${slideOneAnchorId}`)
+    act(() => {
+      window.dispatchEvent(new Event('scroll'))
+    })
+    expect(saveState.mock.calls.length).toBe(beforeScroll + 1)
 
-    // The next semantic save (navigation) records the new page and never the
-    // anchor read on the slide the learner left, and the persisted payload
-    // carries no viewport geometry.
+    // Navigation records the new page and never the anchor read on the slide
+    // the learner left.
     const nextButton = container.querySelector<HTMLButtonElement>('[data-slides-next] button')
     expect(nextButton).not.toBeNull()
     act(() => nextButton?.click())
@@ -373,15 +393,18 @@ describe('Slides reading anchor tracking', () => {
     expect(saved(saveState).location).toBe('page:quiz-slide.mdx')
     expect(saveState.mock.calls).toHaveLength(1)
 
-    // Scrolling inside the slide only updates a ref: it does not persist.
+    // An anchor transition persists immediately; an unchanged anchor does not.
     act(() => {
       window.dispatchEvent(new Event('scroll'))
     })
-    expect(saveState.mock.calls).toHaveLength(1)
+    expect(saveState.mock.calls).toHaveLength(2)
+    act(() => {
+      window.dispatchEvent(new Event('scroll'))
+    })
+    expect(saveState.mock.calls).toHaveLength(2)
 
     // An explicit learner answer on the same slide persists, and the saved
-    // lesson location carries the anchor the scroll tracker recorded, with no
-    // viewport geometry attached.
+    // lesson location still carries the active anchor, with no viewport data.
     const answerButton = container.querySelector<HTMLButtonElement>('[data-answer]')
     expect(answerButton).not.toBeNull()
     act(() => answerButton?.click())

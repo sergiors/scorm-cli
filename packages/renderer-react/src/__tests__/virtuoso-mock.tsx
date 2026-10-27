@@ -95,6 +95,10 @@ interface VirtuosoProps {
 interface VirtuosoController {
   /** How many items the viewport is tall. Defaults to one. */
   visibleCount: number
+  /** Whether initialTopMostItemIndex is applied after Virtuoso's four-frame delay. */
+  deferInitialPositioning: boolean
+  /** Whether the deferred initial position has been applied. */
+  initialPositionApplied: boolean
   /** Every `scrollToIndex` the presentation issued, in order. */
   scrollToIndexCalls: VirtuosoScrollToIndexLocation[]
   /** Every `rangeChanged` the double reported, in order (the gated signal). */
@@ -132,6 +136,8 @@ interface VirtuosoController {
  */
 export const virtuosoMock: VirtuosoController = {
   visibleCount: 1,
+  deferInitialPositioning: false,
+  initialPositionApplied: false,
   scrollToIndexCalls: [],
   rangeChangedCalls: [],
   lastProps: undefined,
@@ -159,6 +165,8 @@ export const virtuosoMock: VirtuosoController = {
   scrollToIndex: undefined,
   reset() {
     this.visibleCount = 1
+    this.deferInitialPositioning = false
+    this.initialPositionApplied = false
     this.scrollToIndexCalls = []
     this.rangeChangedCalls = []
     this.lastProps = undefined
@@ -288,7 +296,9 @@ export const Virtuoso = forwardRef<VirtuosoHandle, VirtuosoProps>(function Virtu
   // imperative navigation.
   const [scrollTop, setScrollTop] = useState(() => {
     const index = clamp(toIndex(props.initialTopMostItemIndex), totalCount)
-    return Math.min(offsetOfIndex(index), maxScrollOffset(totalCount))
+    return virtuosoMock.deferInitialPositioning
+      ? 0
+      : Math.min(offsetOfIndex(index), maxScrollOffset(totalCount))
   })
 
   // A re-measurement re-report: it bumps this version so the `itemsRendered`
@@ -319,6 +329,28 @@ export const Virtuoso = forwardRef<VirtuosoHandle, VirtuosoProps>(function Virtu
     const index = clamp(toIndex(location), count)
     scrollToOffsetRef(offsetOfIndex(index))
   }).current
+
+  // Model Virtuoso v4.18.19's deferred initialTopMostItemIndex positioning, which
+  // waits four animation frames before issuing its initial scrollToIndex.
+  useEffect(() => {
+    if (!virtuosoMock.deferInitialPositioning) {
+      return
+    }
+    let frames = 0
+    let frame = 0
+    const applyInitialPosition = () => {
+      frames += 1
+      if (frames < 4) {
+        frame = requestAnimationFrame(applyInitialPosition)
+        return
+      }
+      virtuosoMock.initialPositionApplied = true
+      const index = clamp(toIndex(propsRef.current.initialTopMostItemIndex), propsRef.current.totalCount ?? 0)
+      scrollToOffsetRef(offsetOfIndex(index))
+    }
+    frame = requestAnimationFrame(applyInitialPosition)
+    return () => cancelAnimationFrame(frame)
+  }, [scrollToOffsetRef])
 
   // Change every item's measured size and force an `itemsRendered` re-report,
   // without dispatching a scroll: a measurement-only event, as a lazy load or a

@@ -11,13 +11,6 @@ function isWindowScroller(scroller: PresentationScroller): boolean {
   return scroller === null || scroller === window
 }
 
-function readScrollTop(scroller: PresentationScroller): number {
-  if (isWindowScroller(scroller)) {
-    return window.scrollY ?? document.documentElement.scrollTop ?? 0
-  }
-  return (scroller as HTMLElement).scrollTop
-}
-
 function readViewportTop(scroller: PresentationScroller): number {
   if (isWindowScroller(scroller)) {
     return 0
@@ -25,24 +18,30 @@ function readViewportTop(scroller: PresentationScroller): number {
   return (scroller as HTMLElement).getBoundingClientRect().top
 }
 
-function writeScrollTop(scroller: PresentationScroller, top: number): void {
-  const next = Math.max(0, top)
-  if (isWindowScroller(scroller)) {
-    window.scrollTo({ top: next, behavior: 'auto' })
-    return
-  }
-  const element = scroller as HTMLElement
-  if (typeof element.scrollTo === 'function') {
-    element.scrollTo({ top: next, behavior: 'auto' })
-  } else {
-    element.scrollTop = next
-  }
-}
+let cachedAnchorPageId: string | null = null
+let cachedAnchorElements: HTMLElement[] = []
 
 function anchorElements(pageId: string): HTMLElement[] {
+  if (cachedAnchorPageId === pageId) {
+    return cachedAnchorElements
+  }
+  cachedAnchorPageId = pageId
+  cachedAnchorElements = queryAnchorElements(pageId)
+  return cachedAnchorElements
+}
+
+function queryAnchorElements(pageId: string): HTMLElement[] {
   return Array.from(document.querySelectorAll<HTMLElement>(`[${READING_ANCHOR_ATTRIBUTE}]`)).filter(
     (element) => element.getAttribute(READING_ANCHOR_PAGE_ATTRIBUTE) === pageId
   )
+}
+
+/** Drop a page's cached anchors when its content mounts or changes. */
+export function invalidateReadingAnchorCache(pageId?: string): void {
+  if (pageId === undefined || cachedAnchorPageId === pageId) {
+    cachedAnchorPageId = null
+    cachedAnchorElements = []
+  }
 }
 
 function pageElement(pageId: string): HTMLElement | undefined {
@@ -98,8 +97,7 @@ export function resolveReadingAnchor(
  */
 export function scrollToReadingPosition(
   pageId: string,
-  anchor: string | undefined,
-  scroller: PresentationScroller = window
+  anchor: string | undefined
 ): string | null {
   if (typeof document === 'undefined') {
     return null
@@ -108,15 +106,13 @@ export function scrollToReadingPosition(
   const target =
     anchor === undefined
       ? undefined
-      : anchorElements(pageId).find(
+      : queryAnchorElements(pageId).find(
           (element) => element.getAttribute(READING_ANCHOR_ATTRIBUTE) === anchor
         )
   const element = target ?? container
   if (element === undefined) {
     return null
   }
-  const scrollTop = readScrollTop(scroller)
-  const top = element.getBoundingClientRect().top - readViewportTop(scroller) + scrollTop
-  writeScrollTop(scroller, top)
+  element.scrollIntoView({ behavior: 'instant', block: 'start' })
   return target === undefined ? null : (anchor ?? null)
 }

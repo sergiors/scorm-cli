@@ -109,5 +109,8 @@ describe('ContentRenderer reading anchors', () => {
     expect(paragraphs[0]?.getAttribute('data-reading-anchor-page')).toBe(pageA)
     expect(paragraphs[1]?.getAttribute('data-reading-anchor-page')).toBe(pageB)
     expect(paragraphs[0]?.id).not.toBe(paragraphs[1]?.id)
+    expect(paragraphs[0]?.id).toMatch(/^reading-[0-9a-z]{8}-abc12345$/)
+    expect(paragraphs[1]?.id).toMatch(/^reading-[0-9a-z]{8}-abc12345$/)
+    expect(paragraphs[0]?.id?.length).toBeLessThan(32)
   })
 })

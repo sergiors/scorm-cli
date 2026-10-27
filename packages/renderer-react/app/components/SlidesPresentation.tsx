@@ -8,7 +8,11 @@ import { PageProvider, usePlayerActions, usePlayerState } from '../lib/player-co
 import { arePageQuestionnairesComplete } from '../lib/questionnaire-completion'
 import { clampPageIndex } from '../lib/sequence'
 import { READING_PAGE_ATTRIBUTE } from '../lib/reading-anchors'
-import { hasReadingPage, scrollToReadingPosition } from '../lib/reading-anchor-dom'
+import {
+  hasReadingPage,
+  invalidateReadingAnchorCache,
+  scrollToReadingPosition
+} from '../lib/reading-anchor-dom'
 import { useReadingAnchorTracking } from '../lib/use-reading-anchor'
 import { Button } from './ui/button'
 import { Skeleton } from './ui/skeleton'
@@ -323,6 +327,10 @@ interface PageSceneProps {
  * clears the fixed edge rails and the mobile bottom nav; the shared column then
  * applies the same responsive gutters and vertical spacing as Scroll. */
 function PageScene({ page, index, nodes, pathPages, onNavigatePathPage }: PageSceneProps) {
+  useLayoutEffect(() => {
+    invalidateReadingAnchorCache(page.id)
+  }, [nodes, page.id])
+
   return (
     <PageProvider pageId={page.id}>
       <div
