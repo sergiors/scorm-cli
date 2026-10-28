@@ -198,6 +198,8 @@ export interface QuestionnaireNode {
    * scoring.
    */
   expanded?: boolean
+  /** Whether each question's options are shuffled. */
+  shuffleOptions: boolean
   questions: QuestionNode[]
 }
 
@@ -220,6 +222,8 @@ export interface PlayerPageState {
 }
 
 export interface PlayerState {
+  /** Optional safe-integer seed used to shuffle questionnaire options. */
+  shuffleSeed?: number
   /** The semantic ID of the current page or item. */
   location?: string
   /**

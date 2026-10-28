@@ -27,6 +27,7 @@ const optOutQuestionnaire: QuestionnaireNode = {
   contributesToScore: false,
   revealCorrectAnswers: true,
   maxAttempts: 1,
+  shuffleOptions: false,
   questions: [
     {
       type: 'question',
@@ -63,6 +64,7 @@ const scoredPackage: ContentPackage = {
             contributesToScore: true,
             revealCorrectAnswers: true,
             maxAttempts: 1,
+            shuffleOptions: false,
             questions: [
               {
                 type: 'question',
@@ -133,6 +135,7 @@ const mixedPackage: ContentPackage = {
             contributesToScore: true,
             revealCorrectAnswers: true,
             maxAttempts: 3,
+            shuffleOptions: false,
             questions: [
               {
                 type: 'question',
@@ -163,6 +166,7 @@ const mixedPackage: ContentPackage = {
             contributesToScore: true,
             revealCorrectAnswers: true,
             maxAttempts: 1,
+            shuffleOptions: false,
             questions: [
               {
                 type: 'question',
@@ -204,6 +208,7 @@ const retryablePackage: ContentPackage = {
             contributesToScore: true,
             revealCorrectAnswers: true,
             maxAttempts: 3,
+            shuffleOptions: false,
             questions: [
               {
                 type: 'question',

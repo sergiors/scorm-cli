@@ -24,7 +24,7 @@ The runtime uses the packaged `content-manifest.json` dictionary to do this:
 Renderer: scormBridge.saveState(state, progress)
   → generated runtime: progressFor(state) from packaged content manifest
   → browser codec: encode(manifest, state, progressFor(state))
-  → compact object { v, p, x, d? }
+  → compact object { v, p, x, s?, d? }
   → JSON.stringify(compact object)
   → cmi.suspend_data
 
@@ -84,6 +84,8 @@ export interface PlayerPageState {
 }
 
 export interface PlayerState {
+  /** Optional non-negative safe-integer shuffle seed. */
+  shuffleSeed?: number
   location?: string
   /** Reading anchor within location; persisted with it in the CMI location field. */
   anchor?: string
@@ -105,6 +107,9 @@ What the compact data does and does not preserve:
 
 - `x` stores one visited bit per manifest page/item, in manifest order. It does
   not store node IDs in this bit string.
+- Optional root `s` stores `PlayerState.shuffleSeed` when it is a non-negative
+  safe integer. Invalid `s` values are ignored without changing the v1 payload
+  version or the contents/meaning of `d`.
 - `p` stores the integer package percentage passed to the encoder, rounded and
   clamped to 0–100. The Node `encodeSuspendData` API takes this as an explicit
   argument. In the generated runtime, `progressFor(state)` derives it from the
@@ -197,6 +202,7 @@ interface CompactSuspendData {
   v: 1 // sole supported compact format version
   p: number // rounded/clamped integer package progress
   x: string // manifest-order visited bits
+  s?: number // optional non-negative safe-integer shuffle seed
   d?: {
     // key: `${pageIndex}.${kind}.${entityIndex}`
     [key: string]: number | number[] // a: option indexes; t: deciseconds; q: correct counts; r/c: 1

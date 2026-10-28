@@ -120,6 +120,8 @@ export interface QuestionnaireProps extends ContainerProps {
    * correctness only after submission. Defaults to `false`.
    */
   expanded?: boolean
+  /** Whether to shuffle each question's options. Defaults to `false`. */
+  shuffleOptions?: boolean
 }
 
 /** Props for `<Question type="..." />`, which contains a Prompt and Options. */

@@ -26,6 +26,7 @@ function questionnaire(id: string): QuestionnaireNode {
     contributesToScore: true,
     revealCorrectAnswers: true,
     maxAttempts: 1,
+    shuffleOptions: false,
     questions: [
       {
         type: 'question',
@@ -174,6 +175,7 @@ describe('collectQuestionnaireIds', () => {
       contributesToScore: true,
       revealCorrectAnswers: true,
       maxAttempts: 1,
+      shuffleOptions: false,
       questions: [questionnaireNode.questions[0]]
     }
     const nodes: ContentNode[] = [
@@ -227,6 +229,7 @@ describe('collectQuestionnaireIds', () => {
       contributesToScore: true,
       revealCorrectAnswers: true,
       maxAttempts: 1,
+      shuffleOptions: false,
       questions: [
         {
           type: 'question',

@@ -7,6 +7,7 @@ import {
   isOptionSelected,
   submittedOptionResult
 } from '../lib/questionnaire'
+import { shuffleQuestionOptions } from '../lib/shuffle'
 import { Card, CardContent } from './ui/card'
 import {
   Questionnaire,
@@ -28,10 +29,12 @@ import {
   useQuestionnaireSubmission,
   useQuestionnaireSession
 } from './QuestionnaireShared'
-import type { AnswerValue, QuestionNode, QuestionnaireNode } from '../types'
+import type { AnswerValue, QuestionNode, QuestionOption, QuestionnaireNode } from '../types'
 
 interface StepperQuestionProps {
   node: QuestionNode
+  /** Display order; a shuffled copy when the questionnaire enables shuffling. */
+  options: readonly QuestionOption[]
   value: AnswerValue | undefined
   submitted: boolean
   revealCorrectAnswers: boolean
@@ -55,6 +58,7 @@ interface StepperQuestionProps {
  */
 function StepperQuestion({
   node,
+  options,
   value,
   submitted,
   revealCorrectAnswers,
@@ -73,7 +77,7 @@ function StepperQuestion({
     >
       <QuestionnaireTitle id={titleId}>{node.prompt}</QuestionnaireTitle>
       <QuestionnaireChoices>
-        {node.options.map((option) => {
+        {options.map((option) => {
           const selected = isOptionSelected(node, value, option.value)
           const result =
             submitted && revealCorrectAnswers ? submittedOptionResult(option, selected) : undefined
@@ -156,6 +160,8 @@ export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
     attempts,
     attemptsRemaining,
     retrying,
+    shuffleSeed,
+    attemptIndex,
     onAnswer,
     onSubmitted,
     onRetry,
@@ -180,10 +186,29 @@ export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
     return null
   }
 
+  // Shuffling needs the session's persisted seed. Rendering authored order until
+  // the post-restore seed effect runs would show one order and then reorder it,
+  // so wait for the seed instead.
+  if (node.shuffleOptions && shuffleSeed === undefined) {
+    return null
+  }
+
+  // Only the rendered order changes; the authored options still drive answer
+  // derivation, validation and scoring.
+  const optionsFor = (question: QuestionNode): readonly QuestionOption[] =>
+    node.shuffleOptions && shuffleSeed !== undefined
+      ? shuffleQuestionOptions(question.options, {
+          seed: shuffleSeed,
+          questionnaireId: node.id,
+          questionId: question.id,
+          attemptIndex
+        })
+      : question.options
+
   const items: QuestionnaireItemDefinition[] = node.questions.map((question) => ({
     name: question.id,
     required: true,
-    choices: question.options.map((option) => ({ value: option.value }))
+    choices: optionsFor(question).map((option) => ({ value: option.value }))
   }))
 
   /**
@@ -226,6 +251,7 @@ export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
               <StepperQuestion
                 key={question.id}
                 node={question}
+                options={optionsFor(question)}
                 value={currentAnswers[question.id]}
                 submitted={reviewing}
                 revealCorrectAnswers={node.revealCorrectAnswers}

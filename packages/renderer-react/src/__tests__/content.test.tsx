@@ -729,6 +729,7 @@ describe('ContentRenderer questionnaires', () => {
         contributesToScore: true,
         revealCorrectAnswers: true,
         maxAttempts: 1,
+        shuffleOptions: false,
         questions: [singleChoiceQuestion]
       }
     ])
@@ -758,6 +759,7 @@ describe('ContentRenderer questionnaires', () => {
         contributesToScore: true,
         revealCorrectAnswers: true,
         maxAttempts: 1,
+        shuffleOptions: false,
         questions: [singleChoiceQuestion, multipleChoiceQuestion]
       }
     ])
@@ -775,6 +777,7 @@ describe('ContentRenderer questionnaires', () => {
         contributesToScore: true,
         revealCorrectAnswers: true,
         maxAttempts: 1,
+        shuffleOptions: false,
         questions: [
           {
             type: 'question',
@@ -811,6 +814,7 @@ describe('ContentRenderer questionnaires', () => {
         contributesToScore: true,
         revealCorrectAnswers: true,
         maxAttempts: 1,
+        shuffleOptions: false,
         questions: [
           {
             type: 'question',
@@ -855,6 +859,7 @@ describe('ContentRenderer questionnaires', () => {
                 contributesToScore: true,
                 revealCorrectAnswers: true,
                 maxAttempts: 1,
+                shuffleOptions: false,
                 questions: [singleChoiceQuestion]
               }
             ]
@@ -890,6 +895,7 @@ describe('ContentRenderer nested context', () => {
                   contributesToScore: true,
                   revealCorrectAnswers: true,
                   maxAttempts: 1,
+                  shuffleOptions: false,
                   questions: [singleChoiceQuestion]
                 }
               ]

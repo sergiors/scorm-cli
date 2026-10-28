@@ -93,6 +93,7 @@ const singleQuestionPackage: ContentPackage = {
             contributesToScore: true,
             revealCorrectAnswers: true,
             maxAttempts: 1,
+            shuffleOptions: false,
             questions: [trueFalse]
           }
         ]
@@ -422,6 +423,7 @@ describe('QuestionnaireView', () => {
             contributesToScore: true,
             revealCorrectAnswers: true,
             maxAttempts: 1,
+            shuffleOptions: false,
             questions: [trueFalse]
           }}
           contentPackage={singleQuestionPackage}
@@ -458,6 +460,7 @@ describe('QuestionnaireView', () => {
       contributesToScore: true,
       revealCorrectAnswers: true,
       maxAttempts: 1,
+      shuffleOptions: false,
       questions: [singleChoiceQuestion, multipleChoiceQuestion, trueFalse]
     }
 
@@ -557,6 +560,7 @@ describe('QuestionnaireView', () => {
             contributesToScore: true,
             revealCorrectAnswers: true,
             maxAttempts: 1,
+            shuffleOptions: false,
             questions: [trueFalse]
           }}
           contentPackage={singleQuestionPackage}

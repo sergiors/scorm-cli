@@ -17,14 +17,22 @@ export function useQuestionnaireSession(node: QuestionnaireNode) {
   const actions = usePlayerActions()
   const pageState = pageId ? state.pages[pageId] : undefined
   const attempts = pageState?.questionnaireAttempts?.[node.id] ?? []
+  const submitted = pageState?.submittedQuestionnaires?.includes(node.id) ?? false
+  const retrying = pageState?.activeQuestionnaireRetries?.includes(node.id) ?? false
+  // Option shuffling is scoped to this questionnaire's own attempt history:
+  // reviewing uses the latest submitted attempt, while answering or retrying
+  // uses the attempt about to be submitted.
+  const attemptIndex = submitted && !retrying ? Math.max(0, attempts.length - 1) : attempts.length
 
   return {
     answers: pageState?.answers,
-    submitted: pageState?.submittedQuestionnaires?.includes(node.id) ?? false,
+    submitted,
     completed: isQuestionnaireCompleted(pageState, node.id),
     attempts,
     attemptsRemaining: questionnaireAttemptsRemaining(node, attempts),
-    retrying: pageState?.activeQuestionnaireRetries?.includes(node.id) ?? false,
+    retrying,
+    shuffleSeed: state.shuffleSeed,
+    attemptIndex,
     onAnswer: pageId
       ? (questionId: string, value: AnswerValue) => actions.setAnswer(pageId, questionId, value)
       : undefined,

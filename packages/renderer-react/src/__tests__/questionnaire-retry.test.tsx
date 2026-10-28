@@ -55,6 +55,7 @@ const otherQuestionnaire: QuestionnaireNode = {
   contributesToScore: true,
   revealCorrectAnswers: true,
   maxAttempts: 1,
+  shuffleOptions: false,
   questions: [otherQuestion]
 }
 

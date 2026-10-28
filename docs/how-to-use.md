@@ -74,26 +74,29 @@ A grid of short items.
 
 Import components from `scorm-cli/authoring`.
 
-| Component       | Description             | Props                                                                                                                                 |
-| :-------------- | :---------------------- | :------------------------------------------------------------------------------------------------------------------------------------ |
-| `Scroll`        | Root presentation       | `children`                                                                                                                            |
-| `Slides`        | Root presentation       | `children`                                                                                                                            |
-| `Tiles`         | Root presentation       | `children`, `columns` (1-12)                                                                                                          |
-| `Page`          | Reference to a page     | `src` (root), `ref` (path)                                                                                                            |
-| `Item`          | Reference to an item    | `src`                                                                                                                                 |
-| `Path`          | Ordered navigation path | `children`                                                                                                                            |
-| `Image`         | Static image            | `src`, `alt`, `caption` (optional)                                                                                                    |
-| `Video`         | Video player            | `src`, `title` (optional), `poster` (optional), `captions` (optional)                                                                 |
-| `Questionnaire` | Assessment wrapper      | `children`, `contributesToScore` (bool), `expanded` (bool), `maxAttempts` (positive integer), `revealCorrectAnswers` (bool, optional) |
-| `Question`      | Single question         | `children`, `type` ('single-choice', 'multiple-choice', 'true-false')                                                                 |
-| `Prompt`        | Question text           | `children` (string)                                                                                                                   |
-| `Option`        | Answer choice           | `children` (string), `value`, `correct` (bool)                                                                                        |
+| Component       | Description             | Props                                                                                                                                                                    |
+| :-------------- | :---------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Scroll`        | Root presentation       | `children`                                                                                                                                                               |
+| `Slides`        | Root presentation       | `children`                                                                                                                                                               |
+| `Tiles`         | Root presentation       | `children`, `columns` (1-12)                                                                                                                                             |
+| `Page`          | Reference to a page     | `src` (root), `ref` (path)                                                                                                                                               |
+| `Item`          | Reference to an item    | `src`                                                                                                                                                                    |
+| `Path`          | Ordered navigation path | `children`                                                                                                                                                               |
+| `Image`         | Static image            | `src`, `alt`, `caption` (optional)                                                                                                                                       |
+| `Video`         | Video player            | `src`, `title` (optional), `poster` (optional), `captions` (optional)                                                                                                    |
+| `Questionnaire` | Assessment wrapper      | `children`, `contributesToScore` (bool), `expanded` (bool), `maxAttempts` (positive integer), `revealCorrectAnswers` (bool, optional), `shuffleOptions` (bool, optional) |
+| `Question`      | Single question         | `children`, `type` ('single-choice', 'multiple-choice', 'true-false')                                                                                                    |
+| `Prompt`        | Question text           | `children` (string)                                                                                                                                                      |
+| `Option`        | Answer choice           | `children` (string), `value`, `correct` (bool)                                                                                                                           |
 
 `Questionnaire.maxAttempts` defaults to `1` and counts total submissions,
 including the first submission. It must be a positive integer.
 
 `Questionnaire.revealCorrectAnswers` defaults to `true` and controls only
 per-option visual feedback after submission, not the overall summary.
+
+`Questionnaire.shuffleOptions` defaults to `false` and changes only answer-option
+presentation order—not question order, answer identity, or scoring.
 
 ## CLI Commands
 

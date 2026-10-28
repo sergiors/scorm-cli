@@ -36,6 +36,7 @@ describe('content manifest', () => {
                 contributesToScore: true,
                 revealCorrectAnswers: true,
                 maxAttempts: 1,
+                shuffleOptions: false,
                 questions: [
                   {
                     ...question('multi', 'Pick **two**', [
@@ -81,6 +82,7 @@ describe('content manifest', () => {
                 contributesToScore: false,
                 revealCorrectAnswers: true,
                 maxAttempts: 1,
+                shuffleOptions: false,
                 questions: [
                   question('single', '', [
                     {
@@ -206,6 +208,7 @@ describe('content manifest', () => {
                             contributesToScore: true,
                             revealCorrectAnswers: true,
                             maxAttempts: 1,
+                            shuffleOptions: false,
                             questions: [
                               question('q1', 'Choose *one*', [
                                 {
@@ -234,6 +237,7 @@ describe('content manifest', () => {
                 contributesToScore: true,
                 revealCorrectAnswers: true,
                 maxAttempts: 1,
+                shuffleOptions: false,
                 questions: [question('q3', 'Third')]
               }
             ]
@@ -307,6 +311,7 @@ describe('content manifest', () => {
                             contributesToScore: true,
                             revealCorrectAnswers: true,
                             maxAttempts: 3,
+                            shuffleOptions: false,
                             questions: [question('n1', 'First'), question('n2', 'Second')]
                           }
                         ]
@@ -321,6 +326,7 @@ describe('content manifest', () => {
                 contributesToScore: true,
                 revealCorrectAnswers: true,
                 maxAttempts: 1,
+                shuffleOptions: false,
                 questions: [question('t1', 'Third')]
               }
             ]
@@ -373,6 +379,7 @@ describe('content manifest', () => {
                             contributesToScore: false,
                             revealCorrectAnswers: true,
                             maxAttempts: 1,
+                            shuffleOptions: false,
                             questions: [
                               question('q', 'video prompt', [
                                 {
@@ -488,6 +495,7 @@ describe('content manifest', () => {
                 contributesToScore: true,
                 revealCorrectAnswers: true,
                 maxAttempts: 1,
+                shuffleOptions: false,
                 questions: [question('stable-question-id', '')]
               }
             ]
@@ -522,6 +530,7 @@ describe('content manifest', () => {
                 contributesToScore: true,
                 revealCorrectAnswers: true,
                 maxAttempts: 1,
+                shuffleOptions: false,
                 questions: [question('q-tight', 'See `raw` **Markdown**')]
               }
             ]
@@ -564,6 +573,7 @@ describe('content manifest', () => {
                         contributesToScore: true,
                         revealCorrectAnswers: true,
                         maxAttempts: 1,
+                        shuffleOptions: false,
                         questions: [question('q-nested', 'Nested')]
                       }
                     ]

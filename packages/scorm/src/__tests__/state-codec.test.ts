@@ -35,6 +35,7 @@ const packageContent: ContentPackage = {
           contributesToScore: true,
           revealCorrectAnswers: true,
           maxAttempts: 1,
+          shuffleOptions: false,
           questions: [
             {
               type: 'question',
@@ -411,6 +412,7 @@ describe('compact suspend-data codec', () => {
                 contributesToScore: true,
                 revealCorrectAnswers: true,
                 maxAttempts: 1,
+                shuffleOptions: false,
                 questions: [
                   {
                     type: 'question',
@@ -792,6 +794,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
               contributesToScore: true,
               revealCorrectAnswers: true,
               maxAttempts: 3,
+              shuffleOptions: false,
               questions: [
                 {
                   type: 'question',
@@ -815,6 +818,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
               contributesToScore: true,
               revealCorrectAnswers: true,
               maxAttempts: 2,
+              shuffleOptions: false,
               questions: [
                 {
                   type: 'question',
@@ -841,6 +845,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
               contributesToScore: true,
               revealCorrectAnswers: true,
               maxAttempts: 1,
+              shuffleOptions: false,
               questions: [
                 {
                   type: 'question',
@@ -1270,5 +1275,95 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
         d: { '0.q.0': [1], '0.c.0': 1, '1.q.0': [1], '1.c.0': 1 }
       })
     ).toEqual({ pages: { alpha: { visited: true } } })
+  })
+})
+
+describe('shuffle seed in the suspend-data codec', () => {
+  it.each([0, 1, 4294967295, 2 ** 53 - 1])(
+    'encodes a non-negative safe-integer seed under root s (%i)',
+    (shuffleSeed) => {
+      const encoded = encodeSuspendData(manifest, { pages: {}, shuffleSeed }, 0)
+      expect(encoded).toEqual({ v: 1, p: 0, x: '00', s: shuffleSeed })
+      // The seed is one flat root field: no per-question permutation data and
+      // no extra keys beyond the compact payload layout.
+      expect(Object.keys(encoded).sort()).toEqual(['p', 's', 'v', 'x'])
+    }
+  )
+
+  it.each([-1, 1.5, 2 ** 53, Number.NaN, '1'])(
+    'omits root s for an invalid seed (%p) without touching the rest of the payload',
+    (shuffleSeed) => {
+      const encoded = encodeSuspendData(
+        manifest,
+        {
+          pages: { 'page-one': { visited: true } },
+          shuffleSeed: shuffleSeed as PlayerState['shuffleSeed']
+        },
+        0
+      )
+      expect(encoded).toEqual({ v: 1, p: 0, x: '10' })
+      expect(Object.keys(encoded).sort()).toEqual(['p', 'v', 'x'])
+    }
+  )
+
+  it('encodes no root s when the state carries no seed, like before the option existed', () => {
+    expect(encodeSuspendData(manifest, { pages: {} }, 0)).toEqual({ v: 1, p: 0, x: '00' })
+  })
+
+  it('decodes a safe-integer root s back into the restored state', () => {
+    const decoded = decodeSuspendData(manifest, JSON.stringify({ v: 1, p: 0, x: '10', s: 7 }))
+    expect(decoded.shuffleSeed).toBe(7)
+    expect(decoded.pages).toEqual({ 'page-one': { visited: true } })
+  })
+
+  it.each([[-7], [7.5], [2 ** 53], ['7'], [null]])(
+    'ignores an invalid root s (%p) but still restores the rest of the payload',
+    (s) => {
+      const decoded = decodeSuspendData(manifest, {
+        v: 1,
+        p: 0,
+        x: '10',
+        s,
+        d: { '0.a.0': 1 }
+      })
+      expect(decoded).not.toHaveProperty('shuffleSeed')
+      // Invalid seed values never change the meaning of the v1 payload fields.
+      expect(decoded.pages).toEqual({
+        'page-one': { visited: true, answers: { q1: ['blue'] } }
+      })
+    }
+  )
+
+  it('round-trips a seed and authored option indexes without persisting any order', () => {
+    const state: PlayerState = {
+      shuffleSeed: 1234567890,
+      pages: {
+        'page-one': { visited: true, answers: { q1: ['green', 'red'] } }
+      }
+    }
+    const encoded = encodeSuspendData(manifest, state, 0)
+
+    // Answers stay authored-order option indexes (red=0, green=2), in authored
+    // index order, regardless of the shuffled display order a renderer may draw
+    // them in or the selection order the learner toggled, and the seed travels
+    // as its own root field.
+    expect(encoded).toEqual({
+      v: 1,
+      p: 0,
+      x: '10',
+      s: 1234567890,
+      d: { '0.a.0': [0, 2] }
+    })
+    const encodedText = JSON.stringify(encoded)
+    expect(encodedText).not.toContain('shuffle')
+    expect(encodedText).not.toContain('green')
+
+    const decoded = decodeSuspendData(manifest, JSON.stringify(encoded))
+    expect(decoded.shuffleSeed).toBe(1234567890)
+    // Selection restores by authored manifest order, never by the persisted or
+    // displayed sequence.
+    expect(decoded.pages).toEqual({
+      'page-one': { visited: true, answers: { q1: ['red', 'green'] } }
+    })
   })
 })

@@ -73,6 +73,7 @@ function questionnaire(
     contributesToScore,
     revealCorrectAnswers: true,
     maxAttempts: 1,
+    shuffleOptions: false,
     questions
   }
 }
@@ -343,6 +344,7 @@ describe('core package helpers', () => {
                 contributesToScore: true,
                 revealCorrectAnswers: true,
                 maxAttempts: 1,
+                shuffleOptions: false,
                 questions: [
                   {
                     type: 'question',
@@ -425,6 +427,7 @@ describe('collectVideoNodes', () => {
                             contributesToScore: false,
                             revealCorrectAnswers: true,
                             maxAttempts: 1,
+                            shuffleOptions: false,
                             questions: [
                               {
                                 type: 'question',

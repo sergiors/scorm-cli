@@ -38,6 +38,7 @@ const content: ContentPackage = {
             contributesToScore: true,
             revealCorrectAnswers: true,
             maxAttempts: 1,
+            shuffleOptions: false,
             questions: [
               {
                 type: 'question',
@@ -136,6 +137,7 @@ const scrollContent: ContentPackage = {
             contributesToScore: true,
             revealCorrectAnswers: true,
             maxAttempts: 1,
+            shuffleOptions: false,
             questions: [
               {
                 type: 'question',
@@ -194,5 +196,34 @@ describe('SCORM dev reload resume (scroll)', () => {
         'page:two': { visited: true, answers: { 'two-question': 'yes' } }
       }
     })
+  })
+
+  it('restores only a non-negative safe-integer shuffle seed across a reload', () => {
+    const storage = new MemoryStorage()
+    const manifest = createContentManifest(scrollContent)
+    const runtime = createScormRuntime(manifest)
+    const createWindow = () => {
+      const window: Record<string, any> = { localStorage: storage }
+      window.parent = window
+      vm.runInNewContext(scormDevMock, { window })
+      vm.runInNewContext(runtime, { window })
+      return window
+    }
+
+    const firstWindow = createWindow()
+    // A valid seed survives the suspend-data round trip next to page state.
+    expect(firstWindow.scormBridge.saveState({ shuffleSeed: 900000000, pages: {} }, 0)).toBe(true)
+
+    const secondWindow = createWindow()
+    // The dev runtime surfaces the CMI lesson location, which stays empty here.
+    expect(secondWindow.scormBridge.restoreState()).toEqual({
+      location: '',
+      shuffleSeed: 900000000,
+      pages: {}
+    })
+
+    // An invalid persisted seed is dropped instead of corrupting the state.
+    expect(firstWindow.scormBridge.saveState({ shuffleSeed: -5, pages: {} }, 0)).toBe(true)
+    expect(createWindow().scormBridge.restoreState()).toEqual({ location: '', pages: {} })
   })
 })

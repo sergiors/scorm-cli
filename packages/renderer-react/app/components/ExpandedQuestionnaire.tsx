@@ -7,8 +7,9 @@ import {
   isOptionSelected,
   submittedOptionResult
 } from '../lib/questionnaire'
+import { shuffleQuestionOptions } from '../lib/shuffle'
 import { cn } from '../lib/utils'
-import type { AnswerValue, QuestionNode, QuestionnaireNode } from '../types'
+import type { AnswerValue, QuestionNode, QuestionOption, QuestionnaireNode } from '../types'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
 import {
@@ -22,6 +23,8 @@ import { Separator } from './ui/separator'
 
 interface QuestionnaireQuestionProps {
   node: QuestionNode
+  /** Display order; a shuffled copy when the questionnaire enables shuffling. */
+  options: readonly QuestionOption[]
   value: AnswerValue | undefined
   submitted: boolean
   revealCorrectAnswers: boolean
@@ -37,6 +40,7 @@ interface QuestionnaireQuestionProps {
  */
 function QuestionnaireQuestion({
   node,
+  options,
   value,
   submitted,
   revealCorrectAnswers,
@@ -62,7 +66,7 @@ function QuestionnaireQuestion({
         data-slot="questionnaire-choices"
         className="group/questionnaire-choices grid min-w-0 gap-3"
       >
-        {node.options.map((option) => {
+        {options.map((option) => {
           const selected = isOptionSelected(node, value, option.value)
           const result =
             submitted && revealCorrectAnswers ? submittedOptionResult(option, selected) : undefined
@@ -160,6 +164,8 @@ export function ExpandedQuestionnaire({ node }: { node: QuestionnaireNode }) {
     attempts,
     attemptsRemaining,
     retrying,
+    shuffleSeed,
+    attemptIndex,
     onAnswer,
     onSubmitted,
     onRetry,
@@ -181,6 +187,25 @@ export function ExpandedQuestionnaire({ node }: { node: QuestionnaireNode }) {
   const canSubmit = !reviewing && allAnswered
   const summaryCorrect = attempts[attempts.length - 1] ?? result.correct
   const showActions = reviewing && !completed && attemptsRemaining > 0
+
+  // Shuffling needs the session's persisted seed. Rendering authored order until
+  // the post-restore seed effect runs would show one order and then reorder it,
+  // so wait for the seed instead.
+  if (node.shuffleOptions && shuffleSeed === undefined) {
+    return null
+  }
+
+  // Only the rendered order changes; the authored options still drive answer
+  // derivation, validation and scoring.
+  const optionsFor = (question: QuestionNode): readonly QuestionOption[] =>
+    node.shuffleOptions && shuffleSeed !== undefined
+      ? shuffleQuestionOptions(question.options, {
+          seed: shuffleSeed,
+          questionnaireId: node.id,
+          questionId: question.id,
+          attemptIndex
+        })
+      : question.options
 
   return (
     <>
@@ -212,6 +237,7 @@ export function ExpandedQuestionnaire({ node }: { node: QuestionnaireNode }) {
                   <QuestionnaireQuestion
                     key={question.id}
                     node={question}
+                    options={optionsFor(question)}
                     value={currentAnswers[question.id]}
                     submitted={reviewing}
                     revealCorrectAnswers={node.revealCorrectAnswers}

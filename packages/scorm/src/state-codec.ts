@@ -17,6 +17,7 @@ export interface CompactSuspendData {
   readonly v: 1
   readonly p: number
   readonly x: string
+  readonly s?: number
   readonly d?: Readonly<Record<string, CompactValue>>
 }
 
@@ -313,6 +314,11 @@ function createSuspendDataCodec() {
       v: 1,
       p: normalizedProgress,
       x: visited,
+      ...(typeof state.shuffleSeed === 'number' &&
+      Number.isSafeInteger(state.shuffleSeed) &&
+      state.shuffleSeed >= 0
+        ? { s: state.shuffleSeed }
+        : {}),
       ...(Object.keys(data).length > 0 ? { d: data } : {})
     }
   }
@@ -336,6 +342,9 @@ function createSuspendDataCodec() {
         !/^[01]*$/.test(x)
       ) {
         return fresh
+      }
+      if (typeof parsed.s === 'number' && Number.isSafeInteger(parsed.s) && parsed.s >= 0) {
+        fresh.shuffleSeed = parsed.s
       }
 
       // Page-indexed data is only meaningful when its visited bitmap is not

@@ -38,6 +38,7 @@ const content: ContentPackage = {
             contributesToScore: true,
             revealCorrectAnswers: true,
             maxAttempts: 1,
+            shuffleOptions: false,
             questions: [
               {
                 type: 'question',

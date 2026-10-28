@@ -596,6 +596,8 @@ describe('parsePackage', () => {
         // so every parsed questionnaire carries an explicit cap.
         maxAttempts: 1,
         expanded: false,
+        // An omitted `shuffleOptions` normalizes to authored (unshuffled) order.
+        shuffleOptions: false,
         questions: [
           {
             type: 'question',
@@ -874,6 +876,39 @@ describe('parsePackage', () => {
     for (const [attribute, error] of [
       [' expanded="true"', /Questionnaire "expanded" must be a boolean/],
       [' expanded={dynamic}', /dynamic value for attribute "expanded" is not supported/]
+    ] as const) {
+      const root = await makeLesson(
+        `<Questionnaire${attribute}><Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>`
+      )
+      await expect(parsePackage(root)).rejects.toThrow(error)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
+    }
+  })
+
+  it('normalizes omitted shuffleOptions to false and accepts only boolean literals', async () => {
+    for (const [attribute, expected] of [
+      ['', false],
+      [' shuffleOptions', true],
+      [' shuffleOptions={true}', true],
+      [' shuffleOptions={false}', false]
+    ] as const) {
+      const root = await makeLesson(
+        `<Questionnaire${attribute}><Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>`
+      )
+      const content = await lessonContent(root)
+      expect(content[0]?.type === 'questionnaire' && content[0].shuffleOptions).toBe(expected)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
+    }
+
+    for (const [attribute, error] of [
+      [' shuffleOptions="true"', /Questionnaire "shuffleOptions" must be a boolean/],
+      [
+        ' shuffleOptions={dynamic}',
+        /dynamic value for attribute "shuffleOptions" is not supported/
+      ],
+      [' shuffleOptions={1.5}', /dynamic value for attribute "shuffleOptions" is not supported/]
     ] as const) {
       const root = await makeLesson(
         `<Questionnaire${attribute}><Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>`

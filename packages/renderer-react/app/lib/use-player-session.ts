@@ -1,5 +1,11 @@
-import { useCallback, useRef, useState } from 'react'
-import type { AnswerValue, ContentPackage, PlayerState } from '../types'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type {
+  AnswerValue,
+  ContentNode,
+  ContentPackage,
+  InlineContentNode,
+  PlayerState
+} from '../types'
 import {
   getAggregateQuestionnaireScore,
   getDoneNodeIds,
@@ -23,6 +29,53 @@ import {
 } from './player-state'
 import { persistablePlayerState } from './reading-location'
 import { restoreState, saveState, useScormBridge, useScormScore } from './use-scorm-bridge'
+
+/**
+ * Creates the session's global option-shuffle seed as a non-negative safe
+ * integer. Prefers the platform crypto source; `Math.random` is only a fallback
+ * for environments without Web Crypto. Callers must invoke this outside render.
+ */
+function createShuffleSeed(): number {
+  const cryptoApi = globalThis.crypto
+  if (cryptoApi !== undefined && typeof cryptoApi.getRandomValues === 'function') {
+    try {
+      const values = new Uint32Array(1)
+      cryptoApi.getRandomValues(values)
+      return values[0]
+    } catch {
+      // Fall through to the non-crypto fallback below.
+    }
+  }
+  return Math.floor(Math.random() * 0x1_0000_0000)
+}
+
+/**
+ * Whether any authored questionnaire opts into option shuffling. The traversal
+ * ignores unknown runtime node types instead of throwing, so malformed content
+ * still reaches the renderer's own explicit error.
+ */
+function packageHasShuffledQuestionnaires(contentPackage: ContentPackage): boolean {
+  const visit = (nodes: ReadonlyArray<ContentNode | InlineContentNode>): boolean => {
+    for (const node of nodes) {
+      switch (node.type) {
+        case 'questionnaire':
+          if (node.shuffleOptions) return true
+          break
+        case 'list':
+          if (node.items.some((item) => visit(item.children))) return true
+          break
+        case 'quote':
+          if (visit(node.children)) return true
+          break
+        default:
+          break
+      }
+    }
+    return false
+  }
+
+  return getPresentationNodes(contentPackage).some((node) => visit(node.content))
+}
 
 /**
  * The learner's owned progress plus the transitions that mutate it, as returned
@@ -92,7 +145,9 @@ export interface PlayerSession {
  * through `saveState(state, progress)` — the integer package progress is
  * computed with the canonical core helper. Side effects never run inside a React
  * state updater, and the ref below is the source of truth so StrictMode's doubled
- * effects cannot double write.
+ * effects cannot double write. A package that shuffles questionnaire options
+ * also gets one global shuffle seed, generated after restoration and persisted
+ * with the rest of the state; a valid restored seed is never replaced.
  *
  * Completion semantics differ by presentation:
  * - Scroll and Slides pages are visited as soon as they are displayed. A page
@@ -153,6 +208,31 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
     },
     [contentPackage]
   )
+
+  // A package that never shuffles needs no seed, so sessions for such packages
+  // keep their existing write behavior.
+  const requiresShuffleSeed = packageHasShuffledQuestionnaires(contentPackage)
+
+  // Generate the single global seed after the restored state has been validated,
+  // never during render. A valid restored seed is kept as-is, and the ref guard
+  // ensures StrictMode's doubled effect cannot generate a second one. The write
+  // goes through `applyState`, so the seed is persisted with the rest of the
+  // owned state.
+  const shuffleSeedInitialized = useRef(false)
+  useEffect(() => {
+    if (stateRef.current.shuffleSeed !== undefined) {
+      shuffleSeedInitialized.current = true
+      return
+    }
+    if (!requiresShuffleSeed || shuffleSeedInitialized.current) {
+      return
+    }
+    shuffleSeedInitialized.current = true
+    const seed = createShuffleSeed()
+    applyState((previous) =>
+      previous.shuffleSeed === undefined ? { ...previous, shuffleSeed: seed } : previous
+    )
+  }, [applyState, requiresShuffleSeed])
 
   // The presentation owns geometry. Persist one location update per actual
   // anchor transition on the current page; pixel movement within the same

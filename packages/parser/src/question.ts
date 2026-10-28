@@ -284,7 +284,7 @@ export async function parseQuestionnaire(
   const values = attrs(node, file)
   assertAttributes(
     values,
-    ['contributesToScore', 'expanded', 'maxAttempts', 'revealCorrectAnswers'],
+    ['contributesToScore', 'expanded', 'maxAttempts', 'revealCorrectAnswers', 'shuffleOptions'],
     file,
     node
   )
@@ -295,6 +295,11 @@ export async function parseQuestionnaire(
   }
   if (values.expanded !== undefined && typeof values.expanded !== 'boolean') {
     throw new Error(`${sourceLocation(file, node)}: Questionnaire "expanded" must be a boolean`)
+  }
+  if (values.shuffleOptions !== undefined && typeof values.shuffleOptions !== 'boolean') {
+    throw new Error(
+      `${sourceLocation(file, node)}: Questionnaire "shuffleOptions" must be a boolean`
+    )
   }
   if (
     values.revealCorrectAnswers !== undefined &&
@@ -341,6 +346,7 @@ export async function parseQuestionnaire(
     revealCorrectAnswers: values.revealCorrectAnswers !== false,
     maxAttempts: values.maxAttempts ?? 1,
     expanded: values.expanded === true,
+    shuffleOptions: values.shuffleOptions === true,
     questions
   }
 }

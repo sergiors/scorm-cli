@@ -364,6 +364,7 @@ function sharedQuestionnaire(source: string): QuestionnaireNode {
     contributesToScore: true,
     revealCorrectAnswers: true,
     maxAttempts: 1,
+    shuffleOptions: false,
     questions: [
       {
         type: 'question',

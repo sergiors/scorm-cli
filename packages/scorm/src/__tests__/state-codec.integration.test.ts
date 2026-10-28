@@ -40,6 +40,7 @@ function questionnaire(id: string, questions: QuestionNode[]) {
     contributesToScore: true,
     revealCorrectAnswers: true,
     maxAttempts: 1,
+    shuffleOptions: false,
     questions
   }
 }
@@ -640,5 +641,45 @@ describe('suspend-data codec integration', () => {
       location: 'page:resume-4',
       ...restored
     })
+  })
+
+  it('passes the shuffle seed through the browser runtime codec identically', () => {
+    const context: Record<string, unknown> = {}
+    vm.createContext(context)
+    vm.runInContext(browserCodecSource(), context)
+    const browserEncode = context.compactEncode as (
+      manifest: unknown,
+      state: unknown,
+      progress: number
+    ) => string
+    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState
+    const seeded: PlayerState = { ...selected, shuffleSeed: 999999999 }
+    const invalidSeeded: PlayerState = { ...selected, shuffleSeed: -1 }
+
+    // The embedded browser codec encodes valid seeds the same way Node does,
+    // and both drop an invalid seed without changing the rest of the payload.
+    expect(JSON.parse(browserEncode(manifest, seeded, 0))).toEqual(
+      encodeSuspendData(manifest, seeded, 0)
+    )
+    expect(JSON.parse(browserEncode(manifest, invalidSeeded, 0))).toEqual(
+      encodeSuspendData(manifest, invalidSeeded, 0)
+    )
+
+    const seededCompact = `{"v":1,"p":0,"x":"00000${'1'}","s":42,"d":{}}`
+    expect(browserDecode(manifest, seededCompact).shuffleSeed).toBe(
+      decodeSuspendData(manifest, seededCompact).shuffleSeed
+    )
+    expect(browserDecode(manifest, seededCompact)).toEqual(
+      decodeSuspendData(manifest, seededCompact)
+    )
+
+    // An unusable seed decodes to a state without a seed in both runtimes.
+    for (const invalidSeed of [-42, 4.2, '"42"', 'null']) {
+      const invalidPayload = `{"v":1,"p":0,"x":"000000","s":${invalidSeed}}`
+      expect(browserDecode(manifest, invalidPayload)).toEqual(
+        decodeSuspendData(manifest, invalidPayload)
+      )
+      expect(decodeSuspendData(manifest, invalidPayload)).not.toHaveProperty('shuffleSeed')
+    }
   })
 })

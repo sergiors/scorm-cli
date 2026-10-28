@@ -454,6 +454,7 @@ describe('Video resume and persistence', () => {
       contributesToScore: false,
       revealCorrectAnswers: true,
       maxAttempts: 1,
+      shuffleOptions: false,
       questions: [
         {
           type: 'question',

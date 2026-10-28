@@ -241,7 +241,9 @@ function sanitizePageState(
  * result; an in-progress retry stays unsubmitted. A submitted questionnaire with
  * no legacy history is seeded with one score from its sanitized answers. The
  * result is always a plain in-memory state — never the raw persisted object — so
- * the renderer can mutate it without touching whatever the bridge returned.
+ * the renderer can mutate it without touching whatever the bridge returned. A
+ * persisted global shuffle seed is kept only when it is a non-negative safe
+ * integer; an invalid seed is dropped so the session can generate a fresh one.
  */
 export function sanitizePlayerState(contentPackage: ContentPackage, raw: unknown): PlayerState {
   const { presentation } = contentPackage
@@ -251,6 +253,17 @@ export function sanitizePlayerState(contentPackage: ContentPackage, raw: unknown
 
   if (!isRecord(raw)) {
     return state
+  }
+
+  // The global shuffle seed is presentation-independent, so it survives even
+  // when the rest of the persisted state is unusable. Invalid values are
+  // dropped and a fresh seed is generated later by the session.
+  if (
+    typeof raw.shuffleSeed === 'number' &&
+    Number.isSafeInteger(raw.shuffleSeed) &&
+    raw.shuffleSeed >= 0
+  ) {
+    state.shuffleSeed = raw.shuffleSeed
   }
 
   if (typeof raw.location === 'string' && byId.has(raw.location)) {
