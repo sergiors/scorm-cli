@@ -101,6 +101,17 @@ export type ContentNode =
   | PathNode
   | QuestionnaireNode
   | AccordionNode
+  | CalloutNode
+
+/** Presentation-only callout containing ordinary flow content. */
+export interface CalloutNode {
+  type: 'callout'
+  variant: CalloutVariant
+  title?: string
+  children: ContentNode[]
+}
+
+export type CalloutVariant = 'note' | 'info' | 'tip' | 'warning' | 'danger'
 
 /** A block accordion; opening state is authoring metadata, not persisted state. */
 export interface AccordionNode {
@@ -492,6 +503,9 @@ export function getAggregateQuestionnaireScore(
         case 'quote':
           visit(node.children, pageState)
           break
+        case 'callout':
+          visit(node.children, pageState)
+          break
         case 'accordion':
           for (const item of node.items) visit(item.content, pageState)
           break
@@ -570,6 +584,9 @@ export function collectAssetReferences(contentPackage: ContentPackage): string[]
         case 'quote':
           visitContent(node.children)
           break
+        case 'callout':
+          visitContent(node.children)
+          break
         case 'accordion':
           for (const item of node.items) {
             visitInline(item.title)
@@ -613,6 +630,9 @@ export function collectVideoNodes(
           for (const item of node.items) visit(item.children)
           break
         case 'quote':
+          visit(node.children)
+          break
+        case 'callout':
           visit(node.children)
           break
         case 'accordion':

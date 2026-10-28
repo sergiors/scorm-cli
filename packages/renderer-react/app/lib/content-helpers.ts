@@ -26,9 +26,9 @@ export type { PresentationNode, SequentialAccess } from '../types'
 
 /**
  * Collects every questionnaire reachable from a set of block nodes, in document
- * order. Block nesting (lists, quotes and accordion sections) is traversed the
- * same way {@link ContentRenderer} renders it, so callers can reason about
- * exactly the questionnaires the learner can reach.
+ * order. Block nesting (lists, quotes, callouts and accordion sections) is
+ * traversed the same way {@link ContentRenderer} renders it, so callers can
+ * reason about exactly the questionnaires the learner can reach.
  *
  * The switch below names every block discriminant explicitly and ends in
  * {@link assertNever}, so adding a new nested block container to `ContentNode`
@@ -44,6 +44,9 @@ export function collectQuestionnaires(nodes: ContentNode[]): QuestionnaireNode[]
           for (const item of node.items) visit(item.children)
           break
         case 'quote':
+          visit(node.children)
+          break
+        case 'callout':
           visit(node.children)
           break
         case 'accordion':

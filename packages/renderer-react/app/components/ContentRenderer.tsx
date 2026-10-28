@@ -1,6 +1,15 @@
 import { Fragment, useMemo, useState } from 'react'
 import type { ComponentType, ReactNode } from 'react'
-import type { ContentNode, PageNode } from '../types'
+import {
+  CodeIcon,
+  Info,
+  Lightbulb,
+  OctagonAlert,
+  StickyNote,
+  TriangleAlert,
+  type LucideIcon
+} from 'lucide-react'
+import type { CalloutVariant, ContentNode, PageNode } from '../types'
 import {
   readingAnchorAt,
   readingAnchorAttributes,
@@ -20,9 +29,11 @@ import {
   CodeBlockContent,
   CodeBlockCopyButton,
   CodeBlockHeader,
-  CodeBlockLine
+  CodeBlockLine,
+  CodeBlockTitle
 } from './ui/code-block'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
+import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { useHighlightedCode } from '@/hooks/use-highlighted-code'
 
 const HEADING_TAGS = {
@@ -218,13 +229,39 @@ function TableView({ node }: ContentNodeViewProps<'table'>) {
   )
 }
 
+const LANGUAGE_LABELS: Record<string, string> = {
+  ts: 'TypeScript',
+  typescript: 'TypeScript',
+  tsx: 'TypeScript (TSX)',
+  js: 'JavaScript',
+  javascript: 'JavaScript',
+  jsx: 'JavaScript (JSX)',
+  py: 'Python',
+  python: 'Python',
+  sh: 'Shell',
+  bash: 'Bash',
+  json: 'JSON',
+  html: 'HTML',
+  css: 'CSS',
+  sql: 'SQL',
+  yaml: 'YAML',
+  yml: 'YAML',
+  md: 'Markdown',
+  markdown: 'Markdown'
+}
+
 function CodeView({ node, anchor }: ContentNodeViewProps<'code'>) {
-  const lines = useHighlightedCode(node.value, node?.language ?? '')
+  const language = node.language?.toLowerCase() ?? ''
+  const lines = useHighlightedCode(node.value, language)
+  const title = LANGUAGE_LABELS[language] ?? (language || 'Plain text')
 
   return (
     <div {...readingAnchorAttributes(anchor)}>
       <CodeBlock className="not-prose">
         <CodeBlockHeader>
+          <CodeBlockTitle>
+            <CodeIcon /> {title}
+          </CodeBlockTitle>
           <CodeBlockActions>
             <CodeBlockCopyButton value={node.value} />
           </CodeBlockActions>
@@ -244,6 +281,45 @@ function QuoteView({ node, context, path }: ContentNodeViewProps<'quote'>) {
     <blockquote className="border-l-4 border-primary/50 bg-secondary/50 py-2 px-6">
       <ContentRenderer nodes={node.children} {...context} readingAnchorPath={path} />
     </blockquote>
+  )
+}
+
+const CALLOUT_VARIANTS = {
+  note: {
+    icon: StickyNote,
+    surface: 'border-border bg-muted/40 text-muted-foreground'
+  },
+  info: {
+    icon: Info,
+    surface: 'border-sky-500/30 bg-sky-500/5 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400'
+  },
+  tip: {
+    icon: Lightbulb,
+    surface:
+      'border-emerald-500/30 bg-emerald-500/5 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
+  },
+  warning: {
+    icon: TriangleAlert,
+    surface:
+      'border-amber-500/30 bg-amber-500/5 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400'
+  },
+  danger: {
+    icon: OctagonAlert,
+    surface: 'border-destructive/30 bg-destructive/5 text-destructive dark:bg-destructive/10'
+  }
+} as const satisfies Record<CalloutVariant, { icon: LucideIcon; surface: string }>
+
+function CalloutView({ node, context, path }: ContentNodeViewProps<'callout'>) {
+  const { icon: Icon, surface } = CALLOUT_VARIANTS[node.variant]
+
+  return (
+    <Alert role="note" data-slot="callout" data-variant={node.variant} className={surface}>
+      <Icon aria-hidden="true" />
+      {node.title ? <AlertTitle className="mb-3">{node.title}</AlertTitle> : null}
+      <AlertDescription className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 overflow-x-auto">
+        <ContentRenderer nodes={node.children} {...context} readingAnchorPath={path} />
+      </AlertDescription>
+    </Alert>
   )
 }
 
@@ -377,6 +453,7 @@ const contentNodeRenderers = {
   table: TableView,
   code: CodeView,
   quote: QuoteView,
+  callout: CalloutView,
   image: BlockImageView,
   video: VideoView,
   questionnaire: QuestionnaireBlockView,

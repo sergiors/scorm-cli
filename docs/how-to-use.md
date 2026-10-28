@@ -74,23 +74,24 @@ A grid of short items.
 
 Import components from `scorm-cli/authoring`.
 
-| Component       | Description                         | Props                                                                                                                                                                          |
-| :-------------- | :---------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Scroll`        | Root presentation                   | `children`                                                                                                                                                                     |
-| `Slides`        | Root presentation                   | `children`                                                                                                                                                                     |
-| `Tiles`         | Root presentation                   | `children`, `columns` (1-12)                                                                                                                                                   |
-| `Accordion`     | Expandable content                  | `children`, `multiple` (bool), `collapsible` (bool)                                                                                                                            |
-| `Page`          | Reference to a page                 | `src` (root), `ref` (path)                                                                                                                                                     |
-| `Item`          | Tile reference or accordion section | `src` (Tiles), `defaultOpen` (Accordion)                                                                                                                                       |
-| `Title`         | Accordion section title             | inline Markdown children                                                                                                                                                       |
-| `Content`       | Accordion section body              | Markdown and supported flow content                                                                                                                                            |
-| `Path`          | Ordered navigation path             | `children`                                                                                                                                                                     |
-| `Image`         | Static image                        | `src`, `alt`, `caption` (optional)                                                                                                                                             |
-| `Video`         | Video player                        | `src`, `title` (optional), `poster` (optional), `captions` (optional)                                                                                                          |
-| `Questionnaire` | Assessment wrapper                  | `children`, `contributesToScore` (bool), `expanded` (bool), `maxAttempts` (-1 or positive integer), `revealCorrectAnswers` (bool, optional), `shuffleOptions` (bool, optional) |
-| `Question`      | Single question                     | `children`, `type` ('single-choice', 'multiple-choice', 'true-false')                                                                                                          |
-| `Prompt`        | Question text                       | `children` (string)                                                                                                                                                            |
-| `Option`        | Answer choice                       | `children` (string), `value`, `correct` (bool)                                                                                                                                 |
+| Component       | Description                           | Props                                                                                                                                                                          |
+| :-------------- | :------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Scroll`        | Root presentation                     | `children`                                                                                                                                                                     |
+| `Slides`        | Root presentation                     | `children`                                                                                                                                                                     |
+| `Tiles`         | Root presentation                     | `children`, `columns` (1-12)                                                                                                                                                   |
+| `Accordion`     | Expandable content                    | `children`, `multiple` (bool), `collapsible` (bool)                                                                                                                            |
+| `Callout`       | Presentation-only highlighted content | `children`, `variant` (`note`, `info`, `tip`, `warning`, `danger`; defaults to `note`), `title` (optional string)                                                              |
+| `Page`          | Reference to a page                   | `src` (root), `ref` (path)                                                                                                                                                     |
+| `Item`          | Tile reference or accordion section   | `src` (Tiles), `defaultOpen` (Accordion)                                                                                                                                       |
+| `Title`         | Accordion section title               | inline Markdown children                                                                                                                                                       |
+| `Content`       | Accordion section body                | Markdown and supported flow content                                                                                                                                            |
+| `Path`          | Ordered navigation path               | `children`                                                                                                                                                                     |
+| `Image`         | Static image                          | `src`, `alt`, `caption` (optional)                                                                                                                                             |
+| `Video`         | Video player                          | `src`, `title` (optional), `poster` (optional), `captions` (optional)                                                                                                          |
+| `Questionnaire` | Assessment wrapper                    | `children`, `contributesToScore` (bool), `expanded` (bool), `maxAttempts` (-1 or positive integer), `revealCorrectAnswers` (bool, optional), `shuffleOptions` (bool, optional) |
+| `Question`      | Single question                       | `children`, `type` ('single-choice', 'multiple-choice', 'true-false')                                                                                                          |
+| `Prompt`        | Question text                         | `children` (string)                                                                                                                                                            |
+| `Option`        | Answer choice                         | `children` (string), `value`, `correct` (bool)                                                                                                                                 |
 
 `Questionnaire.maxAttempts` defaults to `1` and counts total submissions,
 including the first submission. Use `-1` for unlimited attempts; otherwise it
@@ -107,6 +108,18 @@ section is open, and one section always remains open. Set `multiple` to allow
 several open sections, or `collapsible` to allow all sections to be closed; do
 not set both to `true`. An Item's `defaultOpen` defaults to `false`, and a
 single-open Accordion permits at most one `defaultOpen` item.
+
+Use `<Callout>` to highlight ordinary Markdown and supported flow content.
+Its `variant` defaults to `note`; supported variants are `note`, `info`, `tip`,
+`warning`, and `danger`. The `title` is optional.
+
+```mdx
+<Callout variant="warning" title="Before you continue">
+  Save your work before moving to the next section.
+</Callout>
+
+<Callout variant="tip">**Tip:** You can also use a callout without a title.</Callout>
+```
 
 ```mdx
 <Accordion multiple={false} collapsible>

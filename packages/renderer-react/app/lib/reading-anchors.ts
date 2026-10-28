@@ -81,6 +81,7 @@ function normalizedBlock(node: ContentNode): string | null {
       ].join(':')
     case 'list':
     case 'quote':
+    case 'callout':
     case 'accordion':
     case 'table':
     case 'thematicBreak':
@@ -123,7 +124,7 @@ function pathKey(path: readonly number[]): string {
 
 /**
  * Builds every anchor for a page in authored order. Paths mirror the render
- * traversal, so nested blocks inside a quote or an accordion section are
+ * traversal, so nested blocks inside a quote, callout or accordion section are
  * anchorable while their containers are not. Each accordion item's content
  * extends the path with the item index, exactly as the renderer does, so item
  * order keeps anchors unique and deterministic. Repeating a canonical block
@@ -169,6 +170,9 @@ export function readingAnchorsForPage(
         anchors.set(pathKey(path), { id: allocate(node), pageId })
       }
       if (node.type === 'quote') {
+        visit(node.children, path)
+      }
+      if (node.type === 'callout') {
         visit(node.children, path)
       }
       if (node.type === 'accordion') {

@@ -1188,7 +1188,9 @@ describe('parsePackage', () => {
     for (const [content, error] of [
       ['<Prompt>Text</Prompt>', /unknown MDX component <Prompt>/],
       ['<Option value="x">Text</Option>', /unknown MDX component <Option>/],
-      ['<Callout type="info">Text</Callout>', /unknown MDX component <Callout>/],
+      // `<Callout>` is a supported flow component today; a wrong attribute is
+      // reported by its own grammar rather than as an unknown component.
+      ['<Callout type="info">Text</Callout>', /unknown attribute "type"/],
       ['<Example>Text</Example>', /unknown MDX component <Example>/],
       ['<Steps><Step>Text</Step></Steps>', /unknown MDX component <Steps>/],
       ['<Step>Text</Step>', /unknown MDX component <Step>/],

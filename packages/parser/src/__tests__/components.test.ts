@@ -49,12 +49,13 @@ describe('authoring component registry', () => {
   it('derives flow components from the registry without a second name list', () => {
     expect(authoringComponentNames.filter((name) => hasComponentContext(name, 'flow'))).toEqual([
       'Accordion',
+      'Callout',
       'Path',
       'Image',
       'Video',
       'Questionnaire'
     ])
-    for (const name of ['Accordion', 'Image', 'Video', 'Questionnaire', 'Path'])
+    for (const name of ['Accordion', 'Callout', 'Image', 'Video', 'Questionnaire', 'Path'])
       expect(isFlowComponent(name)).toBe(true)
     for (const name of [
       'Scroll',

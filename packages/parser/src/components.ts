@@ -1,6 +1,7 @@
 import type { ContentNode, ImageNode, InlineNode } from '@scorm-cli/core'
 import type { AstNode, ContentSource } from './ast'
 import { parseAccordion } from './accordion'
+import { parseCallout } from './callout'
 import { parseImageComponent, parseVideo } from './media'
 import { parsePath } from './path'
 import { parseQuestionnaire } from './question'
@@ -48,6 +49,7 @@ const componentRegistry = {
   Slides: { contexts: ['root'] },
   Tiles: { contexts: ['root'] },
   Accordion: { contexts: ['flow'] },
+  Callout: { contexts: ['flow'] },
   Page: { contexts: ['presentation', 'path'] },
   Item: { contexts: ['presentation', 'accordion'] },
   Title: { contexts: ['accordion'] },
@@ -119,6 +121,7 @@ export const flowComponentHandlers = {
     ),
   Questionnaire: (node, context) => parseQuestionnaire(node, context.source),
   Accordion: parseAccordion,
+  Callout: parseCallout,
   Path: (node, context) => parsePath(node, context.source)
 } satisfies Record<FlowComponentName, FlowComponentParser>
 

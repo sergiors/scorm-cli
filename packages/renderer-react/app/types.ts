@@ -3,6 +3,8 @@ export type {
   AccordionNode,
   AggregateScore,
   AnswerValue,
+  CalloutNode,
+  CalloutVariant,
   ContentNode,
   ContentPackage,
   ImageNode,

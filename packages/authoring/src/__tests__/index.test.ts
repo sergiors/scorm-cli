@@ -5,6 +5,8 @@ import type {
   AccordionItemProps,
   AccordionProps,
   AuthoringComponentName,
+  CalloutProps,
+  CalloutVariant,
   ContentProps,
   ItemProps,
   OptionProps,
@@ -26,6 +28,7 @@ const markerNames: AuthoringComponentName[] = [
   'Slides',
   'Tiles',
   'Accordion',
+  'Callout',
   'Page',
   'Item',
   'Title',
@@ -84,6 +87,26 @@ describe('accordion authoring markers', () => {
       src: 'tile.mdx'
     }
     expect([openTileItem, referencedSection]).toHaveLength(2)
+  })
+})
+
+describe('callout authoring markers', () => {
+  it('types the Callout contract against the content AST variants', () => {
+    const plain = { children: null } satisfies CalloutProps
+    const variant = { variant: 'tip' } satisfies CalloutProps
+    const titled = { variant: 'danger', title: 'Heads up' } satisfies CalloutProps
+
+    expectTypeOf<CalloutVariant>().toEqualTypeOf<'note' | 'info' | 'tip' | 'warning' | 'danger'>()
+    expect([plain, variant, titled]).toHaveLength(3)
+  })
+
+  it('enforces Callout prop constraints at compile time', () => {
+    // @ts-expect-error <Callout variant> must be a supported callout variant.
+    const invalidVariant: CalloutProps = { variant: 'urgent' }
+    // @ts-expect-error <Callout title> must be a string.
+    const numericTitle: CalloutProps = { title: 42 }
+
+    expect([invalidVariant, numericTitle]).toHaveLength(2)
   })
 })
 

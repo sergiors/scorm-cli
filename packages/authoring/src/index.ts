@@ -19,6 +19,7 @@ export type AuthoringComponentName =
   | 'Slides'
   | 'Tiles'
   | 'Accordion'
+  | 'Callout'
   | 'Page'
   | 'Item'
   | 'Title'
@@ -81,6 +82,17 @@ export interface AccordionProps extends ContainerProps {
   multiple?: boolean
   /** Allow every section to be closed. Defaults to `false`. */
   collapsible?: boolean
+}
+
+/** Visual treatment accepted by `<Callout>`. */
+export type CalloutVariant = 'note' | 'info' | 'tip' | 'warning' | 'danger'
+
+/** Props for a presentation-only callout containing ordinary flow content. */
+export interface CalloutProps extends ContainerProps {
+  /** Visual treatment. Defaults to `note`. */
+  variant?: CalloutVariant
+  /** Optional heading displayed with the callout. */
+  title?: string
 }
 
 /** Props for `<Item src="..." />` in a root `<Tiles>` presentation. */
@@ -202,6 +214,11 @@ export function Tiles(_props: TilesProps): never {
 /** Block accordion. See {@link AccordionProps}. */
 export function Accordion(_props: AccordionProps): never {
   return authoringStub('Accordion')
+}
+
+/** Presentation-only callout. See {@link CalloutProps}. */
+export function Callout(_props: CalloutProps): never {
+  return authoringStub('Callout')
 }
 
 /** Page reference. See {@link PageProps}. */

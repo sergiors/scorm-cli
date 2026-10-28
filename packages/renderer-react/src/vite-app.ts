@@ -57,8 +57,8 @@ function presentationNodes(contentPackage: ContentPackage): Array<PageNode | Ite
  * only ever inspect questionnaires (ids, attempt cap, question types, option
  * values and correctness) and video ids; everything else is presentation and
  * travels with the node's lazily loaded module. Nesting containers that locate
- * those nodes — lists, quotes and accordions — are preserved so the shared core
- * helpers can reach them. Keeping this summary in the initial package
+ * those nodes — lists, quotes, callouts and accordions — are preserved so the
+ * shared core helpers can reach them. Keeping this summary in the initial package
  * means no page or item body lands in the entry chunk, while the shared core
  * helpers keep operating on ordinary content nodes.
  *
@@ -100,6 +100,9 @@ function semanticNodeContent(content: readonly ContentNode[]): ContentNode[] {
           }
           break
         case 'quote':
+          visit(node.children)
+          break
+        case 'callout':
           visit(node.children)
           break
         case 'accordion':

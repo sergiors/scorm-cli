@@ -53,7 +53,8 @@ function createShuffleSeed(): number {
 /**
  * Whether any authored questionnaire opts into option shuffling. The traversal
  * ignores unknown runtime node types instead of throwing, so malformed content
- * still reaches the renderer's own explicit error.
+ * still reaches the renderer's own explicit error. Callout, quote and accordion
+ * containers are traversed because a questionnaire may be nested inside them.
  */
 function packageHasShuffledQuestionnaires(contentPackage: ContentPackage): boolean {
   const visit = (nodes: ReadonlyArray<ContentNode | InlineContentNode>): boolean => {
@@ -66,6 +67,9 @@ function packageHasShuffledQuestionnaires(contentPackage: ContentPackage): boole
           if (node.items.some((item) => visit(item.children))) return true
           break
         case 'quote':
+          if (visit(node.children)) return true
+          break
+        case 'callout':
           if (visit(node.children)) return true
           break
         case 'accordion':

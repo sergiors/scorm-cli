@@ -2,7 +2,7 @@
 title: Welcome to TypeScript
 ---
 
-import { Path, Page, Image, Video } from 'scorm-cli/authoring'
+import { Path, Page, Image, Video, Callout } from 'scorm-cli/authoring'
 
 # JavaScript, with useful guarantees
 
@@ -55,3 +55,75 @@ Follow these pages in order. Later lessons unlock as you visit each page.
   <Page ref="lessons/knowledge-check.mdx" />
   <Page ref="lessons/terms-check.mdx" />
 </Path>
+
+
+## TypeScript Callout Examples
+
+### Note — Additional information
+
+<Callout variant="note">
+  TypeScript is a superset of JavaScript. Any valid JavaScript code is also valid TypeScript syntax, making it easy to adopt TypeScript gradually in existing projects.
+</Callout>
+
+### Info — Understanding TypeScript
+
+<Callout variant="info" title="TypeScript runs as JavaScript">
+  Browsers don't execute TypeScript directly. TypeScript code is compiled into JavaScript before execution.
+
+  ```ts
+  const message: string = 'Hello, TypeScript!'
+  console.log(message)
+  ```
+
+  During compilation, type annotations are removed, producing standard JavaScript.
+</Callout>
+
+### Tip — Best practices
+
+<Callout variant="tip" title="Let TypeScript infer types">
+  You don't always need to declare types explicitly. TypeScript can infer them automatically from assigned values.
+
+  ```ts
+  const name = 'Ada'
+  const age = 28
+  const isActive = true
+  ```
+
+  **Best practice:** Use type inference for simple variables and explicit types when they improve readability or define important contracts.
+</Callout>
+
+### Warning — Common mistakes
+
+<Callout variant="warning">
+  **Avoid using `any` unnecessarily.**
+
+  The `any` type disables type checking for a value, allowing operations that might fail at runtime.
+
+  ```ts
+  let value: any = 'Hello'
+  value.toFixed(2) // Runtime error!
+  ```
+
+  Prefer `unknown` when the type is not yet known, and narrow it before performing operations.
+</Callout>
+
+### Danger — Security risks
+
+<Callout variant="danger" title="Type safety is not runtime validation">
+  TypeScript types do not validate data received from external sources.
+
+  **Never assume API responses are safe just because you've assigned them a TypeScript type.**
+
+  ```ts
+  type User = {
+    id: number
+    name: string
+  }
+
+  const user = JSON.parse(response) as User
+  ```
+
+  The `as User` assertion does not verify the actual data structure.
+
+  Always validate untrusted input at runtime before using it in security-sensitive operations.
+</Callout>
