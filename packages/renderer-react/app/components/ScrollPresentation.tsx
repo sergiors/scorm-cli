@@ -227,7 +227,8 @@ export function ScrollPresentation({ pages, contentProvider }: ScrollPresentatio
       if (
         !restoringRef.current ||
         currentTarget === null ||
-        (!isLoadedRef.current(currentTarget.pageId) && !hasErrorRef.current(currentTarget.pageId)) ||
+        (!isLoadedRef.current(currentTarget.pageId) &&
+          !hasErrorRef.current(currentTarget.pageId)) ||
         !hasReadingPage(currentTarget.pageId)
       ) {
         return

@@ -72,12 +72,6 @@
   --animate-accordion-up: accordion-up 0.2s ease-out;
 }
 
-/*
- * Base UI exposes the measured panel height as `--accordion-panel-height` on
- * the panel and drives open/closed through `data-open`/`data-closed`. Animating
- * to that variable keeps the accordion smooth without JS height bookkeeping,
- * and each toggle starts from the measured height instead of accumulating.
- */
 @keyframes accordion-down {
   from {
     height: 0;
@@ -123,5 +117,13 @@
   button:not(:disabled),
   [role='button']:not(:disabled) {
     cursor: pointer;
+  }
+}
+
+@layer components {
+  .prose > [data-slot='callout'],
+  .prose > [data-slot='questionnaire'],
+  .prose > [data-slot='accordion'] {
+    margin-block: 1.5rem;
   }
 }
