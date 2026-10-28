@@ -140,7 +140,9 @@ export function submittedChoiceClassName(result: SubmittedOptionResult): string 
 /**
  * The submitted summary shared by both presentations. Without a pending result
  * this renders the read-only latest result. While a submitted result is
- * still open, Try Again and Complete sit adjacent inside the summary card.
+ * still open, Try Again and Complete sit adjacent inside the summary card. An
+ * unlimited attempt allowance renders the plain retry label, never an infinite
+ * or negative remaining count.
  */
 export function QuestionnaireSubmissionResult({
   correct,
@@ -170,7 +172,14 @@ export function QuestionnaireSubmissionResult({
               data-slot="questionnaire-retry"
               onClick={onRetry}
             >
-              <FormattedMessage id="questionnaire.tryAgain" values={{ count: attemptsRemaining }} />
+              {Number.isFinite(attemptsRemaining) && attemptsRemaining > 0 ? (
+                <FormattedMessage
+                  id="questionnaire.tryAgain"
+                  values={{ count: attemptsRemaining }}
+                />
+              ) : (
+                <FormattedMessage id="content.retry" />
+              )}
             </Button>
           ) : null}
           {onComplete ? (

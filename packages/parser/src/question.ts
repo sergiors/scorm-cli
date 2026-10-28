@@ -313,10 +313,10 @@ export async function parseQuestionnaire(
     values.maxAttempts !== undefined &&
     (typeof values.maxAttempts !== 'number' ||
       !Number.isSafeInteger(values.maxAttempts) ||
-      values.maxAttempts <= 0)
+      (values.maxAttempts !== -1 && values.maxAttempts <= 0))
   ) {
     throw new Error(
-      `${sourceLocation(file, node)}: Questionnaire "maxAttempts" must be a positive integer`
+      `${sourceLocation(file, node)}: Questionnaire "maxAttempts" must be a positive integer or -1`
     )
   }
 

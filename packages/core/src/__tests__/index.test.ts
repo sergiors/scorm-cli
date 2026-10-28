@@ -756,6 +756,65 @@ describe('aggregate questionnaire score', () => {
     ).toBeUndefined()
   })
 
+  it('treats an unlimited -1 cap as a history with no length limit', () => {
+    const content: ContentPackage = {
+      metadata: { title: 'Unlimited retries' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'page',
+            source: 'page.mdx',
+            metadata: { title: 'Page' },
+            content: [
+              {
+                ...questionnaire('quiz', [
+                  question('repeat', 'single-choice', ['right', 'wrong'], ['right']),
+                  question('choice', 'multiple-choice', ['a', 'b'], ['a'])
+                ]),
+                maxAttempts: -1
+              }
+            ]
+          }
+        ]
+      }
+    }
+    const stateFor = (page: PlayerState['pages'][string]): PlayerState => ({
+      pages: { page }
+    })
+
+    // A completed unlimited questionnaire scores its best recorded attempt even
+    // when the history is far longer than any finite cap would allow.
+    expect(
+      getAggregateQuestionnaireScore(
+        content,
+        stateFor({
+          completedQuestionnaires: ['quiz'],
+          questionnaireAttempts: { quiz: [0, 1, 0, 1, 0, 2] }
+        })
+      )
+    ).toEqual({ earned: 2, possible: 2 })
+
+    // The per-entry point bound still applies: a completed unlimited history
+    // holding only impossible counts earns nothing. With no possible points
+    // left the aggregate is not reported at all.
+    expect(
+      getAggregateQuestionnaireScore(
+        content,
+        stateFor({ completedQuestionnaires: ['quiz'], questionnaireAttempts: { quiz: [1.5, -1] } })
+      )
+    ).toBeUndefined()
+
+    // Without the completed marker the unlimited history is never a score.
+    expect(
+      getAggregateQuestionnaireScore(
+        content,
+        stateFor({ questionnaireAttempts: { quiz: [2, 2, 2] } })
+      )
+    ).toBeUndefined()
+  })
+
   it('excludes a pending retry-enabled questionnaire from earned and possible', () => {
     const retryable: QuestionnaireNode = {
       ...questionnaire('quiz', [

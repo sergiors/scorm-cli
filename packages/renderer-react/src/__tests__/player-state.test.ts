@@ -604,6 +604,90 @@ describe('sanitizePlayerState attempt history', () => {
     })
     expect(state.pages['page:intro.mdx']?.completedQuestionnaires).toBeUndefined()
   })
+
+  describe('unlimited -1 attempt cap', () => {
+    /** An unlimited-cap questionnaire: restore keeps every recorded attempt. */
+    const unlimitedQuestionnaire: QuestionnaireNode = { ...questionnaireNode, maxAttempts: -1 }
+
+    function unlimitedPackage(): ContentPackage {
+      const page: PageNode = {
+        type: 'page',
+        id: 'page:intro.mdx',
+        source: 'intro.mdx',
+        metadata: { title: 'Introduction' },
+        content: [unlimitedQuestionnaire]
+      }
+      return { metadata: { title: 'Attempts' }, presentation: { type: 'scroll', pages: [page] } }
+    }
+
+    it('restores a pending unlimited submission with every recorded attempt', () => {
+      const state = sanitizePlayerState(unlimitedPackage(), {
+        pages: {
+          'page:intro.mdx': {
+            visited: true,
+            // Six attempts exceed any finite cap, yet the unlimited cap keeps
+            // them exactly as recorded and restores the pending submission.
+            questionnaireAttempts: { [unlimitedQuestionnaire.id]: [0, 1, 2, 0, 1, 2] },
+            answers: { [single.id]: 'first' }
+          }
+        }
+      })
+
+      expect(state.pages['page:intro.mdx']).toEqual({
+        visited: true,
+        answers: { [single.id]: 'first' },
+        submittedQuestionnaires: [unlimitedQuestionnaire.id],
+        questionnaireAttempts: { [unlimitedQuestionnaire.id]: [0, 1, 2, 0, 1, 2] }
+      })
+    })
+
+    it('keeps an unlimited in-progress retry pending after a refresh', () => {
+      const state = sanitizePlayerState(unlimitedPackage(), {
+        pages: {
+          'page:intro.mdx': {
+            visited: true,
+            completed: true,
+            activeQuestionnaireRetries: [unlimitedQuestionnaire.id],
+            // A long retried history never blocks the retry marker: an
+            // unlimited cap always leaves another attempt, so the restored
+            // result stays pending and the stale page completion is dropped.
+            questionnaireAttempts: { [unlimitedQuestionnaire.id]: [0, 2, 1, 0] }
+          }
+        }
+      })
+
+      expect(state.pages['page:intro.mdx']).toEqual({
+        visited: true,
+        questionnaireAttempts: { [unlimitedQuestionnaire.id]: [0, 2, 1, 0] },
+        activeQuestionnaireRetries: [unlimitedQuestionnaire.id]
+      })
+    })
+
+    it('restores a completed unlimited result and drops its stale retry', () => {
+      const state = sanitizePlayerState(unlimitedPackage(), {
+        pages: {
+          'page:intro.mdx': {
+            visited: true,
+            completed: true,
+            completedQuestionnaires: [unlimitedQuestionnaire.id],
+            activeQuestionnaireRetries: [unlimitedQuestionnaire.id],
+            questionnaireAttempts: { [unlimitedQuestionnaire.id]: [0, 1, 2, 1] }
+          }
+        }
+      })
+
+      // A completed questionnaire can never be retried, unlimited or not: the
+      // stale marker is dropped while the long history and the persisted page
+      // completion are restored as saved.
+      expect(state.pages['page:intro.mdx']).toEqual({
+        visited: true,
+        completed: true,
+        questionnaireAttempts: { [unlimitedQuestionnaire.id]: [0, 1, 2, 1] },
+        completedQuestionnaires: [unlimitedQuestionnaire.id],
+        submittedQuestionnaires: [unlimitedQuestionnaire.id]
+      })
+    })
+  })
 })
 
 describe('player state updates', () => {

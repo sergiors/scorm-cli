@@ -112,7 +112,7 @@ export interface QuestionnaireProps extends ContainerProps {
   contributesToScore?: boolean
   /** Whether to reveal correct answers after submission. Defaults to `true`. */
   revealCorrectAnswers?: boolean
-  /** Maximum number of submission attempts. Defaults to 1. Must be a positive integer. */
+  /** Maximum submission attempts. Defaults to 1; use -1 for unlimited, otherwise a positive integer. */
   maxAttempts?: number
   /**
    * Whether to show every question at once instead of one at a time. Expanded

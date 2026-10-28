@@ -152,8 +152,9 @@ function QuestionnaireQuestion({
  *
  * A submitted result with attempts left stays open after submission: the summary
  * shows the latest recorded attempt and offers Try Again or Complete.
- * Completion is automatic on a perfect result or an exhausted cap, and a
- * completed result stays submitted and reviewable without either action.
+ * Completion is automatic on a perfect result or an exhausted finite cap, while
+ * an unlimited cap keeps offering retries until the learner completes manually.
+ * A completed result stays submitted and reviewable without either action.
  */
 export function ExpandedQuestionnaire({ node }: { node: QuestionnaireNode }) {
   const intl = useIntl()

@@ -411,10 +411,10 @@ function scoreQuestionnaire(
   if (
     !pageState?.completedQuestionnaires?.includes(questionnaire.id) ||
     !Number.isSafeInteger(questionnaire.maxAttempts) ||
-    questionnaire.maxAttempts < 1 ||
+    (questionnaire.maxAttempts !== -1 && questionnaire.maxAttempts < 1) ||
     !Array.isArray(history) ||
     history.length === 0 ||
-    history.length > questionnaire.maxAttempts
+    (questionnaire.maxAttempts !== -1 && history.length > questionnaire.maxAttempts)
   ) {
     return { earned: 0, possible: 0 }
   }

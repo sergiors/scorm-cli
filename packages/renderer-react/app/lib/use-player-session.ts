@@ -17,6 +17,7 @@ import {
   arePackageQuestionnairesComplete,
   arePageQuestionnairesComplete,
   findAuthoredQuestionnaire,
+  hasUnlimitedQuestionnaireAttempts,
   questionnaireAttemptsRemaining
 } from './questionnaire-completion'
 import { getQuestionnaireResult } from './questionnaire'
@@ -101,11 +102,11 @@ export interface PlayerSession {
    * Records a successful questionnaire submission from the latest page answers.
    * The canonical result is evaluated inside the state transition, so a stale
    * render-time score can never be recorded. Appends exactly one correct-answer
-   * count to the attempt history (never beyond the authored cap), marks the
+   * count to the attempt history (never beyond a finite authored cap), marks the
    * questionnaire submitted, and clears any active retry. The same write
-   * completes the result when every question is correct or no attempt remains;
-   * an imperfect result with attempts left stays pending until the learner
-   * completes it manually.
+   * completes the result when every question is correct or a finite cap has no
+   * attempt left; an unlimited cap never completes automatically on an imperfect
+   * result, which stays pending until the learner completes it manually.
    */
   markQuestionnaireSubmitted(pageId: string, questionnaireId: string): void
   /**
@@ -312,13 +313,16 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
   // canonical result is evaluated from the exact `page.answers` inside the
   // transition, so the recorded count and the completion decision can never
   // come from a stale render closure. Exactly one attempt is appended, never
-  // beyond the authored cap, and an active retry is cleared in the same write.
+  // beyond a finite authored cap, and an active retry is cleared in the same
+  // write. An unlimited cap never blocks a submission or completes an imperfect
+  // result on exhaustion.
   const markQuestionnaireSubmitted = useCallback(
     (pageId: string, questionnaireId: string) => {
       const authored = findAuthoredQuestionnaire(contentPackage, pageId, questionnaireId)
       if (!authored) {
         return
       }
+      const hasUnlimitedAttempts = hasUnlimitedQuestionnaireAttempts(authored)
 
       applyState((previous) =>
         updatePageState(previous, pageId, (page) => {
@@ -328,7 +332,7 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
           }
 
           const history = page.questionnaireAttempts?.[questionnaireId] ?? []
-          if (history.length >= authored.maxAttempts) {
+          if (!hasUnlimitedAttempts && history.length >= authored.maxAttempts) {
             return page
           }
 
@@ -336,7 +340,7 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
           const nextHistory = [...history, result.correct]
           const isComplete =
             result.correct === result.total ||
-            questionnaireAttemptsRemaining(authored, nextHistory) === 0
+            (!hasUnlimitedAttempts && questionnaireAttemptsRemaining(authored, nextHistory) === 0)
           const nextPage = {
             ...page,
             submittedQuestionnaires: [...submitted, questionnaireId],
@@ -382,6 +386,7 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
       if (!authored) {
         return
       }
+      const hasUnlimitedAttempts = hasUnlimitedQuestionnaireAttempts(authored)
 
       applyState((previous) =>
         updatePageState(previous, pageId, (page) => {
@@ -392,7 +397,7 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
           if (
             !submitted.includes(questionnaireId) ||
             completed.includes(questionnaireId) ||
-            questionnaireAttemptsRemaining(authored, history) === 0 ||
+            (!hasUnlimitedAttempts && questionnaireAttemptsRemaining(authored, history) === 0) ||
             retries.includes(questionnaireId)
           ) {
             return page

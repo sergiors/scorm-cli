@@ -129,8 +129,8 @@ What the compact data does and does not preserve:
   indexes, video positions are integer deciseconds, and `q` values are arrays of
   correct-question counts for completed submissions, correct or not, in
   submission order. The array length is the number of consumed submissions;
-  each count is bounded by the questionnaire's question count and authored
-  `maxAttempts`.
+  each count is bounded by the questionnaire's question count, and history
+  length is bounded by authored `maxAttempts` unless it is `-1` (unlimited).
   An `r` value of `1` marks a questionnaire currently being retried and is only
   restored when its history leaves an attempt available. A `c` value of `1`
   records completion separately from submitted status; it is encoded only
@@ -166,7 +166,8 @@ What the compact data does and does not preserve:
   separately from submitted status. The codec restores it only from a valid `c`
   marker paired with valid `q` history; it never infers completion from history,
   submission status, or an active retry marker. Completion happens automatically
-  after a perfect submission or when the learner exhausts the attempt allowance;
+  after a perfect submission or, for a finite allowance, when the learner
+  exhausts the attempt allowance;
   the learner can also complete a submitted result manually before then.
 - Completion gates node completion separately from submission and node progress.
   A Scroll/Slides page cannot remain or become completed while any questionnaire
@@ -182,8 +183,9 @@ What the compact data does and does not preserve:
   its best submitted correct-count result. The UI summary shows the latest submitted
   attempt, which can differ from the best attempt used by the aggregate.
   The parser normalizes `maxAttempts` to a required numeric value, defaulting to
-  `1`; completion is automatic after a perfect submission or attempt exhaustion,
-  and can be manually selected earlier. `contributesToScore={false}` questionnaires
+  `1`; `-1` means unlimited attempts. Completion is automatic after a perfect
+  submission or finite attempt exhaustion, and can be manually selected earlier.
+  `contributesToScore={false}` questionnaires
   remain excluded. The separate SCORM bridge reports the aggregate through
   `setScore` and version-specific CMI score fields.
 
@@ -315,9 +317,10 @@ not directly encode submitted status, and `q` history without `c` never implies
 completion. The renderer separately infers submitted status from valid history.
 Once completed, the aggregate uses the best submitted history, while the UI
 summary displays the latest submitted attempt. `maxAttempts` is normalized to a
-required number with default `1`; even then, completion follows a perfect
-submission or attempt exhaustion (which occurs on the first submission), and
-manual completion is available earlier when more attempts remain.
+required number with default `1`; `-1` means unlimited attempts. Completion
+follows a perfect submission or finite attempt exhaustion (which occurs on the
+first submission when the limit is `1`), and manual completion is available
+before exhaustion.
 
 ### Video positions
 
@@ -404,8 +407,9 @@ In generated JSON, the outer page keys are stringified page/item indexes; nested
 question, option, questionnaire, and page-local video keys are likewise
 stringified indexes. Question and questionnaire collection walk nested block
 content in document order. Each questionnaire entry retains its stable semantic
-ID, normalized numeric `maxAttempts` (default `1`), and question count, allowing
-the codec to validate history length and correct-count bounds. Each question
+ID, normalized numeric `maxAttempts` (default `1`, or `-1` for unlimited), and
+question count, allowing the codec to validate finite history limits and
+correct-count bounds. Each question
 includes the semantic values of its correct options. Each page/item may include a `videos`
 record keyed by deterministic traversal-order video index (`"0"`, `"1"`, ...);
 each static `{ id, src, provider }` entry retains its semantic `id`. Nesting

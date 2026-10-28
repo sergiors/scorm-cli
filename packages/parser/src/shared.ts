@@ -61,6 +61,10 @@ function parseStaticAttributeValue(
     return false
   }
 
+  if (name === 'maxAttempts' && value.value === '-1') {
+    return -1
+  }
+
   if (/^\d+$/.test(value.value)) {
     return Number(value.value)
   }

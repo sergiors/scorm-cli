@@ -484,6 +484,100 @@ describe('suspend-data codec integration', () => {
     })
   })
 
+  it('matches browser and Node codecs for unlimited attempt histories', () => {
+    // An authored cap of -1 grants unlimited attempts, so both runtimes must
+    // keep long histories and always leave the questionnaire retryable.
+    const unlimitedManifest = structuredClone(manifest)
+    unlimitedManifest.pages['3']!.questionnaires!['0']!.maxAttempts = -1
+    unlimitedManifest.pages['4']!.questionnaires!['0']!.maxAttempts = -1
+
+    // quiz-3 is mid-retry with a long history; quiz-4 completed its own long
+    // history while a stale retry marker sits beside the completion.
+    const retrying: PlayerState = {
+      pages: {
+        'page-3': {
+          visited: true,
+          questionnaireAttempts: { 'quiz-3': [2, 1, 0, 2, 1, 2] },
+          activeQuestionnaireRetries: ['quiz-3']
+        },
+        'page-4': {
+          questionnaireAttempts: { 'quiz-4': [1, 0, 1, 1] },
+          completedQuestionnaires: ['quiz-4'],
+          activeQuestionnaireRetries: ['quiz-4']
+        }
+      }
+    }
+
+    const context: Record<string, unknown> = {}
+    vm.createContext(context)
+    vm.runInContext(browserCodecSource(), context)
+    const browserEncode = context.compactEncode as (
+      manifest: unknown,
+      state: unknown,
+      progress: number
+    ) => string
+    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState
+
+    const encoded = encodeSuspendData(unlimitedManifest, retrying, 0)
+    expect(encoded).toEqual({
+      v: 1,
+      p: 0,
+      x: '00010',
+      d: { '3.q.0': [2, 1, 0, 2, 1, 2], '3.r.0': 1, '4.q.0': [1, 0, 1, 1], '4.c.0': 1 }
+    })
+    expect(JSON.parse(browserEncode(unlimitedManifest, retrying, 0))).toEqual(encoded)
+
+    const payload = JSON.stringify({
+      v: 1,
+      p: 0,
+      x: '00010',
+      d: {
+        '3.q.0': [2, 1, 0, 2, 1, 2],
+        '3.r.0': 1,
+        '4.q.0': [1, 0, 1, 1],
+        '4.c.0': 1,
+        // A completed questionnaire is never retried, unlimited or not, so
+        // this stale flag restores nothing.
+        '4.r.0': 1
+      }
+    })
+    const nodeRestored = decodeSuspendData(unlimitedManifest, payload)
+    expect(nodeRestored).toEqual({
+      pages: {
+        'page-3': {
+          visited: true,
+          questionnaireAttempts: { 'quiz-3': [2, 1, 0, 2, 1, 2] },
+          activeQuestionnaireRetries: ['quiz-3']
+        },
+        'page-4': {
+          questionnaireAttempts: { 'quiz-4': [1, 0, 1, 1] },
+          completedQuestionnaires: ['quiz-4']
+        }
+      }
+    })
+    expect(normalize(browserDecode(unlimitedManifest, payload))).toEqual(nodeRestored)
+
+    // Both runtimes also agree on rejecting impossible counts: the unlimited
+    // cap removes only the history-length bound, never the per-entry one.
+    const malformed = JSON.stringify({
+      v: 1,
+      p: 0,
+      x: '00010',
+      d: {
+        '3.q.0': [1, 3], // quiz-3 has two questions, so 3 exceeds the count.
+        '4.q.0': [2], // quiz-4 has one question, so 2 exceeds the count.
+        '3.z.0': 1
+      }
+    })
+    expect(normalize(browserDecode(unlimitedManifest, malformed))).toEqual(
+      decodeSuspendData(unlimitedManifest, malformed)
+    )
+    // The visited bitmap still restores page-3; only the data keys are gone.
+    expect(decodeSuspendData(unlimitedManifest, malformed)).toEqual({
+      pages: { 'page-3': { visited: true } }
+    })
+  })
+
   it('matches browser and Node codecs for completed questionnaire markers', () => {
     const finalizingManifest = structuredClone(manifest)
     finalizingManifest.pages['3']!.questionnaires!['0']!.maxAttempts = 3

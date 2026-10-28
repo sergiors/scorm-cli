@@ -919,11 +919,13 @@ describe('parsePackage', () => {
     }
   })
 
-  it('defaults maxAttempts to 1 when not authored and accepts only positive integer literals', async () => {
+  it('defaults maxAttempts to 1, accepts finite caps and unlimited -1, and rejects invalid literals', async () => {
     for (const [attribute, expected] of [
       ['', 1],
       [' maxAttempts={1}', 1],
-      [' maxAttempts={3}', 3]
+      [' maxAttempts={3}', 3],
+      // -1 opts the questionnaire in to an unlimited attempt allowance.
+      [' maxAttempts={-1}', -1]
     ] as const) {
       const root = await makeLesson(
         `<Questionnaire${attribute}><Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>`
@@ -936,12 +938,12 @@ describe('parsePackage', () => {
     }
 
     for (const [attribute, error] of [
-      [' maxAttempts', /Questionnaire "maxAttempts" must be a positive integer/],
+      [' maxAttempts', /Questionnaire "maxAttempts" must be a positive integer or -1/],
       // A string value keeps the attribute unusable as an attempt cap.
-      [' maxAttempts="3"', /Questionnaire "maxAttempts" must be a positive integer/],
-      [' maxAttempts={true}', /Questionnaire "maxAttempts" must be a positive integer/],
+      [' maxAttempts="3"', /Questionnaire "maxAttempts" must be a positive integer or -1/],
+      [' maxAttempts={true}', /Questionnaire "maxAttempts" must be a positive integer or -1/],
       // Zero is a parsed numeric literal, but an attempt cap must be at least 1.
-      [' maxAttempts={0}', /Questionnaire "maxAttempts" must be a positive integer/],
+      [' maxAttempts={0}', /Questionnaire "maxAttempts" must be a positive integer or -1/],
       [' maxAttempts={dynamic}', /dynamic value for attribute "maxAttempts" is not supported/],
       // Non-integer numeric literals are never treated as a supported dynamic value.
       [' maxAttempts={1.5}', /dynamic value for attribute "maxAttempts" is not supported/],

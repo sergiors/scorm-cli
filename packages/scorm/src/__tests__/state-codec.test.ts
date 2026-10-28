@@ -828,6 +828,32 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
                   options: [{ value: 'yes', correct: false, content: '' }]
                 }
               ]
+            },
+            {
+              // The authored cap of -1 grants unlimited submissions, so no
+              // history length can exceed it.
+              type: 'questionnaire',
+              id: 'quiz-u',
+              contributesToScore: true,
+              revealCorrectAnswers: true,
+              maxAttempts: -1,
+              shuffleOptions: false,
+              questions: [
+                {
+                  type: 'question',
+                  id: 'qu1',
+                  questionType: 'single-choice',
+                  prompt: '',
+                  options: [{ value: 'yes', correct: true, content: '' }]
+                },
+                {
+                  type: 'question',
+                  id: 'qu2',
+                  questionType: 'single-choice',
+                  prompt: '',
+                  options: [{ value: 'yes', correct: false, content: '' }]
+                }
+              ]
             }
           ]
         },
@@ -948,6 +974,123 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
         0
       )
     ).toEqual({ v: 1, p: 0, x: '00' })
+  })
+
+  it('encodes unlimited histories without a length cap and keeps their retry flag', () => {
+    const encoded = encodeSuspendData(
+      attemptManifest,
+      {
+        pages: {
+          alpha: {
+            visited: true,
+            // Six entries far exceed any finite cap, yet quiz-u is unlimited.
+            questionnaireAttempts: { 'quiz-u': [1, 0, 2, 1, 0, 1] },
+            // An unlimited cap always leaves another attempt, so the retry
+            // flag persists beside the long history.
+            activeQuestionnaireRetries: ['quiz-u']
+          }
+        }
+      },
+      0
+    )
+    expect(encoded).toEqual({
+      v: 1,
+      p: 0,
+      x: '10',
+      d: { '0.q.2': [1, 0, 2, 1, 0, 1], '0.r.2': 1 }
+    })
+
+    // The per-entry point bound still applies under an unlimited cap: a count
+    // above quiz-u's question count makes the history unusable.
+    const overCount = encodeSuspendData(
+      attemptManifest,
+      { pages: { alpha: { questionnaireAttempts: { 'quiz-u': [0, 3] } } } },
+      0
+    )
+    expect(overCount.d?.['0.q.2']).toBeUndefined()
+  })
+
+  it('encodes unlimited completion markers and never their retry flag', () => {
+    const encoded = encodeSuspendData(
+      attemptManifest,
+      {
+        pages: {
+          alpha: {
+            visited: true,
+            questionnaireAttempts: { 'quiz-u': [2, 1, 0, 2, 1] },
+            completedQuestionnaires: ['quiz-u'],
+            // A completed questionnaire can no longer be retried, unlimited
+            // or not, so beside the completion no r key may persist.
+            activeQuestionnaireRetries: ['quiz-u']
+          }
+        }
+      },
+      0
+    )
+    expect(encoded).toEqual({
+      v: 1,
+      p: 0,
+      x: '10',
+      d: { '0.q.2': [2, 1, 0, 2, 1], '0.c.2': 1 }
+    })
+
+    const restored = decodeSuspendData(attemptManifest, JSON.stringify(encoded))
+    expect(restored).toEqual({
+      pages: {
+        alpha: {
+          visited: true,
+          questionnaireAttempts: { 'quiz-u': [2, 1, 0, 2, 1] },
+          completedQuestionnaires: ['quiz-u']
+        }
+      }
+    })
+    // The completion round-trips back into the very same payload.
+    expect(encodeSuspendData(attemptManifest, restored, 0)).toEqual(encoded)
+  })
+
+  it('restores unlimited histories with the retry available beyond any finite cap', () => {
+    const restored = decodeSuspendData(attemptManifest, {
+      v: 1,
+      p: 0,
+      x: '10',
+      d: {
+        // Six entries far exceed quiz-a's cap of three, but quiz-u is
+        // unlimited, so its long history restores under its semantic id.
+        '0.q.2': [1, 0, 2, 1, 0, 2],
+        // An unlimited cap always leaves another attempt, so the retry marker
+        // is restored and the questionnaire stays editable.
+        '0.r.2': 1,
+        // quiz-a keeps its finite cap: five entries exceed it and the whole
+        // entry restores nothing.
+        '0.q.0': [1, 0, 1, 0, 0]
+      }
+    })
+    expect(restored).toEqual({
+      pages: {
+        alpha: {
+          visited: true,
+          questionnaireAttempts: { 'quiz-u': [1, 0, 2, 1, 0, 2] },
+          activeQuestionnaireRetries: ['quiz-u']
+        }
+      }
+    })
+
+    // A stale retry beside a completed unlimited questionnaire is dropped.
+    const completed = decodeSuspendData(attemptManifest, {
+      v: 1,
+      p: 0,
+      x: '10',
+      d: { '0.q.2': [1], '0.c.2': 1, '0.r.2': 1 }
+    })
+    expect(completed).toEqual({
+      pages: {
+        alpha: {
+          visited: true,
+          questionnaireAttempts: { 'quiz-u': [1] },
+          completedQuestionnaires: ['quiz-u']
+        }
+      }
+    })
   })
 
   it('skips histories that violate the attempt bounds instead of clamping them', () => {

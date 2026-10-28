@@ -7,15 +7,27 @@ import type {
 } from '../types'
 import { collectQuestionnaires, getPresentationNodes } from './content-helpers'
 
+/** The authored cap that grants an unbounded number of submissions. */
+const UNLIMITED_ATTEMPTS = -1
+
+/** Whether the authored questionnaire accepts an unbounded number of attempts. */
+export function hasUnlimitedQuestionnaireAttempts(questionnaire: QuestionnaireNode): boolean {
+  return questionnaire.maxAttempts === UNLIMITED_ATTEMPTS
+}
+
 /**
- * How many successful submissions the learner can still make. The authored cap
- * is always present, so the remaining count is derived from the recorded
- * history alone.
+ * How many successful submissions the learner can still make. A finite cap
+ * derives the remaining count from the recorded history alone. An unlimited cap
+ * is represented as positive infinity, so eligibility checks keep working while
+ * callers render a plain retry label instead of the raw number.
  */
 export function questionnaireAttemptsRemaining(
   questionnaire: QuestionnaireNode,
   attempts: readonly number[]
 ): number {
+  if (hasUnlimitedQuestionnaireAttempts(questionnaire)) {
+    return Number.POSITIVE_INFINITY
+  }
   return Math.max(0, questionnaire.maxAttempts - attempts.length)
 }
 

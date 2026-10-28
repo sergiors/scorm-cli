@@ -36,6 +36,10 @@ function createSuspendDataCodec() {
     Number(value) >= 0 &&
     String(Number(value)) === value
   const safeVideoIndex = (value: string): boolean => safeKey(value) && canonicalIndex(value)
+  const validMaxAttempts = (value: number): boolean =>
+    Number.isSafeInteger(value) && (value === -1 || value >= 1)
+  const withinAttemptLimit = (historyLength: number, maxAttempts: number): boolean =>
+    maxAttempts === -1 || historyLength <= maxAttempts
 
   /** Builds the single flat data key for a manifest page/kind/entity. */
   const makeDataKey = (
@@ -138,12 +142,11 @@ function createSuspendDataCodec() {
         if (
           !questionnaire ||
           !safeKey(questionnaire.id) ||
-          !Number.isSafeInteger(questionnaire.maxAttempts) ||
-          questionnaire.maxAttempts < 1 ||
+          !validMaxAttempts(questionnaire.maxAttempts) ||
           !Number.isSafeInteger(questionnaire.questionCount) ||
           questionnaire.questionCount < 0 ||
           value.length === 0 ||
-          value.length > questionnaire.maxAttempts ||
+          !withinAttemptLimit(value.length, questionnaire.maxAttempts) ||
           !value.every(
             (count) =>
               typeof count === 'number' &&
@@ -170,15 +173,19 @@ function createSuspendDataCodec() {
       if (
         !questionnaire ||
         !safeKey(questionnaire.id) ||
-        !Number.isSafeInteger(questionnaire.maxAttempts) ||
-        questionnaire.maxAttempts < 1 ||
+        !validMaxAttempts(questionnaire.maxAttempts) ||
         !Number.isSafeInteger(questionnaire.questionCount) ||
         questionnaire.questionCount < 0
       ) {
         return
       }
       const history = fresh.pages[page.id]?.questionnaireAttempts?.[questionnaire.id]
-      if (!history || history.length === 0 || history.length > questionnaire.maxAttempts) return
+      if (
+        !history ||
+        history.length === 0 ||
+        !withinAttemptLimit(history.length, questionnaire.maxAttempts)
+      )
+        return
       const pageState = fresh.pages[page.id] ?? (fresh.pages[page.id] = {})
       const completed =
         pageState.completedQuestionnaires ?? (pageState.completedQuestionnaires = [])
@@ -186,12 +193,19 @@ function createSuspendDataCodec() {
     })
     retryCandidates.forEach(({ page, questionnaireIndex }) => {
       const questionnaire = page.questionnaires?.[questionnaireIndex]
-      if (!questionnaire || !safeKey(questionnaire.id)) return
+      if (
+        !questionnaire ||
+        !safeKey(questionnaire.id) ||
+        !validMaxAttempts(questionnaire.maxAttempts) ||
+        !Number.isSafeInteger(questionnaire.questionCount) ||
+        questionnaire.questionCount < 0
+      )
+        return
       const history = fresh.pages[page.id]?.questionnaireAttempts?.[questionnaire.id]
       if (
         !history ||
         history.length === 0 ||
-        history.length >= questionnaire.maxAttempts ||
+        (questionnaire.maxAttempts !== -1 && history.length >= questionnaire.maxAttempts) ||
         fresh.pages[page.id]?.completedQuestionnaires?.includes(questionnaire.id)
       ) {
         return
@@ -237,8 +251,7 @@ function createSuspendDataCodec() {
           !canonicalIndex(questionnaireIndex) ||
           !isRecord(questionnaire) ||
           !safeKey(questionnaire.id) ||
-          !Number.isSafeInteger(questionnaire.maxAttempts) ||
-          questionnaire.maxAttempts < 1 ||
+          !validMaxAttempts(questionnaire.maxAttempts) ||
           !Number.isSafeInteger(questionnaire.questionCount) ||
           questionnaire.questionCount < 0
         ) {
@@ -248,7 +261,7 @@ function createSuspendDataCodec() {
         if (
           !Array.isArray(history) ||
           history.length === 0 ||
-          history.length > questionnaire.maxAttempts ||
+          !withinAttemptLimit(history.length, questionnaire.maxAttempts) ||
           !history.every(
             (count) =>
               Number.isSafeInteger(count) && count >= 0 && count <= questionnaire.questionCount
@@ -262,7 +275,7 @@ function createSuspendDataCodec() {
           data[makeDataKey(pageIndex, 'c', questionnaireIndex)] = 1
         } else if (
           pageState?.activeQuestionnaireRetries?.includes(questionnaire.id) &&
-          history.length < questionnaire.maxAttempts
+          (questionnaire.maxAttempts === -1 || history.length < questionnaire.maxAttempts)
         ) {
           data[makeDataKey(pageIndex, 'r', questionnaireIndex)] = 1
         }

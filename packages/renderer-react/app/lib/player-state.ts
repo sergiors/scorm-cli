@@ -9,6 +9,7 @@ import type {
   ItemNode
 } from '../types'
 import { collectQuestionnaires, collectVideoNodes } from './content-helpers'
+import { hasUnlimitedQuestionnaireAttempts } from './questionnaire-completion'
 import { decodeReadingLocation, isReadingAnchorId } from './reading-location'
 
 /** A fresh player state with no location and no recorded pages. */
@@ -101,15 +102,22 @@ function sanitizePageState(
   }
 
   // Attempt histories are scoped to questionnaires this node actually owns and
-  // must stay within the authored cap and question count. A restored history is
-  // what lets a resumed questionnaire show Try Again only while attempts
-  // remain, so an out-of-range history is dropped rather than truncated.
+  // must stay within the authored cap and question count. An unlimited cap keeps
+  // every recorded attempt. A restored history is what lets a resumed
+  // questionnaire show Try Again only while attempts remain, so an out-of-range
+  // finite history is dropped rather than truncated.
   const attempts: Record<string, number[]> = {}
   if (isRecord(raw.questionnaireAttempts)) {
     for (const [questionnaireId, value] of Object.entries(raw.questionnaireAttempts)) {
       const questionnaire = questionnaireById.get(questionnaireId)
       if (!questionnaire || !Array.isArray(value)) continue
-      if (value.length === 0 || value.length > questionnaire.maxAttempts) continue
+      if (
+        value.length === 0 ||
+        (!hasUnlimitedQuestionnaireAttempts(questionnaire) &&
+          value.length > questionnaire.maxAttempts)
+      ) {
+        continue
+      }
       if (
         !value.every(
           (count) =>
@@ -127,8 +135,8 @@ function sanitizePageState(
   }
 
   // An in-progress retry is only meaningful with a recorded history that still
-  // has an attempt left. A completed questionnaire can never be retried, so its
-  // stale marker is dropped here.
+  // has an attempt left. An unlimited cap always has one. A completed
+  // questionnaire can never be retried, so its stale marker is dropped here.
   const retries = new Set<string>()
   if (Array.isArray(raw.activeQuestionnaireRetries)) {
     for (const questionnaireId of raw.activeQuestionnaireRetries) {
@@ -136,7 +144,13 @@ function sanitizePageState(
       const questionnaire = questionnaireById.get(questionnaireId)
       if (!questionnaire || completed.has(questionnaireId)) continue
       const history = attempts[questionnaireId]
-      if (!history || history.length >= questionnaire.maxAttempts) continue
+      if (
+        !history ||
+        (!hasUnlimitedQuestionnaireAttempts(questionnaire) &&
+          history.length >= questionnaire.maxAttempts)
+      ) {
+        continue
+      }
       retries.add(questionnaireId)
     }
   }
@@ -232,14 +246,15 @@ function sanitizePageState(
  * positions whose id no longer names a video authored on that page/item (or
  * whose value is not a finite, non-negative number). Attempt histories are
  * validated against the authored attempt cap and question count, and an active
- * retry survives only while its history still has an attempt left. A recorded
- * attempt restores its submitted result even though suspend data never encoded
- * submissions, while completion is restored only from its own field. Video
- * positions are scoped to the page/item that owns the video, so a video moved to
- * another node never retains a position under its old node. A persisted page
- * completion survives only when every authored questionnaire has completed its
- * result; an in-progress retry stays unsubmitted. A submitted questionnaire with
- * no legacy history is seeded with one score from its sanitized answers. The
+ * retry survives only while its history still has an attempt left. An unlimited
+ * cap keeps every recorded attempt and always leaves a retry available. A
+ * recorded attempt restores its submitted result even though suspend data never
+ * encoded submissions, while completion is restored only from its own field.
+ * Video positions are scoped to the page/item that owns the video, so a video
+ * moved to another node never retains a position under its old node. A persisted
+ * page completion survives only when every authored questionnaire has completed
+ * its result; an in-progress retry stays unsubmitted. A submitted questionnaire
+ * with no legacy history is seeded with one score from its sanitized answers. The
  * result is always a plain in-memory state — never the raw persisted object — so
  * the renderer can mutate it without touching whatever the bridge returned. A
  * persisted global shuffle seed is kept only when it is a non-negative safe
