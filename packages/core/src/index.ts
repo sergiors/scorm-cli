@@ -93,6 +93,7 @@ export type ContentNode =
   | ParagraphNode
   | ThematicBreakNode
   | ListNode
+  | TableNode
   | CodeNode
   | QuoteNode
   | ImageNode
@@ -150,6 +151,26 @@ export interface InlineContentNode {
 export interface ListItemNode {
   children: Array<ContentNode | InlineContentNode>
 }
+
+/** A Markdown table: a required header row followed by zero or more body rows. */
+export interface TableNode {
+  type: 'table'
+  header: TableRowNode
+  rows: TableRowNode[]
+}
+
+export interface TableRowNode {
+  cells: TableCellNode[]
+}
+
+/** One table cell; cells keep inline only, so formatting is shared with paragraphs. */
+export interface TableCellNode {
+  children: InlineNode[]
+  /** Column alignment declared by the Markdown delimiter row. */
+  align?: TableAlignment
+}
+
+export type TableAlignment = 'left' | 'center' | 'right'
 
 export interface CodeNode {
   type: 'code'
@@ -466,6 +487,7 @@ export function getAggregateQuestionnaireScore(
         case 'video':
         case 'path':
         case 'code':
+        case 'table':
         case 'thematicBreak':
           break
       }
@@ -528,6 +550,11 @@ export function collectAssetReferences(contentPackage: ContentPackage): string[]
         case 'quote':
           visitContent(node.children)
           break
+        case 'table':
+          for (const row of [node.header, ...node.rows]) {
+            for (const cell of row.cells) visitInline(cell.children)
+          }
+          break
         case 'questionnaire':
           break
         case 'path':
@@ -570,6 +597,7 @@ export function collectVideoNodes(
         case 'image':
         case 'path':
         case 'code':
+        case 'table':
         case 'thematicBreak':
           break
       }

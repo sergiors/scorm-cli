@@ -14,3 +14,33 @@ type Learner = {
 ```
 
 > An object type documents the expected fields and lets your editor offer accurate suggestions.
+
+## TypeScript Basic Types
+
+TypeScript provides several built-in types to help developers write safer and more predictable code.
+
+| Type        | Description                                     | Example                                    |
+| ----------- | ----------------------------------------------- | ------------------------------------------ |
+| `string`    | Represents textual values.                      | `const name: string = "Alice"`             |
+| `number`    | Represents integers and floating-point numbers. | `const age: number = 25`                   |
+| `boolean`   | Represents `true` or `false`.                   | `const isActive: boolean = true`           |
+| `string[]`  | Represents an array of strings.                 | `const colors: string[] = ["red", "blue"]` |
+| `object`    | Represents non-primitive values.                | `const user: object = { name: "Alice" }`   |
+| `unknown`   | Represents a value whose type is not yet known. | `let value: unknown = 42`                  |
+| `any`       | Disables type checking for a value.             | `let data: any = "Hello"`                  |
+| `void`      | Represents the absence of a return value.       | `function log(): void {}`                  |
+| `null`      | Represents an intentional absence of value.     | `const result: null = null`                |
+| `undefined` | Represents a value that has not been defined.   | `const value: undefined = undefined`       |
+
+### Type Inference
+
+TypeScript can also infer types automatically, without explicit annotations.
+
+| Explicit Type                       | Inferred Type             |
+| ----------------------------------- | ------------------------- |
+| `const name: string = "Alice"`      | `const name = "Alice"`    |
+| `let age: number = 25`              | `let age = 25`            |
+| `let active: boolean = true`        | `let active = true`       |
+| `const scores: number[] = [10, 20]` | `const scores = [10, 20]` |
+
+**Key takeaway:** Type annotations make types explicit, while type inference allows TypeScript to determine them automatically.

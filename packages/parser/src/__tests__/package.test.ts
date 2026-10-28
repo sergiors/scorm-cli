@@ -128,6 +128,77 @@ describe('parsePackage', () => {
     ])
   })
 
+  it('parses an aligned Markdown table inside Page content', async () => {
+    const root = await makeLesson(
+      '| Color | Count | Notes |\n| :---- | :---: | ----: |\n| red   | 1     | `code` |'
+    )
+    expect(await lessonContent(root)).toEqual([
+      {
+        type: 'table',
+        header: {
+          cells: [
+            { children: [{ type: 'text', value: 'Color' }], align: 'left' },
+            { children: [{ type: 'text', value: 'Count' }], align: 'center' },
+            { children: [{ type: 'text', value: 'Notes' }], align: 'right' }
+          ]
+        },
+        rows: [
+          {
+            cells: [
+              { children: [{ type: 'text', value: 'red' }], align: 'left' },
+              { children: [{ type: 'text', value: '1' }], align: 'center' },
+              { children: [{ type: 'inlineCode', value: 'code' }], align: 'right' }
+            ]
+          }
+        ]
+      }
+    ])
+  })
+
+  it('parses a Markdown table inside Item content', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'content-package-'))
+    temp = root
+    await writeFile(
+      path.join(root, 'index.mdx'),
+      '---\ntitle: Package\n---\n<Tiles><Item src="lesson.mdx" /></Tiles>'
+    )
+    await writeFile(
+      path.join(root, 'lesson.mdx'),
+      '---\ntitle: Lesson\n---\n| Name | Ref |\n| --- | --- |\n| [Guide](https://example.test) | `ref` |'
+    )
+    const contentPackage = await parsePackage(root)
+    if (contentPackage.presentation.type !== 'tiles')
+      throw new Error('Expected a tiles presentation')
+    const item = contentPackage.presentation.items[0]
+    expect(item?.content).toEqual([
+      {
+        type: 'table',
+        header: {
+          cells: [
+            { children: [{ type: 'text', value: 'Name' }] },
+            { children: [{ type: 'text', value: 'Ref' }] }
+          ]
+        },
+        rows: [
+          {
+            cells: [
+              {
+                children: [
+                  {
+                    type: 'link',
+                    href: 'https://example.test',
+                    children: [{ type: 'text', value: 'Guide' }]
+                  }
+                ]
+              },
+              { children: [{ type: 'inlineCode', value: 'ref' }] }
+            ]
+          }
+        ]
+      }
+    ])
+  })
+
   it('preserves nested lists, blockquotes, ordered starts, and fenced code languages', async () => {
     const root = await makeLesson(
       '3. First\n   - nested **item**\n4. Second\n\n> A quote\n>\n> - quoted list\n\n```ts\nconst answer: number = 42;\n```'

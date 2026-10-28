@@ -12,6 +12,7 @@ import { MediaFrame } from './MediaFrame'
 import { PathView } from './PathView'
 import { QuestionnaireView } from './QuestionnaireView'
 import { Video } from './Video'
+import { cn } from '../lib/utils'
 import {
   CodeBlock,
   CodeBlockActions,
@@ -20,6 +21,7 @@ import {
   CodeBlockHeader,
   CodeBlockLine
 } from './ui/code-block'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
 import { useHighlightedCode } from '@/hooks/use-highlighted-code'
 
 const HEADING_TAGS = {
@@ -164,6 +166,57 @@ function ListView({ node, context, path }: ContentNodeViewProps<'list'>) {
   )
 }
 
+const TABLE_CELL_ALIGNMENT = {
+  left: 'text-left',
+  center: 'text-center',
+  right: 'text-right'
+} as const
+
+/** The prose table keeps semantic markup; only column alignment becomes a class. */
+function tableCellAlignment(cell: ContentNodeOf<'table'>['header']['cells'][number]) {
+  return cell.align ? TABLE_CELL_ALIGNMENT[cell.align] : undefined
+}
+
+/**
+ * A Markdown table built from the shared shadcn table primitives. `Table` owns
+ * the horizontal overflow wrapper, so a wide table scrolls inside its prose
+ * column instead of widening the page; native table semantics and column
+ * alignment are preserved, and every cell shares {@link InlineContent}.
+ */
+function TableView({ node }: ContentNodeViewProps<'table'>) {
+  return (
+    <Table className="not-prose pointer-events-none">
+      <TableHeader>
+        <TableRow>
+          {node.header.cells.map((cell, index) => (
+            <TableHead
+              key={index}
+              scope="col"
+              className={cn('whitespace-normal', tableCellAlignment(cell))}
+            >
+              <InlineContent nodes={cell.children} />
+            </TableHead>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {node.rows.map((row, rowIndex) => (
+          <TableRow key={rowIndex}>
+            {row.cells.map((cell, cellIndex) => (
+              <TableCell
+                key={cellIndex}
+                className={cn('whitespace-normal', tableCellAlignment(cell))}
+              >
+                <InlineContent nodes={cell.children} />
+              </TableCell>
+            ))}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
 function CodeView({ node, anchor }: ContentNodeViewProps<'code'>) {
   const lines = useHighlightedCode(node.value, node?.language ?? '')
 
@@ -276,6 +329,7 @@ const contentNodeRenderers = {
   paragraph: ParagraphView,
   thematicBreak: ThematicBreakView,
   list: ListView,
+  table: TableView,
   code: CodeView,
   quote: QuoteView,
   image: BlockImageView,

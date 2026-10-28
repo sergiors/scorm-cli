@@ -5,7 +5,13 @@ import { ContentRenderer } from '../../app/components/ContentRenderer'
 import { InlineContent } from '../../app/components/InlineContent'
 import { PageProvider, PlayerProvider } from '../../app/lib/player-context'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
-import type { ContentNode, ContentPackage, InlineNode, PlayerState } from '../../app/types'
+import type {
+  ContentNode,
+  ContentPackage,
+  InlineNode,
+  PlayerState,
+  TableNode
+} from '../../app/types'
 import {
   headingDepths,
   multipleChoiceQuestion,
@@ -551,6 +557,149 @@ describe('ContentRenderer lists', () => {
     expect(html).toContain('Inner')
     expect((html.match(/<ul/g) ?? []).length).toBe(1)
     expect((html.match(/<ol/g) ?? []).length).toBe(1)
+  })
+})
+
+describe('ContentRenderer tables', () => {
+  const tableNode: TableNode = {
+    type: 'table',
+    header: {
+      cells: [
+        { children: [{ type: 'text', value: 'Color' }], align: 'left' },
+        { children: [{ type: 'text', value: 'Count' }], align: 'center' }
+      ]
+    },
+    rows: [
+      {
+        cells: [
+          { children: [{ type: 'text', value: 'red' }], align: 'left' },
+          { children: [{ type: 'text', value: '1' }], align: 'center' }
+        ]
+      }
+    ]
+  }
+
+  it('renders semantic table markup inside a horizontally scrollable wrapper', () => {
+    const html = render([tableNode])
+    // The shadcn Table component owns the only overflow wrapper, so a wide
+    // table scrolls inside its column instead of widening the page.
+    expect(html).toContain(
+      '<div data-slot="table-container" class="relative w-full overflow-x-auto">'
+    )
+    expect(html).toContain('<table data-slot="table" class="w-full caption-bottom text-sm">')
+    expect(html).toContain('<thead data-slot="table-header"')
+    expect(html).toContain('<tbody data-slot="table-body"')
+    expect(html).toContain('<th data-slot="table-head"')
+    expect(html).toContain('scope="col"')
+    expect(html).toContain('<tr data-slot="table-row"')
+    expect(html).toContain('<td data-slot="table-cell"')
+    expect((html.match(/overflow-x-auto/g) ?? []).length).toBe(1)
+    expect(html).toContain('Color')
+    expect(html).toContain('red')
+    expect(html).toContain('</table></div>')
+  })
+
+  it('maps cell alignment to text alignment classes, never HTML align attributes', () => {
+    const html = render([tableNode])
+    expect(html).toMatch(/<th[^>]*class="[^"]*\btext-left\b[^"]*"[^>]*scope="col"/)
+    expect(html).toMatch(/<th[^>]*class="[^"]*\btext-center\b[^"]*"[^>]*scope="col"/)
+    expect(html).toMatch(/<td[^>]*class="[^"]*\btext-left\b[^"]*"/)
+    expect(html).toMatch(/<td[^>]*class="[^"]*\btext-center\b[^"]*"/)
+    expect(html).not.toContain('align="')
+  })
+
+  it('allows prose to wrap in header and body cells', () => {
+    const html = render([tableNode])
+    expect(html).toMatch(/<th[^>]*class="[^"]*\bwhitespace-normal\b[^"]*"/)
+    expect(html).toMatch(/<td[^>]*class="[^"]*\bwhitespace-normal\b[^"]*"/)
+    expect(html).not.toContain('whitespace-nowrap')
+  })
+
+  it('skips the alignment class for an unaligned column', () => {
+    const html = render([
+      {
+        type: 'table',
+        header: { cells: [{ children: [{ type: 'text', value: 'Facts' }] }] },
+        rows: [{ cells: [{ children: [{ type: 'text', value: 'true' }] }] }]
+      }
+    ])
+    expect(html).toMatch(/<th[^>]*scope="col"[^>]*>Facts<\/th>/)
+    expect(html).not.toContain('text-center')
+    expect(html).not.toContain('text-right')
+    expect(html).toMatch(/<td[^>]*>true<\/td>/)
+  })
+
+  it('renders inline formatting, code, and links inside cells', () => {
+    const html = render([
+      {
+        type: 'table',
+        header: { cells: [{ children: [{ type: 'text', value: 'Notes' }] }] },
+        rows: [
+          {
+            cells: [
+              {
+                children: [
+                  { type: 'strong', children: [{ type: 'text', value: 'bold' }] },
+                  { type: 'text', value: ' ' },
+                  { type: 'emphasis', children: [{ type: 'text', value: 'italic' }] },
+                  { type: 'text', value: ' ' },
+                  { type: 'inlineCode', value: 'id' },
+                  { type: 'text', value: ' ' },
+                  {
+                    type: 'link',
+                    href: 'https://example.test',
+                    children: [{ type: 'text', value: 'docs' }]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ])
+    expect(html).toContain('<strong')
+    expect(html).toContain('<em')
+    expect(html).toContain('<code')
+    expect(html).toContain('<a href="https://example.test"')
+    expect(html).toContain('bold')
+    expect(html).toContain('italic')
+    expect(html).toContain('docs')
+  })
+
+  it('renders an empty cell and a header-only table with an empty tbody', () => {
+    const emptyCellHtml = render([
+      {
+        type: 'table',
+        header: { cells: [{ children: [{ type: 'text', value: 'x' }] }, { children: [] }] },
+        rows: [{ cells: [{ children: [{ type: 'text', value: 'y' }] }, { children: [] }] }]
+      }
+    ])
+    expect(emptyCellHtml).toMatch(/<td[^>]*class="[^"]*"[^>]*><\/td>/)
+
+    const headerOnlyHtml = render([
+      {
+        type: 'table',
+        header: { cells: [{ children: [{ type: 'text', value: 'Only' }] }] },
+        rows: []
+      }
+    ])
+    expect(headerOnlyHtml).toMatch(/<tbody[^>]*><\/tbody>/)
+  })
+
+  it('renders a table between paragraphs in authored order', () => {
+    const html = render([
+      { type: 'paragraph', children: [{ type: 'text', value: 'Before the table' }] },
+      tableNode,
+      { type: 'paragraph', children: [{ type: 'text', value: 'After the table' }] }
+    ])
+    const first = html.indexOf('Before the table')
+    const tableStart = html.indexOf('<table')
+    const last = html.indexOf('After the table')
+    expect(first).toBeGreaterThanOrEqual(0)
+    expect(tableStart).toBeGreaterThanOrEqual(0)
+    expect(last).toBeGreaterThanOrEqual(0)
+    expect(first).toBeLessThan(tableStart)
+    expect(tableStart).toBeLessThan(last)
   })
 })
 

@@ -1,4 +1,11 @@
-import type { ContentNode, InlineContentNode, InlineNode, ListItemNode } from '@scorm-cli/core'
+import type {
+  ContentNode,
+  InlineContentNode,
+  InlineNode,
+  ListItemNode,
+  TableCellNode,
+  TableRowNode
+} from '@scorm-cli/core'
 import type {
   AstNode,
   BlockquoteAstNode,
@@ -11,6 +18,7 @@ import type {
   ListAstNode,
   ParagraphAstNode,
   StrongAstNode,
+  TableAstNode,
   TextAstNode
 } from './ast'
 import { assetReference } from './io'
@@ -118,6 +126,30 @@ function normalizeListItemChildren(
   )
 }
 
+/**
+ * Normalizes one table row. Cell contents reuse the inline converter, so links,
+ * emphasis, inline code and images behave exactly as they do in a paragraph;
+ * an empty cell stays an empty inline run. Alignment is positional: the
+ * delimiter row's entry for the cell's column applies to that cell.
+ */
+async function convertTableRow(
+  node: AstNode | undefined,
+  alignments: TableAstNode['align'],
+  conversion: MarkdownConversion
+): Promise<TableRowNode> {
+  return {
+    cells: await Promise.all(
+      (node?.children ?? []).map(async (cell, index): Promise<TableCellNode> => {
+        const align = alignments?.[index]
+        return {
+          children: await conversion.convertInline(cell.children ?? []),
+          ...(align === 'left' || align === 'center' || align === 'right' ? { align } : {})
+        }
+      })
+    )
+  }
+}
+
 const markdownBlockHandlers = {
   heading: async (node: HeadingAstNode, conversion: MarkdownConversion) => ({
     type: 'heading',
@@ -156,7 +188,15 @@ const markdownBlockHandlers = {
   blockquote: async (node: BlockquoteAstNode, conversion: MarkdownConversion) => ({
     type: 'quote',
     children: await conversion.convertChildren(node.children ?? [])
-  })
+  }),
+  table: async (node: TableAstNode, conversion: MarkdownConversion) => {
+    const [header, ...rows] = node.children ?? []
+    return {
+      type: 'table',
+      header: await convertTableRow(header, node.align, conversion),
+      rows: await Promise.all(rows.map((row) => convertTableRow(row, node.align, conversion)))
+    }
+  }
 }
 
 /**

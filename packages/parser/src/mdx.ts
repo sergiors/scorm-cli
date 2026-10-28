@@ -1,3 +1,4 @@
+import remarkGfm from 'remark-gfm'
 import remarkMdx from 'remark-mdx'
 import remarkParse from 'remark-parse'
 import { unified } from 'unified'
@@ -19,7 +20,70 @@ import {
 import { isAuthoringComponent } from './components'
 import { sourceLocation } from './shared'
 
-const processor = unified().use(remarkParse).use(remarkMdx)
+const processor = unified().use(remarkParse).use(remarkMdx).use(remarkGfm)
+
+/**
+ * `remark-gfm` registers several syntax extensions alongside tables. Keep those
+ * additions literal because Markdown content supports GFM tables only.
+ */
+function preserveNonTableGfmSyntax(nodes: AstNode[], source: string): AstNode[] {
+  return nodes.flatMap((node) => {
+    const start = node.position?.start?.offset
+    const end = node.position?.end?.offset
+    const raw =
+      typeof start === 'number' && typeof end === 'number' && start <= end
+        ? source.slice(start, end)
+        : undefined
+
+    if (node.type === 'footnoteDefinition') {
+      // This syntax was already consumed as a CommonMark link definition and
+      // removed by the existing definition pass.
+      return []
+    }
+
+    if (node.type === 'delete' || node.type === 'footnoteReference') {
+      if (raw === undefined) return [node]
+      return [{ type: 'text', value: raw, position: node.position }]
+    }
+
+    // Autolink literals are links whose source is also their sole text child;
+    // explicit Markdown links and angle-bracket autolinks have different spans.
+    if (
+      node.type === 'link' &&
+      raw !== undefined &&
+      node.children?.length === 1 &&
+      node.children[0]?.type === 'text' &&
+      'value' in node.children[0] &&
+      node.children[0].value === raw
+    ) {
+      return [{ type: 'text', value: raw, position: node.position }]
+    }
+
+    let children = node.children?.flatMap((child) => preserveNonTableGfmSyntax([child], source))
+
+    // GFM removes task markers from list-item content and stores only `checked`.
+    // Restore the marker as literal paragraph text, as CommonMark parsing does.
+    const checked = (node as AstNode & { checked?: unknown }).checked
+    if (node.type === 'listItem' && typeof checked === 'boolean' && raw !== undefined) {
+      const marker = raw.match(/^[\t ]*(?:[-+*]|\d+[.)])[\t ]+\[([ xX])\][\t ]+/)?.[1]
+      if (marker && children) {
+        const paragraphIndex = children.findIndex((child) => child.type === 'paragraph')
+        if (paragraphIndex >= 0) {
+          children = children.map((child, index) =>
+            index === paragraphIndex
+              ? {
+                  ...child,
+                  children: [{ type: 'text', value: `[${marker}] ` }, ...(child.children ?? [])]
+                }
+              : child
+          )
+        }
+      }
+    }
+
+    return [children ? { ...node, children } : node]
+  })
+}
 
 /** The only module MDX content may import components from. */
 const authoringSource = 'scorm-cli/authoring'
@@ -192,6 +256,8 @@ export function parseMdx(
     const position = detail.line ? `:${detail.line}${detail.column ? `:${detail.column}` : ''}` : ''
     throw new Error(`${file}${position}: ${detail.message ?? String(error)}`)
   }
+  tree.children = preserveNonTableGfmSyntax(tree.children, source)
+
   const definitions = new Map<string, string>()
   for (const node of tree.children) {
     if (isDefinition(node) && typeof node.identifier === 'string' && typeof node.url === 'string') {

@@ -59,6 +59,7 @@ export function collectQuestionnaires(nodes: ContentNode[]): QuestionnaireNode[]
         case 'video':
         case 'path':
         case 'inlineContent':
+        case 'table':
           break
         default:
           assertNever(node)

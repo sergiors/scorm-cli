@@ -81,6 +81,7 @@ function normalizedBlock(node: ContentNode): string | null {
       ].join(':')
     case 'list':
     case 'quote':
+    case 'table':
     case 'thematicBreak':
     case 'path':
       return null

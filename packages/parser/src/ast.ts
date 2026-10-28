@@ -125,6 +125,20 @@ export interface ListItemAstNode extends AstNodeBase {
   type: 'listItem'
 }
 
+export interface TableAstNode extends AstNodeBase {
+  type: 'table'
+  /** Per-column alignment from the delimiter row; `null` means unaligned. */
+  align?: Array<'left' | 'center' | 'right' | null> | null
+}
+
+export interface TableRowAstNode extends AstNodeBase {
+  type: 'tableRow'
+}
+
+export interface TableCellAstNode extends AstNodeBase {
+  type: 'tableCell'
+}
+
 export interface CodeAstNode extends AstNodeBase {
   type: 'code'
   value?: string | null
@@ -193,6 +207,9 @@ export type AstNode =
   | HeadingAstNode
   | ListAstNode
   | ListItemAstNode
+  | TableAstNode
+  | TableRowAstNode
+  | TableCellAstNode
   | CodeAstNode
   | BlockquoteAstNode
   | ThematicBreakAstNode
