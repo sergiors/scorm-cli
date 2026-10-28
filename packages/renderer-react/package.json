@@ -23,6 +23,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@base-ui/react": "^1.9.0",
     "@scorm-cli/core": "workspace:*",
     "@shadcn/react": "^0.3.1",
     "@tailwindcss/typography": "^0.5.20",
@@ -32,7 +33,6 @@
     "clsx": "^2.1.1",
     "cn": "^0.4.0",
     "lucide-react": "^0.454.0",
-    "radix-ui": "^1.7.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-intl": "^12.1.4",

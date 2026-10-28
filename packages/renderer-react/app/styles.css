@@ -68,6 +68,32 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+}
+
+/*
+ * Base UI exposes the measured panel height as `--accordion-panel-height` on
+ * the panel and drives open/closed through `data-open`/`data-closed`. Animating
+ * to that variable keeps the accordion smooth without JS height bookkeeping,
+ * and each toggle starts from the measured height instead of accumulating.
+ */
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--accordion-panel-height, auto);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--accordion-panel-height, auto);
+  }
+  to {
+    height: 0;
+  }
 }
 
 @layer base {

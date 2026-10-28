@@ -140,12 +140,15 @@ function triggers(): HTMLButtonElement[] {
   )
 }
 
-/** Trigger `aria-expanded` per section, and how many bodies are visibly open. */
+/**
+ * Trigger `aria-expanded` per section, and how many bodies are visibly open.
+ * Base UI marks open panels with `data-open` (closed ones carry `data-closed`
+ * and are unmounted rather than kept as hidden stubs).
+ */
 function openStates(): { expanded: boolean[]; openBodies: number } {
   return {
     expanded: triggers().map((trigger) => trigger.getAttribute('aria-expanded') === 'true'),
-    openBodies: container.querySelectorAll('[data-slot="accordion-content"][data-state="open"]')
-      .length
+    openBodies: container.querySelectorAll('[data-slot="accordion-content"][data-open]').length
   }
 }
 
@@ -162,7 +165,7 @@ function pressKey(trigger: HTMLButtonElement, key: string): void {
 }
 
 describe('accordion presentation structure', () => {
-  it('renders the radix luma accordion data-slots around semantic trigger buttons', () => {
+  it('renders the Base UI accordion data-slots around semantic trigger buttons', () => {
     const html = render([
       accordion([section('First', 'First body'), section('Second', 'Second body')])
     ])
@@ -174,9 +177,14 @@ describe('accordion presentation structure', () => {
     expect((html.match(/data-slot="accordion-trigger"/g) ?? []).length).toBe(2)
     expect(html).toContain('<button')
     expect(html).toContain('<h3')
-    // Closed sections stay collapsed: expanded is false and no body renders.
+    // Closed sections stay collapsed: expanded is false, every section carries
+    // the Base UI closed marker, and no open marker appears anywhere. (The
+    // exact `=""` attribute forms avoid matching the `data-open:`/`data-closed:`
+    // Tailwind classes that exist on both states.)
     expect((html.match(/aria-expanded="false"/g) ?? []).length).toBe(2)
-    expect((html.match(/data-state="closed"/g) ?? []).length).toBeGreaterThanOrEqual(4)
+    expect(html).toContain('data-closed=""')
+    expect(html).not.toContain('data-open=""')
+    expect(html).not.toContain('data-state="open"')
     expect(html).not.toContain('First body')
     expect(html).not.toContain('Second body')
     // Both chevrons are on every trigger.
@@ -246,7 +254,7 @@ describe('accordion default open state', () => {
   it('starts a non-collapsible accordion with no defaults fully closed', () => {
     const html = render([accordion([section('A', 'A body'), section('B', 'B body')])])
     expect(html).not.toContain('aria-expanded="true"')
-    expect(html).not.toContain('data-slot="accordion-content" data-state="open"')
+    expect(html).not.toContain('data-open=""')
     expect(html).not.toContain('A body')
   })
 })
@@ -291,18 +299,118 @@ describe('accordion interaction semantics', () => {
     expect(openStates()).toEqual({ expanded: [true, false], openBodies: 1 })
   })
 
-  it('moves trigger focus between sections with ArrowDown and Home keys', () => {
+  it('keeps every trigger independently keyboard-reachable without roving focus', () => {
     mount([accordion([section('A', 'A body'), section('B', 'B body'), section('C', 'C body')])])
-    const [first, second, third] = triggers()
+    const [first, second] = triggers()
 
-    pressKey(first!, 'ArrowDown')
-    expect(document.activeElement).toBe(second)
+    // Base UI follows the updated APG accordion pattern: every trigger is its
+    // own tab stop and stays keyboard reachable, with no roving focus list.
+    for (const trigger of triggers()) {
+      expect(trigger.tagName).toBe('BUTTON')
+      expect(trigger.getAttribute('tabindex')).toBe('0')
+    }
 
-    pressKey(second!, 'ArrowDown')
-    expect(document.activeElement).toBe(third)
-
-    pressKey(third!, 'Home')
+    // Focusing a trigger programmatically — what the browser's Tab key does —
+    // reaches every section regardless of which one is open.
+    first!.focus()
     expect(document.activeElement).toBe(first)
+    // Arrow and Home/End keys are the trigger's own keys: they never hijack
+    // focus between sections (in the updated APG pattern those keys are left to
+    // the page, e.g. scrolling), so focus stays put here too.
+    pressKey(first!, 'ArrowDown')
+    expect(document.activeElement).toBe(first)
+    pressKey(first!, 'ArrowUp')
+    expect(document.activeElement).toBe(first)
+    second!.focus()
+    expect(document.activeElement).toBe(second)
+    pressKey(second!, 'Home')
+    expect(document.activeElement).toBe(second)
+    pressKey(second!, 'End')
+    expect(document.activeElement).toBe(second)
+  })
+})
+
+describe('accordion panel structure and animation', () => {
+  it('animates open panels through the height CSS variable with no JS-measured heights', () => {
+    const html = render([accordion([section('A', 'A body', true), section('B', 'B body')])])
+
+    const panel = html.match(/<div[^>]*data-slot="accordion-content"[^>]*>/)?.[0]
+    expect(panel).toBeDefined()
+    // Open and closed panels are driven by Base UI's data-open/data-closed
+    // markers, mapped by the wrapper to the accordion-down/up keyframes. The
+    // Radix `data-state` convention is gone entirely.
+    expect(panel).toContain('data-open=""')
+    expect(panel).toContain('data-open:animate-accordion-down')
+    expect(html).toContain('data-closed:animate-accordion-up')
+    expect(html).not.toContain('data-state=')
+    // The keyframes reach the Base UI-owned, measured height variable. There is
+    // no padding-bottom placeholder geometry and no JavaScript height
+    // bookkeeping: the panel style carries the variable (unmeasured "auto"
+    // here), and the inner wrapper animates from and to zero.
+    expect(panel).toContain('--accordion-panel-height:auto')
+    expect(panel).not.toMatch(/(^|;)\s*height:/)
+    expect(html).not.toContain('padding-bottom')
+
+    const inner = html.match(/<div class="h-\(--accordion-panel-height\)[^"]*"/)?.[0]
+    expect(inner).toBeDefined()
+    expect(inner).toContain('data-starting-style:h-0')
+    expect(inner).toContain('data-ending-style:h-0')
+  })
+
+  it('reopens the same fully mounted body after repeated open and close cycles', () => {
+    mount([accordion([section('A', 'A body')], { collapsible: true })])
+    const trigger = triggers()[0]!
+
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      click(trigger)
+      expect(openStates()).toEqual({ expanded: [true], openBodies: 1 })
+      expect(container.textContent).toContain('A body')
+
+      const panel = container.querySelector<HTMLElement>('[data-slot="accordion-content"]')!
+      expect(panel.getAttribute('data-open')).toBe('')
+      // Each toggle restarts from the fresh measured height variable; nothing
+      // accumulates into an inline height, so content height stays stable.
+      expect(panel.style.getPropertyValue('--accordion-panel-height')).toBe('auto')
+      expect(panel.style.height).toBe('')
+      const inner = panel.querySelector<HTMLElement>(':scope > div')!
+      expect(inner.className).toContain('h-(--accordion-panel-height)')
+      expect(inner.style.height).toBe('')
+
+      click(trigger)
+      expect(openStates()).toEqual({ expanded: [false], openBodies: 0 })
+    }
+  })
+
+  it('controls heading and Markdown block margins inside the panel wrappers', () => {
+    mount([
+      accordion([
+        {
+          type: 'accordionItem',
+          defaultOpen: true,
+          title: [text('A')],
+          content: [
+            { type: 'paragraph', children: [text('First block')] },
+            { type: 'paragraph', children: [text('Last block')] }
+          ]
+        }
+      ])
+    ])
+
+    // The trigger row sits in a heading that contributes no extra margins.
+    const item = container.querySelector<HTMLElement>('[data-slot="accordion-item"]')!
+    expect(item.className).toContain('[&>h3]:my-0')
+    // The body neutralizes the first and last block margins so panel padding is
+    // the only outer spacing, while inner paragraphs keep their spacing.
+    const inner = container.querySelector<HTMLElement>('[data-slot="accordion-content"] > div')!
+    expect(inner.className).toContain('[&>*:first-child]:mt-0')
+    expect(inner.className).toContain('[&>*:last-child]:mb-0')
+    expect(inner.className).toContain('[&_p:not(:last-child)]:mb-4')
+    // The body actually renders both blocks in order.
+    expect(item.textContent).toContain('First block')
+    expect(item.textContent).toContain('Last block')
+    expect(item.textContent!.indexOf('First block')).toBeLessThan(
+      item.textContent!.indexOf('Last block')
+    )
   })
 })
 

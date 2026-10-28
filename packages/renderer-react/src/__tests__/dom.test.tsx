@@ -669,14 +669,15 @@ describe('PackageView media loading', () => {
     ({ provider, src }) => {
       act(() => root.render(<Player contentPackage={videoPackage(provider, src)} />))
 
-      // The frame reserves the media geometry up front through the AspectRatio
-      // primitive, with a static placeholder standing in while the heavy
-      // provider player is deferred.
+      // The frame reserves the media geometry up front: the AspectRatio
+      // primitive now puts the authored ratio into a `--ratio` CSS variable on
+      // the frame box itself and the utility consumes it through CSS
+      // `aspect-ratio`, with no padding-bottom wrapper element.
       const frame = container.querySelector<HTMLElement>('[data-slot="media-frame"]')
       expect(frame).not.toBeNull()
-      const ratio = frame?.parentElement
-      expect(ratio?.getAttribute('data-radix-aspect-ratio-wrapper')).not.toBeNull()
-      expect(ratio?.style.paddingBottom).toBe('56.25%')
+      expect(frame?.style.getPropertyValue('--ratio')).toBe('1.7777777777777777')
+      expect(frame?.classList.contains('aspect-(--ratio)')).toBe(true)
+      expect(frame?.style.paddingBottom).toBe('')
       expect(frame?.querySelector('[data-slot="skeleton"]')).not.toBeNull()
       expect(container.querySelector('[data-testid="react-player"]')).toBeNull()
 

@@ -239,7 +239,7 @@ describe('ContentRenderer paragraphs and inline semantics', () => {
     // An inline image stays phrasing content: no reserved block frame, and so no
     // placeholder, is forced into the paragraph.
     expect(html).not.toContain('data-slot="media-frame"')
-    expect(html).not.toContain('data-radix-aspect-ratio-wrapper')
+    expect(html).not.toContain('--ratio:')
     expect(html).not.toContain('data-slot="skeleton"')
   })
 
@@ -586,7 +586,13 @@ describe('ContentRenderer tables', () => {
     expect(html).toContain(
       '<div data-slot="table-container" class="relative w-full overflow-x-auto">'
     )
-    expect(html).toContain('<table data-slot="table" class="w-full caption-bottom text-sm">')
+    // The table classes are the renderer's `not-prose pointer-events-none`
+    // merged over the Table primitive's own utilities. (This extra pair ships
+    // with the Markdown table support on the renderer side and predates the
+    // Base UI migration; the previous literal here simply drifted.)
+    expect(html).toContain(
+      '<table data-slot="table" class="w-full caption-bottom text-sm not-prose pointer-events-none">'
+    )
     expect(html).toContain('<thead data-slot="table-header"')
     expect(html).toContain('<tbody data-slot="table-body"')
     expect(html).toContain('<th data-slot="table-head"')
@@ -771,8 +777,12 @@ describe('ContentRenderer images and video', () => {
     // frame through the AspectRatio primitive and `object-contain` keeps
     // arbitrary or portrait content uncropped.
     expect(html).toContain('data-slot="media-frame"')
-    expect(html).toContain('data-radix-aspect-ratio-wrapper')
-    expect(html).toContain('padding-bottom:56.25%')
+    // The frame element itself is the ratio box: it carries the authored ratio
+    // as a `--ratio` CSS variable and consumes it through the CSS
+    // `aspect-ratio` utility, with no padding-bottom wrapper left behind.
+    expect(html).toMatch(/--ratio:1\.7777777777777777/)
+    expect(html).toContain('aspect-(--ratio)')
+    expect(html).not.toContain('padding-bottom')
     expect(html).toContain('object-contain')
     // Native lazy loading still defers the fetch...
     expect(html).toContain('loading="lazy"')
@@ -785,7 +795,8 @@ describe('ContentRenderer images and video', () => {
     const html = render([{ type: 'image', src: './a.png', alt: 'A picture' }])
     expect(html).toContain('<img')
     expect(html).toContain('data-slot="media-frame"')
-    expect(html).toContain('data-radix-aspect-ratio-wrapper')
+    // Same 16:9 ratio box as with a caption.
+    expect(html).toMatch(/--ratio:1\.7777777777777777/)
     expect(html).not.toContain('<figcaption')
   })
 
@@ -805,9 +816,11 @@ describe('ContentRenderer images and video', () => {
     ])
     expect(html).toContain('role="group"')
     expect(html).toContain('aria-label="Intro video"')
-    // The video reserves the same 16:9 frame as a block image.
-    expect(html).toContain('data-radix-aspect-ratio-wrapper')
-    expect(html).toContain('padding-bottom:56.25%')
+    // The video reserves the same 16:9 frame as a block image, through the
+    // CSS `aspect-ratio` utility rather than a padding-bottom wrapper.
+    expect(html).toMatch(/--ratio:1\.7777777777777777/)
+    expect(html).toContain('aspect-(--ratio)')
+    expect(html).not.toContain('padding-bottom')
     expect(html).toContain('<figcaption')
     expect(html).toContain('Intro video')
   })

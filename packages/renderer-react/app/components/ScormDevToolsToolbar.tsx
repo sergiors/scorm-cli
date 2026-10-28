@@ -52,11 +52,11 @@ export function ScormDevToolsToolbar({
   return (
     <div className="fixed right-3 top-3 z-40 print:hidden">
       <Popover>
-        <PopoverTrigger asChild>
-          <Button type="button" variant="secondary" size="sm" className="shadow-md">
-            <Settings2 aria-hidden="true" />
-            Dev tools
-          </Button>
+        <PopoverTrigger
+          render={<Button type="button" variant="secondary" size="sm" className="shadow-md" />}
+        >
+          <Settings2 aria-hidden="true" />
+          Dev tools
         </PopoverTrigger>
         <PopoverContent align="end" aria-label="Dev tools" className="w-80 p-6">
           <CmiPersistenceControl />
@@ -101,7 +101,8 @@ function ScormVersionControl() {
 
   const canSwitch = typeof getScormDevTools()?.setScormVersion === 'function'
 
-  function handleChange(value: string) {
+  function handleChange(value: string | null) {
+    if (value === null) return
     const version: ScormPreviewVersion = value === '2004' ? '2004' : '1.2'
     const bridge = getScormDevTools()
     if (!bridge || typeof bridge.setScormVersion !== 'function') {
@@ -125,7 +126,12 @@ function ScormVersionControl() {
     <>
       <Field className="items-start gap-2.5">
         <FieldLabel htmlFor={selectId}>SCORM version</FieldLabel>
-        <Select value={state.version} onValueChange={handleChange} disabled={!canSwitch}>
+        <Select
+          items={{ '1.2': 'SCORM 1.2', '2004': 'SCORM 2004' }}
+          value={state.version}
+          onValueChange={handleChange}
+          disabled={!canSwitch}
+        >
           <SelectTrigger id={selectId} aria-describedby={descriptionId} size="sm">
             <SelectValue />
           </SelectTrigger>

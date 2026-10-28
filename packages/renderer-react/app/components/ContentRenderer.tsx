@@ -252,8 +252,9 @@ function QuoteView({ node, context, path }: ContentNodeViewProps<'quote'>) {
  * deliberately uncontrolled: the authored `defaultOpen` flags become the
  * primitive's default values, and the learner's toggles never reach the player
  * state. Single-open and multiple-open modes are separate Root variants because
- * Radix accepts a different value shape for each; `collapsible` is meaningful
- * only for a single-open accordion.
+ * the wrapper accepts a different value shape for each; `collapsible` is
+ * meaningful only for a single-open accordion and is translated to Base UI's
+ * always-collapsible behavior.
  *
  * Section bodies recurse through {@link ContentRenderer} with the item index
  * appended to the reading-anchor path, matching the anchor traversal so nested

@@ -4,8 +4,9 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ScormDevToolsToolbar } from '../../app/components/ScormDevToolsToolbar'
 
-// jsdom does not implement `Element.scrollIntoView`, which Radix Select calls to
-// reveal the highlighted option. Stub it so the combobox can be exercised here.
+// jsdom does not implement `Element.scrollIntoView`, which the Base UI select
+// calls to reveal the highlighted option. Stub it so the combobox can be
+// exercised here.
 Element.prototype.scrollIntoView = () => {}
 
 let container: HTMLDivElement
@@ -122,7 +123,7 @@ function installBridge(
   }
 }
 
-/** The shadcn/Radix Select trigger, rendered as a `combobox` button. */
+/** The shadcn/Base UI Select trigger, rendered as a `combobox` button. */
 function versionTrigger(): HTMLButtonElement {
   const trigger = document.querySelector<HTMLButtonElement>('[data-slot="select-trigger"]')
   if (!trigger) {
@@ -131,7 +132,7 @@ function versionTrigger(): HTMLButtonElement {
   return trigger
 }
 
-/** The Radix Select content portals into `document.body` only while open. */
+/** The Base UI Select content portals into `document.body` only while open. */
 function versionSelectContent(): HTMLElement | null {
   return document.querySelector<HTMLElement>('[data-slot="select-content"]')
 }
@@ -145,6 +146,18 @@ function versionOption(label: string): HTMLElement {
     throw new Error(`SCORM version option "${label}" not found`)
   }
   return option
+}
+
+/**
+ * Commits a select option the way a real press does: Base UI select items only
+ * commit clicks that begin on the option (an explicit `pointerdown`), so a bare
+ * synthetic `.click()` is deliberately not a selection.
+ */
+function pressOption(option: HTMLElement): void {
+  act(() => {
+    option.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }))
+    option.click()
+  })
 }
 
 /** Opens the version combobox by clicking its trigger. */
@@ -194,16 +207,16 @@ function popover(): HTMLElement | null {
   return document.querySelector<HTMLElement>('[data-slot="popover-content"]')
 }
 
-/** The shadcn checkbox is a `role="checkbox"` button carrying `data-slot`. */
-function persistenceCheckbox(): HTMLButtonElement {
-  const checkbox = document.querySelector<HTMLButtonElement>('[data-slot="checkbox"]')
+/** The shadcn checkbox is a `role="checkbox"` element carrying `data-slot`. */
+function persistenceCheckbox(): HTMLElement {
+  const checkbox = document.querySelector<HTMLElement>('[data-slot="checkbox"]')
   if (!checkbox) {
     throw new Error('CMI persistence checkbox not found')
   }
   return checkbox
 }
 
-/** Reads the checked state from the Radix checkbox's ARIA attribute. */
+/** Reads the checked state from the checkbox control's ARIA attribute. */
 function persistenceCheckboxChecked(): boolean {
   return persistenceCheckbox().getAttribute('aria-checked') === 'true'
 }
@@ -254,7 +267,8 @@ describe('ScormDevToolsToolbar', () => {
     const content = popover()
     expect(content).not.toBeNull()
     expect(content?.dataset.slot).toBe('popover-content')
-    expect(content?.dataset.state).toBe('open')
+    // Base UI marks the open popup with `data-open` (plus placement state).
+    expect(content?.getAttribute('data-open')).toBe('')
     // Anchored to the end of the top-right trigger.
     expect(content?.dataset.align).toBe('end')
     expect(content?.getAttribute('role')).toBe('dialog')
@@ -289,7 +303,7 @@ describe('ScormDevToolsToolbar', () => {
     expect(popover()).toBeNull()
     expect(toolbarToggle().getAttribute('aria-expanded')).toBe('false')
 
-    // Escape (handled by the Radix dismissable layer) closes it too.
+    // Escape (handled by Base UI's dismissable popup) closes it too.
     togglePopover()
     expect(popover()).not.toBeNull()
     act(() => {
@@ -319,10 +333,12 @@ describe('ScormDevToolsToolbar', () => {
     const content = popover()
     expect(content).not.toBeNull()
 
-    // The popover hosts exactly one control: the persistence checkbox.
-    const panelButtons = content?.querySelectorAll<HTMLButtonElement>('button')
-    expect(panelButtons).toHaveLength(1)
-    expect(panelButtons?.[0]?.dataset.slot).toBe('checkbox')
+    // The popover hosts exactly one interactive control: the persistence
+    // checkbox. Base UI renders it as a `role="checkbox"` element (no button),
+    // and the version select is absent without a bridge contract.
+    const panelButtons = content?.querySelectorAll('button')
+    expect(panelButtons).toHaveLength(0)
+    expect(content?.querySelectorAll('[data-slot="checkbox"]')).toHaveLength(1)
 
     // The obsolete clear action and the event inspector are both gone.
     expect(document.body.textContent).not.toContain('Clear saved CMI')
@@ -366,13 +382,22 @@ describe('ScormDevToolsToolbar', () => {
     togglePopover()
 
     const checkbox = persistenceCheckbox()
-    // Radix checkbox is a button exposing the checkbox role, not a native input.
+    // Base UI checkbox is an interactive `role="checkbox"` element, backed by a
+    // visually hidden native input for form data.
     expect(checkbox.getAttribute('role')).toBe('checkbox')
-    expect(document.querySelector('input[type="checkbox"]')).toBeNull()
+
+    const input = document.querySelector<HTMLInputElement>('input[type="checkbox"]')
+    expect(input).not.toBeNull()
+    // The backing input is only for form data: hidden from assistive tech and
+    // part of the same id-driven wiring.
+    expect(input?.getAttribute('aria-hidden')).toBe('true')
 
     const label = document.querySelector<HTMLLabelElement>('[data-slot="field-label"]')
     expect(label?.textContent).toBe('Persist CMI data')
-    expect(label?.getAttribute('for')).toBe(checkbox.id)
+    // The label names the control through the ARIA link and points its own
+    // `for` at the backing input's id.
+    expect(label?.getAttribute('for')).toBe(input?.id)
+    expect(checkbox.getAttribute('aria-labelledby')).toBe(label?.id)
 
     const description = document.querySelector('[data-slot="field-description"]')
     expect(description?.id).toBe(checkbox.getAttribute('aria-describedby'))
@@ -383,7 +408,10 @@ describe('ScormDevToolsToolbar', () => {
     togglePopover()
 
     const checkbox = persistenceCheckbox()
-    expect(checkbox.disabled).toBe(true)
+    // Base UI conveys inability to act through ARIA/disabled state, not a form
+    // element's `disabled` property, because the control is not a button.
+    expect(checkbox.getAttribute('aria-disabled')).toBe('true')
+    expect(checkbox.getAttribute('data-disabled')).toBe('')
     expect(persistenceCheckboxChecked()).toBe(false)
     expect(statusText()).toContain('unavailable')
   })
@@ -400,7 +428,8 @@ describe('ScormDevToolsToolbar', () => {
     togglePopover()
 
     expect(document.body.textContent).toContain('storage blocked')
-    expect(persistenceCheckbox().disabled).toBe(false)
+    // A throwing bridge can be retried, so the checkbox stays actionable.
+    expect(persistenceCheckbox().getAttribute('aria-disabled')).toBeNull()
     expect(persistenceCheckboxChecked()).toBe(false)
   })
 
@@ -419,7 +448,7 @@ describe('ScormDevToolsToolbar', () => {
     act(() => persistenceCheckbox().click())
 
     expect(document.body.textContent).toContain('quota exceeded')
-    expect(persistenceCheckbox().disabled).toBe(false)
+    expect(persistenceCheckbox().getAttribute('aria-disabled')).toBeNull()
     expect(persistenceCheckboxChecked()).toBe(false)
   })
 
@@ -461,7 +490,7 @@ describe('ScormDevToolsToolbar', () => {
     expect(versionSelectContent()).not.toBeNull()
 
     // Choosing a version through the portaled menu drives the dev bridge.
-    act(() => versionOption('SCORM 2004').click())
+    pressOption(versionOption('SCORM 2004'))
 
     expect(bridge.setScormVersion).toHaveBeenCalledWith('2004')
     expect(versionTrigger().textContent).toContain('SCORM 2004')
@@ -540,7 +569,7 @@ describe('ScormDevToolsToolbar', () => {
     expect(Object.keys(cmiSnapshot())).toContain('cmi.core.lesson_location')
 
     openVersionSelect()
-    act(() => versionOption('SCORM 2004').click())
+    pressOption(versionOption('SCORM 2004'))
     expect(bridge.setScormVersion).toHaveBeenCalledWith('2004')
 
     // The reloaded preview starts from its own 2004 storage; nothing from the

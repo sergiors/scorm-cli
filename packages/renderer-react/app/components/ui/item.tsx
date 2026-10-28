@@ -1,7 +1,8 @@
 import * as React from 'react'
+import { mergeProps } from '@base-ui/react/merge-props'
+import { useRender } from '@base-ui/react/use-render'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from 'cn'
-import { Slot } from 'radix-ui'
 
 import { Separator } from '@/components/ui/separator'
 
@@ -52,23 +53,38 @@ const itemVariants = cva(
   }
 )
 
+/**
+ * The public `asChild` API is kept for callsite compatibility. Base UI composes
+ * through `useRender`, so an asChild child becomes the render element and keeps
+ * its own markup, handlers and children.
+ */
 function Item({
   className,
   variant = 'default',
   size = 'default',
   asChild = false,
+  render,
+  children,
   ...props
-}: React.ComponentProps<'div'> & VariantProps<typeof itemVariants> & { asChild?: boolean }) {
-  const Comp = asChild ? Slot.Root : 'div'
-  return (
-    <Comp
-      data-slot="item"
-      data-variant={variant}
-      data-size={size}
-      className={cn(itemVariants({ variant, size, className }))}
-      {...props}
-    />
-  )
+}: useRender.ComponentProps<'div'> & VariantProps<typeof itemVariants> & { asChild?: boolean }) {
+  const asChildChild = asChild ? (React.Children.only(children) as React.ReactElement) : undefined
+  const renderElement = asChildChild ?? render
+
+  return useRender({
+    defaultTagName: 'div',
+    props: mergeProps<'div'>(
+      {
+        className: cn(itemVariants({ variant, size, className }))
+      },
+      asChildChild ? props : { ...props, children }
+    ),
+    render: renderElement,
+    state: {
+      slot: 'item',
+      variant,
+      size
+    }
+  })
 }
 
 const itemMediaVariants = cva(

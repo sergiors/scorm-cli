@@ -212,12 +212,14 @@ describe('Video provider inputs', () => {
         </PlayerI18nProvider>
       )
 
-      // The frame reserves the media geometry through the AspectRatio primitive
-      // before the provider player mounts, so the placeholder occupies exactly
-      // the box the media will.
+      // The frame reserves the media geometry before the provider player mounts,
+      // so the placeholder occupies exactly the box the media will. The frame
+      // element itself is the ratio box: an authored `--ratio` CSS variable
+      // consumed by the CSS `aspect-ratio` utility.
       expect(html).toContain('data-slot="media-frame"')
-      expect(html).toContain('data-radix-aspect-ratio-wrapper')
-      expect(html).toContain('padding-bottom:56.25%')
+      expect(html).toMatch(/--ratio:1\.7777777777777777/)
+      expect(html).toContain('aspect-(--ratio)')
+      expect(html).not.toContain('padding-bottom')
       expect(html).toContain('data-slot="skeleton"')
       expect(html).toContain('animate-none')
       expect(html).toContain('aria-label="Lesson video"')
