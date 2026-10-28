@@ -24,16 +24,24 @@ interface QuestionnaireQuestionProps {
   node: QuestionNode
   value: AnswerValue | undefined
   submitted: boolean
+  revealCorrectAnswers: boolean
   onAnswer: (questionId: string, value: AnswerValue) => void
 }
 
 /**
  * One authored question rendered as a native fieldset. Expanded mode stays
  * outside the wizard by design, so it does not use the compound Root's
- * validation or navigation. Submitted choices are disabled and classified, so
- * the same rendering serves both the interactive and read-only presentations.
+ * validation or navigation. Submitted choices are disabled and, when results
+ * are enabled, classified, so the same rendering serves both the interactive
+ * and read-only presentations.
  */
-function QuestionnaireQuestion({ node, value, submitted, onAnswer }: QuestionnaireQuestionProps) {
+function QuestionnaireQuestion({
+  node,
+  value,
+  submitted,
+  revealCorrectAnswers,
+  onAnswer
+}: QuestionnaireQuestionProps) {
   const titleId = useId()
   const multiple = node.questionType === 'multiple-choice'
 
@@ -56,7 +64,8 @@ function QuestionnaireQuestion({ node, value, submitted, onAnswer }: Questionnai
       >
         {node.options.map((option) => {
           const selected = isOptionSelected(node, value, option.value)
-          const result = submitted ? submittedOptionResult(option, selected) : undefined
+          const result =
+            submitted && revealCorrectAnswers ? submittedOptionResult(option, selected) : undefined
           return (
             <label
               key={option.value}
@@ -67,7 +76,7 @@ function QuestionnaireQuestion({ node, value, submitted, onAnswer }: Questionnai
               data-result={result}
               className={cn(
                 'group/questionnaire-choice relative flex min-h-11 cursor-pointer items-start gap-2.5 rounded-3xl border border-input px-4 py-3 text-start text-sm transition-colors outline-none select-none hover:bg-input/40 has-[>input:focus-visible]:border-ring has-[>input:focus-visible]:ring-3 has-[>input:focus-visible]:ring-ring/50 data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-disabled:opacity-50 data-checked:border-primary/40 data-checked:bg-primary/10',
-                result ? submittedChoiceClassName(result) : undefined
+                submitted ? submittedChoiceClassName(result ?? 'neutral') : undefined
               )}
             >
               <input
@@ -128,9 +137,10 @@ function QuestionnaireQuestion({ node, value, submitted, onAnswer }: Questionnai
  * The installed Questionnaire is wizard-specific, so the expanded form uses a
  * native form with the shared question rendering instead of forcing wizard
  * behavior through its Root props. After submission every question stays
- * visible and read-only, with its feedback revealed and the Submit action still
- * present but disabled. Restored submissions render the same way from the
- * owner's saved answers.
+ * visible and read-only, with feedback revealed only when the questionnaire's
+ * `revealCorrectAnswers` is enabled, and the Submit action still present but
+ * disabled. Restored submissions render the same way from the owner's saved
+ * answers.
  *
  * A retry clears this questionnaire's answers and submitted status while
  * keeping its attempt history and page completion, so every question becomes
@@ -204,6 +214,7 @@ export function ExpandedQuestionnaire({ node }: { node: QuestionnaireNode }) {
                     node={question}
                     value={currentAnswers[question.id]}
                     submitted={reviewing}
+                    revealCorrectAnswers={node.revealCorrectAnswers}
                     onAnswer={answerQuestion}
                   />
                 </Fragment>

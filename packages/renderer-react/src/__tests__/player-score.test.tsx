@@ -25,6 +25,7 @@ const optOutQuestionnaire: QuestionnaireNode = {
   type: 'questionnaire',
   id: 'questionnaire:quiz.mdx:2:1',
   contributesToScore: false,
+  revealCorrectAnswers: true,
   maxAttempts: 1,
   questions: [
     {
@@ -60,6 +61,7 @@ const scoredPackage: ContentPackage = {
             type: 'questionnaire',
             id: 'questionnaire:quiz.mdx:1:1',
             contributesToScore: true,
+            revealCorrectAnswers: true,
             maxAttempts: 1,
             questions: [
               {
@@ -129,6 +131,7 @@ const mixedPackage: ContentPackage = {
             type: 'questionnaire',
             id: RETRY_QUIZ,
             contributesToScore: true,
+            revealCorrectAnswers: true,
             maxAttempts: 3,
             questions: [
               {
@@ -158,6 +161,7 @@ const mixedPackage: ContentPackage = {
             type: 'questionnaire',
             id: LIVE_QUIZ,
             contributesToScore: true,
+            revealCorrectAnswers: true,
             maxAttempts: 1,
             questions: [
               {
@@ -198,6 +202,7 @@ const retryablePackage: ContentPackage = {
             type: 'questionnaire',
             id: RETRY_QUIZ,
             contributesToScore: true,
+            revealCorrectAnswers: true,
             maxAttempts: 3,
             questions: [
               {

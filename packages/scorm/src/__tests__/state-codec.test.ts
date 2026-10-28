@@ -33,6 +33,7 @@ const packageContent: ContentPackage = {
           type: 'questionnaire',
           id: `quiz-${pageIndex}`,
           contributesToScore: true,
+          revealCorrectAnswers: true,
           maxAttempts: 1,
           questions: [
             {
@@ -408,6 +409,7 @@ describe('compact suspend-data codec', () => {
                 type: 'questionnaire',
                 id: 'q',
                 contributesToScore: true,
+                revealCorrectAnswers: true,
                 maxAttempts: 1,
                 questions: [
                   {
@@ -788,6 +790,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
               type: 'questionnaire',
               id: 'quiz-a',
               contributesToScore: true,
+              revealCorrectAnswers: true,
               maxAttempts: 3,
               questions: [
                 {
@@ -810,6 +813,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
               type: 'questionnaire',
               id: 'quiz-b',
               contributesToScore: true,
+              revealCorrectAnswers: true,
               maxAttempts: 2,
               questions: [
                 {
@@ -835,6 +839,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
               type: 'questionnaire',
               id: 'quiz-c',
               contributesToScore: true,
+              revealCorrectAnswers: true,
               maxAttempts: 1,
               questions: [
                 {

@@ -67,7 +67,14 @@ function questionnaire(
   questions: QuestionNode[],
   contributesToScore = true
 ): QuestionnaireNode {
-  return { type: 'questionnaire', id, contributesToScore, maxAttempts: 1, questions }
+  return {
+    type: 'questionnaire',
+    id,
+    contributesToScore,
+    revealCorrectAnswers: true,
+    maxAttempts: 1,
+    questions
+  }
 }
 
 describe('core package helpers', () => {
@@ -334,6 +341,7 @@ describe('core package helpers', () => {
                 type: 'questionnaire',
                 id: 'questionnaire:nested.mdx:1:1',
                 contributesToScore: true,
+                revealCorrectAnswers: true,
                 maxAttempts: 1,
                 questions: [
                   {
@@ -415,6 +423,7 @@ describe('collectVideoNodes', () => {
                             type: 'questionnaire',
                             id: 'quiz',
                             contributesToScore: false,
+                            revealCorrectAnswers: true,
                             maxAttempts: 1,
                             questions: [
                               {

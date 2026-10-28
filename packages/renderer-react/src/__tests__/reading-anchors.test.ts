@@ -41,6 +41,7 @@ const questionnaire: ContentNode = {
   type: 'questionnaire',
   id: 'questionnaire:lesson.mdx:8:1',
   contributesToScore: false,
+  revealCorrectAnswers: true,
   maxAttempts: 1,
   questions: [
     {

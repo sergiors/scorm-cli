@@ -60,6 +60,7 @@ export const questionnaireNode: QuestionnaireNode = {
   type: 'questionnaire',
   id: 'questionnaire:intro.mdx:1:1',
   contributesToScore: true,
+  revealCorrectAnswers: true,
   maxAttempts: 1,
   questions: [singleChoiceQuestion, multipleChoiceQuestion]
 }

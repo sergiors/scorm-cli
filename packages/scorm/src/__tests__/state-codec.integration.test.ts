@@ -38,6 +38,7 @@ function questionnaire(id: string, questions: QuestionNode[]) {
     type: 'questionnaire' as const,
     id,
     contributesToScore: true,
+    revealCorrectAnswers: true,
     maxAttempts: 1,
     questions
   }

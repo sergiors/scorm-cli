@@ -591,6 +591,7 @@ describe('parsePackage', () => {
         type: 'questionnaire',
         id: 'questionnaire:lesson.mdx:4:1',
         contributesToScore: true,
+        revealCorrectAnswers: true,
         // An omitted `maxAttempts` normalizes to the single-attempt default,
         // so every parsed questionnaire carries an explicit cap.
         maxAttempts: 1,
@@ -932,6 +933,38 @@ describe('parsePackage', () => {
         content[0].expanded === true &&
         content[0].contributesToScore === false
     ).toBe(true)
+  })
+
+  it('defaults revealCorrectAnswers to true and accepts only boolean literals', async () => {
+    for (const [attribute, expected] of [
+      ['', true],
+      [' revealCorrectAnswers', true],
+      [' revealCorrectAnswers={true}', true],
+      [' revealCorrectAnswers={false}', false]
+    ] as const) {
+      const root = await makeLesson(
+        `<Questionnaire${attribute}><Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>`
+      )
+      const content = await lessonContent(root)
+      expect(content[0]?.type === 'questionnaire' && content[0].revealCorrectAnswers).toBe(expected)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
+    }
+
+    for (const [attribute, error] of [
+      [' revealCorrectAnswers="true"', /Questionnaire "revealCorrectAnswers" must be a boolean/],
+      [
+        ' revealCorrectAnswers={dynamic}',
+        /dynamic value for attribute "revealCorrectAnswers" is not supported/
+      ]
+    ] as const) {
+      const root = await makeLesson(
+        `<Questionnaire${attribute}><Question type="single-choice"><Prompt>Q</Prompt><Option value="a" correct/><Option value="b"/></Question></Questionnaire>`
+      )
+      await expect(parsePackage(root)).rejects.toThrow(error)
+      await rm(root, { recursive: true, force: true })
+      temp = ''
+    }
   })
 
   it('parses expanded together with a score-contribution override', async () => {

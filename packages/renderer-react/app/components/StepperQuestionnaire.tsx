@@ -34,6 +34,7 @@ interface StepperQuestionProps {
   node: QuestionNode
   value: AnswerValue | undefined
   submitted: boolean
+  revealCorrectAnswers: boolean
   onAnswer: (questionId: string, value: AnswerValue) => void
 }
 
@@ -52,7 +53,13 @@ interface StepperQuestionProps {
  * through `aria-readonly` rather than disabling or muting its choices, so hover
  * and focus styling stay available.
  */
-function StepperQuestion({ node, value, submitted, onAnswer }: StepperQuestionProps) {
+function StepperQuestion({
+  node,
+  value,
+  submitted,
+  revealCorrectAnswers,
+  onAnswer
+}: StepperQuestionProps) {
   const titleId = useId()
   const multiple = node.questionType === 'multiple-choice'
 
@@ -68,11 +75,14 @@ function StepperQuestion({ node, value, submitted, onAnswer }: StepperQuestionPr
       <QuestionnaireChoices>
         {node.options.map((option) => {
           const selected = isOptionSelected(node, value, option.value)
-          const result = submitted ? submittedOptionResult(option, selected) : undefined
+          const result =
+            submitted && revealCorrectAnswers ? submittedOptionResult(option, selected) : undefined
           // Submitted review is past validation, so replace the primitive's
           // dormant required-answer border with the neutral input border and
           // leave only the result palette visible.
-          const feedbackClassName = result ? submittedChoiceClassName(result) : undefined
+          const feedbackClassName = submitted
+            ? submittedChoiceClassName(result ?? 'neutral')
+            : undefined
 
           return (
             <QuestionnaireChoice
@@ -122,8 +132,9 @@ function StepperQuestion({ node, value, submitted, onAnswer }: StepperQuestionPr
  * first unanswered item.
  *
  * Submitting does not replace the Root or move the active item. Saved choices
- * remain checked but read-only with their correctness feedback revealed, and
- * Previous/Next continue to review every question through the same wizard.
+ * remain checked but read-only; their correctness feedback is revealed only
+ * when the questionnaire's `revealCorrectAnswers` is enabled. Previous/Next
+ * continue to review every question through the same wizard.
  * The final item keeps its Submit disabled once submitted so submission cannot
  * repeat.
  *
@@ -217,6 +228,7 @@ export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
                 node={question}
                 value={currentAnswers[question.id]}
                 submitted={reviewing}
+                revealCorrectAnswers={node.revealCorrectAnswers}
                 onAnswer={answerQuestion}
               />
             ))}

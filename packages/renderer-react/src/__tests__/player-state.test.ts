@@ -313,6 +313,7 @@ describe('sanitizePlayerState videos', () => {
                 type: 'questionnaire',
                 id: 'questionnaire:nested.mdx:1:1',
                 contributesToScore: false,
+                revealCorrectAnswers: true,
                 maxAttempts: 1,
                 questions: [
                   {

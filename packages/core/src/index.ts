@@ -186,6 +186,8 @@ export interface QuestionnaireNode {
   type: 'questionnaire'
   id: string
   contributesToScore: boolean
+  /** Whether correct answers are revealed after submission. */
+  revealCorrectAnswers: boolean
   /** Maximum number of submission attempts. */
   maxAttempts: number
   /**

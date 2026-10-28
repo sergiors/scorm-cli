@@ -74,6 +74,7 @@ function semanticNodeContent(content: readonly ContentNode[]): ContentNode[] {
             type: 'questionnaire',
             id: node.id,
             contributesToScore: node.contributesToScore,
+            revealCorrectAnswers: node.revealCorrectAnswers,
             maxAttempts: node.maxAttempts,
             questions: node.questions.map((question) => ({
               type: 'question',

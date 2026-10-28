@@ -91,6 +91,7 @@ const singleQuestionPackage: ContentPackage = {
             type: 'questionnaire',
             id: 'questionnaire:check.mdx:1:1',
             contributesToScore: true,
+            revealCorrectAnswers: true,
             maxAttempts: 1,
             questions: [trueFalse]
           }
@@ -419,6 +420,7 @@ describe('QuestionnaireView', () => {
             type: 'questionnaire',
             id: 'questionnaire:check.mdx:1:1',
             contributesToScore: true,
+            revealCorrectAnswers: true,
             maxAttempts: 1,
             questions: [trueFalse]
           }}
@@ -454,6 +456,7 @@ describe('QuestionnaireView', () => {
       type: 'questionnaire',
       id: 'questionnaire:native.mdx:1:1',
       contributesToScore: true,
+      revealCorrectAnswers: true,
       maxAttempts: 1,
       questions: [singleChoiceQuestion, multipleChoiceQuestion, trueFalse]
     }
@@ -552,6 +555,7 @@ describe('QuestionnaireView', () => {
             type: 'questionnaire',
             id: 'questionnaire:check.mdx:1:1',
             contributesToScore: true,
+            revealCorrectAnswers: true,
             maxAttempts: 1,
             questions: [trueFalse]
           }}
@@ -1410,5 +1414,117 @@ describe('QuestionnaireView submitted feedback alignment', () => {
       expect(reviewedInputDisabled('stepper', value)).toBe(false)
       expect(reviewedInputDisabled('expanded', value)).toBe(true)
     }
+  })
+})
+
+describe('QuestionnaireView revealCorrectAnswers disabled', () => {
+  const hiddenResultQuestionnaireNode: QuestionnaireNode = {
+    ...questionnaireNode,
+    revealCorrectAnswers: false
+  }
+  const hiddenResultExpandedQuestionnaireNode: QuestionnaireNode = {
+    ...expandedQuestionnaireNode,
+    revealCorrectAnswers: false
+  }
+  const reviewedAnswers: Record<string, string | string[]> = {
+    [singleChoiceQuestion.id]: 'second',
+    [multipleChoiceQuestion.id]: ['alpha']
+  }
+  const values = ['first', 'second', 'alpha', 'beta']
+
+  function choice(value: string): HTMLElement {
+    const element = submittedControl(value).closest<HTMLElement>(
+      '[data-slot="questionnaire-choice"]'
+    )
+    if (!element) {
+      throw new Error(`Choice not found for value: ${value}`)
+    }
+    return element
+  }
+
+  function feedbackTokens(value: string): string[] {
+    return choice(value).className.split(/\s+/).filter(paintsResultFeedback)
+  }
+
+  it('reviews a submitted wizard read-only without disclosing correctness', () => {
+    restoreQuestionnaireState(reviewedAnswers, true)
+    act(() => root.render(<QuestionnaireView node={hiddenResultQuestionnaireNode} />))
+
+    // Saved answers stay checked and the wizard remains read-only for review.
+    expect(submittedChecked('beta')).toBe(false)
+    expect(submittedChecked('alpha')).toBe(true)
+    expect(submittedItem('alpha').getAttribute('aria-readonly')).toBe('true')
+    attemptSubmittedChange('beta')
+    expect(submittedChecked('alpha')).toBe(true)
+    expect(submittedChecked('beta')).toBe(false)
+
+    // Selected options keep their ordinary primary selection styling instead
+    // of the submitted result palette.
+    expect(choice('alpha').getAttribute('data-checked')).toBe('')
+    expect(choice('alpha').className).toContain('data-checked:border-primary/40')
+    for (const value of values) {
+      expect(feedbackTokens(value)).toEqual([])
+      expect(submittedChoiceResult(value)).toBe('neutral')
+    }
+    expect(container.querySelector('[data-result]')).toBeNull()
+  })
+
+  it('reviews a restored expanded questionnaire without result attributes', () => {
+    restoreQuestionnaireState(reviewedAnswers, true)
+    act(() => root.render(<QuestionnaireView node={hiddenResultExpandedQuestionnaireNode} />))
+
+    // Expanded review stays expanded and read-only, with saved selections
+    // rendered normally.
+    expect(submittedControl('second').disabled).toBe(true)
+    expect(submittedChecked('second')).toBe(true)
+    expect(submittedChecked('alpha')).toBe(true)
+    expect(choice('second').getAttribute('data-checked')).toBe('')
+    expect(choice('second').className).toContain('data-checked:border-primary/40')
+
+    // Neither class feedback nor DOM metadata reveals any option's result.
+    for (const value of values) {
+      expect(feedbackTokens(value)).toEqual([])
+      expect(submittedChoiceResult(value)).toBe('neutral')
+      expect(choice(value).getAttribute('data-result')).toBeNull()
+    }
+    expect(container.querySelector('[data-result]')).toBeNull()
+  })
+
+  it('keeps a live submission undisguised while the summary still reports the score', () => {
+    act(() => root.render(<QuestionnaireView node={hiddenResultQuestionnaireNode} />))
+
+    // The learner answers and submits within the session, picking a wrong
+    // option on purpose.
+    act(() => input('second').click())
+    act(() => button('Next question').click())
+    act(() => input('alpha').click())
+    act(() => button('Submit questionnaire').click())
+
+    // The submission opens the review in place: saved answers stay checked and
+    // read-only, and a change attempt is dropped just as in a restored review.
+    expect(submittedChecked('second')).toBe(true)
+    expect(submittedChecked('alpha')).toBe(true)
+    expect(submittedItem('alpha').getAttribute('aria-readonly')).toBe('true')
+    attemptSubmittedChange('beta')
+    expect(submittedChecked('beta')).toBe(false)
+    expect(submittedChecked('alpha')).toBe(true)
+
+    // No choice paints the submitted result palette, and the selected options
+    // keep their ordinary primary selection styling instead.
+    for (const value of values) {
+      expect(feedbackTokens(value)).toEqual([])
+      expect(submittedChoiceResult(value)).toBe('neutral')
+    }
+    expect(choice('second').className).toContain('data-checked:border-primary/40')
+    expect(choice('alpha').className).toContain('data-checked:border-primary/40')
+    expect(container.querySelector('[data-result]')).toBeNull()
+
+    // Hiding correctness never hides the score: the summary keeps reporting the
+    // attempt's result. The single-attempt cap completes this result on its
+    // own, so the completed review offers neither decision.
+    expect(container.querySelector('[data-slot="questionnaire-summary"]')).not.toBeNull()
+    expect(container.textContent).toContain('1 of 2 correct answers')
+    expect(container.querySelector('[data-slot="questionnaire-retry"]')).toBeNull()
+    expect(container.querySelector('[data-slot="questionnaire-complete"]')).toBeNull()
   })
 })

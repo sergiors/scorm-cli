@@ -38,6 +38,7 @@ const retryQuestionnaire: QuestionnaireNode = {
   type: 'questionnaire',
   id: RETRY_ID,
   contributesToScore: true,
+  revealCorrectAnswers: true,
   maxAttempts: 3,
   questions: [singleChoiceQuestion, trueFalseQuestion, exactSetQuestion]
 }
@@ -46,6 +47,7 @@ const plainQuestionnaire: QuestionnaireNode = {
   type: 'questionnaire',
   id: PLAIN_ID,
   contributesToScore: false,
+  revealCorrectAnswers: true,
   maxAttempts: 1,
   questions: [{ ...singleChoiceQuestion, id: 'question:projection.mdx:1:4' }]
 }

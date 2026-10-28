@@ -75,6 +75,7 @@ describe('@scorm-cli/authoring', () => {
     const trueFalse = { type: 'true-false' } satisfies QuestionProps
     const includedQuestionnaire = { contributesToScore: true } satisfies QuestionnaireProps
     const excludedQuestionnaire = { contributesToScore: false } satisfies QuestionnaireProps
+    const hiddenAnswersQuestionnaire = { revealCorrectAnswers: false } satisfies QuestionnaireProps
     const option = { value: 'a' } satisfies OptionProps
     const correctOption = { value: 'a', correct: true } satisfies OptionProps
     const incorrectOption = {
@@ -96,6 +97,8 @@ describe('@scorm-cli/authoring', () => {
     const missingValue: OptionProps = { correct: true }
     // @ts-expect-error <Questionnaire contributesToScore> must be a boolean.
     const invalidScoreContribution: QuestionnaireProps = { contributesToScore: 'no' }
+    // @ts-expect-error <Questionnaire revealCorrectAnswers> must be a boolean.
+    const invalidRevealCorrectAnswers: QuestionnaireProps = { revealCorrectAnswers: 'no' }
 
     expect([
       sourcePage,
@@ -107,6 +110,7 @@ describe('@scorm-cli/authoring', () => {
       trueFalse,
       includedQuestionnaire,
       excludedQuestionnaire,
+      hiddenAnswersQuestionnaire,
       option,
       correctOption,
       incorrectOption,
@@ -116,8 +120,9 @@ describe('@scorm-cli/authoring', () => {
       invalidQuestion,
       stringCorrect,
       missingValue,
-      invalidScoreContribution
-    ]).toHaveLength(19)
+      invalidScoreContribution,
+      invalidRevealCorrectAnswers
+    ]).toHaveLength(21)
   })
 
   it('restricts Prompt and Option children to plain text', () => {

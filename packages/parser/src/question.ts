@@ -282,7 +282,12 @@ export async function parseQuestionnaire(
 ): Promise<QuestionnaireNode> {
   const { sourceFile: file, root, sourceLineOffset = 0 } = context
   const values = attrs(node, file)
-  assertAttributes(values, ['contributesToScore', 'expanded', 'maxAttempts'], file, node)
+  assertAttributes(
+    values,
+    ['contributesToScore', 'expanded', 'maxAttempts', 'revealCorrectAnswers'],
+    file,
+    node
+  )
   if (values.contributesToScore !== undefined && typeof values.contributesToScore !== 'boolean') {
     throw new Error(
       `${sourceLocation(file, node)}: Questionnaire "contributesToScore" must be a boolean`
@@ -290,6 +295,14 @@ export async function parseQuestionnaire(
   }
   if (values.expanded !== undefined && typeof values.expanded !== 'boolean') {
     throw new Error(`${sourceLocation(file, node)}: Questionnaire "expanded" must be a boolean`)
+  }
+  if (
+    values.revealCorrectAnswers !== undefined &&
+    typeof values.revealCorrectAnswers !== 'boolean'
+  ) {
+    throw new Error(
+      `${sourceLocation(file, node)}: Questionnaire "revealCorrectAnswers" must be a boolean`
+    )
   }
   if (
     values.maxAttempts !== undefined &&
@@ -325,6 +338,7 @@ export async function parseQuestionnaire(
     type: 'questionnaire',
     id: sourceNodeId('questionnaire', node, file, root, sourceLineOffset),
     contributesToScore: values.contributesToScore !== false,
+    revealCorrectAnswers: values.revealCorrectAnswers !== false,
     maxAttempts: values.maxAttempts ?? 1,
     expanded: values.expanded === true,
     questions

@@ -24,6 +24,7 @@ function questionnaire(id: string): QuestionnaireNode {
     type: 'questionnaire',
     id,
     contributesToScore: true,
+    revealCorrectAnswers: true,
     maxAttempts: 1,
     questions: [
       {
@@ -171,6 +172,7 @@ describe('collectQuestionnaireIds', () => {
       type: 'questionnaire',
       id: 'questionnaire:nested.mdx:1:1',
       contributesToScore: true,
+      revealCorrectAnswers: true,
       maxAttempts: 1,
       questions: [questionnaireNode.questions[0]]
     }
@@ -223,6 +225,7 @@ describe('collectQuestionnaireIds', () => {
       type: 'questionnaire',
       id: 'outer',
       contributesToScore: true,
+      revealCorrectAnswers: true,
       maxAttempts: 1,
       questions: [
         {

@@ -452,6 +452,7 @@ describe('Video resume and persistence', () => {
       type: 'questionnaire',
       id: 'questionnaire:lesson.mdx:1:1',
       contributesToScore: false,
+      revealCorrectAnswers: true,
       maxAttempts: 1,
       questions: [
         {

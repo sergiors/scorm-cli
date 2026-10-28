@@ -110,6 +110,8 @@ export interface VideoProps {
 export interface QuestionnaireProps extends ContainerProps {
   /** Whether this questionnaire contributes to the package's aggregate score. */
   contributesToScore?: boolean
+  /** Whether to reveal correct answers after submission. Defaults to `true`. */
+  revealCorrectAnswers?: boolean
   /** Maximum number of submission attempts. Defaults to 1. Must be a positive integer. */
   maxAttempts?: number
   /**

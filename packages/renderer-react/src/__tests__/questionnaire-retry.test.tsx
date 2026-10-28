@@ -53,6 +53,7 @@ const otherQuestionnaire: QuestionnaireNode = {
   type: 'questionnaire',
   id: 'questionnaire:other.mdx:1:1',
   contributesToScore: true,
+  revealCorrectAnswers: true,
   maxAttempts: 1,
   questions: [otherQuestion]
 }
@@ -474,6 +475,82 @@ describe('questionnaire retry flow (stepper)', () => {
     expect(retryIn(quiz)).toBeNull()
     expect(completeButtonIn(quiz)).toBeNull()
     expect(lastPageState()?.completedQuestionnaires).toEqual([retryQuestionnaire.id])
+  })
+})
+
+describe('questionnaire retry flow with hidden results (stepper)', () => {
+  const hiddenRetryQuestionnaire: QuestionnaireNode = {
+    ...retryQuestionnaire,
+    revealCorrectAnswers: false
+  }
+
+  const optionValues = ['first', 'second', 'alpha', 'beta']
+
+  function choiceClassIn(scope: ParentNode, value: string): string {
+    const choice = inputIn(scope, value).closest<HTMLElement>('[data-slot="questionnaire-choice"]')
+    if (!choice) throw new Error(`Choice not found for value: ${value}`)
+    return choice.className
+  }
+
+  /**
+   * The submitted result palette never paints any choice: no emerald green for
+   * correct options and no submitted destructive tint for a selected wrong one.
+   * The stepper conveys results only through styling, and the interactive
+   * validation border is inert for answered items, so only the submitted
+   * opacity-modified destructive tints would count as feedback here.
+   */
+  function expectUndisclosedChoices(scope: ParentNode): void {
+    for (const value of optionValues) {
+      const className = choiceClassIn(scope, value)
+      expect(className).not.toContain('emerald')
+      expect(className).not.toContain('bg-destructive')
+      expect(className).not.toContain('border-destructive/')
+    }
+  }
+
+  it('keeps retry and the summary score unchanged while answers stay undisclosed', () => {
+    render(makePackage('scroll', [hiddenRetryQuestionnaire]), [hiddenRetryQuestionnaire])
+    const quiz = region('retryable')
+
+    // A wrong attempt stays fully reviewable but undisclosed: the submitted
+    // review is read-only and its saved selections render as ordinary primary
+    // picks, never wearing the result palette.
+    submitStepperRound(quiz, 'second', 'beta')
+    expect(summaryTextIn(quiz)).toContain('0 of 2 correct answers')
+    expect(summaryPercentIn(quiz)).toBe('0%')
+    expect(itemsIn(quiz).every((item) => item.getAttribute('aria-readonly') === 'true')).toBe(true)
+    expect(choiceClassIn(quiz, 'second')).toContain('data-checked:border-primary/40')
+    expect(choiceClassIn(quiz, 'beta')).toContain('data-checked:border-primary/40')
+    expectUndisclosedChoices(quiz)
+
+    // The retry works exactly as it does with results revealed: the summary
+    // disappears and every choice returns editable with no saved selection.
+    act(() => retryIn(quiz)!.click())
+    expect(summaryIn(quiz)).toBeNull()
+    expect(activeItemIn(quiz).textContent).toContain(singleChoiceQuestion.prompt)
+    for (const value of ['first', 'second']) {
+      expect(inputIn(quiz, value).disabled).toBe(false)
+      expect(inputIn(quiz, value).checked).toBe(false)
+    }
+
+    // The better retried attempt records its own score, which the summary
+    // reports while no correctness is disclosed once again.
+    submitStepperRound(quiz, 'first', 'beta')
+    expect(summaryTextIn(quiz)).toContain('1 of 2 correct answers')
+    expect(summaryPercentIn(quiz)).toBe('50%')
+    expect(lastPageState()?.questionnaireAttempts).toEqual({
+      [hiddenRetryQuestionnaire.id]: [0, 1]
+    })
+    expectUndisclosedChoices(quiz)
+
+    // Completing closes the decision: the completed review keeps its summary
+    // score and its read-only, undisclosed choices.
+    act(() => completeButtonIn(quiz)!.click())
+    expect(summaryTextIn(quiz)).toContain('1 of 2 correct answers')
+    expect(retryIn(quiz)).toBeNull()
+    expect(completeButtonIn(quiz)).toBeNull()
+    expect(itemsIn(quiz).every((item) => item.getAttribute('aria-readonly') === 'true')).toBe(true)
+    expectUndisclosedChoices(quiz)
   })
 })
 
