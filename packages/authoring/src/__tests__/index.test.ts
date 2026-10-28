@@ -2,7 +2,10 @@ import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { ReactElement } from 'react'
 import * as authoring from '../index'
 import type {
+  AccordionItemProps,
+  AccordionProps,
   AuthoringComponentName,
+  ContentProps,
   ItemProps,
   OptionProps,
   PageProps,
@@ -12,7 +15,9 @@ import type {
   QuestionType,
   ScrollProps,
   SlidesProps,
-  TilesProps
+  TileItemProps,
+  TilesProps,
+  TitleProps
 } from '../index'
 
 /** Canonical marker vocabulary; the parser asserts the same names stay aligned. */
@@ -20,8 +25,11 @@ const markerNames: AuthoringComponentName[] = [
   'Scroll',
   'Slides',
   'Tiles',
+  'Accordion',
   'Page',
   'Item',
+  'Title',
+  'Content',
   'Path',
   'Image',
   'Video',
@@ -34,6 +42,50 @@ const markerNames: AuthoringComponentName[] = [
 function markerFunctions(): Record<string, (props: Record<string, unknown>) => unknown> {
   return authoring as unknown as Record<string, (props: Record<string, unknown>) => unknown>
 }
+
+describe('accordion authoring markers', () => {
+  it('accepts the Accordion, Title, and Content contract shapes', () => {
+    const accordion = { children: null } satisfies AccordionProps
+    const singleAccordion = { multiple: true, children: null } satisfies AccordionProps
+    const collapsibleAccordion = { collapsible: true, children: null } satisfies AccordionProps
+    const section = { children: null } satisfies AccordionItemProps
+    const openSection = { defaultOpen: true, children: null } satisfies AccordionItemProps
+    const sectionTitle = { children: 'Read me' } satisfies TitleProps
+    const sectionBody = { children: null } satisfies ContentProps
+
+    // The shared <Item> marker keeps its Tile reference form alongside the
+    // Accordion section form.
+    const tileItem = { src: 'tile.mdx' } satisfies TileItemProps
+    const item: ItemProps = { defaultOpen: false, children: null }
+
+    expect([
+      accordion,
+      singleAccordion,
+      collapsibleAccordion,
+      section,
+      openSection,
+      sectionTitle,
+      sectionBody,
+      tileItem,
+      item
+    ]).toHaveLength(9)
+  })
+
+  it('rejects cross-grammar props between Tile and Accordion Items', () => {
+    // A Tile <Item src> reference cannot open on load.
+    const openTileItem: TileItemProps = {
+      // @ts-expect-error `defaultOpen` belongs to the Accordion section form.
+      defaultOpen: true,
+      src: 'tile.mdx'
+    }
+    // An Accordion <Item> section is authored inline, never referenced.
+    const referencedSection: AccordionItemProps = {
+      // @ts-expect-error `src` belongs to the Tile reference form.
+      src: 'tile.mdx'
+    }
+    expect([openTileItem, referencedSection]).toHaveLength(2)
+  })
+})
 
 describe('@scorm-cli/authoring', () => {
   it('exports every canonical marker as a stub that throws when executed', () => {

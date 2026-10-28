@@ -68,6 +68,9 @@ function packageHasShuffledQuestionnaires(contentPackage: ContentPackage): boole
         case 'quote':
           if (visit(node.children)) return true
           break
+        case 'accordion':
+          if (node.items.some((item) => visit(item.content))) return true
+          break
         default:
           break
       }

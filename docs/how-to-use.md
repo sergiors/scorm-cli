@@ -74,20 +74,23 @@ A grid of short items.
 
 Import components from `scorm-cli/authoring`.
 
-| Component       | Description             | Props                                                                                                                                                                          |
-| :-------------- | :---------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Scroll`        | Root presentation       | `children`                                                                                                                                                                     |
-| `Slides`        | Root presentation       | `children`                                                                                                                                                                     |
-| `Tiles`         | Root presentation       | `children`, `columns` (1-12)                                                                                                                                                   |
-| `Page`          | Reference to a page     | `src` (root), `ref` (path)                                                                                                                                                     |
-| `Item`          | Reference to an item    | `src`                                                                                                                                                                          |
-| `Path`          | Ordered navigation path | `children`                                                                                                                                                                     |
-| `Image`         | Static image            | `src`, `alt`, `caption` (optional)                                                                                                                                             |
-| `Video`         | Video player            | `src`, `title` (optional), `poster` (optional), `captions` (optional)                                                                                                          |
-| `Questionnaire` | Assessment wrapper      | `children`, `contributesToScore` (bool), `expanded` (bool), `maxAttempts` (-1 or positive integer), `revealCorrectAnswers` (bool, optional), `shuffleOptions` (bool, optional) |
-| `Question`      | Single question         | `children`, `type` ('single-choice', 'multiple-choice', 'true-false')                                                                                                          |
-| `Prompt`        | Question text           | `children` (string)                                                                                                                                                            |
-| `Option`        | Answer choice           | `children` (string), `value`, `correct` (bool)                                                                                                                                 |
+| Component       | Description                         | Props                                                                                                                                                                          |
+| :-------------- | :---------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Scroll`        | Root presentation                   | `children`                                                                                                                                                                     |
+| `Slides`        | Root presentation                   | `children`                                                                                                                                                                     |
+| `Tiles`         | Root presentation                   | `children`, `columns` (1-12)                                                                                                                                                   |
+| `Accordion`     | Expandable content                  | `children`, `multiple` (bool), `collapsible` (bool)                                                                                                                            |
+| `Page`          | Reference to a page                 | `src` (root), `ref` (path)                                                                                                                                                     |
+| `Item`          | Tile reference or accordion section | `src` (Tiles), `defaultOpen` (Accordion)                                                                                                                                       |
+| `Title`         | Accordion section title             | inline Markdown children                                                                                                                                                       |
+| `Content`       | Accordion section body              | Markdown and supported flow content                                                                                                                                            |
+| `Path`          | Ordered navigation path             | `children`                                                                                                                                                                     |
+| `Image`         | Static image                        | `src`, `alt`, `caption` (optional)                                                                                                                                             |
+| `Video`         | Video player                        | `src`, `title` (optional), `poster` (optional), `captions` (optional)                                                                                                          |
+| `Questionnaire` | Assessment wrapper                  | `children`, `contributesToScore` (bool), `expanded` (bool), `maxAttempts` (-1 or positive integer), `revealCorrectAnswers` (bool, optional), `shuffleOptions` (bool, optional) |
+| `Question`      | Single question                     | `children`, `type` ('single-choice', 'multiple-choice', 'true-false')                                                                                                          |
+| `Prompt`        | Question text                       | `children` (string)                                                                                                                                                            |
+| `Option`        | Answer choice                       | `children` (string), `value`, `correct` (bool)                                                                                                                                 |
 
 `Questionnaire.maxAttempts` defaults to `1` and counts total submissions,
 including the first submission. Use `-1` for unlimited attempts; otherwise it
@@ -98,6 +101,25 @@ per-option visual feedback after submission, not the overall summary.
 
 `Questionnaire.shuffleOptions` defaults to `false` and changes only answer-option
 presentation order—not question order, answer identity, or scoring.
+
+An Accordion defaults to single-open and non-collapsible behavior: at most one
+section is open, and one section always remains open. Set `multiple` to allow
+several open sections, or `collapsible` to allow all sections to be closed; do
+not set both to `true`. An Item's `defaultOpen` defaults to `false`, and a
+single-open Accordion permits at most one `defaultOpen` item.
+
+```mdx
+<Accordion multiple={false} collapsible>
+  <Item defaultOpen>
+    <Title>Getting started</Title>
+    <Content>Read the **introduction** first.</Content>
+  </Item>
+  <Item>
+    <Title>More details</Title>
+    <Content>Continue with the next section.</Content>
+  </Item>
+</Accordion>
+```
 
 ## CLI Commands
 

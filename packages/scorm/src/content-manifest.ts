@@ -47,6 +47,9 @@ function collectQuestionnaires(
       case 'quote':
         collectQuestionnaires(node.children, output)
         break
+      case 'accordion':
+        for (const item of node.items) collectQuestionnaires(item.content, output)
+        break
       case 'questionnaire':
         output.push(node)
         break
@@ -67,6 +70,9 @@ function collectQuestions(
         break
       case 'quote':
         collectQuestions(node.children, output)
+        break
+      case 'accordion':
+        for (const item of node.items) collectQuestions(item.content, output)
         break
       case 'questionnaire':
         output.push(...node.questions)

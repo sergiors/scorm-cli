@@ -100,6 +100,23 @@ export type ContentNode =
   | VideoNode
   | PathNode
   | QuestionnaireNode
+  | AccordionNode
+
+/** A block accordion; opening state is authoring metadata, not persisted state. */
+export interface AccordionNode {
+  type: 'accordion'
+  multiple: boolean
+  collapsible: boolean
+  items: AccordionItemNode[]
+}
+
+/** One ordered accordion section with inline heading and ordinary block content. */
+export interface AccordionItemNode {
+  type: 'accordionItem'
+  defaultOpen: boolean
+  title: InlineNode[]
+  content: ContentNode[]
+}
 
 /** An ordered reference to existing root Scroll pages, keyed by stable page ID. */
 export interface PathNode {
@@ -475,6 +492,9 @@ export function getAggregateQuestionnaireScore(
         case 'quote':
           visit(node.children, pageState)
           break
+        case 'accordion':
+          for (const item of node.items) visit(item.content, pageState)
+          break
         case 'questionnaire':
           const questionnaireScore = scoreQuestionnaire(node, pageState)
           earned += questionnaireScore.earned
@@ -550,6 +570,12 @@ export function collectAssetReferences(contentPackage: ContentPackage): string[]
         case 'quote':
           visitContent(node.children)
           break
+        case 'accordion':
+          for (const item of node.items) {
+            visitInline(item.title)
+            visitContent(item.content)
+          }
+          break
         case 'table':
           for (const row of [node.header, ...node.rows]) {
             for (const cell of row.cells) visitInline(cell.children)
@@ -588,6 +614,9 @@ export function collectVideoNodes(
           break
         case 'quote':
           visit(node.children)
+          break
+        case 'accordion':
+          for (const item of node.items) visit(item.content)
           break
         case 'questionnaire':
           break

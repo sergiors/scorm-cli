@@ -13,6 +13,7 @@ import { PathView } from './PathView'
 import { QuestionnaireView } from './QuestionnaireView'
 import { Video } from './Video'
 import { cn } from '../lib/utils'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import {
   CodeBlock,
   CodeBlockActions,
@@ -247,6 +248,49 @@ function QuoteView({ node, context, path }: ContentNodeViewProps<'quote'>) {
 }
 
 /**
+ * A block accordion. Its open state is presentation-only, so the component is
+ * deliberately uncontrolled: the authored `defaultOpen` flags become the
+ * primitive's default values, and the learner's toggles never reach the player
+ * state. Single-open and multiple-open modes are separate Root variants because
+ * Radix accepts a different value shape for each; `collapsible` is meaningful
+ * only for a single-open accordion.
+ *
+ * Section bodies recurse through {@link ContentRenderer} with the item index
+ * appended to the reading-anchor path, matching the anchor traversal so nested
+ * questionnaires, videos, paths and other blocks behave exactly as they do at
+ * the page level.
+ */
+function AccordionView({ node, context, path }: ContentNodeViewProps<'accordion'>) {
+  const values = node.items.map((_, index) => `item-${index}`)
+  const openValues = values.filter((_, index) => node.items[index].defaultOpen)
+
+  const items = node.items.map((item, index) => (
+    <AccordionItem key={values[index]} value={values[index]} className="[&>h3]:my-0">
+      <AccordionTrigger>
+        <InlineContent nodes={item.title} />
+      </AccordionTrigger>
+      <AccordionContent className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+        <ContentRenderer nodes={item.content} {...context} readingAnchorPath={[...path, index]} />
+      </AccordionContent>
+    </AccordionItem>
+  ))
+
+  if (node.multiple) {
+    return (
+      <Accordion type="multiple" defaultValue={openValues}>
+        {items}
+      </Accordion>
+    )
+  }
+
+  return (
+    <Accordion type="single" collapsible={node.collapsible} defaultValue={openValues[0]}>
+      {items}
+    </Accordion>
+  )
+}
+
+/**
  * A block image in the shared {@link MediaFrame}: the AST carries no intrinsic
  * dimensions, so the frame reserves a stable 16:9 box and `object-contain` keeps
  * arbitrary or portrait images uncropped (letterboxed) inside it. The image
@@ -335,6 +379,7 @@ const contentNodeRenderers = {
   image: BlockImageView,
   video: VideoView,
   questionnaire: QuestionnaireBlockView,
+  accordion: AccordionView,
   path: PathBlockView
 } satisfies ContentNodeRenderers
 

@@ -48,7 +48,11 @@ function unsupportedNodeError(
 }
 
 function componentParseContext(source: ContentSource): ComponentParseContext {
-  return { source }
+  return {
+    source,
+    convertInline: (nodes) => convertInlineNodes(nodes, source),
+    convertContent: (nodes) => convertSiblingNodes(nodes, source, 'content')
+  }
 }
 
 function markdownConversion(source: ContentSource): MarkdownConversion {

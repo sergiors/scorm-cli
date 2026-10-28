@@ -1,5 +1,6 @@
 import type { ContentNode, ImageNode, InlineNode } from '@scorm-cli/core'
 import type { AstNode, ContentSource } from './ast'
+import { parseAccordion } from './accordion'
 import { parseImageComponent, parseVideo } from './media'
 import { parsePath } from './path'
 import { parseQuestionnaire } from './question'
@@ -34,6 +35,8 @@ export type ComponentContext =
   | 'questionnaire'
   /** A direct child of `<Question>`. */
   | 'question'
+  /** Within an Accordion item structure (`Item`, `Title`, or `Content`). */
+  | 'accordion'
 
 /**
  * Canonical component names and their placement, in the same order as the
@@ -44,8 +47,11 @@ const componentRegistry = {
   Scroll: { contexts: ['root'] },
   Slides: { contexts: ['root'] },
   Tiles: { contexts: ['root'] },
+  Accordion: { contexts: ['flow'] },
   Page: { contexts: ['presentation', 'path'] },
-  Item: { contexts: ['presentation'] },
+  Item: { contexts: ['presentation', 'accordion'] },
+  Title: { contexts: ['accordion'] },
+  Content: { contexts: ['accordion'] },
   Path: { contexts: ['flow'] },
   Image: { contexts: ['inline', 'flow'] },
   Video: { contexts: ['flow'] },
@@ -75,6 +81,8 @@ export type InlineComponentName = ComponentNamesIn<'inline'>
  */
 export interface ComponentParseContext {
   source: ContentSource
+  convertInline(nodes: AstNode[]): Promise<InlineNode[]>
+  convertContent(nodes: AstNode[]): Promise<ContentNode[]>
 }
 
 export type FlowComponentParser = (
@@ -110,6 +118,7 @@ export const flowComponentHandlers = {
       context.source.sourceLineOffset
     ),
   Questionnaire: (node, context) => parseQuestionnaire(node, context.source),
+  Accordion: parseAccordion,
   Path: (node, context) => parsePath(node, context.source)
 } satisfies Record<FlowComponentName, FlowComponentParser>
 

@@ -81,6 +81,7 @@ function normalizedBlock(node: ContentNode): string | null {
       ].join(':')
     case 'list':
     case 'quote':
+    case 'accordion':
     case 'table':
     case 'thematicBreak':
     case 'path':
@@ -122,10 +123,12 @@ function pathKey(path: readonly number[]): string {
 
 /**
  * Builds every anchor for a page in authored order. Paths mirror the render
- * traversal, so nested blocks inside a quote are anchorable while a list and its
- * items are not. Repeating a canonical block increments its occurrence counter;
- * a hash collision is resolved by a deterministic salt in the same authored
- * order, never by mount order.
+ * traversal, so nested blocks inside a quote or an accordion section are
+ * anchorable while their containers are not. Each accordion item's content
+ * extends the path with the item index, exactly as the renderer does, so item
+ * order keeps anchors unique and deterministic. Repeating a canonical block
+ * increments its occurrence counter; a hash collision is resolved by a
+ * deterministic salt in the same authored order, never by mount order.
  */
 export function readingAnchorsForPage(
   pageId: string,
@@ -167,6 +170,11 @@ export function readingAnchorsForPage(
       }
       if (node.type === 'quote') {
         visit(node.children, path)
+      }
+      if (node.type === 'accordion') {
+        node.items.forEach((item, itemIndex) => {
+          visit(item.content, [...path, itemIndex])
+        })
       }
     })
   }

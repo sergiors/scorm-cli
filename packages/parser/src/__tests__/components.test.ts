@@ -39,17 +39,22 @@ describe('authoring component registry', () => {
     expect(hasComponentContext('Question', 'flow')).toBe(false)
     expect(hasComponentContext('Prompt', 'question')).toBe(true)
     expect(hasComponentContext('Option', 'question')).toBe(true)
+    expect(hasComponentContext('Item', 'accordion')).toBe(true)
+    expect(hasComponentContext('Title', 'accordion')).toBe(true)
+    expect(hasComponentContext('Content', 'accordion')).toBe(true)
+    expect(hasComponentContext('Title', 'flow')).toBe(false)
     expect(hasComponentContext('Video', 'root')).toBe(false)
   })
 
   it('derives flow components from the registry without a second name list', () => {
     expect(authoringComponentNames.filter((name) => hasComponentContext(name, 'flow'))).toEqual([
+      'Accordion',
       'Path',
       'Image',
       'Video',
       'Questionnaire'
     ])
-    for (const name of ['Image', 'Video', 'Questionnaire', 'Path'])
+    for (const name of ['Accordion', 'Image', 'Video', 'Questionnaire', 'Path'])
       expect(isFlowComponent(name)).toBe(true)
     for (const name of [
       'Scroll',
@@ -57,6 +62,8 @@ describe('authoring component registry', () => {
       'Tiles',
       'Page',
       'Item',
+      'Title',
+      'Content',
       'Question',
       'Prompt',
       'Option'

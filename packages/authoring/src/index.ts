@@ -18,8 +18,11 @@ export type AuthoringComponentName =
   | 'Scroll'
   | 'Slides'
   | 'Tiles'
+  | 'Accordion'
   | 'Page'
   | 'Item'
+  | 'Title'
+  | 'Content'
   | 'Path'
   | 'Image'
   | 'Video'
@@ -72,11 +75,39 @@ export interface PageReferenceProps {
 /** Props for `<Page>`, which is `src`-based in a Scroll and `ref`-based in a Path. */
 export type PageProps = PageSourceProps | PageReferenceProps
 
+/** Props for `<Accordion>`, which contains direct `<Item>` sections. */
+export interface AccordionProps extends ContainerProps {
+  /** Allow more than one section to be open at a time. Defaults to `false`. */
+  multiple?: boolean
+  /** Allow every section to be closed. Defaults to `false`. */
+  collapsible?: boolean
+}
+
 /** Props for `<Item src="..." />` in a root `<Tiles>` presentation. */
-export interface ItemProps {
+export interface TileItemProps {
   /** Path to the referenced item document, relative to the declaring file. */
   src: string
+  defaultOpen?: never
+  children?: never
 }
+
+/** Props for `<Item>` inside an Accordion. */
+export interface AccordionItemProps extends ContainerProps {
+  src?: never
+  /** Whether this section starts open. Only one may be true in single mode. */
+  defaultOpen?: boolean
+}
+
+/** The existing Item marker supports Tiles references and Accordion sections. */
+export type ItemProps = TileItemProps | AccordionItemProps
+
+/** Props for an Accordion section title; children are inline Markdown. */
+export interface TitleProps {
+  children?: ReactNode
+}
+
+/** Props for an Accordion section body; children are Markdown and flow content. */
+export type ContentProps = ContainerProps
 
 /**
  * Props for `<Path>`, an ordered navigation path through pages already declared
@@ -168,6 +199,11 @@ export function Tiles(_props: TilesProps): never {
   return authoringStub('Tiles')
 }
 
+/** Block accordion. See {@link AccordionProps}. */
+export function Accordion(_props: AccordionProps): never {
+  return authoringStub('Accordion')
+}
+
 /** Page reference. See {@link PageProps}. */
 export function Page(_props: PageProps): never {
   return authoringStub('Page')
@@ -176,6 +212,16 @@ export function Page(_props: PageProps): never {
 /** Item reference. See {@link ItemProps}. */
 export function Item(_props: ItemProps): never {
   return authoringStub('Item')
+}
+
+/** Accordion section title. See {@link TitleProps}. */
+export function Title(_props: TitleProps): never {
+  return authoringStub('Title')
+}
+
+/** Accordion section body. See {@link ContentProps}. */
+export function Content(_props: ContentProps): never {
+  return authoringStub('Content')
 }
 
 /** Ordered path through root Scroll pages. See {@link PathProps}. */

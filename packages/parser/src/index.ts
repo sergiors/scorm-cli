@@ -2,6 +2,8 @@ export { parsePackage, parsePackageWithPaths } from './orchestrator'
 export type { ParsedPackageLocation } from './orchestrator'
 export { authoringComponentNames } from './components'
 export type {
+  AccordionItemNode,
+  AccordionNode,
   AnswerValue,
   BreakNode,
   CodeNode,

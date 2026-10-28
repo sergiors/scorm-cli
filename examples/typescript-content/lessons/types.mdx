@@ -2,6 +2,8 @@
 title: Everyday types
 ---
 
+
+
 # Describe your data
 
 Use primitive types such as `string` and `number`, then combine them to model the values your application uses.
@@ -44,3 +46,78 @@ TypeScript can also infer types automatically, without explicit annotations.
 | `const scores: number[] = [10, 20]` | `const scores = [10, 20]` |
 
 **Key takeaway:** Type annotations make types explicit, while type inference allows TypeScript to determine them automatically.
+
+## TypeScript quick reference
+
+Explore these essential TypeScript concepts. Expand each section to see explanations and practical examples.
+
+<Accordion multiple>
+  <Item defaultOpen>
+    <Title>Primitive types</Title>
+    <Content>
+      TypeScript supports primitive types such as `string`, `number`, and `boolean`.
+
+      ```ts
+      const name: string = 'Ada'
+      const age: number = 28
+      const isActive: boolean = true
+      ```
+
+      **Tip:** TypeScript can often infer these types automatically.
+    </Content>
+  </Item>
+  <Item>
+    <Title>Object types</Title>
+    <Content>
+      Object types define the expected structure of an object.
+
+      ```ts
+      type Learner = {
+        name: string
+        completedLessons: number
+      }
+
+      const learner: Learner = {
+        name: 'Ada',
+        completedLessons: 3
+      }
+      ```
+
+      TypeScript checks that the object contains the required properties with the correct types.
+    </Content>
+  </Item>
+  <Item>
+    <Title>Typed functions</Title>
+    <Content>
+      Functions can declare parameter types and return types.
+
+      ```ts
+      function greet(name: string): string {
+        return `Hello, ${name}!`
+      }
+      ```
+
+      This prevents callers from passing incompatible values and helps ensure the function returns the expected type.
+    </Content>
+  </Item>
+  <Item>
+    <Title>Union types and narrowing</Title>
+    <Content>
+      A union type allows a value to have more than one possible type.
+
+      ```ts
+      type LessonId = string | number
+
+      function formatId(id: LessonId): string {
+        if (typeof id === 'number') {
+          return `Lesson #${id}`
+        }
+
+        return id.toUpperCase()
+      }
+      ```
+
+      The `typeof` check narrows the union, allowing TypeScript to understand which operations are safe in each branch.
+    </Content>
+  </Item>
+</Accordion>

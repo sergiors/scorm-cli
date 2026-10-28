@@ -56,8 +56,9 @@ function presentationNodes(contentPackage: ContentPackage): Array<PageNode | Ite
  * layer needs. The player's scoring, resume sanitisation and completion gating
  * only ever inspect questionnaires (ids, attempt cap, question types, option
  * values and correctness) and video ids; everything else is presentation and
- * travels with the node's lazily loaded module. Keeping this summary in the
- * initial package
+ * travels with the node's lazily loaded module. Nesting containers that locate
+ * those nodes — lists, quotes and accordions — are preserved so the shared core
+ * helpers can reach them. Keeping this summary in the initial package
  * means no page or item body lands in the entry chunk, while the shared core
  * helpers keep operating on ordinary content nodes.
  *
@@ -100,6 +101,22 @@ function semanticNodeContent(content: readonly ContentNode[]): ContentNode[] {
           break
         case 'quote':
           visit(node.children)
+          break
+        case 'accordion':
+          // The wrapper and item order are semantic (they locate nested
+          // questionnaires and videos); titles stay in the lazy module, while
+          // default-open state is retained in this semantic summary.
+          summary.push({
+            type: 'accordion',
+            multiple: node.multiple,
+            collapsible: node.collapsible,
+            items: node.items.map((item) => ({
+              type: 'accordionItem',
+              defaultOpen: item.defaultOpen,
+              title: [],
+              content: semanticNodeContent(item.content)
+            }))
+          })
           break
         default:
           break

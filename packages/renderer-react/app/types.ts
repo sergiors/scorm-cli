@@ -1,4 +1,6 @@
 export type {
+  AccordionItemNode,
+  AccordionNode,
   AggregateScore,
   AnswerValue,
   ContentNode,
