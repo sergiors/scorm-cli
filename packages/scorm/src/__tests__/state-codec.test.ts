@@ -889,6 +889,62 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
   }
   const attemptManifest = createContentManifest(attemptContent)
 
+  it('round-trips active stepper questions as questionnaire-local indexes', () => {
+    const state: PlayerState = {
+      pages: {
+        alpha: {
+          activeQuestionnaireItems: {
+            // quiz-a is questionnaire index 0; select its second local question.
+            'quiz-a': 'qa2',
+            // quiz-b is questionnaire index 1; index zero is meaningful.
+            'quiz-b': 'qb1'
+          }
+        }
+      }
+    }
+    const encoded = encodeSuspendData(attemptManifest, state, 0)
+    expect(encoded).toEqual({ v: 1, p: 0, x: '00', d: { '0.i.0': 1, '0.i.1': 0 } })
+    expect(decodeSuspendData(attemptManifest, JSON.stringify(encoded))).toEqual(state)
+    expect(
+      encodeSuspendData(attemptManifest, decodeSuspendData(attemptManifest, encoded), 0)
+    ).toEqual(encoded)
+  })
+
+  it('omits unknown active questions and ignores invalid or out-of-range active indexes', () => {
+    const encoded = encodeSuspendData(
+      attemptManifest,
+      {
+        pages: {
+          alpha: {
+            activeQuestionnaireItems: {
+              'quiz-a': 'question:removed',
+              'quiz-b': 'qa1',
+              'quiz-u': 'qu1'
+            }
+          }
+        }
+      },
+      0
+    )
+    expect(encoded).toEqual({ v: 1, p: 0, x: '00', d: { '0.i.2': 0 } })
+
+    expect(
+      decodeSuspendData(attemptManifest, {
+        v: 1,
+        p: 0,
+        x: '00',
+        d: {
+          '0.i.0': 2, // quiz-a has only local positions 0 and 1.
+          '0.i.1': 1, // quiz-b has only local position 0.
+          '0.i.2': -1,
+          '0.i.3': 0,
+          '0.i.01': 0,
+          '0.i.1.0': 0
+        }
+      })
+    ).toEqual({ pages: {} })
+  })
+
   it('encodes attempt histories and active retries as page-local q/r keys', () => {
     const encoded = encodeSuspendData(
       attemptManifest,

@@ -79,6 +79,8 @@ export interface PlayerPageState {
   completedQuestionnaires?: string[]
   /** IDs of questionnaires currently active in a retry. */
   activeQuestionnaireRetries?: string[]
+  /** Current question IDs for active stepper questionnaires, keyed by questionnaire ID. */
+  activeQuestionnaireItems?: Record<string, string>
   /** Playback positions in semantic seconds, keyed by stable video node ID. */
   videos?: Record<string, number>
 }
@@ -124,8 +126,8 @@ What the compact data does and does not preserve:
   positional/lossy.
 - `d` is a single flat map for the current v1 format. Each key is
   `<pageIndex>.<kind>.<entityIndex>` where `kind` is `a` (answer), `t` (video
-  position), `q` (questionnaire attempt history), `r` (active retry marker), or
-  `c` (completed questionnaire marker). Answer selections are manifest option
+  position), `q` (questionnaire attempt history), `r` (active retry marker),
+  `c` (completed questionnaire marker), or `i` (active stepper question). Answer selections are manifest option
   indexes, video positions are integer deciseconds, and `q` values are arrays of
   correct-question counts for completed submissions, correct or not, in
   submission order. The array length is the number of consumed submissions;
@@ -141,11 +143,14 @@ What the compact data does and does not preserve:
   IDs. Video positions use page-local manifest video indexes in their keys;
   semantic positions are seconds rounded to tenths (for example, `132.5`
   seconds encodes as `1325` and decodes as `132.5` seconds). Empty/unknown
-  values are omitted from the map; `d` is omitted when no valid answers, video
-  positions, or questionnaire histories remain. The compact codec supports only
+  values are omitted from the map; `i` stores the zero-based question index
+  within its questionnaire, including `0` when question zero is explicitly
+  active. The codec maps that local index through the questionnaire's question
+  count and the page's flattened question list. `d` is omitted when no valid
+  answers, video positions, questionnaire histories, or active question remain. The compact codec supports only
   the current flat layout; a payload using the earlier nested
   `d[pageIndex].a`/`.t` shape is not decoded and restores no answers, attempt
-  histories, retry/completion markers, or video positions (see
+  histories, retry/completion markers, active question indexes, or video positions (see
   [Format versions](#format-versions)).
 - `submittedQuestionnaires` is not encoded. Codec decode alone restores valid
   `q` history as `questionnaireAttempts` and a valid `c` marker as
@@ -207,14 +212,16 @@ interface CompactSuspendData {
   s?: number // optional non-negative safe-integer shuffle seed
   d?: {
     // key: `${pageIndex}.${kind}.${entityIndex}`
-    [key: string]: number | number[] // a: option indexes; t: deciseconds; q: correct counts; r/c: 1
+    [key: string]: number | number[] // a: option indexes; t: deciseconds; q: correct counts; r/c: 1; i: local question index
   }
 }
 ```
 
 Page, question, questionnaire, and option indexes are zero-based positions in
 the manifest. Question and questionnaire indexes are local to a page, and
-option indexes are local to a question. The decoder maps those indexes through that page's current manifest
+option indexes are local to a question. For `i`, the entity index selects a
+page-local questionnaire and its value selects a question within that
+questionnaire. The decoder maps those indexes through that page's current manifest
 entry to recover semantic page/question IDs and option `value`s. A single-choice
 or true-false selection is encoded as one number; a multiple-choice selection
 is an array of option indexes sorted numerically. On decode, selections are
@@ -228,7 +235,7 @@ learner's selection order.
 
 - `v: 1` is the flat layout and the only supported version. `d` keys are
   `<pageIndex>.<kind>.<entityIndex>` with exactly three segments: two canonical
-  non-negative safe-integer indexes around a kind of `a`, `t`, `q`, `r`, or `c`.
+  non-negative safe-integer indexes around a kind of `a`, `t`, `q`, `r`, `c`, or `i`.
 - Any other `v` is unsupported: the whole payload is rejected and decoding
   returns a fresh `{ pages: {} }` state. There is no versioned decode path.
 
@@ -322,6 +329,25 @@ follows a perfect submission or finite attempt exhaustion (which occurs on the
 first submission when the limit is `1`), and manual completion is available
 before exhaustion.
 
+### Active stepper question
+
+For questionnaire index `1` on page index `0`, with the active question being
+its second question, the codec stores local index `1`:
+
+```json
+{ "v": 1, "p": 0, "x": "0", "d": { "0.i.1": 1 } }
+```
+
+The `i` key's entity index is the page-local questionnaire index; its value is
+the zero-based question index within that questionnaire. The codec derives the
+questionnaire's start in the page's dense flattened `questions` list by summing
+the question counts of preceding questionnaire indexes, then maps the semantic
+question ID in `activeQuestionnaireItems` through that range. Decode performs
+the inverse mapping through the current manifest. A stored `0` is meaningful
+and restores the first question when explicitly present; invalid or out-of-range
+questionnaire/question indexes are ignored. This leaves all existing question
+and option indexes unchanged.
+
 ### Video positions
 
 With manifest video ID `video-a` at local video index `0` on `page-one` (page index `0`), semantic
@@ -409,7 +435,9 @@ stringified indexes. Question and questionnaire collection walk nested block
 content in document order. Each questionnaire entry retains its stable semantic
 ID, normalized numeric `maxAttempts` (default `1`, or `-1` for unlimited), and
 question count, allowing the codec to validate finite history limits and
-correct-count bounds. Each question
+correct-count bounds. The page's question entries form a dense flattened order
+grouped by questionnaire, so the codec derives each questionnaire's question
+range from preceding questionnaire counts. Each question
 includes the semantic values of its correct options. Each page/item may include a `videos`
 record keyed by deterministic traversal-order video index (`"0"`, `"1"`, ...);
 each static `{ id, src, provider }` entry retains its semantic `id`. Nesting
@@ -431,12 +459,12 @@ The codec validates compact values against that packaged manifest:
   must contain only `0` and `1`. A shorter `x` is accepted; missing trailing bits
   mean unvisited. If `x` is longer than the current manifest page count, the
   decoder skips page-indexed visited, progress, answers, attempt histories,
-  retry markers, and completion markers. Video data is independently resolved through page/local-video
+  retry/completion markers, and active question indexes. Video data is independently resolved through page/local-video
   indexes.
 - An absent, non-object, or malformed `d` does not invalidate otherwise-valid
   progress. `d` is a flat map whose keys must be exactly
   `<pageIndex>.<kind>.<entityIndex>` with canonical non-negative safe-integer
-  page/entity indexes and a kind of `a`, `t`, `q`, `r`, or `c`. Malformed keys,
+  page/entity indexes and a kind of `a`, `t`, `q`, `r`, `c`, or `i`. Malformed keys,
   unknown pages or entities, and invalid values are ignored individually without
   affecting other entries. A `q` value must be a non-empty array of safe integer
   correct counts within the manifest's question count and attempt cap. An `r`
@@ -464,6 +492,12 @@ The codec validates compact values against that packaged manifest:
   valid `c` marker has matching valid history. `q` history alone does not
   restore completion state. The renderer sanitizer infers submitted status from
   valid history or completion, except during an active retry.
+- An `i` entry must name a current page and questionnaire, contain a
+  non-negative safe-integer local question index, and resolve inside that
+  questionnaire's validated range in the dense flattened page question list.
+  It restores the current semantic question ID in
+  `activeQuestionnaireItems[questionnaireId]`; invalid or removed/out-of-range
+  entries are ignored individually.
 - Unknown extra root sections are ignored; there is no root-level `t` field and
   root `t` values are not decoded. The codec has no rejection rule for extra
   properties beyond the required root fields.

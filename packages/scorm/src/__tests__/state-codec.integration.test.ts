@@ -484,6 +484,49 @@ describe('suspend-data codec integration', () => {
     })
   })
 
+  it('matches browser and Node codecs for questionnaire-local active positions', () => {
+    const state: PlayerState = {
+      pages: {
+        'page-3': { activeQuestionnaireItems: { 'quiz-3': 'q-3-single' } },
+        'page-4': { activeQuestionnaireItems: { 'quiz-4': 'q-4-single' } }
+      }
+    }
+    const context: Record<string, unknown> = {}
+    vm.createContext(context)
+    vm.runInContext(browserCodecSource(), context)
+    const browserEncode = context.compactEncode as (
+      manifest: unknown,
+      state: unknown,
+      progress: number
+    ) => string
+    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState
+
+    const encoded = encodeSuspendData(manifest, state, 0)
+    expect(encoded).toEqual({
+      v: 1,
+      p: 0,
+      x: '00000',
+      d: { '3.i.0': 1, '4.i.0': 0 }
+    })
+    expect(JSON.parse(browserEncode(manifest, state, 0))).toEqual(encoded)
+
+    const payload = JSON.stringify({
+      v: 1,
+      p: 0,
+      x: '00000',
+      d: {
+        '3.i.0': 1,
+        '4.i.0': 0,
+        '3.i.1': 1, // Only questionnaire index 0 exists on page 3.
+        '4.i.0.0': 0,
+        '4.i.00': 0
+      }
+    })
+    const nodeRestored = decodeSuspendData(manifest, payload)
+    expect(nodeRestored).toEqual(state)
+    expect(normalize(browserDecode(manifest, payload))).toEqual(nodeRestored)
+  })
+
   it('matches browser and Node codecs for unlimited attempt histories', () => {
     // An authored cap of -1 grants unlimited attempts, so both runtimes must
     // keep long histories and always leave the questionnaire retryable.

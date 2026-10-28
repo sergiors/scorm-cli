@@ -11,7 +11,7 @@ type CompactValue = number | readonly number[]
  * Compact suspend-data payload. Keys in `d` are
  * `<pageIndex>.<kind>.<entityIndex>` where `kind` is `a` (answer), `t`
  * (video position), `q` (questionnaire attempt history), `r` (active retry),
- * or `c` (completed questionnaire).
+ * `c` (completed questionnaire), or `i` (active stepper question).
  */
 export interface CompactSuspendData {
   readonly v: 1
@@ -44,22 +44,31 @@ function createSuspendDataCodec() {
   /** Builds the single flat data key for a manifest page/kind/entity. */
   const makeDataKey = (
     pageIndex: string,
-    kind: 'a' | 't' | 'q' | 'r' | 'c',
+    kind: 'a' | 't' | 'q' | 'r' | 'c' | 'i',
     entityIndex: string
   ): string => `${pageIndex}.${kind}.${entityIndex}`
 
   /**
    * Parses a flat data key. Returns undefined unless it is exactly three
    * segments: two canonical non-negative safe-integer indexes around a kind of
-   * `a`, `t`, `q`, `r`, or `c`.
+   * `a`, `t`, `q`, `r`, `c`, or `i`.
    */
   const parseDataKey = (
     key: string
-  ): { pageIndex: string; kind: 'a' | 't' | 'q' | 'r' | 'c'; entityIndex: string } | undefined => {
+  ):
+    | { pageIndex: string; kind: 'a' | 't' | 'q' | 'r' | 'c' | 'i'; entityIndex: string }
+    | undefined => {
     const segments = key.split('.')
     if (segments.length !== 3) return undefined
     const [pageIndex, kind, entityIndex] = segments as [string, string, string]
-    if (kind !== 'a' && kind !== 't' && kind !== 'q' && kind !== 'r' && kind !== 'c') {
+    if (
+      kind !== 'a' &&
+      kind !== 't' &&
+      kind !== 'q' &&
+      kind !== 'r' &&
+      kind !== 'c' &&
+      kind !== 'i'
+    ) {
       return undefined
     }
     if (!canonicalIndex(pageIndex) || !canonicalIndex(entityIndex)) return undefined
@@ -83,6 +92,64 @@ function createSuspendDataCodec() {
       .filter((value): value is string => typeof value === 'string')
     if (values.length === 0) return undefined
     return question.type === 'multiple-choice' ? values : values[0]
+  }
+
+  /**
+   * Resolves a questionnaire's flattened question range. The page-local
+   * questionnaire and question indexes must both be dense, and question counts
+   * must safely account for every flattened question.
+   */
+  const questionnaireQuestionRange = (
+    page: ManifestPage,
+    questionnaireIndex: string
+  ): { start: number; count: number } | undefined => {
+    if (
+      !canonicalIndex(questionnaireIndex) ||
+      !isRecord(page.questionnaires) ||
+      !isRecord(page.questions)
+    ) {
+      return undefined
+    }
+    const questionnaireIndexes = Object.keys(page.questionnaires).sort(
+      (left, right) => Number(left) - Number(right)
+    )
+    let start = 0
+    let targetCount: number | undefined
+    let targetStart: number | undefined
+    for (let index = 0; index < questionnaireIndexes.length; index += 1) {
+      const currentIndex = questionnaireIndexes[index]
+      if (!canonicalIndex(currentIndex) || Number(currentIndex) !== index) return undefined
+      const questionnaire = page.questionnaires[currentIndex]
+      if (
+        !isRecord(questionnaire) ||
+        !Number.isSafeInteger(questionnaire.questionCount) ||
+        (questionnaire.questionCount as number) < 0
+      ) {
+        return undefined
+      }
+      const count = questionnaire.questionCount as number
+      if (currentIndex === questionnaireIndex) {
+        if (typeof questionnaire.id !== 'string' || !safeKey(questionnaire.id)) return undefined
+        targetCount = count
+        targetStart = start
+      }
+      start += count
+      if (!Number.isSafeInteger(start)) return undefined
+    }
+    if (targetCount === undefined || targetStart === undefined) return undefined
+
+    const questionIndexes = Object.keys(page.questions).sort(
+      (left, right) => Number(left) - Number(right)
+    )
+    if (
+      questionIndexes.length !== start ||
+      questionIndexes.some(
+        (index, position) => !canonicalIndex(index) || Number(index) !== position
+      )
+    ) {
+      return undefined
+    }
+    return { start: targetStart, count: targetCount }
   }
 
   /** Stores one valid decisecond position under its semantic video ID. */
@@ -166,6 +233,25 @@ function createSuspendDataCodec() {
       } else if (parsedKey.kind === 'c') {
         if (!pageIndexed || value !== 1) return
         completedCandidates.push({ page, questionnaireIndex: parsedKey.entityIndex })
+      } else if (parsedKey.kind === 'i') {
+        if (!pageIndexed || !Number.isSafeInteger(value) || (value as number) < 0) return
+        const range = questionnaireQuestionRange(page, parsedKey.entityIndex)
+        if (!range || (value as number) >= range.count) return
+        const question = page.questions[String(range.start + (value as number))]
+        const questionnaire = page.questionnaires?.[parsedKey.entityIndex]
+        if (
+          !question ||
+          typeof question.id !== 'string' ||
+          !safeKey(question.id) ||
+          !questionnaire ||
+          typeof questionnaire.id !== 'string' ||
+          !safeKey(questionnaire.id)
+        )
+          return
+        const pageState = fresh.pages[page.id] ?? (fresh.pages[page.id] = {})
+        const activeItems =
+          pageState.activeQuestionnaireItems ?? (pageState.activeQuestionnaireItems = {})
+        activeItems[questionnaire.id] = question.id
       }
     })
     completedCandidates.forEach(({ page, questionnaireIndex }) => {
@@ -256,6 +342,19 @@ function createSuspendDataCodec() {
           questionnaire.questionCount < 0
         ) {
           return
+        }
+        const activeQuestionId = pageState?.activeQuestionnaireItems?.[questionnaire.id]
+        if (typeof activeQuestionId === 'string') {
+          const range = questionnaireQuestionRange(page, questionnaireIndex)
+          if (range) {
+            for (let localIndex = 0; localIndex < range.count; localIndex += 1) {
+              const question = page.questions[String(range.start + localIndex)]
+              if (question && safeKey(question.id) && question.id === activeQuestionId) {
+                data[makeDataKey(pageIndex, 'i', questionnaireIndex)] = localIndex
+                break
+              }
+            }
+          }
         }
         const history = pageState?.questionnaireAttempts?.[questionnaire.id]
         if (

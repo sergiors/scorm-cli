@@ -62,6 +62,17 @@ const otherQuestionnaire: QuestionnaireNode = {
   questions: [otherQuestion]
 }
 
+/** A second two-question stepper to verify questionnaire-local saved positions. */
+const secondPositionQuestionnaire: QuestionnaireNode = {
+  ...retryQuestionnaire,
+  id: 'questionnaire:second-position.mdx:1:1',
+  questions: retryQuestionnaire.questions.map((question, index) => ({
+    ...question,
+    id: `${question.id}:second-position`,
+    prompt: `Second questionnaire question ${index + 1}`
+  }))
+}
+
 function pageWith(nodes: QuestionnaireNode[]): PageNode {
   return {
     type: 'page',
@@ -855,6 +866,119 @@ describe('retry clears only its own answers', () => {
     })
     // The single-attempt questionnaire auto-completed with its submission.
     expect(retrying?.completedQuestionnaires).toEqual([otherQuestionnaire.id])
+  })
+})
+
+describe('stepper active-question persistence', () => {
+  it('saves the active question on Next and Previous and restores it with saved answers', () => {
+    const savedAnswers = {
+      [singleChoiceQuestion.id]: 'first',
+      [multipleChoiceQuestion.id]: ['beta']
+    }
+    render(makePackage('scroll', [retryQuestionnaire]), [retryQuestionnaire])
+    const quiz = region('retryable')
+
+    act(() => inputIn(quiz, 'first').click())
+    act(() => clickableButtonIn(quiz, 'Next question').click())
+    expect(activeItemIn(quiz).textContent).toContain(multipleChoiceQuestion.prompt)
+    expect(lastPageState()?.activeQuestionnaireItems).toEqual({
+      [retryQuestionnaire.id]: multipleChoiceQuestion.id
+    })
+
+    act(() => clickableButtonIn(quiz, 'Previous question').click())
+    expect(activeItemIn(quiz).textContent).toContain(singleChoiceQuestion.prompt)
+    expect(lastPageState()?.activeQuestionnaireItems).toEqual({
+      [retryQuestionnaire.id]: singleChoiceQuestion.id
+    })
+
+    restoredState = {
+      pages: {
+        [PAGE_ID]: {
+          visited: true,
+          answers: savedAnswers,
+          activeQuestionnaireItems: { [retryQuestionnaire.id]: multipleChoiceQuestion.id }
+        }
+      }
+    }
+    act(() => root.unmount())
+    root = createRoot(container)
+    render(makePackage('scroll', [retryQuestionnaire]), [retryQuestionnaire])
+
+    const restoredQuiz = region('retryable')
+    expect(activeItemIn(restoredQuiz).textContent).toContain(multipleChoiceQuestion.prompt)
+    expect(inputIn(restoredQuiz, 'first').checked).toBe(true)
+    expect(inputIn(restoredQuiz, 'beta').checked).toBe(true)
+  })
+
+  it('keeps independent active positions for two questionnaires on one page', () => {
+    const questionnaires = [retryQuestionnaire, secondPositionQuestionnaire]
+    render(makePackage('scroll', questionnaires), questionnaires)
+    const firstQuiz = region('retryable')
+    const secondQuiz = region('other')
+
+    act(() => inputIn(firstQuiz, 'first').click())
+    act(() => clickableButtonIn(firstQuiz, 'Next question').click())
+    act(() => inputIn(secondQuiz, 'first').click())
+    act(() => clickableButtonIn(secondQuiz, 'Next question').click())
+    act(() => clickableButtonIn(firstQuiz, 'Previous question').click())
+
+    expect(activeItemIn(firstQuiz).textContent).toContain(singleChoiceQuestion.prompt)
+    expect(activeItemIn(secondQuiz).textContent).toContain('Second questionnaire question 2')
+    expect(lastPageState()?.activeQuestionnaireItems).toEqual({
+      [retryQuestionnaire.id]: singleChoiceQuestion.id,
+      [secondPositionQuestionnaire.id]: secondPositionQuestionnaire.questions[1].id
+    })
+  })
+
+  it('returns to the first question after retry and restores a submitted review position', () => {
+    render(makePackage('scroll', [retryQuestionnaire]), [retryQuestionnaire])
+    const quiz = region('retryable')
+
+    submitStepperRound(quiz, 'second', 'beta')
+    expect(lastPageState()?.activeQuestionnaireItems).toEqual({
+      [retryQuestionnaire.id]: multipleChoiceQuestion.id
+    })
+    act(() => retryIn(quiz)!.click())
+    expect(activeItemIn(quiz).textContent).toContain(singleChoiceQuestion.prompt)
+    expect(lastPageState()?.activeQuestionnaireItems).toBeUndefined()
+
+    restoredState = {
+      pages: {
+        [PAGE_ID]: {
+          visited: true,
+          submittedQuestionnaires: [retryQuestionnaire.id],
+          questionnaireAttempts: { [retryQuestionnaire.id]: [0] },
+          answers: {
+            [singleChoiceQuestion.id]: 'second',
+            [multipleChoiceQuestion.id]: ['beta']
+          },
+          activeQuestionnaireItems: { [retryQuestionnaire.id]: multipleChoiceQuestion.id }
+        }
+      }
+    }
+    act(() => root.unmount())
+    root = createRoot(container)
+    render(makePackage('scroll', [retryQuestionnaire]), [retryQuestionnaire])
+
+    const review = region('retryable')
+    expect(activeItemIn(review).textContent).toContain(multipleChoiceQuestion.prompt)
+    expect(activeItemIn(review).getAttribute('aria-readonly')).toBe('true')
+    expect(inputIn(review, 'second').checked).toBe(true)
+    expect(inputIn(review, 'beta').checked).toBe(true)
+    expect(summaryTextIn(review)).toContain('0 of 2 correct answers')
+  })
+
+  it('falls back to the first question when the saved id is not authored', () => {
+    restoredState = {
+      pages: {
+        [PAGE_ID]: {
+          activeQuestionnaireItems: { [retryQuestionnaire.id]: 'question:removed' }
+        }
+      }
+    }
+    render(makePackage('scroll', [retryQuestionnaire]), [retryQuestionnaire])
+
+    expect(activeItemIn(region('retryable')).textContent).toContain(singleChoiceQuestion.prompt)
   })
 })
 

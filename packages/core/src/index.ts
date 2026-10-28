@@ -217,6 +217,8 @@ export interface PlayerPageState {
   completedQuestionnaires?: string[]
   /** Questionnaires currently being retried after an unsuccessful submission. */
   activeQuestionnaireRetries?: string[]
+  /** Current question IDs for active stepper questionnaires, keyed by stable questionnaire ID. */
+  activeQuestionnaireItems?: Record<string, string>
   /** Playback positions in semantic seconds, keyed by stable video node ID. */
   videos?: Record<string, number>
 }

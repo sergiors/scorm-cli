@@ -126,7 +126,8 @@ function StepperQuestion({
  * A one-question-at-a-time questionnaire. A single Questionnaire Root owns the
  * active item, validation, focus, keyboard shortcuts and navigation before and
  * after submission; only the active item is visible and the rest stay hidden
- * and inert.
+ * and inert. The active item is controlled by the session so a resumed page or
+ * a review returns to the last question the learner reached.
  *
  * The Root's own boundaries decide which action appears: Previous on every item
  * but the first, Next on every item but the last, and Submit only on the last.
@@ -143,9 +144,9 @@ function StepperQuestion({
  * repeat.
  *
  * A retry is a new submission round: the owner clears this questionnaire's
- * answers and submitted status while keeping its attempt history and page
- * completion. Remounting the Root under a retry key makes the wizard start again
- * at the first question with every choice editable.
+ * answers, submitted status and saved active question while keeping its attempt
+ * history and page completion. Remounting the Root under a retry key makes the
+ * wizard start again at the first question with every choice editable.
  *
  * A submitted result with attempts left stays open after submission: the summary
  * shows the latest recorded attempt and offers Try Again or Complete.
@@ -163,7 +164,9 @@ export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
     retrying,
     shuffleSeed,
     attemptIndex,
+    activeItemId,
     onAnswer,
+    onItemChange,
     onSubmitted,
     onRetry,
     onComplete
@@ -172,6 +175,14 @@ export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
   const firstQuestionId = node.questions[0]?.id ?? ''
   const lastQuestionId = node.questions[node.questions.length - 1]?.id ?? ''
   const reviewing = submitted && !retrying
+
+  // A restored position is honoured only while it still names a question this
+  // questionnaire authors. Otherwise the owned controlled position starts at
+  // the first question.
+  const savedItem = node.questions.some((question) => question.id === activeItemId)
+    ? activeItemId
+    : undefined
+  const item = savedItem ?? firstQuestionId
 
   const { answers: currentAnswers, answerQuestion } = useQuestionnaireAnswers({
     questions: node.questions,
@@ -229,8 +240,10 @@ export function StepperQuestionnaire({ node }: { node: QuestionnaireNode }) {
         <CardContent>
           <Questionnaire
             key={retrying ? `retry-${attempts.length}` : 'review'}
+            item={onItemChange ? item : undefined}
             defaultItem={reviewing ? lastQuestionId : firstQuestionId}
             items={items}
+            onItemChange={onItemChange}
             onSubmit={handleSubmit}
           >
             <QuestionnaireProgress

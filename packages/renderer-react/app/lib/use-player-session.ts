@@ -99,6 +99,13 @@ export interface PlayerSession {
   /** Persists a question answer for a node. */
   setAnswer(pageId: string, questionId: string, value: AnswerValue): void
   /**
+   * Persists the active question of a stepper questionnaire, scoped to the
+   * page/item that owns it. A question outside the authored questionnaire is
+   * rejected when the package defines that questionnaire, and an unchanged
+   * active question is a no-op.
+   */
+  setActiveQuestionnaireItem(pageId: string, questionnaireId: string, questionId: string): void
+  /**
    * Records a successful questionnaire submission from the latest page answers.
    * The canonical result is evaluated inside the state transition, so a stale
    * render-time score can never be recorded. Appends exactly one correct-answer
@@ -309,6 +316,35 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
     [applyState]
   )
 
+  // Remembers which stepper question is active so a resume or review returns to
+  // it. The authored questionnaire validates the id whenever this package owns
+  // it, so a stale or foreign question can never become the saved position. A
+  // standalone rendered questionnaire has no authored definition to consult,
+  // and its owner has already validated the id against its own questions.
+  const setActiveQuestionnaireItem = useCallback(
+    (pageId: string, questionnaireId: string, questionId: string) => {
+      const authored = findAuthoredQuestionnaire(contentPackage, pageId, questionnaireId)
+      if (authored && !authored.questions.some((question) => question.id === questionId)) {
+        return
+      }
+      applyState((previous) =>
+        updatePageState(previous, pageId, (page) => {
+          if (page.activeQuestionnaireItems?.[questionnaireId] === questionId) {
+            return page
+          }
+          return {
+            ...page,
+            activeQuestionnaireItems: {
+              ...page.activeQuestionnaireItems,
+              [questionnaireId]: questionId
+            }
+          }
+        })
+      )
+    },
+    [applyState, contentPackage]
+  )
+
   // A successful submission is the only thing that consumes an attempt. Its
   // canonical result is evaluated from the exact `page.answers` inside the
   // transition, so the recorded count and the completion decision can never
@@ -413,6 +449,20 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
             activeQuestionnaireRetries: [...retries, questionnaireId]
           }
 
+          // A retry is a fresh round, so its saved active question is dropped
+          // and the wizard starts at question 0 again. Other questionnaires on
+          // the same page keep their own positions.
+          const activeItems = page.activeQuestionnaireItems
+          if (activeItems?.[questionnaireId] !== undefined) {
+            const remainingItems = { ...activeItems }
+            delete remainingItems[questionnaireId]
+            if (Object.keys(remainingItems).length > 0) {
+              nextPage.activeQuestionnaireItems = remainingItems
+            } else {
+              delete nextPage.activeQuestionnaireItems
+            }
+          }
+
           if (Object.keys(answers).length > 0) {
             nextPage.answers = answers
           } else {
@@ -504,6 +554,7 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
     recordReadingPosition,
     markCompleted,
     setAnswer,
+    setActiveQuestionnaireItem,
     markQuestionnaireSubmitted,
     retryQuestionnaire,
     completeQuestionnaire,

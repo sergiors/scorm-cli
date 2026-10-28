@@ -794,7 +794,7 @@ describe('QuestionnaireView persistence', () => {
     expect(submittedIds()).toEqual([questionnaireNode.id])
   })
 
-  it('restores a submitted wizard read-only, opening on its last question', () => {
+  it('restores a submitted wizard read-only, opening on its first question', () => {
     restoreQuestionnaireState(
       {
         [singleChoiceQuestion.id]: 'first',
@@ -804,24 +804,30 @@ describe('QuestionnaireView persistence', () => {
     )
     act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
-    // The default presentation stays a wizard after submission: the single
-    // root opens on the question that was active at submit time (the last
-    // one) instead of restarting or expanding every question.
+    // The default presentation stays a wizard after submission: with no saved
+    // position the restored review opens on the first question instead of
+    // restarting, expanding every question, or reopening the last one.
     expect(container.querySelectorAll('[data-slot="questionnaire-item"]')).toHaveLength(2)
     expect(hiddenItems()).toHaveLength(1)
-    expect(activeItem().textContent).toContain('Which options apply?')
-    expect(container.textContent).toContain('Question 2 of 2')
+    expect(activeItem().textContent).toContain('Which option is correct?')
+    expect(container.textContent).toContain('Question 1 of 2')
 
-    // The hidden earlier question keeps its saved selection rendered, and both
-    // saved answers stay checked and read-only: the inputs stay enabled, but
-    // every reviewed item exposes its submitted read-only state to
+    // The later question keeps its saved selection rendered, and both saved
+    // answers stay checked and read-only: the inputs stay enabled, but every
+    // reviewed item exposes its submitted read-only state to
     // assistive technology.
-    expect(hiddenItems()[0]?.textContent).toContain('Which option is correct?')
+    expect(hiddenItems()[0]?.textContent).toContain('Which options apply?')
     expect(submittedChecked('first')).toBe(true)
     expect(submittedChecked('second')).toBe(false)
     expect(submittedChecked('alpha')).toBe(true)
     expect(submittedChecked('beta')).toBe(true)
     expect(submittedItem('alpha').getAttribute('aria-readonly')).toBe('true')
+
+    // Next walks the review forward; the reviewed answers already satisfy the
+    // wizard, so the later question unlocks without another interaction.
+    act(() => button('Next question').click())
+    expect(activeItem().textContent).toContain('Which options apply?')
+    expect(container.textContent).toContain('Question 2 of 2')
 
     // A change attempt on the active review choices cannot uncheck or select
     // anything: the submitted handler drops the interaction and the controlled
@@ -857,14 +863,19 @@ describe('QuestionnaireView persistence', () => {
     )
     act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
-    // Opening on the last question, Previous walks back to the first
-    // question's review without leaving the wizard.
+    // Falling back to the first question, Next reaches the last question's
+    // feedback.
+    act(() => button('Next question').click())
+    expect(activeItem().textContent).toContain('Which options apply?')
+    expect(submittedChecked('alpha')).toBe(true)
+    expect(submittedChoiceIsCorrect('alpha')).toBe(true)
+
+    // Previous walks back to the first question's review without leaving the
+    // wizard. The first review question is the start boundary: Previous is
+    // omitted there by the Root's native visibility, while Next unlocks the
+    // return path.
     act(() => button('Previous question').click())
     expect(activeItem().textContent).toContain('Which option is correct?')
-
-    // The first review question is the start boundary: Previous is omitted
-    // there by the Root's native visibility, while Next unlocks the return
-    // path.
     expect(hasVisibleButton('Previous question')).toBe(false)
     expect(hasVisibleButton('Next question')).toBe(true)
     expect(button('Next question').disabled).toBe(false)
@@ -1104,14 +1115,8 @@ describe('QuestionnaireView submitted wizard flow', () => {
     )
     act(() => root.render(<QuestionnaireView node={questionnaireNode} />))
 
-    // The submitted wizard opens on its last question.
-    expect(activeItem().textContent).toContain('Which options apply?')
-
-    act(() => {
-      activeItem().dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true })
-      )
-    })
+    // Without a saved position the submitted wizard opens on its first
+    // question.
     expect(activeItem().textContent).toContain('Which option is correct?')
 
     // ArrowLeft at the start review boundary is inert, like the disabled
@@ -1139,7 +1144,7 @@ describe('QuestionnaireView submitted wizard flow', () => {
     expect(activeItem().textContent).toContain('Which option is correct?')
     expect(container.querySelector('[data-slot="questionnaire-error"]:not([hidden])')).toBeNull()
 
-    // A fresh ArrowRight still returns to the last question's feedback.
+    // A fresh ArrowRight still advances to the last question's feedback.
     act(() => {
       activeItem().dispatchEvent(
         new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })

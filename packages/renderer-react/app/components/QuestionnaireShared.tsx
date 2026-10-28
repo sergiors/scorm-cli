@@ -33,8 +33,16 @@ export function useQuestionnaireSession(node: QuestionnaireNode) {
     retrying,
     shuffleSeed: state.shuffleSeed,
     attemptIndex,
+    activeItemId: pageState?.activeQuestionnaireItems?.[node.id],
     onAnswer: pageId
       ? (questionId: string, value: AnswerValue) => actions.setAnswer(pageId, questionId, value)
+      : undefined,
+    onItemChange: pageId
+      ? (questionId: string) => {
+          if (node.questions.some((question) => question.id === questionId)) {
+            actions.setActiveQuestionnaireItem(pageId, node.id, questionId)
+          }
+        }
       : undefined,
     onSubmitted: pageId
       ? (questionnaireId: string) => actions.markQuestionnaireSubmitted(pageId, questionnaireId)

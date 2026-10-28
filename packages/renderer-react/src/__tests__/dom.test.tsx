@@ -1825,19 +1825,34 @@ describe('PackageView scroll persistence', () => {
     const restoredItem = document.querySelector<HTMLElement>(
       '[data-slot="questionnaire-item"]:not([hidden])'
     )
-    expect(restoredItem?.textContent).toContain('Which options apply?')
+    // Without a saved position the restored review opens on the first
+    // question, read-only like every other submitted item.
+    expect(restoredItem?.textContent).toContain('Which option is correct?')
     expect(restoredItem?.getAttribute('aria-readonly')).toBe('true')
 
+    // Next walks the review forward to the last question's read-only feedback.
+    act(() => findButton('Next question').click())
+    const reachedItem = document.querySelector<HTMLElement>(
+      '[data-slot="questionnaire-item"]:not([hidden])'
+    )
+    expect(reachedItem?.textContent).toContain('Which options apply?')
+    expect(reachedItem?.getAttribute('aria-readonly')).toBe('true')
+
+    // A change attempt on the active review choices cannot uncheck or select
+    // anything: the submitted handler drops the interaction and the controlled
+    // checked value stays authoritative, so neither the rendered selections
+    // nor the persisted answers move.
+    const writesBeforeAttempt = saveState.mock.calls.length
     act(() => submittedControl('beta').click())
     act(() => submittedControl('alpha').click())
     expect(submittedControl('alpha').checked).toBe(true)
     expect(submittedControl('beta').checked).toBe(false)
+    expect(saveState.mock.calls.length).toBe(writesBeforeAttempt)
 
     // The Submit action stays rendered for the submitted questionnaire, but
     // natively disabled so the saved submission can never repeat.
     expect(submitAction().type).toBe('submit')
     expect(submitAction().disabled).toBe(true)
-    expect(saveState).not.toHaveBeenCalled()
 
     setEndIntersecting(0, true)
     expect(virtualizedTotal()).toBe(2)

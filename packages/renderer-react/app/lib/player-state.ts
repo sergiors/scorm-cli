@@ -155,6 +155,21 @@ function sanitizePageState(
     }
   }
 
+  // The active stepper question is scoped to its owning questionnaire and must
+  // still name one of that questionnaire's authored questions. A retry clears
+  // its old position when the retry starts, but positions recorded during the
+  // new round remain restorable.
+  if (isRecord(raw.activeQuestionnaireItems)) {
+    const activeItems: Record<string, string> = {}
+    for (const [questionnaireId, value] of Object.entries(raw.activeQuestionnaireItems)) {
+      const questionnaire = questionnaireById.get(questionnaireId)
+      if (!questionnaire || typeof value !== 'string') continue
+      if (!questionnaire.questions.some((question) => question.id === value)) continue
+      activeItems[questionnaireId] = value
+    }
+    if (Object.keys(activeItems).length > 0) page.activeQuestionnaireItems = activeItems
+  }
+
   // Video positions are scoped to the page/item that owns the video: only ids
   // reachable in this node's nested AST are kept, so a video moved to another
   // page never retains a position under the page that used to own it. Invalid
@@ -252,7 +267,9 @@ function sanitizePageState(
  * encoded submissions, while completion is restored only from its own field.
  * Video positions are scoped to the page/item that owns the video, so a video
  * moved to another node never retains a position under its old node. A persisted
- * page completion survives only when every authored questionnaire has completed
+ * active stepper question survives only while it names a question authored by
+ * that page's questionnaire. A persisted page completion survives only when
+ * every authored questionnaire has completed
  * its result; an in-progress retry stays unsubmitted. A submitted questionnaire
  * with no legacy history is seeded with one score from its sanitized answers. The
  * result is always a plain in-memory state — never the raw persisted object — so

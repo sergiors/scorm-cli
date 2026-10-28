@@ -155,6 +155,41 @@ describe('sanitizePlayerState', () => {
     expect(state.pages['page:intro.mdx']?.submittedQuestionnaires).toEqual([questionnaireNode.id])
   })
 
+  it('keeps an active question only when it belongs to its questionnaire', () => {
+    const activeQuestionId = questionnaireNode.questions[1].id
+    const state = sanitizePlayerState(questionnairePackage, {
+      pages: {
+        'page:intro.mdx': {
+          activeQuestionnaireItems: {
+            [questionnaireNode.id]: activeQuestionId,
+            'questionnaire:missing': activeQuestionId,
+            [questionnaireNode.id + ':wrong-question']: 'question:missing',
+            [questionnaireNode.id + ':wrong-type']: 3
+          }
+        }
+      }
+    })
+
+    expect(state.pages['page:intro.mdx']?.activeQuestionnaireItems).toEqual({
+      [questionnaireNode.id]: activeQuestionId
+    })
+  })
+
+  it('drops the active-question map when no saved position is valid', () => {
+    const state = sanitizePlayerState(questionnairePackage, {
+      pages: {
+        'page:intro.mdx': {
+          activeQuestionnaireItems: {
+            [questionnaireNode.id]: 'question:removed',
+            'questionnaire:missing': questionnaireNode.questions[0].id
+          }
+        }
+      }
+    })
+
+    expect(state.pages['page:intro.mdx']).toBeUndefined()
+  })
+
   it('scopes a reused question id to each page independently', () => {
     const shared: ContentPackage = {
       metadata: { title: 'Shared question' },

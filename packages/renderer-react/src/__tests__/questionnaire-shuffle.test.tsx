@@ -475,16 +475,40 @@ describe('questionnaire shuffle display (stepper)', () => {
     render(shufflePackage, views)
     const quiz = region(shuffleQuestionnaire.id)
 
-    // The restored questionnaire reopens in review, at its last question, with
-    // the same attempt-0 display order and the persisted selections checked.
+    // The restored completed review is read-only and reopens on the first
+    // question when nothing was saved, drawing the same attempt-0 display
+    // order with the persisted selections checked.
     expect(summaryTextIn(quiz)).toContain('3 of 3 correct answers')
-    expect(inputValuesIn(activeItemIn(quiz))).toEqual(['true', 'false'])
-    expect(inputIn(quiz, 'true').checked).toBe(true)
-    act(() => visibleButtonIn(quiz, 'Previous question').click())
+    expect(inputValuesIn(activeItemIn(quiz))).toEqual(singleAttemptOrders[0])
+    expect(inputIn(quiz, 'first').checked).toBe(true)
+    act(() => visibleButtonIn(quiz, 'Next question').click())
     expect(inputValuesIn(activeItemIn(quiz))).toEqual(multipleAttemptOrders[0])
     expect(inputIn(quiz, 'alpha').checked).toBe(true)
     expect(inputIn(quiz, 'beta').checked).toBe(true)
     expect(inputIn(quiz, 'gamma').checked).toBe(false)
+  })
+
+  it('restores a saved active question with the attempt option order from suspend state', () => {
+    restoredState = {
+      shuffleSeed: SEED,
+      pages: {
+        [PAGE_ID]: {
+          answers: { [singleQuestion.id]: 'first', [multipleQuestion.id]: ['alpha'] },
+          activeQuestionnaireItems: { [shuffleQuestionnaire.id]: multipleQuestion.id }
+        }
+      }
+    }
+    render(shufflePackage, views)
+    const quiz = region(shuffleQuestionnaire.id)
+
+    // The resumed round reopens on the question the learner reached, drawing
+    // the same attempt-0 shuffled order with the saved selection rendered as
+    // checked before any new interaction.
+    expect(quiz.querySelector('[data-slot="questionnaire-summary"]')).toBeNull()
+    expect(activeItemIn(quiz).textContent).toContain(multipleQuestion.prompt)
+    expect(inputValuesIn(activeItemIn(quiz))).toEqual(multipleAttemptOrders[0])
+    expect(inputIn(quiz, 'alpha').checked).toBe(true)
+    expect(inputIn(quiz, 'beta').checked).toBe(false)
   })
 })
 

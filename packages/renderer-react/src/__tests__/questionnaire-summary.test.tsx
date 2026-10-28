@@ -237,11 +237,16 @@ describe('QuestionnaireSummary in the stepper presentation', () => {
     expect(summaryProgress().getAttribute('aria-valuenow')).toBe('50')
     expect(summaryPercent()).toBe('50%')
 
-    // The restored wizard keeps its read-only review flow and feedback.
-    expect(activeItem().textContent).toContain('Which options apply?')
+    // With no saved active position, the read-only review opens on the first
+    // question and keeps feedback for all restored answers.
+    expect(activeItem().textContent).toContain('Which option is correct?')
     expect(hiddenItems()).toHaveLength(1)
     expect(choiceResult('alpha')).toBe('correct')
     expect(choiceResult('beta')).toBe('incorrect')
+    act(() => visibleButton('Next question').click())
+    expect(activeItem().textContent).toContain('Which options apply?')
+    expect(hiddenItems()).toHaveLength(1)
+    expect(summary()?.textContent).toContain('1 of 2 correct answers')
     expect(visibleButton('Submit questionnaire').disabled).toBe(true)
   })
 
