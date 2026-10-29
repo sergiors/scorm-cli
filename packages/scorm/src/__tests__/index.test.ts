@@ -7,7 +7,7 @@ import { create } from 'xmlbuilder2'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ContentPackage } from '@scorm-cli/core'
 import {
-  createContentManifest,
+  createScoIndex,
   createManifest,
   decodeSuspendData,
   encodeSuspendData,
@@ -67,7 +67,7 @@ const content: ContentPackage = {
 }
 
 describe('SCORM 1.2 package', () => {
-  it('creates a manifest with metadata and a single SCO resource', () => {
+  it('creates an IMS manifest with metadata and a single SCO resource', () => {
     const xml = createManifest({ title: 'A <Course>' }, ['index.html', 'index.html'])
     const root = create(xml).root().node as any
     const namespace = 'http://www.imsproject.org/xsd/imscp_rootv1p1p2'
@@ -99,28 +99,26 @@ describe('SCORM 1.2 package', () => {
       '<!doctype html><html><head></head><body></body></html>'
     )
     await writeFile(path.join(renderDir, 'app.js'), 'window.booted = true;')
-    const contentManifest = createContentManifest(content)
+    const scoIndex = createScoIndex(content)
     const output = await packageScorm({
       metadata: content.metadata,
-      contentManifest,
+      scoIndex,
       renderResult: { directory: renderDir, entrypoint: 'index.html' },
       outputPath: path.join(temp, 'content-package.zip')
     })
     const zip = await JSZip.loadAsync(await readFile(output))
-    expect(Object.keys(zip.files)).toContain('content-manifest.json')
+    expect(Object.keys(zip.files)).toContain('scoindex.json')
     expect(Object.keys(zip.files)).toContain('scorm-runtime.js')
     expect(Object.keys(zip.files)).not.toContain('scorm-dev-mock.js')
 
-    const manifestContents = await zip.file('content-manifest.json')!.async('string')
-    expect(JSON.parse(manifestContents)).toEqual(contentManifest)
+    const scoIndexContents = await zip.file('scoindex.json')!.async('string')
+    expect(JSON.parse(scoIndexContents)).toEqual(scoIndex)
     const xml = create(await zip.file('imsmanifest.xml')!.async('string')).root().node as any
     const namespace = 'http://www.imsproject.org/xsd/imscp_rootv1p1p2'
     const files = xml.getElementsByTagNameNS(namespace, 'file')
-    expect([...files].map((file: any) => file.getAttribute('href'))).toContain(
-      'content-manifest.json'
-    )
+    expect([...files].map((file: any) => file.getAttribute('href'))).toContain('scoindex.json')
     const runtime = await zip.file('scorm-runtime.js')!.async('string')
-    expect(runtime).toContain(JSON.stringify(contentManifest))
+    expect(runtime).toContain(JSON.stringify(scoIndex))
     expect(await zip.file('index.html')!.async('string')).toContain('scorm-runtime.js')
 
     // The serialized selection can be restored with precisely the shipped dictionary.
@@ -132,8 +130,8 @@ describe('SCORM 1.2 package', () => {
         }
       }
     }
-    const saved = encodeSuspendData(contentManifest, state, 100)
-    expect(decodeSuspendData(contentManifest, JSON.stringify(saved))).toEqual({
+    const saved = encodeSuspendData(scoIndex, state, 100)
+    expect(decodeSuspendData(scoIndex, JSON.stringify(saved))).toEqual({
       pages: {
         'item-one': {
           visited: true,
@@ -160,7 +158,7 @@ describe('SCORM 1.2 package', () => {
       await expect(
         packageScorm({
           metadata: content.metadata,
-          contentManifest: createContentManifest(content),
+          scoIndex: createScoIndex(content),
           renderResult: { directory: renderDir, entrypoint },
           outputPath: path.join(outputParent, 'content-package.zip')
         })
@@ -177,23 +175,25 @@ describe('SCORM 1.2 package', () => {
   })
 
   it('rejects renderer output containing a reserved SCORM filename', async () => {
-    temp = await mkdtemp(path.join(os.tmpdir(), 'scorm-test-'))
-    const renderDir = path.join(temp, 'render')
-    await mkdir(renderDir)
-    await writeFile(path.join(renderDir, 'index.html'), '<html><head></head><body></body></html>')
-    await writeFile(path.join(renderDir, 'scorm-runtime.js'), 'renderer-owned file')
-    const outputPath = path.join(temp, 'content-package.zip')
+    for (const reserved of ['imsmanifest.xml', 'scorm-runtime.js', 'scoindex.json']) {
+      temp = await mkdtemp(path.join(os.tmpdir(), 'scorm-test-'))
+      const renderDir = path.join(temp, 'render')
+      await mkdir(renderDir)
+      await writeFile(path.join(renderDir, 'index.html'), '<html><head></head><body></body></html>')
+      await writeFile(path.join(renderDir, reserved), 'renderer-owned file')
+      const outputPath = path.join(temp, 'content-package.zip')
 
-    await expect(
-      packageScorm({
-        metadata: content.metadata,
-        contentManifest: createContentManifest(content),
-        renderResult: { directory: renderDir, entrypoint: 'index.html' },
-        outputPath
-      })
-    ).rejects.toThrow('renderer output uses a reserved SCORM package filename')
+      await expect(
+        packageScorm({
+          metadata: content.metadata,
+          scoIndex: createScoIndex(content),
+          renderResult: { directory: renderDir, entrypoint: 'index.html' },
+          outputPath
+        })
+      ).rejects.toThrow('renderer output uses a reserved SCORM package filename')
 
-    await expect(readFile(outputPath)).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(readFile(outputPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    }
   })
 
   it('keeps the dev mock isolated from production packaging', () => {
@@ -202,7 +202,7 @@ describe('SCORM 1.2 package', () => {
 })
 
 describe('SCORM 2004 4th Edition package', () => {
-  it('packages rendered output with a 2004 runtime and manifest', async () => {
+  it('packages rendered output with a 2004 runtime and SCO index', async () => {
     temp = await mkdtemp(path.join(os.tmpdir(), 'scorm-2004-test-'))
     const renderDir = path.join(temp, 'render')
     await mkdir(renderDir)
@@ -214,7 +214,7 @@ describe('SCORM 2004 4th Edition package', () => {
 
     const output = await packageScorm({
       metadata: { title: '2004 content package', lang: 'en-GB' },
-      contentManifest: createContentManifest(content),
+      scoIndex: createScoIndex(content),
       renderResult: { directory: renderDir, entrypoint: 'index.html' },
       outputPath: path.join(temp, 'scorm-2004.zip'),
       version: '2004'

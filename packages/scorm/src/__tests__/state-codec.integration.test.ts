@@ -7,7 +7,7 @@ import type {
   QuestionOption,
   QuestionType
 } from '@scorm-cli/core'
-import { createContentManifest } from '../content-manifest'
+import { createScoIndex } from '../sco-index'
 import { browserCodecSource, decodeSuspendData, encodeSuspendData } from '../state-codec'
 import { createScormRuntime } from '../runtime'
 
@@ -110,26 +110,26 @@ const content: ContentPackage = {
   }
 }
 
-const manifest = createContentManifest(content)
+const scoIndex = createScoIndex(content)
 
-// The target flat v1 shape: page 3 holds a multiple-choice answer (array) at
-// question index 0 and a single-choice answer (scalar) at index 1; page 4 holds
-// a scalar at question index 0. Question indexes are page-local and encoded as
-// `<pageIndex>.a.<questionIndex>`.
+// The target flat v2 shape: page 3 holds a multiple-choice answer (array) at
+// question index 0 and a single-choice answer (scalar) at index 1 — both inside
+// questionnaire index 0; page 4 holds a scalar at questionnaire-local index 0.
+// Answer keys are `<pageIndex>.a.<questionnaireIndex>.<questionIndex>`.
 const compact = {
-  v: 1,
+  v: 2,
   p: 0,
   x: '00000',
-  d: { '3.a.0': [1], '3.a.1': 1, '4.a.0': 0 }
+  d: { '3.a.0.0': [1], '3.a.0.1': 1, '4.a.0.0': 0 }
 }
 
 // A complete persisted payload: answers match `compact`, but progress is 100%
 // and every one of the five pages is flagged visited.
 const supplied = {
-  v: 1,
+  v: 2,
   p: 100,
   x: '11111',
-  d: { '3.a.0': [1], '3.a.1': 1, '4.a.0': 0 }
+  d: { '3.a.0.0': [1], '3.a.0.1': 1, '4.a.0.0': 0 }
 }
 
 const selected: PlayerState = {
@@ -149,24 +149,30 @@ const restored: PlayerState = {
 const normalize = (value: unknown): unknown => JSON.parse(JSON.stringify(value)) as unknown
 
 describe('suspend-data codec integration', () => {
-  it('maps authored option order into manifest indexes without sorting values', () => {
-    expect(manifest.pages['3']!.questions!['0']!.options).toEqual({
+  it('maps authored option order into sco index indexes without sorting values', () => {
+    expect(scoIndex.pages['3']!.questionnaires!['0']!.questions['0']!.options).toEqual({
       '0': { value: 'zebra', label: 'Zebra' },
       '1': { value: 'mango', label: 'Mango' },
       '2': { value: 'apple', label: 'Apple' }
     })
-    expect(manifest.pages['3']!.questions!['1']!.options).toEqual({
+    expect(scoIndex.pages['3']!.questionnaires!['0']!.questions['1']!.options).toEqual({
       '0': { value: 'beta', label: 'Beta' },
       '1': { value: 'alpha', label: 'Alpha' }
     })
     // Index 1 is the authored second option, not the alphabetically first value.
-    expect(manifest.pages['3']!.questions!['0']!.options['1']!.value).toBe('mango')
-    expect(manifest.pages['3']!.questions!['0']!.options['2']!.value).toBe('apple')
-    expect(manifest.pages['3']!.questions!['1']!.options['1']!.value).toBe('alpha')
+    expect(scoIndex.pages['3']!.questionnaires!['0']!.questions['0']!.options['1']!.value).toBe(
+      'mango'
+    )
+    expect(scoIndex.pages['3']!.questionnaires!['0']!.questions['0']!.options['2']!.value).toBe(
+      'apple'
+    )
+    expect(scoIndex.pages['3']!.questionnaires!['0']!.questions['1']!.options['1']!.value).toBe(
+      'alpha'
+    )
   })
 
   it('encodes scalar vs array per question type and decodes page-local values', () => {
-    const encoded = encodeSuspendData(manifest, selected, 0)
+    const encoded = encodeSuspendData(scoIndex, selected, 0)
     expect(encoded).toEqual(compact)
 
     const serialized = JSON.stringify(encoded)
@@ -174,7 +180,7 @@ describe('suspend-data codec integration', () => {
     expect(serialized).not.toMatch(/zebra|mango|apple|beta|alpha|gamma|delta/i)
     expect(encoded).not.toHaveProperty('location')
 
-    const decoded = decodeSuspendData(manifest, serialized)
+    const decoded = decodeSuspendData(scoIndex, serialized)
     expect(decoded).toEqual(restored)
     const answers3 = decoded.pages['page-3']!.answers!
     expect(Array.isArray(answers3['q-3-multi'])).toBe(true)
@@ -185,30 +191,33 @@ describe('suspend-data codec integration', () => {
   })
 
   it('round-trips the target fixture for both question types', () => {
-    const decoded = decodeSuspendData(manifest, JSON.stringify(compact))
+    const decoded = decodeSuspendData(scoIndex, JSON.stringify(compact))
     expect(decoded).toEqual(restored)
-    expect(encodeSuspendData(manifest, decoded, 0)).toEqual(compact)
+    expect(encodeSuspendData(scoIndex, decoded, 0)).toEqual(compact)
   })
 
-  it('decodes the complete supplied payload through manifest option indexes', () => {
-    const decoded = decodeSuspendData(manifest, JSON.stringify(supplied))
+  it('decodes the complete supplied payload through sco index option indexes', () => {
+    const decoded = decodeSuspendData(scoIndex, JSON.stringify(supplied))
 
-    // Page 3 question index 0 is the multiple-choice question, so scalar/array
-    // index 1 resolves to the authored second option (mango), not the
-    // alphabetically first value.
-    const questions3 = manifest.pages['3']!.questions!
+    // Page 3 question index 0 (inside questionnaire index 0) is the
+    // multiple-choice question, so scalar/array index 1 resolves to the
+    // authored second option (mango), not the alphabetically first value.
+    const questions3 = scoIndex.pages['3']!.questionnaires!['0']!.questions!
     expect(questions3['0']!.type).toBe('multiple-choice')
     expect(questions3['0']!.options['1']!.value).toBe('mango')
     expect(decoded.pages['page-3']!.answers!['q-3-multi']).toEqual(['mango'])
 
-    // Page 3 question index 1 is page-local: scalar 1 resolves to alpha.
+    // Page 3 question index 1 is questionnaire-local: scalar 1 resolves to
+    // alpha.
     expect(questions3['1']!.type).toBe('single-choice')
     expect(questions3['1']!.options['1']!.value).toBe('alpha')
     expect(decoded.pages['page-3']!.answers!['q-3-single']).toBe('alpha')
 
     // Page 4 also uses question index 0: scalar 0 resolves to gamma through its
     // own options, independent of page 3.
-    expect(manifest.pages['4']!.questions!['0']!.options['0']!.value).toBe('gamma')
+    expect(scoIndex.pages['4']!.questionnaires!['0']!.questions['0']!.options['0']!.value).toBe(
+      'gamma'
+    )
     expect(decoded.pages['page-4']!.answers!['q-4-single']).toBe('gamma')
 
     // p: 100 completes all five pages and x: '11111' marks each visited.
@@ -221,7 +230,7 @@ describe('suspend-data codec integration', () => {
   })
 
   it('keeps the same question index independent across pages', () => {
-    const decoded = decodeSuspendData(manifest, JSON.stringify(compact))
+    const decoded = decodeSuspendData(scoIndex, JSON.stringify(compact))
     // Both pages use question index '0', resolved through their own options.
     expect(decoded.pages['page-3']!.answers!['q-3-multi']).toEqual(['mango'])
     expect(decoded.pages['page-4']!.answers!['q-4-single']).toBe('gamma')
@@ -234,32 +243,32 @@ describe('suspend-data codec integration', () => {
     vm.createContext(context)
     vm.runInContext(browserCodecSource(), context)
     const browserEncode = context.compactEncode as (
-      manifest: unknown,
+      scoIndex: unknown,
       state: unknown,
       progress: number
     ) => string
-    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState
+    const browserDecode = context.compactDecode as (scoIndex: unknown, raw: unknown) => PlayerState
     expect(typeof browserEncode).toBe('function')
     expect(typeof browserDecode).toBe('function')
 
-    expect(JSON.parse(browserEncode(manifest, selected, 0))).toEqual(
-      encodeSuspendData(manifest, selected, 0)
+    expect(JSON.parse(browserEncode(scoIndex, selected, 0))).toEqual(
+      encodeSuspendData(scoIndex, selected, 0)
     )
-    expect(normalize(browserDecode(manifest, JSON.stringify(compact)))).toEqual(
-      decodeSuspendData(manifest, JSON.stringify(compact))
+    expect(normalize(browserDecode(scoIndex, JSON.stringify(compact)))).toEqual(
+      decodeSuspendData(scoIndex, JSON.stringify(compact))
     )
   })
 
   it('matches browser and Node codecs for indexed video positions', () => {
-    const videoManifest = structuredClone(manifest)
-    videoManifest.pages['3']!.videos = {
+    const videoIndex = structuredClone(scoIndex)
+    videoIndex.pages['3']!.videos = {
       '0': {
         id: 'video:lesson.mdx:4:1',
         src: 'https://vimeo.com/42',
         provider: 'vimeo'
       }
     }
-    videoManifest.pages['4']!.videos = {
+    videoIndex.pages['4']!.videos = {
       '0': {
         id: 'video:lesson.mdx:8:1',
         src: 'https://youtu.be/abc',
@@ -276,15 +285,15 @@ describe('suspend-data codec integration', () => {
     vm.createContext(context)
     vm.runInContext(browserCodecSource(), context)
     const browserEncode = context.compactEncode as (
-      manifest: unknown,
+      scoIndex: unknown,
       state: unknown,
       progress: number
     ) => string
-    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState
+    const browserDecode = context.compactDecode as (scoIndex: unknown, raw: unknown) => PlayerState
 
-    const encoded = encodeSuspendData(videoManifest, state, 0)
+    const encoded = encodeSuspendData(videoIndex, state, 0)
     expect(encoded).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00000',
       d: {
@@ -292,19 +301,19 @@ describe('suspend-data codec integration', () => {
       }
     })
     expect(encoded).not.toHaveProperty('t')
-    expect(decodeSuspendData(videoManifest, encoded)).toEqual({
+    expect(decodeSuspendData(videoIndex, encoded)).toEqual({
       pages: {
         'page-3': { videos: { 'video:lesson.mdx:4:1': 34.3 } }
       }
     })
     expect(JSON.stringify(encoded)).not.toMatch(/video:lesson\.mdx/)
-    expect(JSON.parse(browserEncode(videoManifest, state, 0))).toEqual(encoded)
-    expect(normalize(browserDecode(videoManifest, JSON.stringify(encoded)))).toEqual(
-      decodeSuspendData(videoManifest, encoded)
+    expect(JSON.parse(browserEncode(videoIndex, state, 0))).toEqual(encoded)
+    expect(normalize(browserDecode(videoIndex, JSON.stringify(encoded)))).toEqual(
+      decodeSuspendData(videoIndex, encoded)
     )
 
     const malformedVideoData = {
-      v: 1,
+      v: 2,
       p: 0,
       x: '00000',
       d: {
@@ -315,17 +324,17 @@ describe('suspend-data codec integration', () => {
         '99.t.0': 500
       }
     }
-    expect(normalize(browserDecode(videoManifest, JSON.stringify(malformedVideoData)))).toEqual(
-      decodeSuspendData(videoManifest, malformedVideoData)
+    expect(normalize(browserDecode(videoIndex, JSON.stringify(malformedVideoData)))).toEqual(
+      decodeSuspendData(videoIndex, malformedVideoData)
     )
-    expect(decodeSuspendData(videoManifest, malformedVideoData)).toEqual({
+    expect(decodeSuspendData(videoIndex, malformedVideoData)).toEqual({
       pages: { 'page-3': { videos: { 'video:lesson.mdx:4:1': 34.3 } } }
     })
   })
 
   it('matches browser and Node codecs for watch-second capping and oversized bitmaps', () => {
-    const videoManifest = structuredClone(manifest)
-    videoManifest.pages['3']!.videos = {
+    const videoIndex = structuredClone(scoIndex)
+    videoIndex.pages['3']!.videos = {
       '0': {
         id: 'video:lesson.mdx:3:1',
         src: 'https://vimeo.com/a',
@@ -346,17 +355,17 @@ describe('suspend-data codec integration', () => {
     vm.createContext(context)
     vm.runInContext(browserCodecSource(), context)
     const browserEncode = context.compactEncode as (
-      manifest: unknown,
+      scoIndex: unknown,
       state: unknown,
       progress: number
     ) => string
-    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState
+    const browserDecode = context.compactDecode as (scoIndex: unknown, raw: unknown) => PlayerState
 
     // Both runtimes cap the persisted watch total at the authored requirement
     // beside the playback position, and restore that same cap.
-    const encoded = encodeSuspendData(videoManifest, state, 0)
+    const encoded = encodeSuspendData(videoIndex, state, 0)
     expect(encoded.d).toEqual({ '3.t.0': 410, '3.w.0': 600 })
-    expect(JSON.parse(browserEncode(videoManifest, state, 0))).toEqual(encoded)
+    expect(JSON.parse(browserEncode(videoIndex, state, 0))).toEqual(encoded)
     const expectedRestore = {
       pages: {
         'page-3': {
@@ -365,16 +374,14 @@ describe('suspend-data codec integration', () => {
         }
       }
     }
-    expect(decodeSuspendData(videoManifest, encoded)).toEqual(expectedRestore)
-    expect(normalize(browserDecode(videoManifest, JSON.stringify(encoded)))).toEqual(
-      expectedRestore
-    )
+    expect(decodeSuspendData(videoIndex, encoded)).toEqual(expectedRestore)
+    expect(normalize(browserDecode(videoIndex, JSON.stringify(encoded)))).toEqual(expectedRestore)
 
-    // A visited bitmap oversized for the five-page manifest discards the same
+    // A visited bitmap oversized for the five-page sco index discards the same
     // indexed keys in both runtimes instead of restoring any of them.
     const oversized = { ...encoded, x: '000000' }
-    expect(decodeSuspendData(videoManifest, oversized)).toEqual({ pages: {} })
-    expect(normalize(browserDecode(videoManifest, JSON.stringify(oversized)))).toEqual({
+    expect(decodeSuspendData(videoIndex, oversized)).toEqual({ pages: {} })
+    expect(normalize(browserDecode(videoIndex, JSON.stringify(oversized)))).toEqual({
       pages: {}
     })
   })
@@ -384,11 +391,11 @@ describe('suspend-data codec integration', () => {
     vm.createContext(context)
     vm.runInContext(browserCodecSource(), context)
     const browserEncode = context.compactEncode as (
-      manifest: unknown,
+      scoIndex: unknown,
       state: unknown,
       progress: number
     ) => string
-    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState
+    const browserDecode = context.compactDecode as (scoIndex: unknown, raw: unknown) => PlayerState
 
     const states: Array<[PlayerState, number]> = [
       [{ pages: {} }, Number.NaN],
@@ -411,8 +418,8 @@ describe('suspend-data codec integration', () => {
       [{ pages: { 'page-0': { visited: true }, 'page-4': { visited: true } } }, -10]
     ]
     for (const [state, progress] of states) {
-      expect(JSON.parse(browserEncode(manifest, state, progress))).toEqual(
-        encodeSuspendData(manifest, state, progress)
+      expect(JSON.parse(browserEncode(scoIndex, state, progress))).toEqual(
+        encodeSuspendData(scoIndex, state, progress)
       )
     }
 
@@ -420,39 +427,43 @@ describe('suspend-data codec integration', () => {
       undefined,
       '',
       'not-json',
-      JSON.stringify({ v: 1, p: 0, x: '00000' }),
-      JSON.stringify({ v: 1, p: 100, x: '11111' }),
-      JSON.stringify({ v: 1, p: -1, x: '00000' }),
-      JSON.stringify({ v: 1, p: 101, x: '00000' }),
-      JSON.stringify({ v: 1, p: 0, x: '000000' }),
-      JSON.stringify({ v: 1, p: 0, x: '10x00' }),
-      // Unsupported versions must decode to a fresh state.
+      JSON.stringify({ v: 2, p: 0, x: '00000' }),
+      JSON.stringify({ v: 2, p: 100, x: '11111' }),
+      JSON.stringify({ v: 2, p: -1, x: '00000' }),
+      JSON.stringify({ v: 2, p: 101, x: '00000' }),
+      JSON.stringify({ v: 2, p: 0, x: '000000' }),
+      JSON.stringify({ v: 2, p: 0, x: '10x00' }),
+      // Unsupported versions — including the retired v1 — must decode to a
+      // fresh state, whatever shape their payload carried.
       JSON.stringify({ v: 0, p: 0, x: '00000' }),
+      JSON.stringify({ v: 1, p: 0, x: '00000' }),
+      JSON.stringify({ v: 1, p: 100, x: '11111', d: { '3': { a: { '0': [0] } }, '3.t.0': 343 } }),
       JSON.stringify({ v: 3, p: 0, x: '00000' }),
-      // The retired nested layout also used `v: 1`; its `d[pageIndex].a` entries
-      // are not the supported flat keys, so they restore no learner data.
-      JSON.stringify({ v: 1, p: 0, x: '00000', d: { '3': { a: { '0': [0] } } } }),
+      // A v2 `d` grouped under page indexes is not a supported key either.
+      JSON.stringify({ v: 2, p: 0, x: '00000', d: { '3': { a: { '0': [0] } } } }),
       JSON.stringify({
-        v: 1,
+        v: 2,
         p: 0,
         x: '00000',
         d: {
-          '3.a.0': [-1, 1, 1, 2, 99, 1.5, '1'],
-          '3.a.1': [0, 1, 99],
-          '3.a.99': 0,
-          '4.a.0': 0,
-          '99.a.0': 1,
+          '3.a.0.0': [-1, 1, 1, 2, 99, 1.5, '1'],
+          '3.a.0.1': [0, 1, 99],
+          '3.a.0.99': 0,
+          // The retired three-part v1 answer key is no longer valid grammar.
+          '3.a.0': 1,
+          '4.a.0.0': 0,
+          '99.a.0.0': 1,
           '3.a': 1,
-          '3.a.01': 1,
+          '3.a.0.01': 1,
           '3.z.0': 1,
           '3.t.0': 343
         }
       }),
-      JSON.stringify({ v: 1, p: 0, x: '00000', d: null })
+      JSON.stringify({ v: 2, p: 0, x: '00000', d: null })
     ]
     for (const payload of payloads) {
-      expect(normalize(browserDecode(manifest, payload))).toEqual(
-        decodeSuspendData(manifest, payload)
+      expect(normalize(browserDecode(scoIndex, payload))).toEqual(
+        decodeSuspendData(scoIndex, payload)
       )
     }
   })
@@ -460,9 +471,9 @@ describe('suspend-data codec integration', () => {
   it('matches browser and Node codecs for attempt history and active retries', () => {
     // Give the fixture questionnaires authored attempt caps so both runtimes
     // must apply the same history validation and retry-flag rules.
-    const retryManifest = structuredClone(manifest)
-    retryManifest.pages['3']!.questionnaires!['0']!.maxAttempts = 3
-    retryManifest.pages['4']!.questionnaires!['0']!.maxAttempts = 2
+    const retryIndex = structuredClone(scoIndex)
+    retryIndex.pages['3']!.questionnaires!['0']!.maxAttempts = 3
+    retryIndex.pages['4']!.questionnaires!['0']!.maxAttempts = 2
 
     // quiz-3 is mid-retry with a valid history; quiz-4's history is at its cap.
     const retrying: PlayerState = {
@@ -483,28 +494,28 @@ describe('suspend-data codec integration', () => {
     vm.createContext(context)
     vm.runInContext(browserCodecSource(), context)
     const browserEncode = context.compactEncode as (
-      manifest: unknown,
+      scoIndex: unknown,
       state: unknown,
       progress: number
     ) => string
-    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState
+    const browserDecode = context.compactDecode as (scoIndex: unknown, raw: unknown) => PlayerState
 
-    const encoded = encodeSuspendData(retryManifest, retrying, 0)
+    const encoded = encodeSuspendData(retryIndex, retrying, 0)
     expect(encoded).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00010',
       d: { '3.q.0': [2, 1], '3.r.0': 1, '4.q.0': [0, 0] }
     })
-    expect(JSON.parse(browserEncode(retryManifest, retrying, 0))).toEqual(encoded)
+    expect(JSON.parse(browserEncode(retryIndex, retrying, 0))).toEqual(encoded)
 
     const payload = JSON.stringify({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00010',
       d: { '3.q.0': [2, 1], '3.r.0': 1, '4.q.0': [0, 0], '4.r.0': 1 }
     })
-    const nodeRestored = decodeSuspendData(retryManifest, payload)
+    const nodeRestored = decodeSuspendData(retryIndex, payload)
     expect(nodeRestored).toEqual({
       pages: {
         'page-3': {
@@ -515,11 +526,11 @@ describe('suspend-data codec integration', () => {
         'page-4': { questionnaireAttempts: { 'quiz-4': [0, 0] } }
       }
     })
-    expect(normalize(browserDecode(retryManifest, payload))).toEqual(nodeRestored)
+    expect(normalize(browserDecode(retryIndex, payload))).toEqual(nodeRestored)
 
     // Both runtimes also agree on rejecting out-of-bound or malformed entries.
     const malformed = JSON.stringify({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00010',
       d: {
@@ -532,10 +543,10 @@ describe('suspend-data codec integration', () => {
         '3.z.0': 1
       }
     })
-    expect(normalize(browserDecode(retryManifest, malformed))).toEqual(
-      decodeSuspendData(retryManifest, malformed)
+    expect(normalize(browserDecode(retryIndex, malformed))).toEqual(
+      decodeSuspendData(retryIndex, malformed)
     )
-    expect(decodeSuspendData(retryManifest, malformed)).toEqual({
+    expect(decodeSuspendData(retryIndex, malformed)).toEqual({
       pages: { 'page-3': { visited: true } }
     })
   })
@@ -551,23 +562,23 @@ describe('suspend-data codec integration', () => {
     vm.createContext(context)
     vm.runInContext(browserCodecSource(), context)
     const browserEncode = context.compactEncode as (
-      manifest: unknown,
+      scoIndex: unknown,
       state: unknown,
       progress: number
     ) => string
-    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState
+    const browserDecode = context.compactDecode as (scoIndex: unknown, raw: unknown) => PlayerState
 
-    const encoded = encodeSuspendData(manifest, state, 0)
+    const encoded = encodeSuspendData(scoIndex, state, 0)
     expect(encoded).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00000',
       d: { '3.i.0': 1, '4.i.0': 0 }
     })
-    expect(JSON.parse(browserEncode(manifest, state, 0))).toEqual(encoded)
+    expect(JSON.parse(browserEncode(scoIndex, state, 0))).toEqual(encoded)
 
     const payload = JSON.stringify({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00000',
       d: {
@@ -578,17 +589,17 @@ describe('suspend-data codec integration', () => {
         '4.i.00': 0
       }
     })
-    const nodeRestored = decodeSuspendData(manifest, payload)
+    const nodeRestored = decodeSuspendData(scoIndex, payload)
     expect(nodeRestored).toEqual(state)
-    expect(normalize(browserDecode(manifest, payload))).toEqual(nodeRestored)
+    expect(normalize(browserDecode(scoIndex, payload))).toEqual(nodeRestored)
   })
 
   it('matches browser and Node codecs for unlimited attempt histories', () => {
     // An authored cap of -1 grants unlimited attempts, so both runtimes must
     // keep long histories and always leave the questionnaire retryable.
-    const unlimitedManifest = structuredClone(manifest)
-    unlimitedManifest.pages['3']!.questionnaires!['0']!.maxAttempts = -1
-    unlimitedManifest.pages['4']!.questionnaires!['0']!.maxAttempts = -1
+    const unlimitedIndex = structuredClone(scoIndex)
+    unlimitedIndex.pages['3']!.questionnaires!['0']!.maxAttempts = -1
+    unlimitedIndex.pages['4']!.questionnaires!['0']!.maxAttempts = -1
 
     // quiz-3 is mid-retry with a long history; quiz-4 completed its own long
     // history while a stale retry marker sits beside the completion.
@@ -611,23 +622,23 @@ describe('suspend-data codec integration', () => {
     vm.createContext(context)
     vm.runInContext(browserCodecSource(), context)
     const browserEncode = context.compactEncode as (
-      manifest: unknown,
+      scoIndex: unknown,
       state: unknown,
       progress: number
     ) => string
-    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState
+    const browserDecode = context.compactDecode as (scoIndex: unknown, raw: unknown) => PlayerState
 
-    const encoded = encodeSuspendData(unlimitedManifest, retrying, 0)
+    const encoded = encodeSuspendData(unlimitedIndex, retrying, 0)
     expect(encoded).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00010',
       d: { '3.q.0': [2, 1, 0, 2, 1, 2], '3.r.0': 1, '4.q.0': [1, 0, 1, 1], '4.c.0': 1 }
     })
-    expect(JSON.parse(browserEncode(unlimitedManifest, retrying, 0))).toEqual(encoded)
+    expect(JSON.parse(browserEncode(unlimitedIndex, retrying, 0))).toEqual(encoded)
 
     const payload = JSON.stringify({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00010',
       d: {
@@ -640,7 +651,7 @@ describe('suspend-data codec integration', () => {
         '4.r.0': 1
       }
     })
-    const nodeRestored = decodeSuspendData(unlimitedManifest, payload)
+    const nodeRestored = decodeSuspendData(unlimitedIndex, payload)
     expect(nodeRestored).toEqual({
       pages: {
         'page-3': {
@@ -654,12 +665,12 @@ describe('suspend-data codec integration', () => {
         }
       }
     })
-    expect(normalize(browserDecode(unlimitedManifest, payload))).toEqual(nodeRestored)
+    expect(normalize(browserDecode(unlimitedIndex, payload))).toEqual(nodeRestored)
 
     // Both runtimes also agree on rejecting impossible counts: the unlimited
     // cap removes only the history-length bound, never the per-entry one.
     const malformed = JSON.stringify({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00010',
       d: {
@@ -668,18 +679,18 @@ describe('suspend-data codec integration', () => {
         '3.z.0': 1
       }
     })
-    expect(normalize(browserDecode(unlimitedManifest, malformed))).toEqual(
-      decodeSuspendData(unlimitedManifest, malformed)
+    expect(normalize(browserDecode(unlimitedIndex, malformed))).toEqual(
+      decodeSuspendData(unlimitedIndex, malformed)
     )
     // The visited bitmap still restores page-3; only the data keys are gone.
-    expect(decodeSuspendData(unlimitedManifest, malformed)).toEqual({
+    expect(decodeSuspendData(unlimitedIndex, malformed)).toEqual({
       pages: { 'page-3': { visited: true } }
     })
   })
 
   it('matches browser and Node codecs for completed questionnaire markers', () => {
-    const finalizingManifest = structuredClone(manifest)
-    finalizingManifest.pages['3']!.questionnaires!['0']!.maxAttempts = 3
+    const finalizingIndex = structuredClone(scoIndex)
+    finalizingIndex.pages['3']!.questionnaires!['0']!.maxAttempts = 3
 
     // quiz-3 has a completed result beside a stale retry marker; quiz-4 stays
     // pending.
@@ -699,28 +710,28 @@ describe('suspend-data codec integration', () => {
     vm.createContext(context)
     vm.runInContext(browserCodecSource(), context)
     const browserEncode = context.compactEncode as (
-      manifest: unknown,
+      scoIndex: unknown,
       state: unknown,
       progress: number
     ) => string
-    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState
+    const browserDecode = context.compactDecode as (scoIndex: unknown, raw: unknown) => PlayerState
 
-    const encoded = encodeSuspendData(finalizingManifest, finalizing, 0)
+    const encoded = encodeSuspendData(finalizingIndex, finalizing, 0)
     expect(encoded).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00010',
       d: { '3.q.0': [2, 1], '3.c.0': 1, '4.q.0': [0] }
     })
-    expect(JSON.parse(browserEncode(finalizingManifest, finalizing, 0))).toEqual(encoded)
+    expect(JSON.parse(browserEncode(finalizingIndex, finalizing, 0))).toEqual(encoded)
 
     const payload = JSON.stringify({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00010',
       d: { '3.q.0': [2, 1], '3.c.0': 1, '3.r.0': 1, '4.q.0': [0] }
     })
-    const nodeRestored = decodeSuspendData(finalizingManifest, payload)
+    const nodeRestored = decodeSuspendData(finalizingIndex, payload)
     expect(nodeRestored).toEqual({
       pages: {
         'page-3': {
@@ -731,20 +742,20 @@ describe('suspend-data codec integration', () => {
         'page-4': { questionnaireAttempts: { 'quiz-4': [0] } }
       }
     })
-    expect(normalize(browserDecode(finalizingManifest, payload))).toEqual(nodeRestored)
+    expect(normalize(browserDecode(finalizingIndex, payload))).toEqual(nodeRestored)
 
     // Both runtimes also reject a marker without a restored history in the
     // same payload.
     const malformed = JSON.stringify({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00010',
       d: { '3.c.0': 2, '4.c.0': 1, '3.z.0': 1, '4.q.0': [] }
     })
-    expect(normalize(browserDecode(finalizingManifest, malformed))).toEqual(
-      decodeSuspendData(finalizingManifest, malformed)
+    expect(normalize(browserDecode(finalizingIndex, malformed))).toEqual(
+      decodeSuspendData(finalizingIndex, malformed)
     )
-    expect(decodeSuspendData(finalizingManifest, malformed)).toEqual({
+    expect(decodeSuspendData(finalizingIndex, malformed)).toEqual({
       pages: { 'page-3': { visited: true } }
     })
   })
@@ -778,29 +789,29 @@ describe('suspend-data codec integration', () => {
         ]
       }
     }
-    const trueFalseManifest = createContentManifest(trueFalseContent)
+    const trueFalseIndex = createScoIndex(trueFalseContent)
 
     const answering: PlayerState = {
       pages: { 'page-tf': { answers: { 'q-tf-single': 'yes', 'q-tf': 'false' } } }
     }
     // Both scalar answers encode as page-local index scalars: single-choice
     // index 1 ('yes') and true-false index 0 ('false').
-    const encoded = encodeSuspendData(trueFalseManifest, answering, 0)
+    const encoded = encodeSuspendData(trueFalseIndex, answering, 0)
     expect(encoded).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '0',
-      d: { '0.a.0': 1, '0.a.1': 0 }
+      d: { '0.a.0.0': 1, '0.a.0.1': 0 }
     })
     expect(JSON.stringify(encoded)).not.toMatch(/true|false|yes|no/i)
 
     // The same indexes decode back into the semantic option values, so a
     // suspended true-false answer resumes as the string, not the index.
-    const decoded = decodeSuspendData(trueFalseManifest, JSON.stringify(encoded))
+    const decoded = decodeSuspendData(trueFalseIndex, JSON.stringify(encoded))
     expect(decoded).toEqual({
       pages: { 'page-tf': { answers: { 'q-tf-single': 'yes', 'q-tf': 'false' } } }
     })
-    expect(encodeSuspendData(trueFalseManifest, decoded, 0)).toEqual(encoded)
+    expect(encodeSuspendData(trueFalseIndex, decoded, 0)).toEqual(encoded)
   })
 
   it('saves compact suspend data without values and keeps location separate', () => {
@@ -823,7 +834,7 @@ describe('suspend-data codec integration', () => {
       CustomEvent: class {}
     }
     window.parent = window
-    vm.runInNewContext(createScormRuntime(manifest), { window })
+    vm.runInNewContext(createScormRuntime(scoIndex), { window })
 
     expect(window.scormBridge.saveState({ location: 'page:resume-4', ...selected })).toBe(true)
     expect(values['cmi.core.lesson_location']).toBe('page:resume-4')
@@ -841,38 +852,38 @@ describe('suspend-data codec integration', () => {
     vm.createContext(context)
     vm.runInContext(browserCodecSource(), context)
     const browserEncode = context.compactEncode as (
-      manifest: unknown,
+      scoIndex: unknown,
       state: unknown,
       progress: number
     ) => string
-    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState
+    const browserDecode = context.compactDecode as (scoIndex: unknown, raw: unknown) => PlayerState
     const seeded: PlayerState = { ...selected, shuffleSeed: 999999999 }
     const invalidSeeded: PlayerState = { ...selected, shuffleSeed: -1 }
 
     // The embedded browser codec encodes valid seeds the same way Node does,
     // and both drop an invalid seed without changing the rest of the payload.
-    expect(JSON.parse(browserEncode(manifest, seeded, 0))).toEqual(
-      encodeSuspendData(manifest, seeded, 0)
+    expect(JSON.parse(browserEncode(scoIndex, seeded, 0))).toEqual(
+      encodeSuspendData(scoIndex, seeded, 0)
     )
-    expect(JSON.parse(browserEncode(manifest, invalidSeeded, 0))).toEqual(
-      encodeSuspendData(manifest, invalidSeeded, 0)
+    expect(JSON.parse(browserEncode(scoIndex, invalidSeeded, 0))).toEqual(
+      encodeSuspendData(scoIndex, invalidSeeded, 0)
     )
 
-    const seededCompact = `{"v":1,"p":0,"x":"00000${'1'}","s":42,"d":{}}`
-    expect(browserDecode(manifest, seededCompact).shuffleSeed).toBe(
-      decodeSuspendData(manifest, seededCompact).shuffleSeed
+    const seededCompact = `{"v":2,"p":0,"x":"00000${'1'}","s":42,"d":{}}`
+    expect(browserDecode(scoIndex, seededCompact).shuffleSeed).toBe(
+      decodeSuspendData(scoIndex, seededCompact).shuffleSeed
     )
-    expect(browserDecode(manifest, seededCompact)).toEqual(
-      decodeSuspendData(manifest, seededCompact)
+    expect(browserDecode(scoIndex, seededCompact)).toEqual(
+      decodeSuspendData(scoIndex, seededCompact)
     )
 
     // An unusable seed decodes to a state without a seed in both runtimes.
     for (const invalidSeed of [-42, 4.2, '"42"', 'null']) {
-      const invalidPayload = `{"v":1,"p":0,"x":"000000","s":${invalidSeed}}`
-      expect(browserDecode(manifest, invalidPayload)).toEqual(
-        decodeSuspendData(manifest, invalidPayload)
+      const invalidPayload = `{"v":2,"p":0,"x":"000000","s":${invalidSeed}}`
+      expect(browserDecode(scoIndex, invalidPayload)).toEqual(
+        decodeSuspendData(scoIndex, invalidPayload)
       )
-      expect(decodeSuspendData(manifest, invalidPayload)).not.toHaveProperty('shuffleSeed')
+      expect(decodeSuspendData(scoIndex, invalidPayload)).not.toHaveProperty('shuffleSeed')
     }
   })
 })

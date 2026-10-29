@@ -1,15 +1,15 @@
 import vm from 'node:vm'
 import { describe, expect, it } from 'vitest'
-import type { ContentManifest } from '../content-manifest'
+import type { ScoIndex } from '../sco-index'
 import { createScormRuntime } from '../runtime'
 
-const manifest: ContentManifest = {
+const scoIndex: ScoIndex = {
   schemaVersion: 1,
   title: 'Location anchor',
   lang: 'en',
   presentation: 'scroll',
   pages: {
-    '0': { id: 'page:one', title: 'One', questions: {} }
+    '0': { id: 'page:one', title: 'One' }
   }
 }
 
@@ -32,7 +32,7 @@ function createWindow(initialLocation = '') {
     addEventListener: () => undefined
   }
   window.parent = window
-  vm.runInNewContext(createScormRuntime(manifest), { window })
+  vm.runInNewContext(createScormRuntime(scoIndex), { window })
   return { window, values }
 }
 

@@ -1,5 +1,5 @@
 import type { ContentPackage, Renderer, RendererDevOptions } from '@scorm-cli/core'
-import { createContentManifest, createScormPreviewRuntime, scormDevMock } from '@scorm-cli/scorm'
+import { createScoIndex, createScormPreviewRuntime, scormDevMock } from '@scorm-cli/scorm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { LoadedPackage } from '../content'
 import { startDevPackage } from '../dev'
@@ -50,7 +50,7 @@ describe('CLI dev orchestration', () => {
           { id: 'scorm-dev-mock', source: scormDevMock },
           {
             id: 'scorm-runtime',
-            source: createScormPreviewRuntime(createContentManifest(loaded('Initial').content))
+            source: createScormPreviewRuntime(createScoIndex(loaded('Initial').content))
           }
         ],
         port: 4173
@@ -99,7 +99,7 @@ describe('CLI dev orchestration', () => {
     await Promise.resolve()
     expect(updates.map(({ content: next }) => next.metadata.title)).toEqual(['Initial'])
     expect(updates[0]?.scripts?.[1]?.source).toBe(
-      createScormPreviewRuntime(createContentManifest(loaded('Initial').content))
+      createScormPreviewRuntime(createScoIndex(loaded('Initial').content))
     )
 
     loadMode = 'invalid'
@@ -115,7 +115,7 @@ describe('CLI dev orchestration', () => {
     await Promise.resolve()
     expect(updates).toHaveLength(2)
     expect(updates[1]?.scripts?.[1]?.source).toBe(
-      createScormPreviewRuntime(createContentManifest(loaded('Updated').content))
+      createScormPreviewRuntime(createScoIndex(loaded('Updated').content))
     )
 
     await session.close()
@@ -218,10 +218,10 @@ describe('CLI dev orchestration', () => {
     expect(runtime).toContain('PREVIEW_RUNTIME_MAPPINGS')
     expect(runtime).toContain('__SCORM_PREVIEW_VERSION__')
 
-    // The injected scripts carry only the semantic content manifest (question
+    // The injected scripts carry only the semantic SCO index (question
     // ids, prompts and correctness) the runtime needs to score, never a page
     // body. Prompt and option labels travel as plain strings inside the
-    // manifest, while page content stays owned by the renderer's lazy modules,
+    // index, while page content stays owned by the renderer's lazy modules,
     // so a version switch and reload cannot change what the preview serves.
     expect(runtime).toContain('question:intro.mdx:1:1')
     expect(runtime).toContain('"prompt":"Pick one"')

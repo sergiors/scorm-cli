@@ -1,4 +1,4 @@
-import type { ContentManifest } from './content-manifest'
+import type { ScoIndex } from './sco-index'
 import { browserCodecSource } from './state-codec'
 import type { ScormVersion } from './scorm-version'
 
@@ -82,7 +82,7 @@ export const runtimeApiMappings: Record<ScormVersion, RuntimeApiMapping> = {
   }
 }
 
-const emptyManifest: ContentManifest = {
+const emptyIndex: ScoIndex = {
   schemaVersion: 1,
   title: '',
   lang: 'en',
@@ -119,10 +119,10 @@ export function formatScorm2004Duration(milliseconds: number): string {
  * point of variation: production pins one mapping, preview resolves the mapping
  * the mock selected at startup.
  */
-function buildRuntimeSource(manifest: ContentManifest, apiMappingDeclaration: string): string {
-  const dictionary = JSON.stringify(manifest).replace(/</g, '\\u003c')
+function buildRuntimeSource(index: ScoIndex, apiMappingDeclaration: string): string {
+  const dictionary = JSON.stringify(index).replace(/</g, '\\u003c')
   return `;(function () {
-  var CONTENT_MANIFEST = ${dictionary};
+  var SCO_INDEX = ${dictionary};
   ${apiMappingDeclaration}
   var api = null;
   var finished = false;
@@ -150,11 +150,11 @@ function buildRuntimeSource(manifest: ContentManifest, apiMappingDeclaration: st
 ${browserCodecSource()}
 
   function progressFor(state) {
-    var entries = Object.keys(CONTENT_MANIFEST.pages).map(function (key) { return CONTENT_MANIFEST.pages[key]; });
+    var entries = Object.keys(SCO_INDEX.pages).map(function (key) { return SCO_INDEX.pages[key]; });
     if (!entries.length) return 0;
     var done = entries.reduce(function (count, page) {
       var value = state && state.pages && state.pages[page.id];
-      var complete = CONTENT_MANIFEST.presentation === "scroll" || CONTENT_MANIFEST.presentation === "slides"
+      var complete = SCO_INDEX.presentation === "scroll" || SCO_INDEX.presentation === "slides"
         ? value && value.completed === true
         : value && value.visited === true;
       return count + (complete ? 1 : 0);
@@ -278,7 +278,7 @@ ${browserCodecSource()}
     var status = call(API_MAPPING.getValue, "lms.get-value", API_MAPPING.completion.element, API_MAPPING.completion.element);
     alreadyComplete = status === "completed" || (API_MAPPING.discoveryProperty === "API" && status === "passed");
     currentLocation = call(API_MAPPING.getValue, "lms.get-value", API_MAPPING.location, API_MAPPING.location);
-    resumeState = compactDecode(CONTENT_MANIFEST, call(API_MAPPING.getValue, "lms.get-value", "cmi.suspend_data", "cmi.suspend_data"));
+    resumeState = compactDecode(SCO_INDEX, call(API_MAPPING.getValue, "lms.get-value", "cmi.suspend_data", "cmi.suspend_data"));
     resumeState.location = currentLocation;
     if (!alreadyComplete) call(API_MAPPING.setValue, "lms.set-value", API_MAPPING.completion.element, API_MAPPING.completion.element, API_MAPPING.completion.incomplete);
     call(API_MAPPING.commit, "lms.commit", undefined, "");
@@ -299,7 +299,7 @@ ${browserCodecSource()}
 
   function restoreState() {
     if (!api || !initialized) return { pages: {} };
-    var restored = compactDecode(CONTENT_MANIFEST, compactEncode(CONTENT_MANIFEST, resumeState, progressFor(resumeState)));
+    var restored = compactDecode(SCO_INDEX, compactEncode(SCO_INDEX, resumeState, progressFor(resumeState)));
     restored.location = currentLocation;
     return restored;
   }
@@ -313,8 +313,8 @@ ${browserCodecSource()}
     getResumeState: restoreState,
     saveState: function (state) {
       if (!api || !initialized) return false;
-      var serialized = compactEncode(CONTENT_MANIFEST, state, progressFor(state));
-      var normalized = compactDecode(CONTENT_MANIFEST, serialized);
+      var serialized = compactEncode(SCO_INDEX, state, progressFor(state));
+      var normalized = compactDecode(SCO_INDEX, serialized);
       var saved = true;
       var location = state && typeof state.location === "string" ? state.location : "";
       var anchor = state && typeof state.anchor === "string" ? state.anchor : "";
@@ -364,12 +364,9 @@ ${browserCodecSource()}
 }
 
 /** Creates a fixed-version SCO bridge with the dictionary written into the package. */
-export function createScormRuntime(
-  manifest: ContentManifest,
-  version: ScormVersion = '1.2'
-): string {
+export function createScormRuntime(index: ScoIndex, version: ScormVersion = '1.2'): string {
   return buildRuntimeSource(
-    manifest,
+    index,
     `var API_MAPPING = ${JSON.stringify(runtimeApiMappings[version])};`
   )
 }
@@ -380,9 +377,9 @@ export function createScormRuntime(
  * to the matching API mapping at startup. It reuses the exact production
  * template and `runtimeApiMappings`; packages never emit it.
  */
-export function createScormPreviewRuntime(manifest: ContentManifest): string {
+export function createScormPreviewRuntime(index: ScoIndex): string {
   return buildRuntimeSource(
-    manifest,
+    index,
     `var PREVIEW_RUNTIME_MAPPINGS = ${JSON.stringify(runtimeApiMappings)};
   var PREVIEW_SCORM_VERSION = window.__SCORM_PREVIEW_VERSION__ === "2004" ? "2004" : "1.2";
   var API_MAPPING = PREVIEW_RUNTIME_MAPPINGS[PREVIEW_SCORM_VERSION];`
@@ -390,4 +387,4 @@ export function createScormPreviewRuntime(manifest: ContentManifest): string {
 }
 
 /** Empty-dictionary compatibility export; packages should call createScormRuntime. */
-export const scormRuntime = createScormRuntime(emptyManifest)
+export const scormRuntime = createScormRuntime(emptyIndex)

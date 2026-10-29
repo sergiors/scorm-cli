@@ -4,7 +4,7 @@ import os from 'node:os'
 import JSZip from 'jszip'
 import type { PackageMetadata, RenderResult } from '@scorm-cli/core'
 import { createScormRuntime } from './runtime'
-import type { ContentManifest } from './content-manifest'
+import type { ScoIndex } from './sco-index'
 import { createManifest, createManifest2004 } from './ims-manifest'
 import { resolveRendererEntrypoint } from './package-paths'
 import type { ScormVersion } from './scorm-version'
@@ -13,7 +13,7 @@ export interface PackageScormOptions {
   metadata: PackageMetadata
   renderResult: RenderResult
   outputPath: string
-  contentManifest: ContentManifest
+  scoIndex: ScoIndex
   version?: ScormVersion
 }
 
@@ -63,19 +63,19 @@ async function stageRendererOutput(
   if (
     rendererFiles.includes('imsmanifest.xml') ||
     rendererFiles.includes('scorm-runtime.js') ||
-    rendererFiles.includes('content-manifest.json')
+    rendererFiles.includes('scoindex.json')
   ) {
     throw new Error('renderer output uses a reserved SCORM package filename')
   }
 
   await fs.writeFile(
     path.join(stage, 'scorm-runtime.js'),
-    createScormRuntime(options.contentManifest, version),
+    createScormRuntime(options.scoIndex, version),
     'utf8'
   )
   await fs.writeFile(
-    path.join(stage, 'content-manifest.json'),
-    `${JSON.stringify(options.contentManifest, null, 2)}\n`,
+    path.join(stage, 'scoindex.json'),
+    `${JSON.stringify(options.scoIndex, null, 2)}\n`,
     'utf8'
   )
   await injectRuntime(path.join(stage, relativeEntrypoint))

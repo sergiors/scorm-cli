@@ -1,7 +1,7 @@
 import vm from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import type { ContentPackage } from '@scorm-cli/core'
-import { createContentManifest } from '../content-manifest'
+import { createScoIndex } from '../sco-index'
 import { scormDevMock } from '../mock'
 import { createScormRuntime } from '../runtime'
 
@@ -69,13 +69,13 @@ const content: ContentPackage = {
 describe('SCORM dev reload resume', () => {
   it('restores the location and compact player state through the dev mock and generated runtime', () => {
     const storage = new MemoryStorage()
-    const manifest = createContentManifest(content)
-    const runtime = createScormRuntime(manifest)
+    const scoIndex = createScoIndex(content)
+    const runtime = createScormRuntime(scoIndex)
     const createWindow = () => {
       const window: Record<string, any> = { localStorage: storage }
       window.parent = window
 
-      // Keep script order in sync with CLI dev: mock first, then manifest runtime.
+      // Keep script order in sync with CLI dev: mock first, then the runtime.
       vm.runInNewContext(scormDevMock, { window })
       vm.runInNewContext(runtime, { window })
       return window
@@ -160,8 +160,8 @@ const scrollContent: ContentPackage = {
 describe('SCORM dev reload resume (scroll)', () => {
   it('restores sequential completion and answers after a reload, keeping the location separate', () => {
     const storage = new MemoryStorage()
-    const manifest = createContentManifest(scrollContent)
-    const runtime = createScormRuntime(manifest)
+    const scoIndex = createScoIndex(scrollContent)
+    const runtime = createScormRuntime(scoIndex)
     const createWindow = () => {
       const window: Record<string, any> = { localStorage: storage }
       window.parent = window
@@ -186,7 +186,7 @@ describe('SCORM dev reload resume (scroll)', () => {
 
     const secondWindow = createWindow()
     // Scroll completion is reconstructed from progress, answers decode through
-    // the current manifest, and the location stays in its separate CMI element —
+    // the current SCO index, and the location stays in its separate CMI element —
     // so a refresh restores the learner's answers/progress and the Scroll
     // presentation reopens at the saved `page:two` location.
     expect(secondWindow.scormBridge.restoreState()).toEqual({
@@ -200,8 +200,8 @@ describe('SCORM dev reload resume (scroll)', () => {
 
   it('restores only a non-negative safe-integer shuffle seed across a reload', () => {
     const storage = new MemoryStorage()
-    const manifest = createContentManifest(scrollContent)
-    const runtime = createScormRuntime(manifest)
+    const scoIndex = createScoIndex(scrollContent)
+    const runtime = createScormRuntime(scoIndex)
     const createWindow = () => {
       const window: Record<string, any> = { localStorage: storage }
       window.parent = window

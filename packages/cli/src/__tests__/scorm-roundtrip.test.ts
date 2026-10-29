@@ -6,12 +6,12 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { AnswerValue, ContentPackage, PlayerState, QuestionnaireNode } from '@scorm-cli/core'
 import { parsePackage } from '@scorm-cli/parser'
 import {
-  createContentManifest,
+  createScoIndex,
   createScormRuntime,
   decodeSuspendData,
   encodeSuspendData
 } from '@scorm-cli/scorm'
-import type { ContentManifest } from '@scorm-cli/scorm'
+import type { ScoIndex } from '@scorm-cli/scorm'
 
 let root: string
 afterEach(async () => {
@@ -55,7 +55,7 @@ function firstQuestionnaire(contentPackage: ContentPackage): QuestionnaireNode {
 }
 
 /** Runs the packaged SCORM bridge against a minimal in-memory LMS. */
-function runRuntime(manifest: ContentManifest) {
+function runRuntime(scoIndex: ScoIndex) {
   const values: Record<string, string> = {}
   const window: any = {
     __SCORM_DEVTOOLS__: false,
@@ -75,12 +75,12 @@ function runRuntime(manifest: ContentManifest) {
     CustomEvent: class {}
   }
   window.parent = window
-  vm.runInNewContext(createScormRuntime(manifest), { window })
+  vm.runInNewContext(createScormRuntime(scoIndex), { window })
   return { window, values }
 }
 
 describe('authored MDX to suspend_data round trip', () => {
-  it('carries authored option order through parse, manifest, runtime selection and codec', async () => {
+  it('carries authored option order through parse, sco index, runtime selection and codec', async () => {
     const contentPackage = await parsePackage(await writeAuthoredPackage())
     const questionnaire = firstQuestionnaire(contentPackage)
     const [multi, single] = questionnaire.questions
@@ -96,31 +96,36 @@ describe('authored MDX to suspend_data round trip', () => {
     expect([...authoredMulti].sort()).not.toEqual(authoredMulti)
     expect([...authoredSingle].sort()).not.toEqual(authoredSingle)
 
-    // 2. The manifest indexes options by that same source order and reuses the
-    //    parsed question ids rather than reordering by value.
-    const manifest = createContentManifest(contentPackage)
-    const manifestPage = manifest.pages['0']
-    if (!manifestPage) throw new Error('expected manifest page 0')
-    expect(manifestPage.questions['0'].id).toBe(multi.id)
-    expect(manifestPage.questions['1'].id).toBe(single.id)
-    expect(manifestPage.questions['0'].options).toEqual({
+    // 2. The sco index keeps questionnaire-local question indexes in that same
+    //    source order and reuses the parsed question ids rather than reordering
+    //    by value.
+    const scoIndex = createScoIndex(contentPackage)
+    const indexPage = scoIndex.pages['0']
+    if (!indexPage) throw new Error('expected sco index page 0')
+    if (!indexPage.questionnaires) throw new Error('expected sco index questionnaires on page 0')
+    const indexQuestionnaire = indexPage.questionnaires['0']
+    if (!indexQuestionnaire) throw new Error('expected sco index questionnaire 0')
+    expect(indexQuestionnaire.id).toBe(questionnaire.id)
+    expect(indexQuestionnaire.questions['0'].id).toBe(multi.id)
+    expect(indexQuestionnaire.questions['1'].id).toBe(single.id)
+    expect(indexQuestionnaire.questions['0'].options).toEqual({
       '0': { value: 'zebra', label: 'Zebra' },
       '1': { value: 'mango', label: 'Mango' },
       '2': { value: 'apple', label: 'Apple' }
     })
-    expect(manifestPage.questions['1'].options).toEqual({
+    expect(indexQuestionnaire.questions['1'].options).toEqual({
       '0': { value: 'beta', label: 'Beta' },
       '1': { value: 'alpha', label: 'Alpha' }
     })
     // Index 1 is the authored second option, not the alphabetically first value.
-    expect(manifestPage.questions['0'].options['1']!.value).toBe('mango')
-    expect(manifestPage.questions['1'].options['1']!.value).toBe('alpha')
-    expect(manifestPage.questions['0'].correctAnswers).toEqual(['zebra', 'apple'])
-    expect(manifestPage.questions['1'].correctAnswers).toEqual(['alpha'])
+    expect(indexQuestionnaire.questions['0'].options['1']!.value).toBe('mango')
+    expect(indexQuestionnaire.questions['1'].options['1']!.value).toBe('alpha')
+    expect(indexQuestionnaire.questions['0'].correctAnswers).toEqual(['zebra', 'apple'])
+    expect(indexQuestionnaire.questions['1'].correctAnswers).toEqual(['alpha'])
 
     // 3. A runtime selects semantic option values, not indexes: an array for
     //    multiple-choice and a scalar for single-choice.
-    const pageId = manifestPage.id
+    const pageId = indexPage.id
     const selected: PlayerState = {
       pages: {
         [pageId]: {
@@ -133,17 +138,18 @@ describe('authored MDX to suspend_data round trip', () => {
       }
     }
 
+    // The single questionnaire owns both local question indexes.
     const compact = {
-      v: 1,
+      v: 2,
       p: 0,
       x: '1',
-      d: { '0.a.0': [0, 2], '0.a.1': 1 }
+      d: { '0.a.0.0': [0, 2], '0.a.0.1': 1 }
     }
-    expect(encodeSuspendData(manifest, selected, 0)).toEqual(compact)
+    expect(encodeSuspendData(scoIndex, selected, 0)).toEqual(compact)
 
     // 4. The runtime bridge persists exactly that compact payload as
     //    cmi.suspend_data, with no semantic values or labels leaking.
-    const { window, values } = runRuntime(manifest)
+    const { window, values } = runRuntime(scoIndex)
     expect(window.scormBridge.saveState(selected)).toBe(true)
     const suspendData = values['cmi.suspend_data']!
     expect(JSON.parse(suspendData)).toEqual(compact)
@@ -155,7 +161,7 @@ describe('authored MDX to suspend_data round trip', () => {
       [multi.id]: ['zebra', 'apple'],
       [single.id]: 'alpha'
     }
-    const decoded = decodeSuspendData(manifest, suspendData)
+    const decoded = decodeSuspendData(scoIndex, suspendData)
     expect(decoded.pages[pageId]!.answers).toEqual(expectedAnswers)
     expect(window.scormBridge.getResumeState()).toEqual(
       expect.objectContaining({

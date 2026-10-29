@@ -1,6 +1,6 @@
 import chokidar from 'chokidar'
 import type { Renderer, RendererDevOptions, RendererDevServer } from '@scorm-cli/core'
-import { createContentManifest, createScormPreviewRuntime, scormDevMock } from '@scorm-cli/scorm'
+import { createScoIndex, createScormPreviewRuntime, scormDevMock } from '@scorm-cli/scorm'
 import type { LoadedPackage } from './content'
 import { loadPackage } from './content'
 import { errorMessage } from './errors'
@@ -35,13 +35,13 @@ const defaultDependencies: DevDependencies = {
 }
 
 function scriptsFor(content: LoadedPackage['content']) {
-  const contentManifest = createContentManifest(content)
+  const scoIndex = createScoIndex(content)
   // The mock owns the preview's active SCORM version; the runtime it is paired
   // with resolves the matching API mapping at startup, so a version switch only
   // needs to persist the choice and reload.
   return [
     { id: 'scorm-dev-mock', source: scormDevMock },
-    { id: 'scorm-runtime', source: createScormPreviewRuntime(contentManifest) }
+    { id: 'scorm-runtime', source: createScormPreviewRuntime(scoIndex) }
   ]
 }
 

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { ContentPackage } from '@scorm-cli/core'
-import { createContentManifest } from '../content-manifest'
+import { createScoIndex } from '../sco-index'
 
-describe('content manifest accordion bodies', () => {
+describe('sco index accordion bodies', () => {
   it('collects questions, questionnaires, and videos nested inside accordion bodies', () => {
     const content: ContentPackage = {
-      metadata: { title: 'Accordion manifest' },
+      metadata: { title: 'Accordion sco index' },
       presentation: {
         type: 'scroll',
         pages: [
@@ -68,24 +68,27 @@ describe('content manifest accordion bodies', () => {
       }
     }
 
-    const manifest = createContentManifest(content)
-    expect(manifest.pages['0']).toEqual({
+    const scoIndex = createScoIndex(content)
+    expect(scoIndex.pages['0']).toEqual({
       id: 'page-accordion',
       title: 'Accordion',
-      questions: {
-        '0': {
-          id: 'single',
-          prompt: 'Pick one',
-          type: 'single-choice',
-          options: {
-            '0': { value: 'yes', label: 'Yes' },
-            '1': { value: 'no', label: 'No' }
-          },
-          correctAnswers: ['yes']
-        }
-      },
       questionnaires: {
-        '0': { id: 'acc-quiz', maxAttempts: 3, questionCount: 1 }
+        '0': {
+          id: 'acc-quiz',
+          maxAttempts: 3,
+          questions: {
+            '0': {
+              id: 'single',
+              prompt: 'Pick one',
+              type: 'single-choice',
+              options: {
+                '0': { value: 'yes', label: 'Yes' },
+                '1': { value: 'no', label: 'No' }
+              },
+              correctAnswers: ['yes']
+            }
+          }
+        }
       },
       videos: {
         '0': { id: 'stable-video', src: 'https://vimeo.com/42', provider: 'vimeo' }
@@ -124,12 +127,12 @@ describe('content manifest accordion bodies', () => {
       }
     }
 
-    const manifest = createContentManifest(content)
-    expect(manifest.pages['0']).toEqual({
+    const scoIndex = createScoIndex(content)
+    // A plain accordion body invents no questionnaire or video slots, and a
+    // page without them omits both dictionaries entirely.
+    expect(scoIndex.pages['0']).toEqual({
       id: 'empty',
-      title: 'Empty',
-      questions: {},
-      questionnaires: {}
+      title: 'Empty'
     })
   })
 })

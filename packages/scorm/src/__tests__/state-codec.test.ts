@@ -1,15 +1,15 @@
 import vm from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import type { ContentPackage, PlayerState, VideoProvider } from '@scorm-cli/core'
-import { createContentManifest } from '../content-manifest'
+import { createScoIndex } from '../sco-index'
 import { decodeSuspendData, encodeSuspendData } from '../state-codec'
 import { createScormRuntime } from '../runtime'
-import type { ContentManifest } from '../content-manifest'
+import type { ScoIndex } from '../sco-index'
 
 type VideoFixture = [id: string, src: string, provider: VideoProvider]
 
-function assignVideos(manifest: ContentManifest, byPage: Record<string, VideoFixture[]>): void {
-  Object.values(manifest.pages).forEach((page) => {
+function assignVideos(scoIndex: ScoIndex, byPage: Record<string, VideoFixture[]>): void {
+  Object.values(scoIndex.pages).forEach((page) => {
     const videos = byPage[page.id]
     if (videos) {
       page.videos = Object.fromEntries(
@@ -19,7 +19,7 @@ function assignVideos(manifest: ContentManifest, byPage: Record<string, VideoFix
   })
 }
 
-/** A video entry with the authored watch fields the manifest copies from content. */
+/** A video entry with the authored watch fields the sco index copies from content. */
 type RequiredVideoFixture = [
   id: string,
   src: string,
@@ -29,10 +29,10 @@ type RequiredVideoFixture = [
 ]
 
 function assignRequiredVideos(
-  manifest: ContentManifest,
+  scoIndex: ScoIndex,
   byPage: Record<string, RequiredVideoFixture[]>
 ): void {
-  Object.values(manifest.pages).forEach((page) => {
+  Object.values(scoIndex.pages).forEach((page) => {
     const videos = byPage[page.id]
     if (videos) {
       page.videos = Object.fromEntries(
@@ -98,10 +98,10 @@ const packageContent: ContentPackage = {
     }))
   }
 }
-const manifest = createContentManifest(packageContent)
+const scoIndex = createScoIndex(packageContent)
 
 describe('compact suspend-data codec', () => {
-  it('encodes only compact indexes and decodes answers through the same manifest', () => {
+  it('encodes only compact indexes and decodes answers through the same sco index', () => {
     const state: PlayerState = {
       location: 'must-not-persist',
       pages: {
@@ -113,18 +113,18 @@ describe('compact suspend-data codec', () => {
         'page-two': { visited: false, answers: { q1: ['blue'] } }
       }
     }
-    const encoded = encodeSuspendData(manifest, state, 50)
+    const encoded = encodeSuspendData(scoIndex, state, 50)
     expect(encoded).toEqual({
-      v: 1,
+      v: 2,
       p: 50,
       x: '10',
-      d: { '0.a.0': [0, 2], '1.a.0': [1] }
+      d: { '0.a.0.0': [0, 2], '1.a.0.0': [1] }
     })
     expect(Object.keys(encoded).sort()).toEqual(['d', 'p', 'v', 'x'])
     const serialized = JSON.stringify(encoded)
     expect(serialized).not.toMatch(/location|Private prompt|Red label|correct|red|blue|green/)
     expect(serialized).not.toContain('{"a":')
-    expect(decodeSuspendData(manifest, serialized)).toEqual({
+    expect(decodeSuspendData(scoIndex, serialized)).toEqual({
       pages: {
         'page-one': {
           visited: true,
@@ -137,8 +137,8 @@ describe('compact suspend-data codec', () => {
   })
 
   it('keeps video-free payloads unchanged and stores valid positions as deciseconds', () => {
-    const videoManifest = structuredClone(manifest)
-    assignVideos(videoManifest, {
+    const videoIndex = structuredClone(scoIndex)
+    assignVideos(videoIndex, {
       'page-one': [
         ['video-a', 'https://vimeo.com/a', 'vimeo'],
         ['video-b', 'https://youtu.be/abc', 'youtube'],
@@ -150,18 +150,18 @@ describe('compact suspend-data codec', () => {
       ]
     })
     const emptyState: PlayerState = { pages: {} }
-    expect(encodeSuspendData(manifest, emptyState, 0)).toEqual({ v: 1, p: 0, x: '00' })
-    expect(JSON.stringify(encodeSuspendData(manifest, emptyState, 0))).toBe(
-      '{"v":1,"p":0,"x":"00"}'
+    expect(encodeSuspendData(scoIndex, emptyState, 0)).toEqual({ v: 2, p: 0, x: '00' })
+    expect(JSON.stringify(encodeSuspendData(scoIndex, emptyState, 0))).toBe(
+      '{"v":2,"p":0,"x":"00"}'
     )
-    expect(encodeSuspendData(videoManifest, emptyState, 0)).toEqual({
-      v: 1,
+    expect(encodeSuspendData(videoIndex, emptyState, 0)).toEqual({
+      v: 2,
       p: 0,
       x: '00'
     })
 
     const encoded = encodeSuspendData(
-      videoManifest,
+      videoIndex,
       {
         pages: {
           'page-one': {
@@ -180,30 +180,30 @@ describe('compact suspend-data codec', () => {
       0
     )
     expect(encoded).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00',
       d: { '0.t.0': 123, '1.t.1': 1 }
     })
     expect(encoded).not.toHaveProperty('t')
     expect(JSON.stringify(encoded)).not.toMatch(/video-a|video-b|video-c|video-d|video-e/)
-    expect(decodeSuspendData(videoManifest, encoded)).toEqual({
+    expect(decodeSuspendData(videoIndex, encoded)).toEqual({
       pages: {
         'page-one': { videos: { 'video-a': 12.3 } },
         'page-two': { videos: { 'video-e': 0.1 } }
       }
     })
-    expect(encodeSuspendData(videoManifest, decodeSuspendData(videoManifest, encoded), 0)).toEqual(
+    expect(encodeSuspendData(videoIndex, decodeSuspendData(videoIndex, encoded), 0)).toEqual(
       encoded
     )
     expect(
-      encodeSuspendData(videoManifest, { pages: { 'page-one': { videos: { 'video-a': 0 } } } }, 0)
-    ).toEqual({ v: 1, p: 0, x: '00' })
+      encodeSuspendData(videoIndex, { pages: { 'page-one': { videos: { 'video-a': 0 } } } }, 0)
+    ).toEqual({ v: 2, p: 0, x: '00' })
   })
 
   it('restores positions by page-local video indexes and ignores removed indexes', () => {
-    const originalManifest = structuredClone(manifest)
-    assignVideos(originalManifest, {
+    const originalIndex = structuredClone(scoIndex)
+    assignVideos(originalIndex, {
       'page-one': [
         ['video-a', 'https://vimeo.com/a', 'vimeo'],
         ['video-c', 'https://vimeo.com/c', 'vimeo']
@@ -211,7 +211,7 @@ describe('compact suspend-data codec', () => {
       'page-two': [['video-b', 'https://youtu.be/b', 'youtube']]
     })
     const encoded = encodeSuspendData(
-      originalManifest,
+      originalIndex,
       {
         pages: {
           'page-one': { videos: { 'video-a': 1.1, 'video-c': 3.3 } },
@@ -227,15 +227,15 @@ describe('compact suspend-data codec', () => {
     })
     expect(encoded).not.toHaveProperty('t')
 
-    const updatedManifest = structuredClone(manifest)
-    assignVideos(updatedManifest, {
+    const updatedIndex = structuredClone(scoIndex)
+    assignVideos(updatedIndex, {
       'page-one': [['video-b', 'https://youtu.be/b', 'youtube']],
       'page-two': [
         ['video-new', 'https://vimeo.com/new', 'vimeo'],
         ['video-a', 'https://vimeo.com/a', 'vimeo']
       ]
     })
-    expect(decodeSuspendData(updatedManifest, encoded)).toEqual({
+    expect(decodeSuspendData(updatedIndex, encoded)).toEqual({
       pages: {
         'page-one': { videos: { 'video-b': 1.1 } },
         'page-two': { videos: { 'video-new': 2.2 } }
@@ -243,22 +243,22 @@ describe('compact suspend-data codec', () => {
     })
 
     // A removed page leaves the saved two-bit visited bitmap oversized for the
-    // one-page manifest, so every page-indexed key — the positions included —
+    // one-page scoIndex, so every page-indexed key — the positions included —
     // is discarded instead of being trusted against the wrong page list.
-    delete updatedManifest.pages['1']
-    expect(decodeSuspendData(updatedManifest, encoded)).toEqual({ pages: {} })
+    delete updatedIndex.pages['1']
+    expect(decodeSuspendData(updatedIndex, encoded)).toEqual({ pages: {} })
   })
 
   it('decodes payloads without video data and ignores invalid or unknown video indexes', () => {
-    const videoManifest = structuredClone(manifest)
-    assignVideos(videoManifest, {
+    const videoIndex = structuredClone(scoIndex)
+    assignVideos(videoIndex, {
       'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']],
       'page-two': [['video-b', 'https://youtu.be/b', 'youtube']]
     })
-    expect(decodeSuspendData(videoManifest, { v: 1, p: 0, x: '00' })).toEqual({ pages: {} })
+    expect(decodeSuspendData(videoIndex, { v: 2, p: 0, x: '00' })).toEqual({ pages: {} })
     expect(
-      decodeSuspendData(videoManifest, {
-        v: 1,
+      decodeSuspendData(videoIndex, {
+        v: 2,
         p: 0,
         x: '00',
         d: { '0.t.0': 15, '0.t.1': -1, '0.t.removed': 20, '0.t.2': 1.5 },
@@ -268,20 +268,20 @@ describe('compact suspend-data codec', () => {
   })
 
   it('rejects non-index video dictionary keys instead of serializing semantic IDs', () => {
-    const malformedManifest = structuredClone(manifest)
-    malformedManifest.pages['0']!.videos = {
+    const malformedIndex = structuredClone(scoIndex)
+    malformedIndex.pages['0']!.videos = {
       'video-a': { id: 'video-a', src: 'https://vimeo.com/a', provider: 'vimeo' }
     }
     expect(
       encodeSuspendData(
-        malformedManifest,
+        malformedIndex,
         { pages: { 'page-one': { videos: { 'video-a': 12.3 } } } },
         0
       )
-    ).toEqual({ v: 1, p: 0, x: '00' })
+    ).toEqual({ v: 2, p: 0, x: '00' })
     expect(
-      decodeSuspendData(malformedManifest, {
-        v: 1,
+      decodeSuspendData(malformedIndex, {
+        v: 2,
         p: 0,
         x: '00',
         d: { '0.t.video-a': 123 }
@@ -289,24 +289,30 @@ describe('compact suspend-data codec', () => {
     ).toEqual({ pages: {} })
   })
 
-  it('skips non-canonical manifest page indexes so encoded flat keys stay parseable', () => {
-    const malformedManifest = structuredClone(manifest)
-    malformedManifest.pages['01'] = {
+  it('skips non-canonical sco index page indexes so encoded flat keys stay parseable', () => {
+    const malformedIndex = structuredClone(scoIndex)
+    malformedIndex.pages['01'] = {
       id: 'page-extra',
       title: 'Extra',
-      questions: {
+      questionnaires: {
         '0': {
-          id: 'q-extra',
-          prompt: '',
-          type: 'single-choice',
-          options: { '0': { value: 'extra-a', label: 'Extra A' } },
-          correctAnswers: ['extra-a']
+          id: 'quiz-extra',
+          maxAttempts: 1,
+          questions: {
+            '0': {
+              id: 'q-extra',
+              prompt: '',
+              type: 'single-choice',
+              options: { '0': { value: 'extra-a', label: 'Extra A' } },
+              correctAnswers: ['extra-a']
+            }
+          }
         }
       },
       videos: { '0': { id: 'video-extra', src: 'https://vimeo.com/extra', provider: 'vimeo' } }
     }
     const encoded = encodeSuspendData(
-      malformedManifest,
+      malformedIndex,
       {
         pages: {
           'page-one': { answers: { q1: ['blue'] } },
@@ -321,8 +327,8 @@ describe('compact suspend-data codec', () => {
     )
     // The non-canonical page index contributes no flat answer/video keys; only
     // the valid page's key survives and every emitted key is parseable.
-    expect(encoded).toEqual({ v: 1, p: 0, x: '001', d: { '0.a.0': [1] } })
-    expect(decodeSuspendData(malformedManifest, encoded)).toEqual({
+    expect(encoded).toEqual({ v: 2, p: 0, x: '001', d: { '0.a.0.0': [1] } })
+    expect(decodeSuspendData(malformedIndex, encoded)).toEqual({
       pages: {
         'page-one': { answers: { q1: ['blue'] } },
         'page-extra': { visited: true }
@@ -330,9 +336,9 @@ describe('compact suspend-data codec', () => {
     })
   })
 
-  it('skips non-canonical manifest question indexes so answer keys stay parseable', () => {
-    const malformedManifest = structuredClone(manifest)
-    malformedManifest.pages['0']!.questions['01'] = {
+  it('skips non-canonical sco index question indexes so answer keys stay parseable', () => {
+    const malformedIndex = structuredClone(scoIndex)
+    malformedIndex.pages['0']!.questionnaires!['0']!.questions['01'] = {
       id: 'q-extra',
       prompt: '',
       type: 'single-choice',
@@ -340,25 +346,25 @@ describe('compact suspend-data codec', () => {
       correctAnswers: ['extra-a']
     }
     const encoded = encodeSuspendData(
-      malformedManifest,
+      malformedIndex,
       { pages: { 'page-one': { answers: { q1: ['blue'], 'q-extra': 'extra-a' } } } },
       0
     )
-    expect(encoded).toEqual({ v: 1, p: 0, x: '00', d: { '0.a.0': [1] } })
-    expect(decodeSuspendData(malformedManifest, encoded)).toEqual({
+    expect(encoded).toEqual({ v: 2, p: 0, x: '00', d: { '0.a.0.0': [1] } })
+    expect(decodeSuspendData(malformedIndex, encoded)).toEqual({
       pages: { 'page-one': { answers: { q1: ['blue'] } } }
     })
   })
 
   it('uses current page and video indexes and ignores semantic video IDs', () => {
-    const videoManifest = structuredClone(manifest)
-    assignVideos(videoManifest, {
+    const videoIndex = structuredClone(scoIndex)
+    assignVideos(videoIndex, {
       'page-one': [['current-a', 'https://vimeo.com/a', 'vimeo']],
       'page-two': [['current-b', 'https://youtu.be/b', 'youtube']]
     })
     expect(
-      decodeSuspendData(videoManifest, {
-        v: 1,
+      decodeSuspendData(videoIndex, {
+        v: 2,
         p: 0,
         x: '00',
         d: {
@@ -376,13 +382,13 @@ describe('compact suspend-data codec', () => {
   })
 
   it('ignores missing and malformed video entries without rejecting valid state', () => {
-    const videoManifest = structuredClone(manifest)
-    assignVideos(videoManifest, {
+    const videoIndex = structuredClone(scoIndex)
+    assignVideos(videoIndex, {
       'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']]
     })
     expect(
-      decodeSuspendData(videoManifest, {
-        v: 1,
+      decodeSuspendData(videoIndex, {
+        v: 2,
         p: 0,
         x: '10',
         d: {
@@ -397,13 +403,13 @@ describe('compact suspend-data codec', () => {
     ).toEqual({ pages: { 'page-one': { visited: true, videos: { 'video-a': 1.1 } } } })
   })
 
-  it('keeps single answers page-local through flat v1 keys', () => {
-    const singleChoiceManifest = structuredClone(manifest)
-    Object.values(singleChoiceManifest.pages).forEach((page) => {
-      page.questions!['0']!.type = 'single-choice'
+  it('encodes single-choice answers as scalar option indexes through four-part keys', () => {
+    const singleChoiceIndex = structuredClone(scoIndex)
+    Object.values(singleChoiceIndex.pages).forEach((page) => {
+      page.questionnaires!['0']!.questions['0']!.type = 'single-choice'
     })
     const encoded = encodeSuspendData(
-      singleChoiceManifest,
+      singleChoiceIndex,
       {
         pages: {
           'page-one': { answers: { q1: 'blue' } },
@@ -413,13 +419,13 @@ describe('compact suspend-data codec', () => {
       0
     )
     expect(encoded).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00',
-      d: { '0.a.0': 1, '1.a.0': 2 }
+      d: { '0.a.0.0': 1, '1.a.0.0': 2 }
     })
     expect(Object.keys(encoded).sort()).toEqual(['d', 'p', 'v', 'x'])
-    expect(decodeSuspendData(singleChoiceManifest, JSON.stringify(encoded))).toEqual({
+    expect(decodeSuspendData(singleChoiceIndex, JSON.stringify(encoded))).toEqual({
       pages: {
         'page-one': { answers: { q1: 'blue' } },
         'page-two': { answers: { q1: 'green' } }
@@ -464,7 +470,7 @@ describe('compact suspend-data codec', () => {
         ]
       }
     }
-    const dictionary = createContentManifest(single)
+    const dictionary = createScoIndex(single)
     expect(
       encodeSuspendData(
         dictionary,
@@ -476,58 +482,62 @@ describe('compact suspend-data codec', () => {
         -5
       )
     ).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '1',
-      d: { '0.a.0': 1 }
+      d: { '0.a.0.0': 1 }
     })
     expect(encodeSuspendData(dictionary, { pages: {} }, 101)).toEqual({
-      v: 1,
+      v: 2,
       p: 100,
       x: '0'
     })
-    expect(decodeSuspendData(dictionary, { v: 1, p: 151, x: '1' })).toEqual({
+    expect(decodeSuspendData(dictionary, { v: 2, p: 151, x: '1' })).toEqual({
       pages: {}
     })
-    expect(decodeSuspendData(dictionary, { v: 1, p: 99, x: '1' })).toEqual({
+    expect(decodeSuspendData(dictionary, { v: 2, p: 99, x: '1' })).toEqual({
       pages: { item: { visited: true } }
     })
   })
 
   it('rounds finite progress and safely handles non-finite progress', () => {
-    expect(encodeSuspendData(manifest, { pages: {} }, 49.6).p).toBe(50)
-    expect(encodeSuspendData(manifest, { pages: {} }, Number.NaN).p).toBe(0)
-    expect(encodeSuspendData(manifest, { pages: {} }, Number.POSITIVE_INFINITY).p).toBe(0)
+    expect(encodeSuspendData(scoIndex, { pages: {} }, 49.6).p).toBe(50)
+    expect(encodeSuspendData(scoIndex, { pages: {} }, Number.NaN).p).toBe(0)
+    expect(encodeSuspendData(scoIndex, { pages: {} }, Number.POSITIVE_INFINITY).p).toBe(0)
 
-    expect(decodeSuspendData(manifest, { v: 1, p: 24, x: '00' })).toEqual({ pages: {} })
-    expect(decodeSuspendData(manifest, { v: 1, p: 25, x: '00' })).toEqual({
+    expect(decodeSuspendData(scoIndex, { v: 2, p: 24, x: '00' })).toEqual({ pages: {} })
+    expect(decodeSuspendData(scoIndex, { v: 2, p: 25, x: '00' })).toEqual({
       pages: {
         'page-one': { visited: true, completed: true }
       }
     })
   })
 
-  it('returns a fresh state for malformed data and unsupported versions', () => {
+  it('returns a fresh state for unsupported versions including the retired v1', () => {
     for (const raw of [
       'no json',
       '{"v":0,"p":0,"x":"00"}',
+      // The v2 codec supports only v2 payloads, so a retired v1 payload —
+      // whatever it carried — restores nothing.
+      '{"v":1,"p":0,"x":"00"}',
       '{"v":3,"p":0,"x":"00"}',
-      '{"v":1,"p":101,"x":"00"}',
-      '{"v":1,"p":0,"x":"bad"}'
+      '{"v":2,"p":101,"x":"00"}',
+      '{"v":2,"p":0,"x":"bad"}'
     ]) {
-      expect(decodeSuspendData(manifest, raw)).toEqual({ pages: {} })
+      expect(decodeSuspendData(scoIndex, raw)).toEqual({ pages: {} })
     }
   })
 
-  it('does not decode the retired nested v1 layout', () => {
-    // Older payloads grouped entries under `d[pageIndex] = { a, t }`. That
-    // nested shape is not the supported flat layout, so no answers or video
-    // positions are restored from it. Top-level progress fields stay intact.
+  it('rejects v1 payloads and retired non-flat answer shapes without losing progress', () => {
+    // v1 payloads grouped entries under `d[pageIndex] = { a, t }`, and v1
+    // answer keys flattened questions page-locally as `page.a.question`.
+    // Neither shape exists under v2, so both restore no learner data; only the
+    // supported four-part `page.a.questionnaire.question` keys decode.
     expect(
-      decodeSuspendData(manifest, {
+      decodeSuspendData(scoIndex, {
         v: 1,
-        p: 0,
-        x: '00',
+        p: 50,
+        x: '10',
         d: {
           '0': { a: { '0': [0, 2] }, t: { '0': 123 } },
           '1': { a: { '0': [1] } }
@@ -535,64 +545,76 @@ describe('compact suspend-data codec', () => {
       })
     ).toEqual({ pages: {} })
     expect(
-      decodeSuspendData(manifest, {
-        v: 1,
+      decodeSuspendData(scoIndex, {
+        v: 2,
         p: 50,
         x: '10',
-        d: { '0': { a: { '0': [0, 2] } } }
+        d: {
+          '0.a.0': [0, 2],
+          '0': { a: { '0.0': [0, 2] } },
+          '1.a.0.0': [1]
+        }
       })
-    ).toEqual({ pages: { 'page-one': { visited: true, completed: true } } })
+    ).toEqual({
+      pages: {
+        'page-one': { visited: true, completed: true },
+        'page-two': { answers: { q1: ['blue'] } }
+      }
+    })
   })
 
   it('ignores malformed answer namespaces while preserving valid progress', () => {
     for (const d of [null, [], 'invalid', 42]) {
-      expect(decodeSuspendData(manifest, { v: 1, p: 0, x: '10', d })).toEqual({
+      expect(decodeSuspendData(scoIndex, { v: 2, p: 0, x: '10', d })).toEqual({
         pages: { 'page-one': { visited: true } }
       })
     }
-    expect(decodeSuspendData(manifest, { v: 1, p: 0, x: '00', d: { '0.a.0': 99 } })).toEqual({
+    expect(decodeSuspendData(scoIndex, { v: 2, p: 0, x: '00', d: { '0.a.0.0': 99 } })).toEqual({
       pages: {}
     })
   })
 
-  it('ignores page, question, and option indexes outside the manifest', () => {
+  it('ignores page, question, and option indexes outside the sco index', () => {
     expect(
-      decodeSuspendData(manifest, {
-        v: 1,
+      decodeSuspendData(scoIndex, {
+        v: 2,
         p: 0,
         x: '00',
         d: {
-          '0.a.0': 99,
-          '0.a.99': 0,
-          '1.a.0': [0, 99],
-          '99.a.0': 1
+          '0.a.0.0': 99,
+          '0.a.0.99': 0,
+          '1.a.0.0': [0, 99],
+          '99.a.0.0': 1
         }
       })
     ).toEqual({ pages: { 'page-two': { answers: { q1: ['red'] } } } })
   })
 
-  it('ignores malformed or unknown flat v1 keys without rejecting valid entries', () => {
-    const videoManifest = structuredClone(manifest)
-    assignVideos(videoManifest, { 'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']] })
+  it('ignores malformed or unknown four-part keys without rejecting valid entries', () => {
+    const videoIndex = structuredClone(scoIndex)
+    assignVideos(videoIndex, { 'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']] })
     expect(
-      decodeSuspendData(videoManifest, {
-        v: 1,
+      decodeSuspendData(videoIndex, {
+        v: 2,
         p: 0,
         x: '00',
         d: {
           // Valid entries that must survive.
           '0.t.0': 123,
-          '1.a.0': [0, 99],
-          // Malformed keys: wrong segment count, non-canonical indexes, bad
-          // kind, unknown page, prototype keys.
+          '1.a.0.0': [0, 99],
+          // Malformed keys: wrong segment counts (including the retired
+          // three-part `page.a.question` answer keys, which no longer parse),
+          // non-canonical indexes, bad kind, unknown page, prototype keys.
           '0.a': 1,
-          '0.a.0.0': 1,
-          '0.a.01': 1,
-          '0.a.-1': 1,
-          '0.a.x': 1,
+          '0.a.0.0.0': 1,
+          '0.a.01.0': 1,
+          '0.a.0.01': 1,
+          '0.a.0.-1': 1,
+          '0.a.0.x': 1,
+          '0.a.0': 1,
           '0.z.0': 1,
-          '99.a.0': 1,
-          '0.a.99': 1,
+          '99.a.0.0': 1,
+          '0.a.0.99': 1,
           '__proto__.a.0': 1,
           '0.t.99': 55
         }
@@ -605,13 +627,13 @@ describe('compact suspend-data codec', () => {
     })
   })
 
-  it('retains answers decoded before an entry that throws on a malformed manifest question', () => {
-    // resolveAnswer dereferences a manifest question's options record. A
+  it('retains answers decoded before an entry that throws on a malformed sco index question', () => {
+    // resolveAnswer dereferences a sco index question's options record. A
     // question persisted without one makes its d entry throw mid-pass, and the
     // decoder keeps the answers decoded before that entry instead of
     // rejecting the whole restored state.
-    const malformedManifest = structuredClone(manifest)
-    malformedManifest.pages['0']!.questions['1'] = {
+    const malformedIndex = structuredClone(scoIndex)
+    malformedIndex.pages['0']!.questionnaires!['0']!.questions['1'] = {
       id: 'q-broken',
       prompt: '',
       type: 'single-choice',
@@ -619,15 +641,15 @@ describe('compact suspend-data codec', () => {
       correctAnswers: []
     }
     expect(
-      decodeSuspendData(malformedManifest, {
-        v: 1,
+      decodeSuspendData(malformedIndex, {
+        v: 2,
         p: 0,
         x: '00',
         d: {
           // Valid entry decoded before the malformed question's entry.
-          '0.a.0': [1],
+          '0.a.0.0': [1],
           // Question index 1 lacks its options record, so resolving throws.
-          '0.a.1': 1
+          '0.a.0.1': 1
         }
       })
     ).toEqual({
@@ -635,9 +657,9 @@ describe('compact suspend-data codec', () => {
     })
   })
 
-  it('uses the embedded manifest for LMS resume/save while keeping location separate', () => {
+  it('uses the embedded sco index for LMS resume/save while keeping location separate', () => {
     const initial = encodeSuspendData(
-      manifest,
+      scoIndex,
       { pages: { 'page-one': { visited: true, answers: { q1: ['blue'] } } } },
       50
     )
@@ -664,7 +686,7 @@ describe('compact suspend-data codec', () => {
       CustomEvent: class {}
     }
     window.parent = window
-    vm.runInNewContext(createScormRuntime(manifest), { window })
+    vm.runInNewContext(createScormRuntime(scoIndex), { window })
     expect(window.scormBridge.getResumeState()).toEqual({
       location: 'page:resume',
       pages: {
@@ -686,14 +708,14 @@ describe('compact suspend-data codec', () => {
     expect(values['cmi.core.lesson_location']).toBe('page:next')
     const compact = JSON.parse(values['cmi.suspend_data']!)
     expect(compact).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '01',
-      d: { '1.a.0': [0, 2] }
+      d: { '1.a.0.0': [0, 2] }
     })
     expect(compact).toEqual(
       encodeSuspendData(
-        manifest,
+        scoIndex,
         {
           location: 'page:next',
           pages: {
@@ -706,9 +728,9 @@ describe('compact suspend-data codec', () => {
     expect(JSON.stringify(compact)).not.toMatch(/page:next|green|red|Private prompt/)
   })
 
-  it('round-trips mixed answers and video positions through flat v1 keys', () => {
-    const mixedManifest = structuredClone(manifest)
-    assignVideos(mixedManifest, {
+  it('round-trips mixed answers and video positions through flat v2 keys', () => {
+    const mixedIndex = structuredClone(scoIndex)
+    assignVideos(mixedIndex, {
       'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']],
       'page-two': [['video-b', 'https://youtu.be/b', 'youtube']]
     })
@@ -722,15 +744,15 @@ describe('compact suspend-data codec', () => {
         'page-two': { answers: { q1: ['blue'] }, videos: { 'video-b': 0.06 } }
       }
     }
-    const encoded = encodeSuspendData(mixedManifest, state, 50)
+    const encoded = encodeSuspendData(mixedIndex, state, 50)
     expect(encoded).toEqual({
-      v: 1,
+      v: 2,
       p: 50,
       x: '10',
       d: {
-        '0.a.0': [0, 2],
+        '0.a.0.0': [0, 2],
         '0.t.0': 125,
-        '1.a.0': [1],
+        '1.a.0.0': [1],
         '1.t.0': 1
       }
     })
@@ -739,7 +761,7 @@ describe('compact suspend-data codec', () => {
     expect(serialized).not.toContain('{"a":')
     expect(serialized).not.toContain('{"t":')
     expect(serialized).not.toContain('"d":{"0":{')
-    expect(decodeSuspendData(mixedManifest, serialized)).toEqual({
+    expect(decodeSuspendData(mixedIndex, serialized)).toEqual({
       pages: {
         'page-one': {
           visited: true,
@@ -750,23 +772,25 @@ describe('compact suspend-data codec', () => {
         'page-two': { answers: { q1: ['blue'] }, videos: { 'video-b': 0.1 } }
       }
     })
-    expect(
-      encodeSuspendData(mixedManifest, decodeSuspendData(mixedManifest, serialized), 50)
-    ).toEqual(encoded)
+    expect(encodeSuspendData(mixedIndex, decodeSuspendData(mixedIndex, serialized), 50)).toEqual(
+      encoded
+    )
   })
 
   it('omits d for states with no valid answers or video positions', () => {
-    const videoManifest = structuredClone(manifest)
-    assignVideos(videoManifest, { 'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']] })
-    expect(
-      encodeSuspendData(videoManifest, { pages: { 'page-one': { visited: true } } }, 0)
-    ).toEqual({ v: 1, p: 0, x: '10' })
-    expect(JSON.stringify(encodeSuspendData(manifest, { pages: {} }, 0))).not.toContain('"d"')
+    const videoIndex = structuredClone(scoIndex)
+    assignVideos(videoIndex, { 'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']] })
+    expect(encodeSuspendData(videoIndex, { pages: { 'page-one': { visited: true } } }, 0)).toEqual({
+      v: 2,
+      p: 0,
+      x: '10'
+    })
+    expect(JSON.stringify(encodeSuspendData(scoIndex, { pages: {} }, 0))).not.toContain('"d"')
   })
 
   it('keeps flat keys smaller than an equivalent nested grouping', () => {
-    const mixedManifest = structuredClone(manifest)
-    assignVideos(mixedManifest, {
+    const mixedIndex = structuredClone(scoIndex)
+    assignVideos(mixedIndex, {
       'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']],
       'page-two': [['video-b', 'https://youtu.be/b', 'youtube']]
     })
@@ -780,11 +804,11 @@ describe('compact suspend-data codec', () => {
         'page-two': { answers: { q1: ['blue'] }, videos: { 'video-b': 0.1 } }
       }
     }
-    const encoded = encodeSuspendData(mixedManifest, state, 50)
+    const encoded = encodeSuspendData(mixedIndex, state, 50)
     const flat = JSON.stringify(encoded.d)
     const grouped = JSON.stringify({
-      '0': { a: { '0': [0, 2] }, t: { '0': 125 } },
-      '1': { a: { '0': [1] }, t: { '0': 1 } }
+      '0': { a: { '0': { '0': [0, 2] } }, t: { '0': 125 } },
+      '1': { a: { '0': { '0': [1] } }, t: { '0': 1 } }
     })
     expect(flat.length).toBeLessThan(grouped.length)
   })
@@ -803,7 +827,7 @@ describe('compact suspend-data codec', () => {
         }))
       }
     }
-    const largeManifest = createContentManifest(manyPages)
+    const largeIndex = createScoIndex(manyPages)
     const calls: string[][] = []
     const values: Record<string, string> = {}
     const events: any[] = []
@@ -830,7 +854,7 @@ describe('compact suspend-data codec', () => {
       }
     }
     window.parent = window
-    vm.runInNewContext(createScormRuntime(largeManifest), { window })
+    vm.runInNewContext(createScormRuntime(largeIndex), { window })
     expect(window.scormBridge.saveState({ location: 'still-saved', pages: {} })).toBe(false)
     expect(calls).toContainEqual(['cmi.core.lesson_location', 'still-saved'])
     expect(calls.some(([key]) => key === 'cmi.suspend_data')).toBe(false)
@@ -841,8 +865,8 @@ describe('compact suspend-data codec', () => {
 
 describe('accumulated video watch seconds in the suspend-data codec', () => {
   it('encodes watch seconds as flat w keys only where a requirement is authored', () => {
-    const videoManifest = structuredClone(manifest)
-    assignRequiredVideos(videoManifest, {
+    const videoIndex = structuredClone(scoIndex)
+    assignRequiredVideos(videoIndex, {
       'page-one': [
         ['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120],
         // No authored requirement: never a w key, whatever the state carries.
@@ -858,9 +882,9 @@ describe('accumulated video watch seconds in the suspend-data codec', () => {
         }
       }
     }
-    const encoded = encodeSuspendData(videoManifest, state, 0)
+    const encoded = encodeSuspendData(videoIndex, state, 0)
     expect(encoded).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00',
       // The playback position and the accumulated watch time coexist as flat
@@ -871,7 +895,7 @@ describe('accumulated video watch seconds in the suspend-data codec', () => {
     expect(JSON.stringify(encoded)).not.toMatch(/video-a|video-b|video-c|watch|minWatch/)
 
     const serialized = JSON.stringify(encoded)
-    const decoded = decodeSuspendData(videoManifest, serialized)
+    const decoded = decodeSuspendData(videoIndex, serialized)
     expect(decoded).toEqual({
       pages: {
         'page-one': {
@@ -880,19 +904,19 @@ describe('accumulated video watch seconds in the suspend-data codec', () => {
         }
       }
     })
-    expect(encodeSuspendData(videoManifest, decoded, 0)).toEqual(encoded)
+    expect(encodeSuspendData(videoIndex, decoded, 0)).toEqual(encoded)
   })
 
   it('caps persisted watch seconds at the authored requirement, with or without a duration', () => {
-    const videoManifest = structuredClone(manifest)
-    assignRequiredVideos(videoManifest, {
+    const videoIndex = structuredClone(scoIndex)
+    assignRequiredVideos(videoIndex, {
       'page-one': [
         ['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120],
         ['video-b', 'https://youtu.be/b', 'youtube', 60]
       ]
     })
     const encoded = encodeSuspendData(
-      videoManifest,
+      videoIndex,
       {
         pages: {
           'page-one': { videoWatchSeconds: { 'video-a': 300, 'video-b': 300 } }
@@ -902,26 +926,26 @@ describe('accumulated video watch seconds in the suspend-data codec', () => {
     )
     // Neither the authored duration nor its absence widens the cap: the stored
     // total never exceeds the minute the requirement asks for.
-    expect(encoded).toEqual({ v: 1, p: 0, x: '00', d: { '0.w.0': 600, '0.w.1': 600 } })
-    expect(decodeSuspendData(videoManifest, encoded)).toEqual({
+    expect(encoded).toEqual({ v: 2, p: 0, x: '00', d: { '0.w.0': 600, '0.w.1': 600 } })
+    expect(decodeSuspendData(videoIndex, encoded)).toEqual({
       pages: { 'page-one': { videoWatchSeconds: { 'video-a': 60, 'video-b': 60 } } }
     })
 
     // A total within the cap persists at tenth-of-a-second precision.
     const precise = encodeSuspendData(
-      videoManifest,
+      videoIndex,
       { pages: { 'page-one': { videoWatchSeconds: { 'video-a': 45.67 } } } },
       0
     )
     expect(precise.d).toEqual({ '0.w.0': 457 })
-    expect(decodeSuspendData(videoManifest, precise)).toEqual({
+    expect(decodeSuspendData(videoIndex, precise)).toEqual({
       pages: { 'page-one': { videoWatchSeconds: { 'video-a': 45.7 } } }
     })
   })
 
-  it('maps watch seconds through the page-local video indexes of the current manifest', () => {
-    const originalManifest = structuredClone(manifest)
-    assignRequiredVideos(originalManifest, {
+  it('maps watch seconds through the page-local video indexes of the current sco index', () => {
+    const originalIndex = structuredClone(scoIndex)
+    assignRequiredVideos(originalIndex, {
       'page-one': [
         ['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120],
         ['video-c', 'https://vimeo.com/c', 'vimeo', 25]
@@ -930,43 +954,43 @@ describe('accumulated video watch seconds in the suspend-data codec', () => {
     // Both totals stay within either requirement's cap, so the mapping, not
     // capping, is what the assertions observe.
     const encoded = encodeSuspendData(
-      originalManifest,
+      originalIndex,
       { pages: { 'page-one': { videoWatchSeconds: { 'video-a': 20.4, 'video-c': 8 } } } },
       0
     )
     expect(encoded.d).toEqual({ '0.w.0': 204, '0.w.1': 80 })
 
-    const reorderedManifest = structuredClone(manifest)
-    assignRequiredVideos(reorderedManifest, {
+    const reorderedIndex = structuredClone(scoIndex)
+    assignRequiredVideos(reorderedIndex, {
       'page-one': [
         ['video-c', 'https://vimeo.com/c', 'vimeo', 25],
         ['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120]
       ]
     })
-    const restored = decodeSuspendData(reorderedManifest, encoded)
+    const restored = decodeSuspendData(reorderedIndex, encoded)
     expect(restored).toEqual({
       pages: { 'page-one': { videoWatchSeconds: { 'video-c': 20.4, 'video-a': 8 } } }
     })
     // The mapping is stable: re-encoding the restored state yields the same
-    // indexes under the reordered manifest.
-    expect(encodeSuspendData(reorderedManifest, restored, 0)).toEqual(encoded)
+    // indexes under the reordered scoIndex.
+    expect(encodeSuspendData(reorderedIndex, restored, 0)).toEqual(encoded)
 
-    // A page removed from the manifest contributes nothing.
-    delete reorderedManifest.pages['0']
-    expect(decodeSuspendData(reorderedManifest, encoded)).toEqual({ pages: {} })
+    // A page removed from the scoIndex contributes nothing.
+    delete reorderedIndex.pages['0']
+    expect(decodeSuspendData(reorderedIndex, encoded)).toEqual({ pages: {} })
   })
 
   it('ignores malformed w keys while keeping valid entries', () => {
-    const videoManifest = structuredClone(manifest)
-    assignRequiredVideos(videoManifest, {
+    const videoIndex = structuredClone(scoIndex)
+    assignRequiredVideos(videoIndex, {
       'page-one': [
         ['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120],
         ['video-b', 'https://youtu.be/b', 'youtube']
       ]
     })
     expect(
-      decodeSuspendData(videoManifest, {
-        v: 1,
+      decodeSuspendData(videoIndex, {
+        v: 2,
         p: 0,
         x: '00',
         d: {
@@ -989,26 +1013,26 @@ describe('accumulated video watch seconds in the suspend-data codec', () => {
   })
 
   it('drops page-indexed video position and watch keys when the visited bitmap is oversized', () => {
-    const videoManifest = structuredClone(manifest)
-    assignRequiredVideos(videoManifest, {
+    const videoIndex = structuredClone(scoIndex)
+    assignRequiredVideos(videoIndex, {
       'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120]],
       'page-two': [['video-b', 'https://youtu.be/b', 'youtube']]
     })
     const payload = {
-      v: 1,
+      v: 2,
       p: 0,
       // Three pages' worth of visited bits cannot belong to a two-page
-      // manifest, so every page-indexed key lost its meaning.
+      // scoIndex, so every page-indexed key lost its meaning.
       x: '000',
       d: { '0.t.0': 410, '0.w.0': 600, '1.t.0': 220 }
     }
     // Position and watch keys alike restore nothing under an oversized bitmap.
-    expect(decodeSuspendData(videoManifest, payload)).toEqual({ pages: {} })
+    expect(decodeSuspendData(videoIndex, payload)).toEqual({ pages: {} })
 
     // The very same keys restore once the bitmap fits the page list, with the
     // watch total still capped at the requirement and every index honored.
     expect(
-      decodeSuspendData(videoManifest, {
+      decodeSuspendData(videoIndex, {
         ...payload,
         x: '00'
       })
@@ -1020,21 +1044,21 @@ describe('accumulated video watch seconds in the suspend-data codec', () => {
     })
   })
 
-  it('keeps legacy payloads decoding while watch seconds stay absent', () => {
-    const videoManifest = structuredClone(manifest)
-    assignRequiredVideos(videoManifest, {
+  it('keeps payloads without watch seconds decoding while watch seconds stay absent', () => {
+    const videoIndex = structuredClone(scoIndex)
+    assignRequiredVideos(videoIndex, {
       'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120]]
     })
-    // A payload saved before watch seconds existed (no `w` key) decodes its
-    // position and never fabricates accumulated watch time.
-    expect(decodeSuspendData(videoManifest, { v: 1, p: 0, x: '00', d: { '0.t.0': 410 } })).toEqual({
+    // A payload without any `w` key decodes its position and never fabricates
+    // accumulated watch time.
+    expect(decodeSuspendData(videoIndex, { v: 2, p: 0, x: '00', d: { '0.t.0': 410 } })).toEqual({
       pages: { 'page-one': { videos: { 'video-a': 41 } } }
     })
 
     // Old renderer state that carried the previous `watchedVideos` frontier
     // field contributes nothing to the new flat keys, whatever it carries.
-    const legacyManifest = structuredClone(manifest)
-    assignVideos(legacyManifest, { 'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']] })
+    const legacyIndex = structuredClone(scoIndex)
+    assignVideos(legacyIndex, { 'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']] })
     const legacyState = {
       pages: {
         'page-one': {
@@ -1044,19 +1068,19 @@ describe('accumulated video watch seconds in the suspend-data codec', () => {
         }
       }
     } as unknown as PlayerState
-    expect(encodeSuspendData(legacyManifest, legacyState, 0)).toEqual({ v: 1, p: 0, x: '00' })
-    expect(decodeSuspendData(legacyManifest, { v: 1, p: 0, x: '00', d: { '0.w.0': 456 } })).toEqual(
-      { pages: {} }
-    )
+    expect(encodeSuspendData(legacyIndex, legacyState, 0)).toEqual({ v: 2, p: 0, x: '00' })
+    expect(decodeSuspendData(legacyIndex, { v: 2, p: 0, x: '00', d: { '0.w.0': 456 } })).toEqual({
+      pages: {}
+    })
   })
 
   it('carries accumulated watch seconds through the embedded LMS runtime', () => {
-    const videoManifest = structuredClone(manifest)
-    assignRequiredVideos(videoManifest, {
+    const videoIndex = structuredClone(scoIndex)
+    assignRequiredVideos(videoIndex, {
       'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120]]
     })
     const initial = encodeSuspendData(
-      videoManifest,
+      videoIndex,
       {
         pages: {
           'page-one': {
@@ -1089,7 +1113,7 @@ describe('accumulated video watch seconds in the suspend-data codec', () => {
       CustomEvent: class {}
     }
     window.parent = window
-    vm.runInNewContext(createScormRuntime(videoManifest), { window })
+    vm.runInNewContext(createScormRuntime(videoIndex), { window })
 
     // A resume restores the position and its accumulated watch time together,
     // with the total capped at the authored requirement.
@@ -1118,7 +1142,7 @@ describe('accumulated video watch seconds in the suspend-data codec', () => {
     ).toBe(true)
     const compact = JSON.parse(values['cmi.suspend_data']!)
     expect(compact).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00',
       d: { '0.t.0': 550, '0.w.0': 600 }
@@ -1216,7 +1240,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
           content: [
             {
               // The parser normalizes the single-attempt default to an explicit
-              // cap of one, which the manifest records unchanged.
+              // cap of one, which the sco index records unchanged.
               type: 'questionnaire',
               id: 'quiz-c',
               contributesToScore: true,
@@ -1238,7 +1262,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
       ]
     }
   }
-  const attemptManifest = createContentManifest(attemptContent)
+  const attemptIndex = createScoIndex(attemptContent)
 
   it('round-trips active stepper questions as questionnaire-local indexes', () => {
     const state: PlayerState = {
@@ -1253,17 +1277,17 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
         }
       }
     }
-    const encoded = encodeSuspendData(attemptManifest, state, 0)
-    expect(encoded).toEqual({ v: 1, p: 0, x: '00', d: { '0.i.0': 1, '0.i.1': 0 } })
-    expect(decodeSuspendData(attemptManifest, JSON.stringify(encoded))).toEqual(state)
-    expect(
-      encodeSuspendData(attemptManifest, decodeSuspendData(attemptManifest, encoded), 0)
-    ).toEqual(encoded)
+    const encoded = encodeSuspendData(attemptIndex, state, 0)
+    expect(encoded).toEqual({ v: 2, p: 0, x: '00', d: { '0.i.0': 1, '0.i.1': 0 } })
+    expect(decodeSuspendData(attemptIndex, JSON.stringify(encoded))).toEqual(state)
+    expect(encodeSuspendData(attemptIndex, decodeSuspendData(attemptIndex, encoded), 0)).toEqual(
+      encoded
+    )
   })
 
   it('omits unknown active questions and ignores invalid or out-of-range active indexes', () => {
     const encoded = encodeSuspendData(
-      attemptManifest,
+      attemptIndex,
       {
         pages: {
           alpha: {
@@ -1277,11 +1301,11 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
       },
       0
     )
-    expect(encoded).toEqual({ v: 1, p: 0, x: '00', d: { '0.i.2': 0 } })
+    expect(encoded).toEqual({ v: 2, p: 0, x: '00', d: { '0.i.2': 0 } })
 
     expect(
-      decodeSuspendData(attemptManifest, {
-        v: 1,
+      decodeSuspendData(attemptIndex, {
+        v: 2,
         p: 0,
         x: '00',
         d: {
@@ -1298,7 +1322,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
 
   it('encodes attempt histories and active retries as page-local q/r keys', () => {
     const encoded = encodeSuspendData(
-      attemptManifest,
+      attemptIndex,
       {
         pages: {
           alpha: {
@@ -1312,7 +1336,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
       0
     )
     expect(encoded).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '10',
       d: {
@@ -1329,7 +1353,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
 
   it('round-trips a retry-in-progress payload back into the same semantic state', () => {
     const encoded = encodeSuspendData(
-      attemptManifest,
+      attemptIndex,
       {
         pages: {
           alpha: {
@@ -1342,7 +1366,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
       },
       0
     )
-    const restored = decodeSuspendData(attemptManifest, JSON.stringify(encoded))
+    const restored = decodeSuspendData(attemptIndex, JSON.stringify(encoded))
     expect(restored).toEqual({
       pages: {
         alpha: {
@@ -1353,14 +1377,14 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
         beta: { questionnaireAttempts: { 'quiz-c': [1] } }
       }
     })
-    expect(encodeSuspendData(attemptManifest, restored, 0)).toEqual(encoded)
+    expect(encodeSuspendData(attemptIndex, restored, 0)).toEqual(encoded)
   })
 
   it('encodes a retry flag only when the history still has an attempt left', () => {
     // quiz-b's history already fills its cap of two, so it keeps its q entry
     // but the stale retry flag must not be persisted.
     const atCap = encodeSuspendData(
-      attemptManifest,
+      attemptIndex,
       {
         pages: {
           alpha: {
@@ -1371,21 +1395,21 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
       },
       0
     )
-    expect(atCap).toEqual({ v: 1, p: 0, x: '00', d: { '0.q.1': [0, 0] } })
+    expect(atCap).toEqual({ v: 2, p: 0, x: '00', d: { '0.q.1': [0, 0] } })
 
     // A retry marker without a recorded attempt history carries nothing.
     expect(
       encodeSuspendData(
-        attemptManifest,
+        attemptIndex,
         { pages: { alpha: { activeQuestionnaireRetries: ['quiz-a'] } } },
         0
       )
-    ).toEqual({ v: 1, p: 0, x: '00' })
+    ).toEqual({ v: 2, p: 0, x: '00' })
   })
 
   it('encodes unlimited histories without a length cap and keeps their retry flag', () => {
     const encoded = encodeSuspendData(
-      attemptManifest,
+      attemptIndex,
       {
         pages: {
           alpha: {
@@ -1401,7 +1425,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
       0
     )
     expect(encoded).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '10',
       d: { '0.q.2': [1, 0, 2, 1, 0, 1], '0.r.2': 1 }
@@ -1410,7 +1434,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
     // The per-entry point bound still applies under an unlimited cap: a count
     // above quiz-u's question count makes the history unusable.
     const overCount = encodeSuspendData(
-      attemptManifest,
+      attemptIndex,
       { pages: { alpha: { questionnaireAttempts: { 'quiz-u': [0, 3] } } } },
       0
     )
@@ -1419,7 +1443,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
 
   it('encodes unlimited completion markers and never their retry flag', () => {
     const encoded = encodeSuspendData(
-      attemptManifest,
+      attemptIndex,
       {
         pages: {
           alpha: {
@@ -1435,13 +1459,13 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
       0
     )
     expect(encoded).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '10',
       d: { '0.q.2': [2, 1, 0, 2, 1], '0.c.2': 1 }
     })
 
-    const restored = decodeSuspendData(attemptManifest, JSON.stringify(encoded))
+    const restored = decodeSuspendData(attemptIndex, JSON.stringify(encoded))
     expect(restored).toEqual({
       pages: {
         alpha: {
@@ -1452,12 +1476,12 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
       }
     })
     // The completion round-trips back into the very same payload.
-    expect(encodeSuspendData(attemptManifest, restored, 0)).toEqual(encoded)
+    expect(encodeSuspendData(attemptIndex, restored, 0)).toEqual(encoded)
   })
 
   it('restores unlimited histories with the retry available beyond any finite cap', () => {
-    const restored = decodeSuspendData(attemptManifest, {
-      v: 1,
+    const restored = decodeSuspendData(attemptIndex, {
+      v: 2,
       p: 0,
       x: '10',
       d: {
@@ -1483,8 +1507,8 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
     })
 
     // A stale retry beside a completed unlimited questionnaire is dropped.
-    const completed = decodeSuspendData(attemptManifest, {
-      v: 1,
+    const completed = decodeSuspendData(attemptIndex, {
+      v: 2,
       p: 0,
       x: '10',
       d: { '0.q.2': [1], '0.c.2': 1, '0.r.2': 1 }
@@ -1502,7 +1526,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
 
   it('skips histories that violate the attempt bounds instead of clamping them', () => {
     const encoded = encodeSuspendData(
-      attemptManifest,
+      attemptIndex,
       {
         pages: {
           alpha: {
@@ -1524,13 +1548,17 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
       0
     )
     // Nothing survives validation, so no data section is emitted at all.
-    expect(encoded).toEqual({ v: 1, p: 0, x: '00' })
+    expect(encoded).toEqual({ v: 2, p: 0, x: '00' })
   })
 
-  it('skips questionnaires whose manifest bounds are not usable', () => {
-    const unusable = structuredClone(attemptManifest)
+  it('skips questionnaires whose sco index bounds are not usable', () => {
+    const unusable = structuredClone(attemptIndex)
+    // An unusable authored cap is skipped outright, and so is a questionnaire
+    // whose nested questions dictionary is missing: without question entries
+    // there is no question count to bound an attempt history against.
     unusable.pages['0']!.questionnaires!['0']!.maxAttempts = 0
-    unusable.pages['1']!.questionnaires!['0']!.questionCount = -1
+    const quizC = unusable.pages['1']!.questionnaires!['0']!
+    delete (quizC as { questions?: unknown }).questions
     expect(
       encodeSuspendData(
         unusable,
@@ -1542,23 +1570,65 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
         },
         0
       )
-    ).toEqual({ v: 1, p: 0, x: '00' })
+    ).toEqual({ v: 2, p: 0, x: '00' })
+
+    // A non-record nested questions dictionary is boundless in the same way.
+    const nonRecord = structuredClone(attemptIndex)
+    const nonRecordQuizC = nonRecord.pages['1']!.questionnaires!['0']!
+    nonRecordQuizC.questions = [] as unknown as typeof nonRecordQuizC.questions
+    expect(
+      encodeSuspendData(
+        nonRecord,
+        { pages: { beta: { questionnaireAttempts: { 'quiz-c': [1] } } } },
+        0
+      )
+    ).toEqual({ v: 2, p: 0, x: '00' })
+
+    // A usable nested questions dictionary derives the bound from its own
+    // entries: quiz-c owns a single question, so a history holding one point
+    // count persists, while a count of two exceeds the derived bound.
+    expect(
+      encodeSuspendData(
+        attemptIndex,
+        { pages: { beta: { questionnaireAttempts: { 'quiz-c': [1] } } } },
+        0
+      )
+    ).toEqual({ v: 2, p: 0, x: '00', d: { '1.q.0': [1] } })
+    expect(
+      encodeSuspendData(
+        attemptIndex,
+        { pages: { beta: { questionnaireAttempts: { 'quiz-c': [2] } } } },
+        0
+      )
+    ).toEqual({ v: 2, p: 0, x: '00' })
 
     // A non-canonical questionnaire index also contributes no flat key.
-    const malformed = structuredClone(attemptManifest)
-    malformed.pages['0']!.questionnaires!['00'] = { id: 'quiz-x', maxAttempts: 2, questionCount: 1 }
+    const malformed = structuredClone(attemptIndex)
+    malformed.pages['0']!.questionnaires!['00'] = {
+      id: 'quiz-x',
+      maxAttempts: 2,
+      questions: {
+        '0': {
+          id: 'qx',
+          prompt: '',
+          type: 'single-choice',
+          options: {},
+          correctAnswers: []
+        }
+      }
+    }
     expect(
       encodeSuspendData(
         malformed,
         { pages: { alpha: { questionnaireAttempts: { 'quiz-x': [1], 'quiz-b': [0] } } } },
         0
       )
-    ).toEqual({ v: 1, p: 0, x: '00', d: { '0.q.1': [0] } })
+    ).toEqual({ v: 2, p: 0, x: '00', d: { '0.q.1': [0] } })
   })
 
   it('restores attempts under semantic ids and drops retries without attempts left', () => {
-    const restored = decodeSuspendData(attemptManifest, {
-      v: 1,
+    const restored = decodeSuspendData(attemptIndex, {
+      v: 2,
       p: 0,
       x: '10',
       d: {
@@ -1590,9 +1660,9 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
     // resolution must observe that history all the same: the decoder may not
     // rely on q keys arriving first for restoration to succeed.
     const restored = decodeSuspendData(
-      attemptManifest,
+      attemptIndex,
       JSON.stringify({
-        v: 1,
+        v: 2,
         p: 0,
         x: '10',
         d: {
@@ -1617,14 +1687,14 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
   })
 
   it('ignores malformed q/r keys while preserving valid attempt entries', () => {
-    const restored = decodeSuspendData(attemptManifest, {
-      v: 1,
+    const restored = decodeSuspendData(attemptIndex, {
+      v: 2,
       p: 0,
       x: '10',
       d: {
         // Valid entries that must survive.
         '0.q.0': [1],
-        // An over-cap count for quiz-c (questionCount 1) is rejected per entry.
+        // An over-cap count for quiz-c (one question) is rejected per entry.
         '1.q.0': [2],
         // Malformed keys: non-canonical or out-of-range questionnaire indexes,
         // wrong segment counts, unknown kinds, unknown pages, prototype keys.
@@ -1649,11 +1719,11 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
   })
 
   it('drops page-indexed attempts when the visited bitmap is oversized', () => {
-    // A three-bit visited string cannot belong to a two-page manifest, so its
+    // A three-bit visited string cannot belong to a two-page scoIndex, so its
     // page-indexed q/r/c data is meaningless and restores nothing.
     expect(
-      decodeSuspendData(attemptManifest, {
-        v: 1,
+      decodeSuspendData(attemptIndex, {
+        v: 2,
         p: 0,
         x: '100',
         d: { '0.q.0': [1], '0.r.0': 1, '0.c.0': 1 }
@@ -1663,7 +1733,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
 
   it('encodes completion with the history and never a stale retry flag', () => {
     const encoded = encodeSuspendData(
-      attemptManifest,
+      attemptIndex,
       {
         pages: {
           alpha: {
@@ -1680,7 +1750,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
       0
     )
     expect(encoded).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '10',
       d: {
@@ -1693,7 +1763,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
     // A still-pending questionnaire keeps its retry flag instead of the
     // completion marker.
     const stillPending = encodeSuspendData(
-      attemptManifest,
+      attemptIndex,
       {
         pages: {
           alpha: {
@@ -1705,7 +1775,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
       0
     )
     expect(stillPending).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '00',
       d: { '0.q.1': [0], '0.r.1': 1 }
@@ -1714,7 +1784,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
 
   it('round-trips a completed decision back into the same semantic state', () => {
     const encoded = encodeSuspendData(
-      attemptManifest,
+      attemptIndex,
       {
         pages: {
           alpha: {
@@ -1727,7 +1797,7 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
       },
       0
     )
-    const restored = decodeSuspendData(attemptManifest, JSON.stringify(encoded))
+    const restored = decodeSuspendData(attemptIndex, JSON.stringify(encoded))
     expect(restored).toEqual({
       pages: {
         alpha: {
@@ -1738,15 +1808,15 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
         beta: { questionnaireAttempts: { 'quiz-c': [0] } }
       }
     })
-    expect(encodeSuspendData(attemptManifest, restored, 0)).toEqual(encoded)
+    expect(encodeSuspendData(attemptIndex, restored, 0)).toEqual(encoded)
   })
 
   it('restores separate completion markers for each questionnaire index', () => {
     // quiz-a's result completed after a better retry while quiz-b's single
     // attempt completed immediately; each marker is page-local and keyed by its
     // own questionnaire index.
-    const restored = decodeSuspendData(attemptManifest, {
-      v: 1,
+    const restored = decodeSuspendData(attemptIndex, {
+      v: 2,
       p: 0,
       x: '10',
       d: {
@@ -1766,8 +1836,8 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
       }
     })
     // Re-encoding emits one c flag per completed questionnaire.
-    expect(encodeSuspendData(attemptManifest, restored, 0)).toEqual({
-      v: 1,
+    expect(encodeSuspendData(attemptIndex, restored, 0)).toEqual({
+      v: 2,
       p: 0,
       x: '10',
       d: {
@@ -1786,8 +1856,8 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
       questionnaireAttempts: { 'quiz-a': [1, 2], 'quiz-b': [0] },
       completedQuestionnaires: ['quiz-a']
     }
-    expect(encodeSuspendData(attemptManifest, oneCompleted, 0)).toEqual({
-      v: 1,
+    expect(encodeSuspendData(attemptIndex, oneCompleted, 0)).toEqual({
+      v: 2,
       p: 0,
       x: '10',
       d: {
@@ -1799,8 +1869,8 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
   })
 
   it('decodes completion markers only with a restored history and no retry', () => {
-    const restored = decodeSuspendData(attemptManifest, {
-      v: 1,
+    const restored = decodeSuspendData(attemptIndex, {
+      v: 2,
       p: 0,
       x: '10',
       d: {
@@ -1827,8 +1897,8 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
 
   it('ignores completion markers without history or usable questionnaire bounds', () => {
     expect(
-      decodeSuspendData(attemptManifest, {
-        v: 1,
+      decodeSuspendData(attemptIndex, {
+        v: 2,
         p: 0,
         x: '10',
         d: {
@@ -1844,14 +1914,19 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
       })
     ).toEqual({ pages: { alpha: { visited: true } } })
 
-    // The marker also follows the questionnaire's manifest bounds: an unusable
-    // cap or count is never completable.
-    const unusable = structuredClone(attemptManifest)
+    // The marker also follows the questionnaire's sco index bounds: an
+    // unusable authored cap or an unusable nested questions dictionary is
+    // never completable.
+    const unusable = structuredClone(attemptIndex)
+    // An unusable authored cap is skipped outright, and so is a questionnaire
+    // whose nested questions dictionary is not a record, leaving no question
+    // count to validate any restored history against.
     unusable.pages['0']!.questionnaires!['0']!.maxAttempts = 0
-    unusable.pages['1']!.questionnaires!['0']!.questionCount = -1
+    const unusableQuizC = unusable.pages['1']!.questionnaires!['0']!
+    unusableQuizC.questions = [] as unknown as typeof unusableQuizC.questions
     expect(
       decodeSuspendData(unusable, {
-        v: 1,
+        v: 2,
         p: 0,
         x: '10',
         d: { '0.q.0': [1], '0.c.0': 1, '1.q.0': [1], '1.c.0': 1 }
@@ -1864,8 +1939,8 @@ describe('shuffle seed in the suspend-data codec', () => {
   it.each([0, 1, 4294967295, 2 ** 53 - 1])(
     'encodes a non-negative safe-integer seed under root s (%i)',
     (shuffleSeed) => {
-      const encoded = encodeSuspendData(manifest, { pages: {}, shuffleSeed }, 0)
-      expect(encoded).toEqual({ v: 1, p: 0, x: '00', s: shuffleSeed })
+      const encoded = encodeSuspendData(scoIndex, { pages: {}, shuffleSeed }, 0)
+      expect(encoded).toEqual({ v: 2, p: 0, x: '00', s: shuffleSeed })
       // The seed is one flat root field: no per-question permutation data and
       // no extra keys beyond the compact payload layout.
       expect(Object.keys(encoded).sort()).toEqual(['p', 's', 'v', 'x'])
@@ -1876,24 +1951,24 @@ describe('shuffle seed in the suspend-data codec', () => {
     'omits root s for an invalid seed (%p) without touching the rest of the payload',
     (shuffleSeed) => {
       const encoded = encodeSuspendData(
-        manifest,
+        scoIndex,
         {
           pages: { 'page-one': { visited: true } },
           shuffleSeed: shuffleSeed as PlayerState['shuffleSeed']
         },
         0
       )
-      expect(encoded).toEqual({ v: 1, p: 0, x: '10' })
+      expect(encoded).toEqual({ v: 2, p: 0, x: '10' })
       expect(Object.keys(encoded).sort()).toEqual(['p', 'v', 'x'])
     }
   )
 
   it('encodes no root s when the state carries no seed, like before the option existed', () => {
-    expect(encodeSuspendData(manifest, { pages: {} }, 0)).toEqual({ v: 1, p: 0, x: '00' })
+    expect(encodeSuspendData(scoIndex, { pages: {} }, 0)).toEqual({ v: 2, p: 0, x: '00' })
   })
 
   it('decodes a safe-integer root s back into the restored state', () => {
-    const decoded = decodeSuspendData(manifest, JSON.stringify({ v: 1, p: 0, x: '10', s: 7 }))
+    const decoded = decodeSuspendData(scoIndex, JSON.stringify({ v: 2, p: 0, x: '10', s: 7 }))
     expect(decoded.shuffleSeed).toBe(7)
     expect(decoded.pages).toEqual({ 'page-one': { visited: true } })
   })
@@ -1901,15 +1976,15 @@ describe('shuffle seed in the suspend-data codec', () => {
   it.each([[-7], [7.5], [2 ** 53], ['7'], [null]])(
     'ignores an invalid root s (%p) but still restores the rest of the payload',
     (s) => {
-      const decoded = decodeSuspendData(manifest, {
-        v: 1,
+      const decoded = decodeSuspendData(scoIndex, {
+        v: 2,
         p: 0,
         x: '10',
         s,
-        d: { '0.a.0': 1 }
+        d: { '0.a.0.0': 1 }
       })
       expect(decoded).not.toHaveProperty('shuffleSeed')
-      // Invalid seed values never change the meaning of the v1 payload fields.
+      // Invalid seed values never change the meaning of the payload fields.
       expect(decoded.pages).toEqual({
         'page-one': { visited: true, answers: { q1: ['blue'] } }
       })
@@ -1923,26 +1998,26 @@ describe('shuffle seed in the suspend-data codec', () => {
         'page-one': { visited: true, answers: { q1: ['green', 'red'] } }
       }
     }
-    const encoded = encodeSuspendData(manifest, state, 0)
+    const encoded = encodeSuspendData(scoIndex, state, 0)
 
     // Answers stay authored-order option indexes (red=0, green=2), in authored
     // index order, regardless of the shuffled display order a renderer may draw
     // them in or the selection order the learner toggled, and the seed travels
     // as its own root field.
     expect(encoded).toEqual({
-      v: 1,
+      v: 2,
       p: 0,
       x: '10',
       s: 1234567890,
-      d: { '0.a.0': [0, 2] }
+      d: { '0.a.0.0': [0, 2] }
     })
     const encodedText = JSON.stringify(encoded)
     expect(encodedText).not.toContain('shuffle')
     expect(encodedText).not.toContain('green')
 
-    const decoded = decodeSuspendData(manifest, JSON.stringify(encoded))
+    const decoded = decodeSuspendData(scoIndex, JSON.stringify(encoded))
     expect(decoded.shuffleSeed).toBe(1234567890)
-    // Selection restores by authored manifest order, never by the persisted or
+    // Selection restores by authored sco index order, never by the persisted or
     // displayed sequence.
     expect(decoded.pages).toEqual({
       'page-one': { visited: true, answers: { q1: ['red', 'green'] } }

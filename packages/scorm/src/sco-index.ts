@@ -3,12 +3,11 @@ import type {
   ContentNode,
   ContentPackage,
   InlineContentNode,
-  QuestionNode,
   QuestionnaireNode,
   VideoProvider
 } from '@scorm-cli/core'
 
-export interface ContentManifest {
+export interface ScoIndex {
   schemaVersion: 1
   title: string
   lang: string
@@ -18,18 +17,24 @@ export interface ContentManifest {
     {
       id: string
       title: string
-      questions: Record<
+      /** Stable preorder questionnaire indexes, each with its own local question indexes. */
+      questionnaires?: Record<
         string,
         {
           id: string
-          prompt: string
-          type: QuestionNode['questionType']
-          options: Record<string, { value: string; label: string }>
-          correctAnswers: string[]
+          maxAttempts: number
+          questions: Record<
+            string,
+            {
+              id: string
+              prompt: string
+              type: 'single-choice' | 'multiple-choice' | 'true-false'
+              options: Record<string, { value: string; label: string }>
+              correctAnswers: string[]
+            }
+          >
         }
       >
-      /** Stable preorder questionnaire indexes and the bounds needed by suspend-data validation. */
-      questionnaires?: Record<string, { id: string; maxAttempts: number; questionCount: number }>
       videos?: Record<
         string,
         {
@@ -73,77 +78,46 @@ function collectQuestionnaires(
   }
 }
 
-function collectQuestions(
-  nodes: Array<ContentNode | InlineContentNode>,
-  output: QuestionNode[]
-): void {
-  for (const node of nodes) {
-    switch (node.type) {
-      case 'list':
-        for (const item of node.items) collectQuestions(item.children, output)
-        break
-      case 'quote':
-        collectQuestions(node.children, output)
-        break
-      case 'callout':
-        collectQuestions(node.children, output)
-        break
-      case 'accordion':
-        for (const item of node.items) collectQuestions(item.content, output)
-        break
-      case 'questionnaire':
-        output.push(...node.questions)
-        break
-      case 'inlineContent':
-        // Inline runs cannot hold a questionnaire block; skip them while still
-        // traversing sibling blocks.
-        break
-      default:
-        break
-    }
-  }
-}
-
 /** Creates the stable static dictionary, including authored question correctness, shared by packaging and runtime. */
-export function createContentManifest(contentPackage: ContentPackage): ContentManifest {
+export function createScoIndex(contentPackage: ContentPackage): ScoIndex {
   const nodes =
     contentPackage.presentation.type === 'tiles'
       ? contentPackage.presentation.items
       : contentPackage.presentation.pages
-  const pages: ContentManifest['pages'] = {}
+  const pages: ScoIndex['pages'] = {}
   nodes.forEach((node, pageIndex) => {
-    const sourceQuestions: QuestionNode[] = []
-    collectQuestions(node.content, sourceQuestions)
     const sourceQuestionnaires: QuestionnaireNode[] = []
     collectQuestionnaires(node.content, sourceQuestionnaires)
-    const questions: ContentManifest['pages'][string]['questions'] = {}
-    sourceQuestions.forEach((question, questionIndex) => {
-      const options: Record<string, { value: string; label: string }> = {}
-      question.options.forEach((option, optionIndex) => {
-        options[String(optionIndex)] = {
-          value: option.value,
-          label: option.content
-        }
-      })
-      questions[String(questionIndex)] = {
-        id: question.id,
-        prompt: question.prompt,
-        type: question.questionType,
-        options,
-        correctAnswers: question.options
-          .filter((option) => option.correct)
-          .map((option) => option.value)
-      }
-    })
     const questionnaires = Object.fromEntries(
-      sourceQuestionnaires.map((questionnaire, questionnaireIndex) => [
-        String(questionnaireIndex),
-        {
-          id: questionnaire.id,
-          maxAttempts: questionnaire.maxAttempts,
-          questionCount: questionnaire.questions.length
-        }
-      ])
+      sourceQuestionnaires.map((questionnaire, questionnaireIndex) => {
+        const questions = Object.fromEntries(
+          questionnaire.questions.map((question, questionIndex) => {
+            const options: Record<string, { value: string; label: string }> = {}
+            question.options.forEach((option, optionIndex) => {
+              options[String(optionIndex)] = {
+                value: option.value,
+                label: option.content
+              }
+            })
+            return [
+              String(questionIndex),
+              {
+                id: question.id,
+                prompt: question.prompt,
+                type: question.questionType,
+                options,
+                correctAnswers: question.options
+                  .filter((option) => option.correct)
+                  .map((option) => option.value)
+              }
+            ]
+          })
+        )
+        return [
+          String(questionnaireIndex),
+          { id: questionnaire.id, maxAttempts: questionnaire.maxAttempts, questions }
+        ]
+      })
     )
     const videos = Object.fromEntries(
       collectVideoNodes(node.content).map((video, videoIndex) => [
@@ -160,8 +134,7 @@ export function createContentManifest(contentPackage: ContentPackage): ContentMa
     pages[String(pageIndex)] = {
       id: node.id,
       title: node.metadata.title,
-      questions,
-      questionnaires,
+      ...(Object.keys(questionnaires).length > 0 ? { questionnaires } : {}),
       ...(Object.keys(videos).length > 0 ? { videos } : {})
     }
   })

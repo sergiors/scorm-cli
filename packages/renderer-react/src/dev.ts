@@ -57,7 +57,7 @@ export async function renderReactDevServer(
   const coreEntry = sourceMode ? resolveSourceCore(appRoot) : resolveCoreEntry(appRoot)
 
   const handle = { current: contentPackage }
-  // The injected scripts change with the content manifest, so hold them in a
+  // The injected scripts change with the SCO index, so hold them in a
   // mutable handle the update lifecycle can replace, exactly like the package.
   const scriptsHandle: DevScriptsHandle = { current: options.scripts ?? [] }
 
@@ -134,7 +134,7 @@ export async function renderReactDevServer(
     async update(content, scripts) {
       handle.current = content
       // The caller re-derives the scripts (e.g. the SCORM runtime embeds a
-      // content manifest) on every content change, so an update that supplies
+      // SCO index) on every content change, so an update that supplies
       // scripts replaces them before the reload serves the next document.
       if (scripts) {
         scriptsHandle.current = scripts
@@ -160,7 +160,7 @@ export async function renderReactDevServer(
  * Mutable holder for the dev scripts the server injects into the document. Dev
  * updates replace `current` in place so the next served document uses the
  * scripts derived for the refreshed content (for example a SCORM runtime that
- * embeds the new content manifest), without re-creating the Vite server.
+ * embeds the new SCO index), without re-creating the Vite server.
  */
 interface DevScriptsHandle {
   current: RendererDevScript[]

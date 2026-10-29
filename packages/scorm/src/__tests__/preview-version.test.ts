@@ -1,6 +1,6 @@
 import vm from 'node:vm'
 import { describe, expect, it } from 'vitest'
-import type { ContentManifest } from '../content-manifest'
+import type { ScoIndex } from '../sco-index'
 import { scormDevMock } from '../mock'
 import { createScormPreviewRuntime } from '../runtime'
 
@@ -34,17 +34,17 @@ function createMockWindow(storage: MemoryStorage): Record<string, any> {
   return window
 }
 
-const manifest: ContentManifest = {
+const scoIndex: ScoIndex = {
   schemaVersion: 1,
   title: 'Preview version',
   lang: 'en',
   presentation: 'scroll',
   pages: {
-    '0': { id: 'page-one', title: 'One', questions: {} }
+    '0': { id: 'page-one', title: 'One' }
   }
 }
 
-const previewRuntime = createScormPreviewRuntime(manifest)
+const previewRuntime = createScormPreviewRuntime(scoIndex)
 
 /** Runs the version-aware preview runtime after the dev mock, in injection order. */
 function installPreviewRuntime(window: Record<string, any>): void {
@@ -307,7 +307,7 @@ describe('SCORM version-aware preview runtime', () => {
     const values: Record<string, string> = {
       'cmi.completion_status': 'incomplete',
       'cmi.location': 'resume-here',
-      'cmi.suspend_data': JSON.stringify({ v: 1, p: 0, x: '0' })
+      'cmi.suspend_data': JSON.stringify({ v: 2, p: 0, x: '0' })
     }
     const api = {
       Initialize: (value: string) => (calls.push(['Initialize', value]), 'true'),

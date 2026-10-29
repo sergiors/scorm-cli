@@ -1,35 +1,35 @@
 import type { PlayerState } from '@scorm-cli/core'
-import type { ContentManifest } from './content-manifest'
+import type { ScoIndex } from './sco-index'
 
-type ManifestPage = ContentManifest['pages'][string]
-type ManifestQuestion = ManifestPage['questions'][string]
+type ScoPage = ScoIndex['pages'][string]
+type ScoQuestionnaire = NonNullable<ScoPage['questionnaires']>[string]
+type ScoQuestion = ScoQuestionnaire['questions'][string]
 
 /** A flat value: an option index, a decisecond value, a flag, or attempt counts. */
 type CompactValue = number | readonly number[]
 
 /**
- * Compact suspend-data payload: `v` is format version 1; `p` is the course
+ * Compact suspend-data payload: `v` is format version 2; `p` is the course
  * completion percentage (integer 0–100); `x` has one visited (`1`) or
- * unvisited (`0`) character per manifest page in page order; `s` is an optional
+ * unvisited (`0`) character per SCO-index page in page order; `s` is an optional
  * global questionnaire shuffle seed; and `d` is an optional compact state
  * dictionary.
  *
- * Keys in `d` are `<pageIndex>.<kind>.<entityIndex>`. The page index follows
- * `manifest.pages` order; entity indexes are local to their namespace and are
- * always resolved through the current manifest. The seven kinds are:
- * `a` answer option indexes (question index in the page's flattened questions),
+ * Answer keys in `d` are `<pageIndex>.a.<questionnaireIndex>.<questionIndex>`;
+ * other keys are `<pageIndex>.<kind>.<entityIndex>`. Indexes are resolved through
+ * the current SCO index. The seven kinds are:
+ * `a` answer option indexes (question index local to its questionnaire),
  * `t` playback position in deciseconds (page-local video index), `w` accumulated
  * watch time in deciseconds, persisted only for videos with a positive
  * `minWatchTime` requirement (same video namespace as `t`, but distinct from
  * playback position), `q` correct-answer counts by attempt (page-local
  * questionnaire index), `r` active-retry flag (`1`), `c` completed flag (`1`),
- * and `i` active question as an offset local to that questionnaire. `q` stores
+ * and `i` active question as an index local to that questionnaire. `q` stores
  * attempt history; `r` and `c` are flags, and either marker is meaningful only
- * with valid `q` history. The `i` offset is questionnaire-local, not a flattened
- * page question index.
+ * with valid `q` history.
  */
 export interface CompactSuspendData {
-  readonly v: 1
+  readonly v: 2
   readonly p: number
   readonly x: string
   readonly s?: number
@@ -41,8 +41,8 @@ export interface CompactSuspendData {
  * browser-safe behavior can be used by Node and embedded in the SCO runtime.
  */
 function createSuspendDataCodec() {
-  const dataKinds = ['a', 't', 'w', 'q', 'r', 'c', 'i'] as const
-  type DataKind = (typeof dataKinds)[number]
+  const pageLocalKinds = ['t', 'w', 'q', 'r', 'c', 'i'] as const
+  type PageLocalKind = (typeof pageLocalKinds)[number]
 
   const isRecord = (value: unknown): value is Record<string, unknown> =>
     value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -62,40 +62,53 @@ function createSuspendDataCodec() {
   const isPositiveSeconds = (value: unknown): value is number =>
     typeof value === 'number' && Number.isFinite(value) && value > 0
 
-  /** Builds the single flat data key for a manifest page/kind/entity. */
-  const makeDataKey = (pageIndex: string, kind: DataKind, entityIndex: string): string =>
+  /** Builds a three-part page-local key for a non-answer entity. */
+  const makeDataKey = (pageIndex: string, kind: PageLocalKind, entityIndex: string): string =>
     `${pageIndex}.${kind}.${entityIndex}`
 
+  const makeAnswerKey = (
+    pageIndex: string,
+    questionnaireIndex: string,
+    questionIndex: string
+  ): string => `${pageIndex}.a.${questionnaireIndex}.${questionIndex}`
+
   /**
-   * Parses a flat data key. Returns undefined unless it is exactly three
-   * segments: two canonical non-negative safe-integer indexes around a kind of
-   * `a`, `t`, `w`, `q`, `r`, `c`, or `i`.
+   * Parses four-part answer keys separately from three-part page-local keys.
    */
   const parseDataKey = (
     key: string
-  ): { pageIndex: string; kind: DataKind; entityIndex: string } | undefined => {
+  ):
+    | { pageIndex: string; kind: 'a'; questionnaireIndex: string; questionIndex: string }
+    | { pageIndex: string; kind: PageLocalKind; entityIndex: string }
+    | undefined => {
     const segments = key.split('.')
-
-    if (segments.length !== 3) {
+    if (segments[1] === 'a') {
+      if (segments.length !== 4) return undefined
+      const [pageIndex, , questionnaireIndex, questionIndex] = segments
+      if (
+        !canonicalIndex(pageIndex) ||
+        !canonicalIndex(questionnaireIndex) ||
+        !canonicalIndex(questionIndex)
+      ) {
+        return undefined
+      }
+      return { pageIndex, kind: 'a', questionnaireIndex, questionIndex }
+    }
+    if (segments.length !== 3) return undefined
+    const [pageIndex, kind, entityIndex] = segments
+    if (
+      !pageLocalKinds.includes(kind as PageLocalKind) ||
+      !canonicalIndex(pageIndex) ||
+      !canonicalIndex(entityIndex)
+    ) {
       return undefined
     }
-
-    const [pageIndex, kind, entityIndex] = segments as [string, string, string]
-
-    if (!dataKinds.includes(kind as DataKind)) {
-      return undefined
-    }
-
-    if (!canonicalIndex(pageIndex) || !canonicalIndex(entityIndex)) {
-      return undefined
-    }
-
-    return { pageIndex, kind: kind as DataKind, entityIndex }
+    return { pageIndex, kind: kind as PageLocalKind, entityIndex }
   }
 
-  /** Maps persisted option indexes back to semantic values through the manifest. */
+  /** Maps persisted option indexes back to semantic values through the SCO index. */
   const resolveAnswer = (
-    question: ManifestQuestion,
+    question: ScoQuestion,
     selection: unknown
   ): string | string[] | undefined => {
     const selections = Array.isArray(selection)
@@ -112,67 +125,15 @@ function createSuspendDataCodec() {
     return question.type === 'multiple-choice' ? values : values[0]
   }
 
-  /**
-   * Resolves a questionnaire's flattened question range. The page-local
-   * questionnaire and question indexes must both be dense, and question counts
-   * must safely account for every flattened question.
-   */
-  const questionnaireQuestionRange = (
-    page: ManifestPage,
-    questionnaireIndex: string
-  ): { start: number; count: number } | undefined => {
-    if (
-      !canonicalIndex(questionnaireIndex) ||
-      !isRecord(page.questionnaires) ||
-      !isRecord(page.questions)
-    ) {
-      return undefined
-    }
-    const questionnaireIndexes = Object.keys(page.questionnaires).sort(
-      (left, right) => Number(left) - Number(right)
-    )
-    let start = 0
-    let targetCount: number | undefined
-    let targetStart: number | undefined
-    for (let index = 0; index < questionnaireIndexes.length; index += 1) {
-      const currentIndex = questionnaireIndexes[index]
-      if (!canonicalIndex(currentIndex) || Number(currentIndex) !== index) return undefined
-      const questionnaire = page.questionnaires[currentIndex]
-      if (
-        !isRecord(questionnaire) ||
-        !Number.isSafeInteger(questionnaire.questionCount) ||
-        (questionnaire.questionCount as number) < 0
-      ) {
-        return undefined
-      }
-      const count = questionnaire.questionCount as number
-      if (currentIndex === questionnaireIndex) {
-        if (typeof questionnaire.id !== 'string' || !safeKey(questionnaire.id)) return undefined
-        targetCount = count
-        targetStart = start
-      }
-      start += count
-      if (!Number.isSafeInteger(start)) return undefined
-    }
-    if (targetCount === undefined || targetStart === undefined) return undefined
-
-    const questionIndexes = Object.keys(page.questions).sort(
-      (left, right) => Number(left) - Number(right)
-    )
-    if (
-      questionIndexes.length !== start ||
-      questionIndexes.some(
-        (index, position) => !canonicalIndex(index) || Number(index) !== position
-      )
-    ) {
-      return undefined
-    }
-    return { start: targetStart, count: targetCount }
+  /** Returns the number of nested question entries for attempt-count bounds. */
+  const questionnaireQuestionCount = (questionnaire: unknown): number | undefined => {
+    if (!isRecord(questionnaire) || !isRecord(questionnaire.questions)) return undefined
+    return Object.keys(questionnaire.questions).length
   }
 
   /** Resolves a valid decisecond position to its semantic video ID and seconds. */
   function decodeVideoPosition(
-    page: ManifestPage,
+    page: ScoPage,
     videoIndex: string,
     deciseconds: unknown
   ): [string, number] | undefined {
@@ -191,7 +152,7 @@ function createSuspendDataCodec() {
 
   /** Resolves accumulated watch seconds only for videos with a positive requirement. */
   function decodeVideoWatchSeconds(
-    page: ManifestPage,
+    page: ScoPage,
     videoIndex: string,
     deciseconds: unknown
   ): [string, number] | undefined {
@@ -212,11 +173,12 @@ function createSuspendDataCodec() {
   }
 
   function decodeAnswer(
-    page: ManifestPage,
+    page: ScoPage,
+    questionnaireIndex: string,
     questionIndex: string,
     value: unknown
   ): [string, string | string[]] | undefined {
-    const question = (page.questions ?? {})[questionIndex]
+    const question = page.questionnaires?.[questionnaireIndex]?.questions?.[questionIndex]
     if (!question || !safeKey(question.id)) return undefined
     const answer = resolveAnswer(question, value)
     if (answer === undefined) return undefined
@@ -231,19 +193,16 @@ function createSuspendDataCodec() {
     const fields = questionnaire as {
       id?: unknown
       maxAttempts?: unknown
-      questionCount?: unknown
     }
     const id = fields.id
     const maxAttempts = fields.maxAttempts
-    const questionCount = fields.questionCount
+    const questionCount = questionnaireQuestionCount(questionnaire)
     if (
       typeof id !== 'string' ||
       !safeKey(id) ||
       typeof maxAttempts !== 'number' ||
       !validMaxAttempts(maxAttempts) ||
-      typeof questionCount !== 'number' ||
-      !Number.isSafeInteger(questionCount) ||
-      questionCount < 0 ||
+      questionCount === undefined ||
       !Array.isArray(history) ||
       history.length === 0 ||
       !withinAttemptLimit(history.length, maxAttempts) ||
@@ -261,7 +220,7 @@ function createSuspendDataCodec() {
   }
 
   function decodeQuestionnaireAttempts(
-    page: ManifestPage,
+    page: ScoPage,
     questionnaireIndex: string,
     value: unknown
   ): [string, number[]] | undefined {
@@ -271,20 +230,18 @@ function createSuspendDataCodec() {
   }
 
   function decodeActiveQuestion(
-    page: ManifestPage,
+    page: ScoPage,
     questionnaireIndex: string,
     value: unknown
   ): [string, string] | undefined {
     if (!Number.isSafeInteger(value) || (value as number) < 0) return undefined
-    const range = questionnaireQuestionRange(page, questionnaireIndex)
-    if (!range || (value as number) >= range.count) return undefined
-    const question = page.questions[String(range.start + (value as number))]
     const questionnaire = page.questionnaires?.[questionnaireIndex]
+    if (!isRecord(questionnaire) || !isRecord(questionnaire.questions)) return undefined
+    const question = questionnaire.questions[String(value)]
     if (
-      !question ||
+      !isRecord(question) ||
       typeof question.id !== 'string' ||
       !safeKey(question.id) ||
-      !questionnaire ||
       typeof questionnaire.id !== 'string' ||
       !safeKey(questionnaire.id)
     ) {
@@ -294,7 +251,7 @@ function createSuspendDataCodec() {
   }
 
   type QuestionnaireMarkerCandidate = {
-    page: ManifestPage
+    page: ScoPage
     questionnaireIndex: string
   }
   type QuestionnaireMarkerEntry = {
@@ -343,19 +300,19 @@ function createSuspendDataCodec() {
     return markers
   }
 
-  /** Flat `d` layout keyed by `<pageIndex>.<kind>.<entityIndex>`. */
+  /** `d` uses nested indexes for answers and page-local indexes for other kinds. */
   function decodeData(
     encoded: Record<string, unknown>,
-    entries: Array<[string, ManifestPage]>
+    entries: Array<[string, ScoPage]>
   ): Map<string, PlayerState['pages'][string]> {
-    const pagesByIndex = new Map<string, ManifestPage>()
+    const pagesByIndex = new Map<string, ScoPage>()
     entries.forEach(([pageIndex, page]) => {
       if (safeKey(page.id)) pagesByIndex.set(pageIndex, page)
     })
     const retryCandidates: QuestionnaireMarkerCandidate[] = []
     const completedCandidates: QuestionnaireMarkerCandidate[] = []
     const pageData = new Map<string, PlayerState['pages'][string]>()
-    const pageStateFor = (page: ManifestPage): PlayerState['pages'][string] => {
+    const pageStateFor = (page: ScoPage): PlayerState['pages'][string] => {
       let pageState = pageData.get(page.id)
       if (!pageState) {
         pageState = {}
@@ -371,7 +328,12 @@ function createSuspendDataCodec() {
         switch (parsedKey.kind) {
           case 'a':
             {
-              const answer = decodeAnswer(page, parsedKey.entityIndex, value)
+              const answer = decodeAnswer(
+                page,
+                parsedKey.questionnaireIndex,
+                parsedKey.questionIndex,
+                value
+              )
               if (answer) {
                 const pageState = pageStateFor(page)
                 const answers = pageState.answers ?? (pageState.answers = {})
@@ -457,7 +419,7 @@ function createSuspendDataCodec() {
   }
 
   function encodeQuestionnaires(
-    entries: Array<[string, ManifestPage]>,
+    entries: Array<[string, ScoPage]>,
     state: PlayerState
   ): Array<[string, CompactValue]> {
     const encoded: Array<[string, CompactValue]> = []
@@ -475,23 +437,27 @@ function createSuspendDataCodec() {
           !canonicalIndex(questionnaireIndex) ||
           !isRecord(questionnaire) ||
           !safeKey(questionnaire.id) ||
-          !validMaxAttempts(questionnaire.maxAttempts) ||
-          !Number.isSafeInteger(questionnaire.questionCount) ||
-          questionnaire.questionCount < 0
+          !validMaxAttempts(questionnaire.maxAttempts)
         ) {
           return
         }
+        const questionCount = questionnaireQuestionCount(questionnaire)
+        if (questionCount === undefined) return
         const activeQuestionId = pageState?.activeQuestionnaireItems?.[questionnaire.id]
-        if (typeof activeQuestionId === 'string') {
-          const range = questionnaireQuestionRange(page, questionnaireIndex)
-          if (range) {
-            for (let localIndex = 0; localIndex < range.count; localIndex += 1) {
-              const question = page.questions[String(range.start + localIndex)]
-              if (question && safeKey(question.id) && question.id === activeQuestionId) {
-                encoded.push([makeDataKey(pageIndex, 'i', questionnaireIndex), localIndex])
-                break
-              }
-            }
+        if (typeof activeQuestionId === 'string' && isRecord(questionnaire.questions)) {
+          const activeQuestion = Object.entries(questionnaire.questions).find(
+            ([questionIndex, question]) =>
+              canonicalIndex(questionIndex) &&
+              isRecord(question) &&
+              typeof question.id === 'string' &&
+              safeKey(question.id) &&
+              question.id === activeQuestionId
+          )
+          if (activeQuestion) {
+            encoded.push([
+              makeDataKey(pageIndex, 'i', questionnaireIndex),
+              Number(activeQuestion[0])
+            ])
           }
         }
         const history = pageState?.questionnaireAttempts?.[questionnaire.id]
@@ -500,8 +466,7 @@ function createSuspendDataCodec() {
           history.length === 0 ||
           !withinAttemptLimit(history.length, questionnaire.maxAttempts) ||
           !history.every(
-            (count) =>
-              Number.isSafeInteger(count) && count >= 0 && count <= questionnaire.questionCount
+            (count) => Number.isSafeInteger(count) && count >= 0 && count <= questionCount
           )
         ) {
           return
@@ -522,7 +487,7 @@ function createSuspendDataCodec() {
   }
 
   function encodeVideos(
-    entries: Array<[string, ManifestPage]>,
+    entries: Array<[string, ScoPage]>,
     state: PlayerState
   ): Array<[string, CompactValue]> {
     const encoded: Array<[string, CompactValue]> = []
@@ -556,7 +521,7 @@ function createSuspendDataCodec() {
   }
 
   function encodeAnswers(
-    entries: Array<[string, ManifestPage]>,
+    entries: Array<[string, ScoPage]>,
     state: PlayerState
   ): Array<[string, CompactValue]> {
     const encoded: Array<[string, CompactValue]> = []
@@ -571,32 +536,31 @@ function createSuspendDataCodec() {
       const pageAnswers = state.pages[page.id]?.answers
       if (!isRecord(pageAnswers)) return
 
-      Object.entries(page.questions ?? {}).forEach(([questionIndex, question]) => {
-        if (!canonicalIndex(questionIndex) || !safeKey(question.id)) return
-        const answer = pageAnswers[question.id]
-        const optionIndexes = Object.entries(question.options)
-          .filter(([, option]) =>
-            Array.isArray(answer) ? answer.includes(option.value) : answer === option.value
-          )
-          .map(([optionIndex]) => Number(optionIndex))
-          .filter(Number.isSafeInteger)
-          .sort((left, right) => left - right)
-        if (optionIndexes.length === 0) return
-        encoded.push([
-          makeDataKey(pageIndex, 'a', questionIndex),
-          question.type === 'multiple-choice' ? optionIndexes : optionIndexes[0]
-        ])
+      Object.entries(page.questionnaires ?? {}).forEach(([questionnaireIndex, questionnaire]) => {
+        if (!canonicalIndex(questionnaireIndex) || !isRecord(questionnaire.questions)) return
+        Object.entries(questionnaire.questions).forEach(([questionIndex, question]) => {
+          if (!canonicalIndex(questionIndex) || !safeKey(question.id)) return
+          const answer = pageAnswers[question.id]
+          const optionIndexes = Object.entries(question.options)
+            .filter(([, option]) =>
+              Array.isArray(answer) ? answer.includes(option.value) : answer === option.value
+            )
+            .map(([optionIndex]) => Number(optionIndex))
+            .filter(Number.isSafeInteger)
+            .sort((left, right) => left - right)
+          if (optionIndexes.length === 0) return
+          encoded.push([
+            makeAnswerKey(pageIndex, questionnaireIndex, questionIndex),
+            question.type === 'multiple-choice' ? optionIndexes : optionIndexes[0]
+          ])
+        })
       })
     })
     return encoded
   }
 
-  function encode(
-    manifest: ContentManifest,
-    state: PlayerState,
-    progress: number
-  ): CompactSuspendData {
-    const entries = Object.entries(manifest.pages)
+  function encode(scoIndex: ScoIndex, state: PlayerState, progress: number): CompactSuspendData {
+    const entries = Object.entries(scoIndex.pages)
     const normalizedProgress = Number.isFinite(progress)
       ? Math.max(0, Math.min(100, Math.round(progress)))
       : 0
@@ -619,7 +583,7 @@ function createSuspendDataCodec() {
     })
 
     return {
-      v: 1,
+      v: 2,
       p: normalizedProgress,
       x: visited,
       ...(typeof state.shuffleSeed === 'number' &&
@@ -631,17 +595,18 @@ function createSuspendDataCodec() {
     }
   }
 
-  function decode(manifest: ContentManifest, raw: unknown): PlayerState {
+  function decode(scoIndex: ScoIndex, raw: unknown): PlayerState {
     const state: PlayerState = { pages: {} }
     try {
+      if (!isRecord(scoIndex) || scoIndex.schemaVersion !== 1) return state
       const parsed: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw
       if (!isRecord(parsed)) {
         return state
       }
       const { v, p, x } = parsed
-      const entries = Object.entries(manifest.pages)
+      const entries = Object.entries(scoIndex.pages)
       if (
-        v !== 1 ||
+        v !== 2 ||
         typeof p !== 'number' ||
         !Number.isInteger(p) ||
         p < 0 ||
@@ -663,7 +628,7 @@ function createSuspendDataCodec() {
         // reconstruct it here so a resume that only kept `p` stays gated. A
         // tiled presentation's items are done once opened, which the visited
         // bitmap already records, so it derives no completion from progress.
-        const sequential = manifest.presentation === 'scroll' || manifest.presentation === 'slides'
+        const sequential = scoIndex.presentation === 'scroll' || scoIndex.presentation === 'slides'
         const completedCount = sequential
           ? Math.max(0, Math.min(entries.length, Math.round((p * entries.length) / 100)))
           : 0
@@ -709,20 +674,20 @@ function createSuspendDataCodec() {
 const codec = createSuspendDataCodec()
 
 /**
- * Encodes manifest-indexed progress/answers, manifest-owned video positions,
+ * Encodes SCO-indexed progress/answers, SCO-indexed video positions,
  * and accumulated watch seconds.
  */
 export function encodeSuspendData(
-  manifest: ContentManifest,
+  scoIndex: ScoIndex,
   state: PlayerState,
   progress: number
 ): CompactSuspendData {
-  return codec.encode(manifest, state, progress)
+  return codec.encode(scoIndex, state, progress)
 }
 
-/** Restores readable IDs/values only through the exact manifest dictionary. */
-export function decodeSuspendData(manifest: ContentManifest, raw: unknown): PlayerState {
-  return codec.decode(manifest, raw)
+/** Restores readable IDs/values only through the exact SCO index. */
+export function decodeSuspendData(scoIndex: ScoIndex, raw: unknown): PlayerState {
+  return codec.decode(scoIndex, raw)
 }
 
 /** Embeds the same codec implementation used by the Node exports. */
@@ -739,10 +704,10 @@ export function browserCodecSource(): string {
   return target;
 };
 var suspendCodec = (${createSuspendDataCodec.toString()})();
-  function compactEncode(manifest, state, progress) {
-    return JSON.stringify(suspendCodec.encode(manifest, state, progress));
+  function compactEncode(scoIndex, state, progress) {
+    return JSON.stringify(suspendCodec.encode(scoIndex, state, progress));
   }
-  function compactDecode(manifest, raw) {
-    return suspendCodec.decode(manifest, raw);
+  function compactDecode(scoIndex, raw) {
+    return suspendCodec.decode(scoIndex, raw);
   }`
 }

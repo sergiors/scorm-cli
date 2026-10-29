@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { PlayerState } from '@scorm-cli/core'
-import type { ContentManifest } from '../content-manifest'
+import type { ScoIndex } from '../sco-index'
 import { decodeSuspendData, encodeSuspendData } from '../state-codec'
 
 const execFileAsync = promisify(execFile)
@@ -29,7 +29,7 @@ const probePath = path.join(testDir, 'fixtures/keep-names-probe.ts')
  * can install, leaving `window.scormDevTools` (the mock) alone on the page.
  */
 interface SerializedPreview {
-  manifest: ContentManifest
+  scoIndex: ScoIndex
   codecSource: string
   codecBody: string
   previewRuntime: string
@@ -115,12 +115,12 @@ describe('embedded browser runtime source under tsx keepNames', () => {
     expect(typeof compactEncode).toBe('function')
     expect(typeof compactDecode).toBe('function')
 
-    expect(JSON.parse(compactEncode(serialized.manifest, SAVED_STATE, 100))).toEqual(
-      encodeSuspendData(serialized.manifest, SAVED_STATE, 100)
+    expect(JSON.parse(compactEncode(serialized.scoIndex, SAVED_STATE, 100))).toEqual(
+      encodeSuspendData(serialized.scoIndex, SAVED_STATE, 100)
     )
-    const encoded = JSON.stringify(encodeSuspendData(serialized.manifest, SAVED_STATE, 100))
-    expect(compactDecode(serialized.manifest, encoded)).toEqual(
-      decodeSuspendData(serialized.manifest, encoded)
+    const encoded = JSON.stringify(encodeSuspendData(serialized.scoIndex, SAVED_STATE, 100))
+    expect(compactDecode(serialized.scoIndex, encoded)).toEqual(
+      decodeSuspendData(serialized.scoIndex, encoded)
     )
   })
 
@@ -139,7 +139,7 @@ describe('embedded browser runtime source under tsx keepNames', () => {
     expect(cmi['cmi.core.lesson_status']).toBe('incomplete')
     // The suspend data the runtime wrote decodes back to the renderer-readable
     // state, so the injected preview really persisted through the mock LMS.
-    expect(decodeSuspendData(serialized.manifest, cmi['cmi.suspend_data'])).toEqual({
+    expect(decodeSuspendData(serialized.scoIndex, cmi['cmi.suspend_data'])).toEqual({
       pages: {
         'page:one': {
           visited: true,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ContentNode, ContentPackage, QuestionOption, VideoProvider } from '@scorm-cli/core'
-import { createContentManifest } from '../content-manifest'
+import { createScoIndex } from '../sco-index'
+import type { ScoIndex } from '../sco-index'
 
 const question = (id: string, prompt: string, options: QuestionOption[] = []) => ({
   type: 'question' as const,
@@ -10,10 +11,16 @@ const question = (id: string, prompt: string, options: QuestionOption[] = []) =>
   options
 })
 
-describe('content manifest', () => {
+/** Flattens the per-questionnaire question records so document-order prompts stay easy to assert. */
+const promptsOf = (scoIndex: ScoIndex, pageKey: string): string[] =>
+  Object.values(scoIndex.pages[pageKey]!.questionnaires ?? {}).flatMap((questionnaire) =>
+    Object.values(questionnaire.questions).map((entry) => entry.prompt)
+  )
+
+describe('sco index', () => {
   it('emits the focused empty, question-only, video-only, and combined page shapes', () => {
     const content: ContentPackage = {
-      metadata: { title: 'Focused manifest' },
+      metadata: { title: 'Focused sco index' },
       presentation: {
         type: 'scroll',
         pages: [
@@ -100,15 +107,13 @@ describe('content manifest', () => {
         ]
       }
     }
-    const manifest = createContentManifest(content)
-    expect(manifest.pages['0']).toEqual({
+    const scoIndex = createScoIndex(content)
+    expect(scoIndex.pages['0']).toEqual({
       id: 'empty',
-      title: 'Empty',
-      questions: {},
-      questionnaires: {}
+      title: 'Empty'
     })
-    expect(manifest.pages['1']!.videos).toBeUndefined()
-    expect(manifest.pages['1']!.questions!['0']).toMatchObject({
+    expect(scoIndex.pages['1']!.videos).toBeUndefined()
+    expect(scoIndex.pages['1']!.questionnaires!['0']!.questions['0']).toMatchObject({
       id: 'multi',
       prompt: 'Pick **two**',
       type: 'multiple-choice',
@@ -119,58 +124,69 @@ describe('content manifest', () => {
         '2': { value: 'semantic-y', label: 'Last label' }
       }
     })
-    expect(manifest.pages['2']!.questions).toEqual({})
-    expect(manifest.pages['2']!.videos).toEqual({
+    expect(scoIndex.pages['2']!.videos).toEqual({
       '0': { id: 'stable-video', src: 'https://vimeo.com/42', provider: 'vimeo' }
     })
-    expect(manifest.pages['3']!.videos).toEqual({
+    expect(scoIndex.pages['3']!.videos).toEqual({
       '0': { id: 'second-video', src: 'https://vimeo.com/42', provider: 'vimeo' }
     })
-    expect(manifest.pages['3']!.questions!['0']).toMatchObject({
+    expect(scoIndex.pages['3']!.questionnaires!['0']!.questions['0']).toMatchObject({
       prompt: '',
       correctAnswers: ['semantic-value'],
       options: { '0': { value: 'semantic-value', label: 'Visible label' } }
     })
     // Both questionnaires get the single-attempt default; the opted-out one
     // keeps its contribution flag out of the attempt bounds entirely.
-    expect(manifest.pages['1']!.questionnaires).toEqual({
-      '0': { id: 'quiz', maxAttempts: 1, questionCount: 1 }
+    expect(scoIndex.pages['1']!.questionnaires).toEqual({
+      '0': {
+        id: 'quiz',
+        maxAttempts: 1,
+        questions: {
+          '0': {
+            id: 'multi',
+            prompt: 'Pick **two**',
+            type: 'multiple-choice',
+            options: {
+              '0': { value: 'semantic-z', label: 'First label' },
+              '1': { value: 'semantic-a', label: 'Wrong label' },
+              '2': { value: 'semantic-y', label: 'Last label' }
+            },
+            correctAnswers: ['semantic-z', 'semantic-y']
+          }
+        }
+      }
     })
-    expect(manifest.pages['3']!.questionnaires).toEqual({
-      '0': { id: 'quiz-2', maxAttempts: 1, questionCount: 1 }
+    expect(scoIndex.pages['3']!.questionnaires).toEqual({
+      '0': {
+        id: 'quiz-2',
+        maxAttempts: 1,
+        questions: {
+          '0': {
+            id: 'single',
+            prompt: '',
+            type: 'single-choice',
+            options: { '0': { value: 'semantic-value', label: 'Visible label' } },
+            correctAnswers: ['semantic-value']
+          }
+        }
+      }
     })
-    expect(manifest.pages['2']!.questionnaires).toEqual({})
-    expect(manifest).not.toHaveProperty('videos')
+    expect(scoIndex.pages['2']).not.toHaveProperty('questionnaires')
+    expect(scoIndex).not.toHaveProperty('videos')
     // Each page exposes exactly the runtime dictionaries it needs and nothing
-    // else: prompts, labels, correct answers and attempt bounds are
-    // manifest-owned, while no learner progress or extra keys can appear.
-    expect(Object.keys(manifest.pages['0']!)).toEqual([
+    // else: prompts, labels, correct answers and attempt bounds are index
+    // owners, and pages omit empty questionnaires/videos entirely, so no
+    // learner progress or extra keys can appear.
+    expect(Object.keys(scoIndex.pages['0']!)).toEqual(['id', 'title'])
+    expect(Object.keys(scoIndex.pages['1']!)).toEqual(['id', 'title', 'questionnaires'])
+    expect(Object.keys(scoIndex.pages['2']!)).toEqual(['id', 'title', 'videos'])
+    expect(Object.keys(scoIndex.pages['3']!)).toEqual(['id', 'title', 'questionnaires', 'videos'])
+    expect(Object.keys(scoIndex.pages['1']!.questionnaires!['0']!)).toEqual([
       'id',
-      'title',
-      'questions',
-      'questionnaires'
+      'maxAttempts',
+      'questions'
     ])
-    expect(Object.keys(manifest.pages['1']!)).toEqual([
-      'id',
-      'title',
-      'questions',
-      'questionnaires'
-    ])
-    expect(Object.keys(manifest.pages['2']!)).toEqual([
-      'id',
-      'title',
-      'questions',
-      'questionnaires',
-      'videos'
-    ])
-    expect(Object.keys(manifest.pages['3']!)).toEqual([
-      'id',
-      'title',
-      'questions',
-      'questionnaires',
-      'videos'
-    ])
-    expect(Object.keys(manifest.pages['1']!.questions!['0']!)).toEqual([
+    expect(Object.keys(scoIndex.pages['1']!.questionnaires!['0']!.questions['0']!)).toEqual([
       'id',
       'prompt',
       'type',
@@ -254,8 +270,8 @@ describe('content manifest', () => {
         ]
       }
     }
-    const first = createContentManifest(content)
-    expect(first).toEqual(createContentManifest(content))
+    const first = createScoIndex(content)
+    expect(first).toEqual(createScoIndex(content))
     expect(first).toMatchObject({
       schemaVersion: 1,
       title: 'Course',
@@ -265,28 +281,40 @@ describe('content manifest', () => {
         '0': {
           id: 'p-a',
           title: 'First',
-          questions: {
+          questionnaires: {
             '0': {
-              id: 'q1',
-              prompt: 'Choose *one*',
-              correctAnswers: ['a'],
-              options: {
-                '0': { value: 'a', label: 'Alpha' },
-                '1': { value: 'b', label: '**Beta**' }
+              id: 'quiz-a',
+              maxAttempts: 1,
+              questions: {
+                '0': {
+                  id: 'q1',
+                  prompt: 'Choose *one*',
+                  correctAnswers: ['a'],
+                  options: {
+                    '0': { value: 'a', label: 'Alpha' },
+                    '1': { value: 'b', label: '**Beta**' }
+                  }
+                },
+                '1': { id: 'q2', prompt: 'Second prompt', options: {}, correctAnswers: [] }
               }
             },
-            '1': { id: 'q2', prompt: 'Second prompt', options: {}, correctAnswers: [] },
-            '2': { id: 'q3', prompt: 'Third', options: {}, correctAnswers: [] }
+            '1': {
+              id: 'quiz-b',
+              maxAttempts: 1,
+              questions: {
+                '0': { id: 'q3', prompt: 'Third', options: {}, correctAnswers: [] }
+              }
+            }
           }
         },
-        '1': { id: 'p-b', title: 'Second', questions: {} }
+        '1': { id: 'p-b', title: 'Second' }
       }
     })
     expect(JSON.stringify(first)).not.toMatch(/Before/)
     expect(first).not.toHaveProperty('videos')
   })
 
-  it('stores stable preorder questionnaire indexes with attempt bounds', () => {
+  it('stores stable preorder questionnaires, each owning their local question indexes', () => {
     const content: ContentPackage = {
       metadata: { title: 'Attempts' },
       presentation: {
@@ -339,11 +367,36 @@ describe('content manifest', () => {
 
     // Nested and top-level questionnaires share one preorder index per page,
     // and every entry carries the bounds the suspend-data codec validates
-    // against: the authored attempt cap (or the single-attempt default) and
-    // the questionnaire's question count.
-    expect(createContentManifest(content).pages['0']!.questionnaires).toEqual({
-      '0': { id: 'quiz-nested', maxAttempts: 3, questionCount: 2 },
-      '1': { id: 'quiz-toplevel', maxAttempts: 1, questionCount: 1 }
+    // against: the authored attempt cap (or the single-attempt default) plus
+    // the questions that define the local answer indexes.
+    expect(createScoIndex(content).pages['0']!.questionnaires).toEqual({
+      '0': {
+        id: 'quiz-nested',
+        maxAttempts: 3,
+        questions: {
+          '0': {
+            id: 'n1',
+            prompt: 'First',
+            type: 'single-choice',
+            options: {},
+            correctAnswers: []
+          },
+          '1': {
+            id: 'n2',
+            prompt: 'Second',
+            type: 'single-choice',
+            options: {},
+            correctAnswers: []
+          }
+        }
+      },
+      '1': {
+        id: 'quiz-toplevel',
+        maxAttempts: 1,
+        questions: {
+          '0': { id: 't1', prompt: 'Third', type: 'single-choice', options: {}, correctAnswers: [] }
+        }
+      }
     })
   })
 
@@ -412,8 +465,8 @@ describe('content manifest', () => {
       }
     }
 
-    const manifest = createContentManifest(content)
-    expect(manifest.pages['0']!.videos).toEqual({
+    const scoIndex = createScoIndex(content)
+    expect(scoIndex.pages['0']!.videos).toEqual({
       '0': {
         id: 'video:videos.mdx:1:1',
         src: 'https://vimeo.com/7',
@@ -425,16 +478,33 @@ describe('content manifest', () => {
         provider: 'youtube'
       }
     })
-    expect(manifest.pages['1']!.videos).toEqual({
+    expect(scoIndex.pages['1']!.videos).toEqual({
       '0': {
         id: 'video:second.mdx:1:1',
         src: 'https://youtu.be/second',
         provider: 'youtube'
       }
     })
-    expect(Object.keys(manifest.pages['0']!.videos ?? {})).toEqual(['0', '1'])
-    expect(manifest).not.toHaveProperty('videos')
-    expect(JSON.stringify(manifest)).not.toMatch(/pageId|playback|position|seconds/)
+    expect(Object.keys(scoIndex.pages['0']!.videos ?? {})).toEqual(['0', '1'])
+    expect(scoIndex).not.toHaveProperty('videos')
+    expect(JSON.stringify(scoIndex)).not.toMatch(/pageId|playback|position|seconds/)
+    // The questionnaire that shares the page with the videos stays indexed; the
+    // video bookkeeping above it is unchanged.
+    expect(scoIndex.pages['0']!.questionnaires).toEqual({
+      '0': {
+        id: 'quiz',
+        maxAttempts: 1,
+        questions: {
+          '0': {
+            id: 'q',
+            prompt: 'video prompt',
+            type: 'single-choice',
+            options: { '0': { value: 'option', label: 'video option' } },
+            correctAnswers: []
+          }
+        }
+      }
+    })
   })
 
   it('assigns items videos to their root item owner', () => {
@@ -453,13 +523,14 @@ describe('content manifest', () => {
         ]
       }
     }
-
-    expect(createContentManifest(content).pages['0']!.videos).toEqual({
+    const scoIndex = createScoIndex(content)
+    expect(scoIndex.pages['0']!.videos).toEqual({
       '0': { id: 'video:item.mdx:1:1', src: 'abc', provider: 'youtube' }
     })
+    expect(scoIndex.pages['0']).not.toHaveProperty('questionnaires')
   })
 
-  it('carries authored watch requirements onto manifest video entries', () => {
+  it('carries authored watch requirements onto sco index video entries', () => {
     const content: ContentPackage = {
       metadata: { title: 'Requirements' },
       presentation: {
@@ -486,7 +557,7 @@ describe('content manifest', () => {
       }
     }
 
-    const videos = createContentManifest(content).pages['0']!.videos
+    const videos = createScoIndex(content).pages['0']!.videos
     expect(videos).toEqual({
       '0': {
         id: 'video:required',
@@ -513,13 +584,8 @@ describe('content manifest', () => {
       metadata: { title: 'Localized', lang: 'pt-BR' },
       presentation: { type: 'scroll', pages: [] }
     }
-    expect(createContentManifest(content).lang).toBe('pt-BR')
-    expect(
-      createContentManifest({
-        ...content,
-        metadata: { title: 'Legacy' }
-      }).lang
-    ).toBe('en')
+    expect(createScoIndex(content).lang).toBe('pt-BR')
+    expect(createScoIndex({ ...content, metadata: { title: 'Legacy' } }).lang).toBe('en')
   })
 
   it('indexes items using stable item and question ids', () => {
@@ -555,11 +621,14 @@ describe('content manifest', () => {
         ]
       }
     }
-    expect(createContentManifest(content)).toMatchObject({
+    expect(createScoIndex(content)).toMatchObject({
       presentation: 'tiles',
       pages: {
         '0': { id: 'item-1' },
-        '1': { id: 'item-2', questions: { '0': { id: 'stable-question-id' } } }
+        '1': {
+          id: 'item-2',
+          questionnaires: { '0': { questions: { '0': { id: 'stable-question-id' } } } }
+        }
       }
     })
   })
@@ -590,13 +659,13 @@ describe('content manifest', () => {
         ]
       }
     }
-    expect(createContentManifest(content).pages['0']!.questions!['0']).toMatchObject({
+    expect(createScoIndex(content).pages['0']!.questionnaires!['0']!.questions['0']).toMatchObject({
       id: 'q-tight',
       prompt: 'See `raw` **Markdown**'
     })
   })
 
-  it('collects a questionnaire that follows a tight inline run', () => {
+  it('collects a questionnaire on a tight inline run and keeps document order across questionnaires', () => {
     const content: ContentPackage = {
       metadata: { title: 'Tight' },
       presentation: {
@@ -631,13 +700,25 @@ describe('content manifest', () => {
                     ]
                   }
                 ]
+              },
+              {
+                type: 'questionnaire',
+                id: 'quiz-after',
+                contributesToScore: true,
+                revealCorrectAnswers: true,
+                maxAttempts: 1,
+                shuffleOptions: false,
+                questions: [question('q-after', 'After')]
               }
             ]
           }
         ]
       }
     }
-    expect(createContentManifest(content).pages['0']!.questions!['0']).toMatchObject({
+    const scoIndex = createScoIndex(content)
+    expect(Object.keys(scoIndex.pages['0']!.questionnaires!)).toEqual(['0', '1'])
+    expect(promptsOf(scoIndex, '0')).toEqual(['Nested', 'After'])
+    expect(scoIndex.pages['0']!.questionnaires!['0']!.questions['0']).toMatchObject({
       id: 'q-nested',
       prompt: 'Nested'
     })

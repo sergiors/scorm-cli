@@ -406,7 +406,7 @@ describe('reactRenderer.dev', () => {
     }
 
     // The CLI re-derives both scripts from the new content (the SCORM runtime
-    // embeds the refreshed content manifest), so the server must serve the new
+    // embeds the refreshed SCO index), so the server must serve the new
     // runtime on the very next document request rather than the initial one.
     await server.update(updated, [
       { id: 'scorm-dev-mock', source: 'window.__SCORM_DEVTOOLS__ = true;' },

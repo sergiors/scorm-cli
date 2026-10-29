@@ -1,5 +1,5 @@
 import { writeFileSync } from 'node:fs'
-import type { ContentManifest } from '../../content-manifest'
+import type { ScoIndex } from '../../sco-index'
 import { scormDevMock } from '../../mock'
 import { createScormPreviewRuntime } from '../../runtime'
 import { browserCodecSource } from '../../state-codec'
@@ -18,7 +18,7 @@ if (!resultPath) {
   throw new Error('Usage: tsx keep-names-probe.ts <result-path>')
 }
 
-const manifest: ContentManifest = {
+const scoIndex: ScoIndex = {
   schemaVersion: 1,
   title: 'Keep-names runtime',
   lang: 'en',
@@ -30,15 +30,21 @@ const manifest: ContentManifest = {
       videos: {
         '0': { id: 'video:lesson.mdx:0:1', src: 'https://youtu.be/keepnames', provider: 'youtube' }
       },
-      questions: {
+      questionnaires: {
         '0': {
-          id: 'q-one',
-          type: 'multiple-choice',
-          prompt: '',
-          correctAnswers: [],
-          options: {
-            '0': { value: 'alpha', label: 'Alpha' },
-            '1': { value: 'beta', label: 'Beta' }
+          id: 'quiz',
+          maxAttempts: 1,
+          questions: {
+            '0': {
+              id: 'q-one',
+              type: 'multiple-choice',
+              prompt: '',
+              correctAnswers: [],
+              options: {
+                '0': { value: 'alpha', label: 'Alpha' },
+                '1': { value: 'beta', label: 'Beta' }
+              }
+            }
           }
         }
       }
@@ -52,12 +58,12 @@ const codecBodyStart = codecSource.indexOf('var suspendCodec = (')
 writeFileSync(
   resultPath,
   JSON.stringify({
-    manifest,
+    scoIndex,
     /** The complete embedded codec source, `__name` shim included. */
     codecSource,
     /** The serialized codec body alone; the shim never appears inside it. */
     codecBody: codecBodyStart === -1 ? codecSource : codecSource.slice(codecBodyStart),
-    previewRuntime: createScormPreviewRuntime(manifest),
+    previewRuntime: createScormPreviewRuntime(scoIndex),
     mock: scormDevMock
   })
 )

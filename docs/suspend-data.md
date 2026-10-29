@@ -2,7 +2,7 @@
 
 This describes the implementation in this repository, including questionnaire
 retry history and video positions. It is not a separate format specification: the codec,
-packaged manifest, parser IDs, player sanitizer, and SCORM runtime are the
+packaged SCO index, parser IDs, player sanitizer, and SCORM runtime are the
 behavioral sources of truth.
 
 ## Ownership and end-to-end flow
@@ -13,22 +13,22 @@ validates the returned object against the current content AST with
 `sanitizePlayerState`. Every real state change is sent with the current integer
 package progress through `window.scormBridge.saveState(state, progress)`. The
 generated runtime uses the state to recompute package progress with
-`progressFor(state)` from its packaged content manifest before encoding; it does
+`progressFor(state)` from its packaged SCO index before encoding; it does
 not use the renderer-supplied progress argument. The Node
-`encodeSuspendData(manifest, state, progress)` API does take an explicit progress
+`encodeSuspendData(scoIndex, state, progress)` API does take an explicit progress
 argument. The renderer does not serialize suspend data.
 
-The runtime uses the packaged `content-manifest.json` dictionary to do this:
+The runtime uses the packaged `scoindex.json` dictionary to do this:
 
 ```text
 Renderer: scormBridge.saveState(state, progress)
-  → generated runtime: progressFor(state) from packaged content manifest
-  → browser codec: encode(manifest, state, progressFor(state))
+  → generated runtime: progressFor(state) from packaged SCO index
+  → browser codec: encode(scoIndex, state, progressFor(state))
   → compact object { v, p, x, s?, d? }
   → JSON.stringify(compact object)
   → cmi.suspend_data
 
-cmi.suspend_data → JSON parse / decodeSuspendData(current manifest)
+cmi.suspend_data → JSON parse / decodeSuspendData(current SCO index)
   → semantic PlayerState with the CMI location decoded into a page/item and optional anchor
   → renderer sanitizePlayerState(current content AST)
   → player
@@ -55,7 +55,7 @@ result even when the LMS write was rejected or too large. An unavailable or
 uninitialized LMS API makes `saveState` return false without saving.
 
 At startup the runtime reads the version-specific location and
-`cmi.suspend_data`, decodes the latter through the current packaged manifest,
+`cmi.suspend_data`, decodes the latter through the current packaged SCO index,
 and attaches the location separately. `restoreState()` normalizes resume state
 through the codec once more and reattaches that location. The renderer then
 sanitizes the semantic result against the AST. An absent or malformed suspend
@@ -83,6 +83,8 @@ export interface PlayerPageState {
   activeQuestionnaireItems?: Record<string, string>
   /** Playback positions in semantic seconds, keyed by stable video node ID. */
   videos?: Record<string, number>
+  /** Accumulated watch time in semantic seconds, keyed by stable video node ID. */
+  videoWatchSeconds?: Record<string, number>
 }
 
 export interface PlayerState {
@@ -107,28 +109,30 @@ matches the current content; legacy page-only locations remain valid.
 
 What the compact data does and does not preserve:
 
-- `x` stores one visited bit per manifest page/item, in manifest order. It does
+- `x` stores one visited bit per SCO-index page/item, in SCO-index order. It does
   not store node IDs in this bit string.
 - Optional root `s` stores `PlayerState.shuffleSeed` when it is a non-negative
-  safe integer. Invalid `s` values are ignored without changing the v1 payload
+  safe integer. Invalid `s` values are ignored without changing the v2 payload
   version or the contents/meaning of `d`.
 - `p` stores the integer package percentage passed to the encoder, rounded and
   clamped to 0–100. The Node `encodeSuspendData` API takes this as an explicit
   argument. In the generated runtime, `progressFor(state)` derives it from the
-  packaged manifest: Scroll and Slides progress counts completed pages; Tiles
+  packaged SCO index: Scroll and Slides progress counts completed pages; Tiles
   progress counts visited items. The renderer also supplies progress to
   `saveState`, but the generated runtime recomputes it from state.
 - Decoding `p` reconstructs completion flags for sequential page presentations
-  (Scroll and Slides) by marking the first `round(p * pageCount / 100)` manifest
+  (Scroll and Slides) by marking the first `round(p * pageCount / 100)` SCO-index
   entries completed and visited. Tiles completion is not reconstructed from `p`;
   its progress uses the `x` visited bits. Therefore per-page `completed` flags
   are not independently encoded, and sequential completion is necessarily
   positional/lossy.
-- `d` is a single flat map for the current v1 format. Each key is
-  `<pageIndex>.<kind>.<entityIndex>` where `kind` is `a` (answer), `t` (video
-  position), `q` (questionnaire attempt history), `r` (active retry marker),
-  `c` (completed questionnaire marker), or `i` (active stepper question). Answer selections are manifest option
-  indexes, video positions are integer deciseconds, and `q` values are arrays of
+- `d` is a single flat map for the current v2 format. Answer keys are
+  `<pageIndex>.a.<questionnaireIndex>.<questionIndex>`; keys for other kinds are
+  `<pageIndex>.<kind>.<entityIndex>`, where `kind` is `t` (video position), `w`
+  (accumulated video watch time), `q` (questionnaire attempt history), `r`
+  (active retry marker), `c` (completed questionnaire marker), or `i` (active
+  stepper question). Answer selections are SCO-index option indexes, video
+  positions are integer deciseconds, and `q` values are arrays of
   correct-question counts for completed submissions, correct or not, in
   submission order. The array length is the number of consumed submissions;
   each count is bounded by the questionnaire's question count, and history
@@ -140,17 +144,16 @@ What the compact data does and does not preserve:
   the current questionnaire. `c` is a marker, not an attempt counter or score.
   A `q` history alone never implies completion. Answers do not store
   question IDs, answer strings, labels, correctness, prompts, or questionnaire
-  IDs. Video positions use page-local manifest video indexes in their keys;
+  IDs. Answer keys use page-local questionnaire and questionnaire-local question
+  indexes. Video positions use page-local video indexes in their keys;
   semantic positions are seconds rounded to tenths (for example, `132.5`
   seconds encodes as `1325` and decodes as `132.5` seconds). Empty/unknown
   values are omitted from the map; `i` stores the zero-based question index
   within its questionnaire, including `0` when question zero is explicitly
-  active. The codec maps that local index through the questionnaire's question
-  count and the page's flattened question list. `d` is omitted when no valid
-  answers, video positions, questionnaire histories, or active question remain. The compact codec supports only
-  the current flat layout; a payload using the earlier nested
-  `d[pageIndex].a`/`.t` shape is not decoded and restores no answers, attempt
-  histories, retry/completion markers, active question indexes, or video positions (see
+  active. The codec maps that local index directly through the questionnaire's
+  nested question dictionary. `d` is omitted when no valid answers, video
+  positions, questionnaire histories, or active question remain. There is no
+  backwards compatibility with v1 suspend data (see
   [Format versions](#format-versions)).
 - `submittedQuestionnaires` is not encoded. Codec decode alone restores valid
   `q` history as `questionnaireAttempts` and a valid `c` marker as
@@ -166,7 +169,7 @@ What the compact data does and does not preserve:
 - `questionnaireAttempts` stores correct counts only for completed submissions,
   whether correct or not; an in-progress attempt does not append history. `activeQuestionnaireRetries`
   marks an in-progress retry separately from submitted status. Both are restored
-  through current manifest questionnaire indexes and stable IDs.
+  through current SCO-index questionnaire indexes and stable IDs.
 - `completedQuestionnaires` stores completion by stable questionnaire ID,
   separately from submitted status. The codec restores it only from a valid `c`
   marker paired with valid `q` history; it never infers completion from history,
@@ -195,34 +198,36 @@ What the compact data does and does not preserve:
   `setScore` and version-specific CMI score fields.
 
 `emptyPlayerState()` in `packages/renderer-react/app/lib/player-state.ts`
-returns `{ pages: {} }`. The compact empty payload depends on the manifest: for
-a two-entry manifest it is exactly `{"v":1,"p":0,"x":"00"}`; with no entries
-it is `{"v":1,"p":0,"x":""}`. Optional `d` is absent when empty.
+returns `{ pages: {} }`. The compact empty payload depends on the SCO index: for
+a two-entry index it is exactly `{"v":2,"p":0,"x":"00"}`; with no entries
+it is `{"v":2,"p":0,"x":""}`. Optional `d` is absent when empty.
 
 ## Compact format and examples
 
 `CompactSuspendData` is declared in `packages/scorm/src/state-codec.ts`. It is
-the one supported shape, the flat v1 layout:
+the one supported shape, the v2 layout:
 
 ```ts
 interface CompactSuspendData {
-  v: 1 // sole supported compact format version
+  v: 2 // sole supported compact format version
   p: number // rounded/clamped integer package progress
-  x: string // manifest-order visited bits
+  x: string // SCO-index-order visited bits
   s?: number // optional non-negative safe-integer shuffle seed
   d?: {
-    // key: `${pageIndex}.${kind}.${entityIndex}`
-    [key: string]: number | number[] // a: option indexes; t: deciseconds; q: correct counts; r/c: 1; i: local question index
+    // answers: `${pageIndex}.a.${questionnaireIndex}.${questionIndex}`
+    // other kinds: `${pageIndex}.${kind}.${entityIndex}`
+    [key: string]: number | number[] // a: option indexes; t: playback deciseconds; w: watched deciseconds
+    // q: correct counts; r/c: 1; i: local question index
   }
 }
 ```
 
-Page, question, questionnaire, and option indexes are zero-based positions in
-the manifest. Question and questionnaire indexes are local to a page, and
-option indexes are local to a question. For `i`, the entity index selects a
-page-local questionnaire and its value selects a question within that
-questionnaire. The decoder maps those indexes through that page's current manifest
-entry to recover semantic page/question IDs and option `value`s. A single-choice
+Page, questionnaire, question, and option indexes are zero-based positions in
+the SCO index. Questionnaire indexes are local to a page, question indexes are
+local to a questionnaire, and option indexes are local to a question. For `i`,
+the entity index selects a page-local questionnaire and its value selects a
+question within that questionnaire. The decoder maps those indexes through the
+nested current SCO index entry to recover semantic IDs and option `value`s. A single-choice
 or true-false selection is encoded as one number; a multiple-choice selection
 is an array of option indexes sorted numerically. On decode, selections are
 deduplicated, filtered to valid indexes, sorted, then mapped to option values.
@@ -233,39 +238,35 @@ learner's selection order.
 
 `v` identifies the payload layout and is validated as part of decoding:
 
-- `v: 1` is the flat layout and the only supported version. `d` keys are
-  `<pageIndex>.<kind>.<entityIndex>` with exactly three segments: two canonical
-  non-negative safe-integer indexes around a kind of `a`, `t`, `q`, `r`, `c`, or `i`.
+- `v: 2` is the only supported version. Answer keys have exactly four segments,
+  `<pageIndex>.a.<questionnaireIndex>.<questionIndex>`; all other keys have
+  exactly three segments, `<pageIndex>.<kind>.<entityIndex>`. Indexes must be
+  canonical non-negative safe integers. The codec has no v1 or legacy decoder.
 - Any other `v` is unsupported: the whole payload is rejected and decoding
   returns a fresh `{ pages: {} }` state. There is no versioned decode path.
-
-An earlier revision of the compact format reused `v: 1` but nested `d` under
-`d[pageIndex] = { a, t }`. Because that nested shape is not the flat layout, its
-entries are not decoded and no answers or video positions are restored. The
-top-level `p` and `x` fields are unaffected and still decode normally.
 
 The following small payloads are produced by the current Node
 `encodeSuspendData` implementation (the same code used by the browser runtime).
 
 ### Empty state
 
-For a manifest containing two pages, semantic `{ pages: {} }` and progress `0`
+For an SCO index containing two pages, semantic `{ pages: {} }` and progress `0`
 produce:
 
 ```json
-{ "v": 1, "p": 0, "x": "00" }
+{ "v": 2, "p": 0, "x": "00" }
 ```
 
 Decoding that payload returns `{ "pages": {} }`.
 
 ### Visited state and navigation location
 
-With the two manifest entries `page-one`, `page-two`, a semantic state with
+With the two SCO-index entries `page-one`, `page-two`, a semantic state with
 `location: "page:next"` and only `page-two.visited === true`, encoded with
 progress `0`, produces:
 
 ```json
-{ "v": 1, "p": 0, "x": "01" }
+{ "v": 2, "p": 0, "x": "01" }
 ```
 
 The decoded compact state is `{ "pages": { "page-two": { "visited": true } } }`.
@@ -275,17 +276,17 @@ version-specific CMI location field. This is the behavior asserted by
 
 ### Answers
 
-In the codec test manifest, `page-one` question `q1` has options
+In the codec test SCO index, `page-one` questionnaire `0`, question `0` (`q1`) has options
 `red` (index 0), `blue` (index 1), and `green` (index 2). A state with
 `page-one.visited`, `page-one.completed`, and answer `q1: ["green", "red"]`,
 plus `page-two` answer `q1: ["blue"]`, encoded with progress 50, produces:
 
 ```json
-{ "v": 1, "p": 50, "x": "10", "d": { "0.a.0": [0, 2], "1.a.0": [1] } }
+{ "v": 2, "p": 50, "x": "10", "d": { "0.a.0.0": [0, 2], "1.a.0.0": [1] } }
 ```
 
 The first page gets `completed: true` from `p: 50` for this two-page Scroll
-manifest. Decoded answers are `q1: ["red", "green"]` and `q1: ["blue"]`,
+SCO index. Decoded answers are `q1: ["red", "green"]` and `q1: ["blue"]`,
 respectively. The input answer order is normalized by option index.
 
 ### Questionnaire attempts and active retry
@@ -295,10 +296,10 @@ submitted attempts with one and two correct answers. An active retry marker is
 stored separately:
 
 ```json
-{ "v": 1, "p": 0, "x": "0", "d": { "0.q.0": [1, 2], "0.r.0": 1 } }
+{ "v": 2, "p": 0, "x": "0", "d": { "0.q.0": [1, 2], "0.r.0": 1 } }
 ```
 
-The manifest maps that index to the semantic questionnaire ID and supplies its
+The SCO index maps that index to the semantic questionnaire ID and supplies its
 attempt/question bounds. History length, not a separate counter, determines how
 many submissions have been consumed. The `r` marker does not add to that count.
 Attempt history is separate from completion: without a `c` marker, a submitted
@@ -313,10 +314,10 @@ For a questionnaire whose valid attempt history is `[1, 2]`, a completion marker
 is stored alongside (not instead of) that history:
 
 ```json
-{ "v": 1, "p": 0, "x": "0", "d": { "0.q.0": [1, 2], "0.c.0": 1 } }
+{ "v": 2, "p": 0, "x": "0", "d": { "0.q.0": [1, 2], "0.c.0": 1 } }
 ```
 
-On decode, the current manifest resolves the questionnaire index and ID. The
+On decode, the current SCO index resolves the questionnaire index and ID. The
 codec restores `completedQuestionnaires` only if the matching `q` entry also
 passes its history bounds; a `c` marker without valid history, with a value other
 than `1`, or for an unknown/invalid questionnaire is ignored. The marker does
@@ -335,41 +336,40 @@ For questionnaire index `1` on page index `0`, with the active question being
 its second question, the codec stores local index `1`:
 
 ```json
-{ "v": 1, "p": 0, "x": "0", "d": { "0.i.1": 1 } }
+{ "v": 2, "p": 0, "x": "0", "d": { "0.i.1": 1 } }
 ```
 
 The `i` key's entity index is the page-local questionnaire index; its value is
-the zero-based question index within that questionnaire. The codec derives the
-questionnaire's start in the page's dense flattened `questions` list by summing
-the question counts of preceding questionnaire indexes, then maps the semantic
-question ID in `activeQuestionnaireItems` through that range. Decode performs
-the inverse mapping through the current manifest. A stored `0` is meaningful
+the zero-based question index within that questionnaire. The codec maps the
+semantic question ID in `activeQuestionnaireItems` directly through that
+questionnaire's nested `questions` dictionary. Decode performs the inverse
+mapping through the current SCO index. A stored `0` is meaningful
 and restores the first question when explicitly present; invalid or out-of-range
 questionnaire/question indexes are ignored. This leaves all existing question
 and option indexes unchanged.
 
 ### Video positions
 
-With manifest video ID `video-a` at local video index `0` on `page-one` (page index `0`), semantic
+With SCO-index video ID `video-a` at local video index `0` on `page-one` (page index `0`), semantic
 `pages: { "page-one": { videos: { "video-a": 12.34 } } }` produces
 `d["0.t.0"]: 123`; decoding returns
 `pages: { "page-one": { videos: { "video-a": 12.3 } } }`. The codec encodes a
 video by looking for its semantic ID in `state.pages[ownerPageId].videos`, and
-uses the manifest's local video index in the flat key. Decode resolves page and
-video indexes through the current manifest, so content at the same index owns
+uses the SCO index's local video index in the flat key. Decode resolves page and
+video indexes through the current SCO index, so content at the same index owns
 the saved position after reordering. Unknown/removed indexes are discarded.
 Zero positions are omitted because absence means playback starts at zero. The
 codec test covers negative,
 non-finite, and unknown video values, and verifies fractional rounding (for
 example, `0.06` seconds becomes `0.1` seconds). The implementation also enforces
 safe-integer decisecond values. Video entries are omitted from the flat map when
-semantic state has no valid position for a video in the manifest, including when
-the manifest has no videos; `d` is still omitted if there are no valid answers
+semantic state has no valid position for a video in the SCO index, including when
+the SCO index has no videos; `d` is still omitted if there are no valid answers
 either.
 
 ### Combined state, including an intentionally omitted submission
 
-This was generated by calling `encodeSuspendData` with a two-page manifest that
+This was generated by calling `encodeSuspendData` with a two-page SCO index that
 maps page `page:intro.mdx`, question option indexes 0/1/2 to `alpha`/`beta`/
 `gamma`, and video ID `video:video.mdx:8:1`. Input location is
 `page:video.mdx`; its semantic video position is stored in
@@ -378,11 +378,11 @@ contains a submitted questionnaire ID. The actual serialized result is:
 
 ```json
 {
-  "v": 1,
+  "v": 2,
   "p": 50,
   "x": "11",
   "d": {
-    "0.a.0": [0, 2],
+    "0.a.0.0": [0, 2],
     "1.t.0": 1325
   }
 }
@@ -394,14 +394,14 @@ Scroll page, answer `["alpha", "gamma"]`, and video position
 the video's owning page. It does not contain `location` or
 `submittedQuestionnaires`; those are handled separately as described above.
 
-## Manifest and validation boundaries
+## SCO index and validation boundaries
 
-`packages/scorm/src/content-manifest.ts` defines and creates the static
-content manifest shared by packaging and runtime. It includes authored question
-correctness metadata as well as display labels, but no learner responses. Its exact shape is:
+`packages/scorm/src/sco-index.ts` defines and creates the static `ScoIndex`
+shared by packaging and runtime. It includes authored question correctness
+metadata and display labels, but no learner responses. Its relevant shape is:
 
 ```ts
-interface ContentManifest {
+interface ScoIndex {
   schemaVersion: 1
   title: string
   lang: string
@@ -411,70 +411,89 @@ interface ContentManifest {
     {
       id: string
       title: string
-      questions: Record<
+      questionnaires?: Record<
         string,
         {
           id: string
-          prompt: string
-          type: QuestionType
-          options: Record<string, { value: string; label: string }>
-          correctAnswers: string[]
+          maxAttempts: number
+          questions: Record<
+            string,
+            {
+              id: string
+              prompt: string
+              type: QuestionType
+              options: Record<string, { value: string; label: string }>
+              correctAnswers: string[]
+            }
+          >
         }
       >
-      /** Stable page-local preorder indexes; used to validate compact attempt histories. */
-      questionnaires: Record<string, { id: string; maxAttempts: number; questionCount: number }>
-      videos?: Record<string, { id: string; src: string; provider: VideoProvider }>
+      videos?: Record<
+        string,
+        {
+          id: string
+          src: string
+          provider: VideoProvider
+          duration?: number
+          minWatchTime?: number
+        }
+      >
     }
   >
 }
 ```
 
-In generated JSON, the outer page keys are stringified page/item indexes; nested
-question, option, questionnaire, and page-local video keys are likewise
-stringified indexes. Question and questionnaire collection walk nested block
-content in document order. Each questionnaire entry retains its stable semantic
-ID, normalized numeric `maxAttempts` (default `1`, or `-1` for unlimited), and
-question count, allowing the codec to validate finite history limits and
-correct-count bounds. The page's question entries form a dense flattened order
-grouped by questionnaire, so the codec derives each questionnaire's question
-range from preceding questionnaire counts. Each question
-includes the semantic values of its correct options. Each page/item may include a `videos`
+In generated JSON, page keys are stringified page/item indexes; questionnaire
+keys are page-local preorder indexes; question keys are local to each
+questionnaire; option keys are local to each question; and video keys are
+page-local traversal-order indexes. Each questionnaire retains its stable
+semantic ID and normalized numeric `maxAttempts` (default `1`, or `-1` for
+unlimited). Its nested question dictionary provides the bound for validating
+attempt correctness counts and directly resolves answer and active-stepper
+indexes. Each question includes the semantic values of its correct options.
+Each page/item may include a `videos`
 record keyed by deterministic traversal-order video index (`"0"`, `"1"`, ...);
 each static `{ id, src, provider }` entry retains its semantic `id`. Nesting
-identifies the owner, and the manifest maps compact local indexes back to
-semantic video IDs. Neither the manifest nor its video entries contain learner
-playback positions. `createContentManifest` includes
+identifies the owner, and the SCO index maps compact local indexes back to
+semantic video IDs. Neither the SCO index nor its video entries contain learner
+playback positions. `createScoIndex` includes
 the package title, language (default `en`), presentation type, page titles,
 plain-text question prompt/option labels, authored `correctAnswers`, questionnaire
 attempt bounds, and the static mappings. The SCORM
-packager writes it as `content-manifest.json` and embeds the same manifest in
+packager writes it as `scoindex.json` and embeds the same index in
 `scorm-runtime.js`.
 
-The codec validates compact values against that packaged manifest:
+The codec validates compact values against that packaged SCO index:
 
 - A non-object root, invalid JSON, unsupported version, invalid progress, or
   invalid visited string rejects the **whole compact payload** and returns a
   fresh `{ pages: {} }` state.
-- `v` must equal `1`; `p` must be an integer from 0 through 100; and `x`
+- The current SCO index must have `schemaVersion: 1`. This identifies the
+  SCO-index schema and is independent of the suspend-data payload version.
+- `v` must equal `2`; `p` must be an integer from 0 through 100; and `x`
   must contain only `0` and `1`. A shorter `x` is accepted; missing trailing bits
-  mean unvisited. If `x` is longer than the current manifest page count, the
-  decoder skips page-indexed visited, progress, answers, attempt histories,
-  retry/completion markers, and active question indexes. Video data is independently resolved through page/local-video
-  indexes.
+  mean unvisited. If `x` is longer than the current SCO-index page count, the
+  decoder skips page-indexed visited/progress reconstruction and discards all
+  page-indexed `d` entries, including answers, attempt histories,
+  retry/completion markers, active question indexes, and video positions/watch
+  times.
 - An absent, non-object, or malformed `d` does not invalidate otherwise-valid
-  progress. `d` is a flat map whose keys must be exactly
-  `<pageIndex>.<kind>.<entityIndex>` with canonical non-negative safe-integer
-  page/entity indexes and a kind of `a`, `t`, `q`, `r`, `c`, or `i`. Malformed keys,
-  unknown pages or entities, and invalid values are ignored individually without
-  affecting other entries. A `q` value must be a non-empty array of safe integer
-  correct counts within the manifest's question count and attempt cap. An `r`
+  progress. `d` is a flat map whose answer keys must be exactly
+  `<pageIndex>.a.<questionnaireIndex>.<questionIndex>`;
+  other keys must be exactly `<pageIndex>.<kind>.<entityIndex>` for `t`, `w`, `q`,
+  `r`, `c`, or `i`. Each index must be canonical and non-negative. Malformed
+  keys, unknown pages or entities, and invalid values are ignored individually
+  without affecting other entries. A `q` value must be a non-empty array of safe
+  integer correct counts within the questionnaire's nested question count and
+  attempt cap. An `r`
   value must be `1`, name a current questionnaire, and have a valid `q` history
   with at least one attempt remaining. A `c` value must be `1`, name a current
   questionnaire with valid attempt/question bounds, and have a valid non-empty
   `q` history; otherwise it is ignored. A restored `c` suppresses a conflicting
   `r` marker. Neither `q` nor `r` implies completion.
-- Unknown page/question indexes and invalid or unknown option indexes are
-  ignored. A selection must be a safe-integer scalar or an array; array members
+- Unknown page/questionnaire/question indexes and invalid or unknown option
+  indexes are ignored. Answers resolve question indexes only within the named
+  questionnaire. A selection must be a safe-integer scalar or an array; array members
   that are not non-negative safe integers are filtered, then the rest are
   deduplicated and sorted. A non-multiple-choice question uses only the first
   mapped value. Only valid decoded answers are returned.
@@ -482,10 +501,11 @@ The codec validates compact values against that packaged manifest:
   current page/local-video indexes and non-negative safe-integer decisecond
   values are decoded; missing/removed indexes and invalid values are discarded
   without rejecting other state. A valid value is divided by ten and nested in
-  `pages[ownerPageId].videos` using the semantic video ID from the manifest.
+  `pages[ownerPageId].videos` using the semantic video ID from the SCO index.
 - Questionnaire history is restored only through current page-local
-  questionnaire indexes and manifest IDs. Invalid, over-cap, or out-of-range
-  histories are ignored. A valid history is stored as
+  questionnaire indexes and SCO-index IDs. Invalid, over-cap, or out-of-range
+  histories are ignored. Correct-count bounds come from the size of that
+  questionnaire's nested question dictionary. A valid history is stored as
   `questionnaireAttempts[questionnaireId]`; retry markers are restored as
   `activeQuestionnaireRetries` only when history leaves an attempt available.
   Completion is restored separately as `completedQuestionnaires` only when a
@@ -493,8 +513,9 @@ The codec validates compact values against that packaged manifest:
   restore completion state. The renderer sanitizer infers submitted status from
   valid history or completion, except during an active retry.
 - An `i` entry must name a current page and questionnaire, contain a
-  non-negative safe-integer local question index, and resolve inside that
-  questionnaire's validated range in the dense flattened page question list.
+  non-negative safe-integer local question index, and resolve directly to that
+  key in the questionnaire's nested question dictionary. Nested question keys
+  need not form a dense range.
   It restores the current semantic question ID in
   `activeQuestionnaireItems[questionnaireId]`; invalid or removed/out-of-range
   entries are ignored individually.
@@ -522,15 +543,15 @@ applies only when submitted status is known; an active retry is not treated as
 submitted.
 
 The compact codec cannot detect semantic removal/reordering for its numeric
-indexes. If a page, question, or option is removed and a new entry occupies its
+indexes. If a page, questionnaire, question, or option is removed and a new entry occupies its
 old index, the codec resolves the old value through the **new** entry at that
 index. Out-of-range indexes are ignored; in-range shifted indexes can map to a
-different current page/question/option. Changed option values are likewise
-resolved through current manifest values and then checked against the AST. The
+different current page/questionnaire/question/option. Changed option values are likewise
+resolved through current SCO index values and then checked against the AST. The
 format carries no content fingerprint or standalone migration table.
 
-Video positions use a flat key `<pageIndex>.t.<videoIndex>`, where both indexes
-come from the current manifest. As with page/question/option indexes, reordering
+Video positions use a three-part key `<pageIndex>.t.<videoIndex>`, where both indexes
+come from the current SCO index. As with page/questionnaire/question/option indexes, reordering
 can map a saved position to a different semantic video at the same index; removed
 indexes are ignored. The compact payload contains no video IDs and does not
 support ID-keyed video maps. Payloads without video entries remain valid, and
@@ -563,14 +584,14 @@ questionnaires/questions. Stability is limited by the inputs: moving/renaming a
 referenced Page/Item source changes its ID; moving/renaming a questionnaire,
 question, or video source changes its ID; and inserting/removing text or nodes
 before one on the same source can change its line or column. Reordering source
-content can therefore change line/column IDs. The manifest assigns deterministic
-local video indexes in traversal order; semantic IDs remain in the manifest and
+content can therefore change line/column IDs. The SCO index assigns deterministic
+local video indexes in traversal order; semantic IDs remain in the SCO index and
 `PlayerState`, not the compact payload.
 
-The compact `d` dictionary is positional through the current manifest: its flat
-`<pageIndex>.<kind>.<entityIndex>` keys reference current manifest positions.
-Adding or reordering pages, questions, options, or videos can change those
-numeric mappings.
+The compact `d` dictionary is positional through the current SCO index. Answer
+keys use `<pageIndex>.a.<questionnaireIndex>.<questionIndex>`; other keys use
+`<pageIndex>.<kind>.<entityIndex>`. Adding or reordering pages, questionnaires,
+questions, options, or videos can change those numeric mappings.
 
 ## Node/browser parity, tests, and change checklist
 
@@ -579,7 +600,7 @@ source of the same self-contained `createSuspendDataCodec()` used by the Node
 exports. The generated SCO and preview runtime therefore use the same encode,
 decode, validation, and normalization logic. The parity tests execute that
 source in a VM and compare browser encode/decode behavior with the Node exports,
-including flat encoding, indexed video positions, round trips, malformed inputs,
+including v2 encoding, indexed video positions, round trips, malformed inputs,
 and rejection of unsupported versions.
 
 Relevant implementation and test paths:
@@ -588,16 +609,16 @@ Relevant implementation and test paths:
 - Stable parser IDs and source positions: `packages/parser/src/io.ts`,
   `packages/parser/src/reference.ts`, `packages/parser/src/question.ts`, and
   `packages/parser/src/media.ts`.
-- Manifest: `packages/scorm/src/content-manifest.ts`.
+- SCO index: `packages/scorm/src/sco-index.ts`.
 - Node/browser codec: `packages/scorm/src/state-codec.ts`.
 - LMS runtime and limits: `packages/scorm/src/runtime.ts`.
 - Renderer sanitizer and state ownership: `packages/renderer-react/app/lib/player-state.ts`,
   `packages/renderer-react/app/lib/use-player-session.ts`, and
   `packages/renderer-react/app/lib/use-scorm-bridge.ts`.
-- Codec, manifest, runtime, and browser parity tests:
+- Codec, SCO index, runtime, and browser parity tests:
   `packages/scorm/src/__tests__/state-codec.test.ts`,
   `packages/scorm/src/__tests__/state-codec.integration.test.ts`,
-  `packages/scorm/src/__tests__/content-manifest.test.ts`, and
+  `packages/scorm/src/__tests__/sco-index.test.ts`, and
   `packages/scorm/src/__tests__/runtime-events.test.ts`.
 - AST sanitizer and video position tests:
   `packages/renderer-react/src/__tests__/player-state.test.ts` and
@@ -608,18 +629,17 @@ Relevant implementation and test paths:
 For a new persisted field, first decide whether it belongs in semantic
 `PlayerState`, separate version-specific CMI, or is derived and should not be
 persisted. Then update the semantic type and player ownership/update path; add
-current-AST sanitization; add static manifest mapping only if the codec needs a
+current-AST sanitization; add static SCO-index mapping only if the codec needs a
 current-content lookup; add compact encode/decode behavior in
 `createSuspendDataCodec()` (the browser source follows automatically); and
 define how absent, malformed, unknown, removed, and reordered values behave.
 Keep `location` in its separate CMI element and score in the separate score
-bridge unless their ownership is intentionally changed. The flat layout is the
-single supported v1 shape: `v: 1` and the flat `<pageIndex>.<kind>.<entityIndex>`
-`d` keys are the only supported compact format. There is no version bump, no
-new `v` value, and no legacy or nested decoder in scope; the decoder accepts
-only `v: 1` (the flat layout) and rejects every other `v` outright. Test Node
+bridge unless their ownership is intentionally changed. The v2 layout is the
+single supported compact format: `v: 2`, four-part answer keys, and three-part
+page-local keys for all other kinds. There is no v1 or legacy decoder; the decoder
+accepts only `v: 2` and rejects every other `v` outright. Test Node
 and browser parity, encode/decode round trips, renderer sanitization, runtime
-writes and limits, and parser/manifest mappings as applicable. The current code
+writes and limits, and parser/SCO-index mappings as applicable. The current code
 has no standalone suspend-data migration framework.
 
 The production SCORM runtime talks to the LMS API discovered in the SCO

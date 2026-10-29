@@ -2,7 +2,7 @@ import vm from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import { createScormRuntime, formatScorm12Duration, formatScorm2004Duration } from '../runtime'
 
-const manifest = {
+const scoIndex = {
   schemaVersion: 1 as const,
   title: '',
   lang: 'en',
@@ -48,7 +48,7 @@ function createRuntime(version: '1.2' | '2004', now: () => number, initializeRes
     addEventListener: () => undefined
   }
   window.parent = window
-  vm.runInNewContext(createScormRuntime(manifest, version), { window })
+  vm.runInNewContext(createScormRuntime(scoIndex, version), { window })
   return {
     window,
     api,

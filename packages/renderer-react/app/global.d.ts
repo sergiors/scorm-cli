@@ -23,7 +23,7 @@ declare global {
     /**
      * Persists the full resume state together with the integer package progress
      * (0-100), both in renderer terms. The runtime owns encoding them against
-     * the content manifest (`cmi.suspend_data` and `cmi.core.lesson_location`),
+     * the SCO index (`cmi.suspend_data` and `cmi.core.lesson_location`),
      * so the renderer never serializes suspend data itself. Returns whether the
      * LMS accepted every write; a missing bridge, a missing method, a thrown
      * call or a `void` return is treated as a best-effort no-op.

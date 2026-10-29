@@ -51,30 +51,30 @@ describe('CLI build orchestration', () => {
     expect(archive.subarray(0, 2).toString()).toBe('PK')
     expect((await stat(zipPath)).size).toBeGreaterThan(100)
     const zip = await JSZip.loadAsync(archive)
-    const contentManifest = JSON.parse(await zip.file('content-manifest.json')!.async('string'))
-    expect(contentManifest).toMatchObject({
+    const scoIndex = JSON.parse(await zip.file('scoindex.json')!.async('string'))
+    expect(scoIndex).toMatchObject({
       schemaVersion: 1,
       title: 'Demo',
       presentation: 'tiles',
       pages: {
         '0': {
           id: expect.any(String),
-          title: 'Lesson',
-          questions: {}
+          title: 'Lesson'
         }
       }
     })
-    const pageVideos = contentManifest.pages['0'].videos
+    const pageVideos = scoIndex.pages['0'].videos
     expect(Object.keys(pageVideos)).toEqual(['0'])
     expect(pageVideos['0']).toEqual({
       id: expect.any(String),
       src: 'https://youtu.be/M7lc1UVf-VE',
       provider: 'youtube'
     })
-    expect(contentManifest).not.toHaveProperty('videos')
-    expect(await zip.file('scorm-runtime.js')!.async('string')).toContain(
-      JSON.stringify(contentManifest)
-    )
+    // An index page without questionnaires or non-root videos carries exactly
+    // its own dictionary; no stray keys or root-level videos appear.
+    expect(scoIndex.pages['0']).not.toHaveProperty('questionnaires')
+    expect(scoIndex).not.toHaveProperty('videos')
+    expect(await zip.file('scorm-runtime.js')!.async('string')).toContain(JSON.stringify(scoIndex))
     expect(await zip.file('imsmanifest.xml')!.async('string')).toContain(
       '<schemaversion>1.2</schemaversion>'
     )

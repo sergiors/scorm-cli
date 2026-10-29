@@ -4,7 +4,7 @@ import path from 'node:path'
 import type { Renderer } from '@scorm-cli/core'
 import { collectAssetReferences } from '@scorm-cli/core'
 import type { ScormVersion } from '@scorm-cli/scorm'
-import { createContentManifest, packageScorm } from '@scorm-cli/scorm'
+import { createScoIndex, packageScorm } from '@scorm-cli/scorm'
 import { loadPackage } from './content'
 import { loadRenderer } from './renderer'
 
@@ -24,7 +24,7 @@ export async function buildPackage(
   scormVersion: ScormVersion = '1.2'
 ): Promise<string> {
   const { content: contentPackage, contentRoot } = await loadPackage(contentPath)
-  const contentManifest = createContentManifest(contentPackage)
+  const scoIndex = createScoIndex(contentPackage)
   const output = path.resolve(outputPath ?? path.join('dist', `${packageName(contentPath)}.zip`))
   const renderer = rendererBuild ?? (await loadRenderer()).build
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'scorm-cli-build-'))
@@ -43,7 +43,7 @@ export async function buildPackage(
       metadata: contentPackage.metadata,
       renderResult,
       outputPath: output,
-      contentManifest,
+      scoIndex,
       version: scormVersion
     })
   } finally {

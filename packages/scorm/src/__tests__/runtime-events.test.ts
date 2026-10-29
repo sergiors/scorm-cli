@@ -1,21 +1,21 @@
 import vm from 'node:vm'
 import { describe, expect, it } from 'vitest'
-import type { ContentManifest } from '../content-manifest'
+import type { ScoIndex } from '../sco-index'
 import { createScormRuntime } from '../runtime'
 
-const manifest: ContentManifest = {
+const scoIndex: ScoIndex = {
   schemaVersion: 1,
   title: 'Runtime events',
   lang: 'en',
   presentation: 'scroll',
   pages: {
-    '0': { id: 'page-one', title: 'One', questions: {} }
+    '0': { id: 'page-one', title: 'One' }
   }
 }
 
-const runtime = createScormRuntime(manifest)
+const runtime = createScormRuntime(scoIndex)
 
-const suspendManifest: ContentManifest = {
+const suspendIndex: ScoIndex = {
   schemaVersion: 1,
   title: 'Suspend events',
   lang: 'en',
@@ -24,15 +24,21 @@ const suspendManifest: ContentManifest = {
     '0': {
       id: 'page-one',
       title: 'One',
-      questions: {
+      questionnaires: {
         '0': {
-          id: 'q-one',
-          type: 'multiple-choice',
-          prompt: '',
-          correctAnswers: [],
-          options: {
-            '0': { value: 'alpha', label: 'Alpha' },
-            '1': { value: 'beta', label: 'Beta' }
+          id: 'quiz',
+          maxAttempts: 1,
+          questions: {
+            '0': {
+              id: 'q-one',
+              type: 'multiple-choice',
+              prompt: '',
+              correctAnswers: [],
+              options: {
+                '0': { value: 'alpha', label: 'Alpha' },
+                '1': { value: 'beta', label: 'Beta' }
+              }
+            }
           }
         }
       }
@@ -40,12 +46,12 @@ const suspendManifest: ContentManifest = {
   }
 }
 
-/** A valid flat v1 payload carrying page progress and answers. */
+/** A valid flat v2 payload carrying page progress and answers. */
 const initialSuspendData = JSON.stringify({
-  v: 1,
+  v: 2,
   p: 50,
   x: '1',
-  d: { '0.a.0': [0, 1] }
+  d: { '0.a.0.0': [0, 1] }
 })
 
 interface CreateWindowOptions {
@@ -157,7 +163,7 @@ describe('SCORM runtime dev event logging', () => {
 
   it('logs the complete serialized suspend_data on read and write events', () => {
     const { window, logs } = createWindow({ suspendData: initialSuspendData })
-    vm.runInNewContext(createScormRuntime(suspendManifest), { window })
+    vm.runInNewContext(createScormRuntime(suspendIndex), { window })
 
     window.scormBridge.saveState({
       location: 'page-one',
@@ -188,10 +194,10 @@ describe('SCORM runtime dev event logging', () => {
     expect(typeof serialized).toBe('string')
     expect(writeEvent?.details.length).toBe(serialized.length)
     expect(JSON.parse(serialized)).toEqual({
-      v: 1,
+      v: 2,
       p: 100,
       x: '1',
-      d: { '0.a.0': [0, 1] }
+      d: { '0.a.0.0': [0, 1] }
     })
 
     expect(JSON.stringify([readEvent, writeEvent])).not.toContain('redacted')
@@ -205,7 +211,7 @@ describe('SCORM runtime dev event logging', () => {
 
     for (const scenario of scenarios) {
       const { window, logs } = createWindow(scenario.options)
-      vm.runInNewContext(createScormRuntime(suspendManifest), { window })
+      vm.runInNewContext(createScormRuntime(suspendIndex), { window })
 
       const saved = window.scormBridge.saveState({
         location: 'page-one',
@@ -231,10 +237,10 @@ describe('SCORM runtime dev event logging', () => {
       expect(typeof serialized, scenario.label).toBe('string')
       expect(writeEvent?.details.length, scenario.label).toBe(serialized.length)
       expect(JSON.parse(serialized), scenario.label).toEqual({
-        v: 1,
+        v: 2,
         p: 100,
         x: '1',
-        d: { '0.a.0': [0, 1] }
+        d: { '0.a.0.0': [0, 1] }
       })
 
       // ...and records how the write failed.
@@ -249,7 +255,7 @@ describe('SCORM runtime dev event logging', () => {
 
   it('does not report the suspend_data key as data when a read throws', () => {
     const { window, logs } = createWindow({ getValueThrows: true })
-    vm.runInNewContext(createScormRuntime(suspendManifest), { window })
+    vm.runInNewContext(createScormRuntime(suspendIndex), { window })
 
     const readEvent = logs
       .map((args) => args[1] as { name: string; details: Record<string, unknown> })
@@ -264,7 +270,7 @@ describe('SCORM runtime dev event logging', () => {
 
   it('does not report the suspend_data key as data when a read is unavailable', () => {
     const { window, logs } = createWindow({ getValueMissing: true })
-    vm.runInNewContext(createScormRuntime(suspendManifest), { window })
+    vm.runInNewContext(createScormRuntime(suspendIndex), { window })
 
     const readEvent = logs
       .map((args) => args[1] as { name: string; details: Record<string, unknown> })
@@ -283,7 +289,7 @@ describe('SCORM 2004 runtime', () => {
     const values: Record<string, string> = {
       'cmi.completion_status': 'incomplete',
       'cmi.location': 'resume-here',
-      'cmi.suspend_data': JSON.stringify({ v: 1, p: 0, x: '0' })
+      'cmi.suspend_data': JSON.stringify({ v: 2, p: 0, x: '0' })
     }
     const api = {
       Initialize: (value: string) => (calls.push(['Initialize', value]), 'true'),
@@ -304,7 +310,7 @@ describe('SCORM 2004 runtime', () => {
       addEventListener: () => undefined
     }
 
-    vm.runInNewContext(createScormRuntime(manifest, '2004'), { window })
+    vm.runInNewContext(createScormRuntime(scoIndex, '2004'), { window })
     expect(window.scormBridge.getLocation()).toBe('resume-here')
     expect(window.scormBridge.restoreState()).toEqual({ location: 'resume-here', pages: {} })
 
@@ -314,7 +320,7 @@ describe('SCORM 2004 runtime', () => {
     })
     expect(saved).toBe(true)
     expect(values['cmi.location']).toBe('next-location')
-    expect(JSON.parse(values['cmi.suspend_data']!)).toEqual({ v: 1, p: 100, x: '1' })
+    expect(JSON.parse(values['cmi.suspend_data']!)).toEqual({ v: 2, p: 100, x: '1' })
     expect(window.scormBridge.restoreState()).toEqual({
       location: 'next-location',
       pages: { 'page-one': { visited: true, completed: true } }
@@ -371,7 +377,7 @@ describe('SCORM 2004 runtime', () => {
       addEventListener: () => undefined
     }
     window.parent = window
-    vm.runInNewContext(createScormRuntime(manifest, '2004'), { window })
+    vm.runInNewContext(createScormRuntime(scoIndex, '2004'), { window })
     window.scormBridge.finish()
 
     const methods = logs.map((args) => (args[1] as { details: { method?: string } }).details.method)
