@@ -21,6 +21,7 @@ export interface RecordedPlayer {
   onBuffer?: () => void
   onBufferEnd?: () => void
   onEnded?: () => void
+  onPlaybackRateChange?: (rate: number) => void
 }
 
 const records: RecordedPlayer[] = []

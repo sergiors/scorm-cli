@@ -12,7 +12,11 @@ import type {
 import { collectQuestionnaires, collectVideoNodes } from './content-helpers'
 import { hasUnlimitedQuestionnaireAttempts } from './questionnaire-completion'
 import { decodeReadingLocation, isReadingAnchorId } from './reading-location'
-import { arePageVideoRequirementsMet, isVideoRequired } from './video-requirements'
+import {
+  arePageVideoRequirementsMet,
+  isVideoRequired,
+  requiredWatchSeconds
+} from './video-requirements'
 
 /** A fresh player state with no location and no recorded pages. */
 export function emptyPlayerState(): PlayerState {
@@ -73,24 +77,23 @@ function sanitizePageState(
   if (raw.visited === true) page.visited = true
   const completedWasPersisted = raw.completed === true
 
-  // The verified watch frontier is scoped to the videos this node owns and only
+  // Accumulated watch time is scoped to the videos this node owns and only
   // meaningful for a video that declares a positive requirement. Invalid values
-  // are dropped, a frontier beyond the authored duration is capped, and the rest
-  // is normalized to tenths exactly like a playback position.
-  if (isRecord(raw.watchedVideos)) {
-    const watchedVideos: Record<string, number> = {}
-    for (const [videoId, value] of Object.entries(raw.watchedVideos)) {
+  // are dropped, a total beyond the requirement is capped, and the rest is
+  // normalized to tenths exactly like a playback position.
+  if (isRecord(raw.videoWatchSeconds)) {
+    const videoWatchSeconds: Record<string, number> = {}
+    for (const [videoId, value] of Object.entries(raw.videoWatchSeconds)) {
       const video = videosById.get(videoId)
       if (!video || !isVideoRequired(video)) continue
-      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) continue
-      const duration = video.duration
-      const bounded =
-        typeof duration === 'number' && Number.isFinite(duration) && duration > 0
-          ? Math.min(value, duration)
-          : value
-      watchedVideos[videoId] = normalizeVideoPosition(bounded)
+      const required = requiredWatchSeconds(video)
+      if (required === undefined) continue
+      if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) continue
+      videoWatchSeconds[videoId] = normalizeVideoPosition(Math.min(value, required))
     }
-    if (Object.keys(watchedVideos).length > 0) page.watchedVideos = watchedVideos
+    if (Object.keys(videoWatchSeconds).length > 0) {
+      page.videoWatchSeconds = videoWatchSeconds
+    }
   }
 
   // Completion is restored strictly from its own persisted field. It is never
@@ -105,7 +108,7 @@ function sanitizePageState(
   }
 
   // A page cannot be complete while any authored questionnaire still has a
-  // pending result or any required video is still short of its verified
+  // pending result or any required video is still short of its accumulated
   // minimum. Older suspend data could carry such a stale flag, so drop it and
   // let the presentation reporter restore completion only after every
   // requirement is met.
@@ -293,13 +296,13 @@ function sanitizePageState(
  * cap keeps every recorded attempt and always leaves a retry available. A
  * recorded attempt restores its submitted result even though suspend data never
  * encoded submissions, while completion is restored only from its own field.
- * Video positions and verified watch frontiers are scoped to the page/item that
+ * Video positions and accumulated watch time are scoped to the page/item that
  * owns the video, so a video moved to another node never retains progress under
- * its old node. A watch frontier is kept only for a video with an authored
- * requirement, is capped at the authored duration, and is normalized like a
+ * its old node. Accumulated watch time is kept only for a video with an authored
+ * requirement, is capped at that requirement, and is normalized like a
  * position. A persisted page completion survives only when every authored
  * questionnaire has completed its result and, for Scroll/Slides presentations,
- * every required video has reached its verified minimum; Tiles retain their
+ * every required video has reached its accumulated minimum; Tiles retain their
  * questionnaire-only gate. An in-progress retry stays unsubmitted. A submitted
  * questionnaire with no legacy history is seeded with one score from its
  * sanitized answers. The

@@ -40,6 +40,11 @@ export async function parseVideo(
   const poster = optionalString(values.poster, 'poster', sourceFile, node)
   const duration = optionalSeconds(values.duration, 'duration', sourceFile, node)
   const minWatchTime = optionalSeconds(values.minWatchTime, 'minWatchTime', sourceFile, node)
+  if (minWatchTime !== undefined && duration === undefined) {
+    throw new Error(
+      `${sourceLocation(sourceFile, node)}: "duration" is required when "minWatchTime" is provided`
+    )
+  }
   if (duration !== undefined && minWatchTime !== undefined && minWatchTime > duration) {
     throw new Error(
       `${sourceLocation(sourceFile, node)}: "minWatchTime" must not exceed "duration"`

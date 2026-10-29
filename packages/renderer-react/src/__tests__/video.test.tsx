@@ -100,24 +100,24 @@ async function mountVideo(
   node: VideoNode,
   position: number | undefined,
   onPosition: (seconds: number) => void,
-  watchedUntil?: number,
-  onWatched?: (seconds: number) => void
+  watchSeconds?: number,
+  onWatchSeconds?: (seconds: number) => void
 ): Promise<RecordedPlayer> {
   const pageId = VIDEO_PAGE_ID
   const contentPackage = videoPackageFor(node)
   let lastPosition = position
-  let lastWatched = watchedUntil
+  let lastWatch = watchSeconds
   window.scormBridge = {
     restoreState: (): PlayerState => ({
       pages:
-        position === undefined && watchedUntil === undefined
+        position === undefined && watchSeconds === undefined
           ? {}
           : {
               [pageId]: {
                 ...(position === undefined ? {} : { videos: { [node.id]: position } }),
-                ...(watchedUntil === undefined
+                ...(watchSeconds === undefined
                   ? {}
-                  : { watchedVideos: { [node.id]: watchedUntil } })
+                  : { videoWatchSeconds: { [node.id]: watchSeconds } })
               }
             }
     }),
@@ -127,10 +127,10 @@ async function mountVideo(
         lastPosition = nextPosition
         onPosition(nextPosition)
       }
-      const nextWatched = state.pages[pageId]?.watchedVideos?.[node.id]
-      if (nextWatched !== undefined && nextWatched !== lastWatched) {
-        lastWatched = nextWatched
-        onWatched?.(nextWatched)
+      const nextWatch = state.pages[pageId]?.videoWatchSeconds?.[node.id]
+      if (nextWatch !== undefined && nextWatch !== lastWatch) {
+        lastWatch = nextWatch
+        onWatchSeconds?.(nextWatch)
       }
     }
   }
@@ -152,15 +152,15 @@ function savedPositions(onPosition: { mock: { calls: unknown[][] } }): number[] 
   return onPosition.mock.calls.map((call) => call[0] as number)
 }
 
-function savedWatched(onWatched: { mock: { calls: unknown[][] } }): number[] {
-  return onWatched.mock.calls.map((call) => call[0] as number)
+function savedWatchSeconds(onWatchSeconds: { mock: { calls: unknown[][] } }): number[] {
+  return onWatchSeconds.mock.calls.map((call) => call[0] as number)
 }
 
 let watchClock = 0
 
 function startWatching(...records: RecordedPlayer[]): void {
   watchClock = 0
-  vi.spyOn(Date, 'now').mockImplementation(() => watchClock)
+  vi.spyOn(performance, 'now').mockImplementation(() => watchClock)
   for (const record of records) {
     act(() => record.onPlay?.())
   }
@@ -588,133 +588,223 @@ describe('Video resume and persistence', () => {
 describe('Video watch requirements', () => {
   const requiredNode: VideoNode = { ...vimeoNode, duration: 120, minWatchTime: 60 }
 
-  it('persists the verified frontier only while playback advances continuously', async () => {
+  it('persists accumulated watch seconds while active playback advances', async () => {
     const onPosition = vi.fn()
-    const onWatched = vi.fn()
-    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatched)
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatchSeconds)
     startWatching(record)
 
     progressAfter(record, 2)
     progressAfter(record, 4, 2)
     progressAfter(record, 5.8, 1.8)
 
-    // Every continuous tick extends the frontier and persists it; the position
-    // is persisted on its own coarse cadence for a later resume.
-    expect(savedWatched(onWatched)).toEqual([2, 4, 5.8])
+    // Every continuous tick extends the accumulated total and persists it; the
+    // playback position persists on its own coarse cadence for a later resume.
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2, 4, 5.8])
     expect(savedPositions(onPosition)).toEqual([2])
   })
 
-  it('rejects a YouTube seekless progress jump beyond the frontier and pulls playback back', async () => {
-    const onWatched = vi.fn()
+  it('credits only elapsed wall time, even when media advance stays within tolerance', async () => {
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(
+      { ...requiredNode, provider: 'youtube', src: providerSources.youtube },
+      undefined,
+      vi.fn(),
+      undefined,
+      onWatchSeconds
+    )
+    startWatching(record)
+
+    // Media jumped 1.8s in one wall second, then 0.7s in a quarter second, then
+    // 0.3s backward in three quarters of a second: only elapsed wall time is
+    // ever credited, never the media-time delta.
+    progressAfter(record, 2)
+    progressAfter(record, 3.8, 1)
+    progressAfter(record, 4.5, 0.25)
+    progressAfter(record, 4.2, 0.75)
+
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2, 3, 4])
+    expect(players.seekTo).not.toHaveBeenCalled()
+  })
+
+  it.each<VideoProvider>(['vimeo', 'youtube'])(
+    'credits %s watch time only by elapsed wall time, never at zero elapsed',
+    async (provider) => {
+      const onWatchSeconds = vi.fn()
+      const record = await mountVideo(
+        { ...requiredNode, provider, src: providerSources[provider] },
+        undefined,
+        vi.fn(),
+        undefined,
+        onWatchSeconds
+      )
+      startWatching(record)
+
+      progressAfter(record, 2)
+      // Each repeated jump is small enough to pass the discontinuity tolerance,
+      // yet no elapsed time accrues, so the total must not grow.
+      progressAfter(record, 2.9, 0)
+      progressAfter(record, 3.9, 0)
+      progressAfter(record, 2.9, 0)
+      progressAfter(record, 3.9, 0)
+      progressAfter(record, 2.9, 0)
+      progressAfter(record, 3.9, 0)
+
+      expect(savedWatchSeconds(onWatchSeconds)).toEqual([2])
+      // A jump is never corrected away: seeking is free on every provider.
+      expect(players.seekTo).not.toHaveBeenCalled()
+    }
+  )
+
+  it('discards a YouTube seekless progress jump without crediting or reverting playback', async () => {
+    const onWatchSeconds = vi.fn()
     const onPosition = vi.fn()
-    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatched)
+    const record = await mountVideo(
+      { ...requiredNode, provider: 'youtube', src: providerSources.youtube },
+      undefined,
+      onPosition,
+      undefined,
+      onWatchSeconds
+    )
     startWatching(record)
 
     progressAfter(record, 3)
     progressAfter(record, 40, 1)
 
     // YouTube never emits `onSeek`, so only the progress discontinuity itself
-    // can reject the jump and pull the provider back to the frontier.
-    expect(players.seekTo).toHaveBeenCalledTimes(1)
-    expect(players.seekTo).toHaveBeenCalledWith(3, 'seconds', true)
+    // can spot the jump: the interval is discarded whole and the segment is
+    // re-baselined at the jumped position, without any corrective seek.
+    expect(players.seekTo).not.toHaveBeenCalled()
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([3])
+    expect(savedPositions(onPosition)).toEqual([3, 40])
 
-    // The frontier did not move, and playback measures from it again.
-    progressAfter(record, 4, 1)
-    expect(savedWatched(onWatched)).toEqual([3, 4])
-    expect(savedPositions(onPosition)).toEqual([3])
+    // Playback continues measuring from the real position afterwards.
+    progressAfter(record, 42, 2)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([3, 5])
+    expect(savedPositions(onPosition)).toEqual([3, 40])
   })
 
-  it('does not credit repeated immediate jumps within the discontinuity tolerance', async () => {
-    const onWatched = vi.fn()
-    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatched)
-    startWatching(record)
-
-    progressAfter(record, 2)
-    // Each 0.9s jump is small enough to pass the provider discontinuity check,
-    // but repeated jumps without elapsed time must not move the watch frontier.
-    progressAfter(record, 2.9, 0)
-    progressAfter(record, 3.9, 0)
-    progressAfter(record, 2.9, 0)
-    progressAfter(record, 3.9, 0)
-    progressAfter(record, 2.9, 0)
-    progressAfter(record, 3.9, 0)
-
-    expect(savedWatched(onWatched)).toEqual([2])
-    expect(players.seekTo.mock.calls).toEqual([
-      [2, 'seconds', true],
-      [2, 'seconds', true],
-      [2, 'seconds', true]
-    ])
-  })
-
-  it('limits cumulative progress by elapsed time, including while the tab is hidden', async () => {
-    const onWatched = vi.fn()
-    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatched)
-    startWatching(record)
-    progressAfter(record, 2)
-
-    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
-    progressAfter(record, 3.8, 1)
-    progressAfter(record, 4.5, 0.25)
-
-    // The first reading is within the one-second discontinuity tolerance, but
-    // only one second of elapsed wall time is credited. The cumulative media
-    // advance then exceeds elapsed playback plus that tolerance, so the last is corrected.
-    expect(savedWatched(onWatched)).toEqual([2, 3])
-    expect(players.seekTo).toHaveBeenCalledWith(3, 'seconds', true)
-  })
-
-  it('blocks a reported Vimeo seek beyond the frontier and always allows backward seeking', async () => {
-    const onWatched = vi.fn()
+  it('discards a backward YouTube progress jump and never rewinds playback', async () => {
+    const onWatchSeconds = vi.fn()
     const onPosition = vi.fn()
-    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatched)
+    const record = await mountVideo(
+      { ...requiredNode, provider: 'youtube', src: providerSources.youtube },
+      undefined,
+      onPosition,
+      undefined,
+      onWatchSeconds
+    )
+    startWatching(record)
+
+    progressAfter(record, 3)
+    progressAfter(record, 40, 1)
+    progressAfter(record, 2, 1)
+
+    // The backward jump lands wherever the provider actually is; the interval
+    // is discarded and the player is left exactly where it sought.
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([3])
+    expect(savedPositions(onPosition)).toEqual([3, 40, 2])
+
+    progressAfter(record, 4, 2)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([3, 5])
+    expect(players.seekTo).not.toHaveBeenCalled()
+  })
+
+  it('allows a reported seek and records only the continuous tail before it', async () => {
+    const onWatchSeconds = vi.fn()
+    const onPosition = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatchSeconds)
     startWatching(record)
 
     progressAfter(record, 3)
     act(() => record.onSeek?.(50))
 
-    // Vimeo reports seeks directly, so the blocked seek returns the player to
-    // the frontier immediately.
-    expect(players.seekTo).toHaveBeenCalledTimes(1)
-    expect(players.seekTo).toHaveBeenCalledWith(3, 'seconds', true)
-    expect(savedWatched(onWatched)).toEqual([3])
+    // Vimeo reports seeks directly. The seek is never blocked or corrected,
+    // and it closes the active interval: nothing beyond the watched tail is
+    // credited for landing on new media.
+    expect(players.seekTo).not.toHaveBeenCalled()
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([3])
+    expect(savedPositions(onPosition)).toEqual([3, 50])
 
+    // A backward seek is equally free.
     act(() => record.onSeek?.(1))
-    expect(players.seekTo).toHaveBeenCalledTimes(1)
-    expect(savedPositions(onPosition)).toEqual([3, 1])
+    expect(savedPositions(onPosition)).toEqual([3, 50, 1])
+
+    progressAfter(record, 2, 1)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([3, 4])
   })
 
-  it('never verifies watched time across a pause and resumes through the frontier', async () => {
+  it('discards the unsampled watch tail at a reported seek and resumes from its target', async () => {
+    const onWatchSeconds = vi.fn()
     const onPosition = vi.fn()
-    const onWatched = vi.fn()
-    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatched)
+    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatchSeconds)
+    startWatching(record)
+
+    progressAfter(record, 3)
+    // Vimeo reports `onSeek` after the seek has completed; the elapsed wall
+    // time since this sample may include the seek or buffering operation.
+    watchClock += 2000
+    act(() => record.onSeek?.(50))
+
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([3])
+    expect(savedPositions(onPosition)).toEqual([3, 50])
+    expect(players.seekTo).not.toHaveBeenCalled()
+
+    // The seek remains unrestricted, and active playback from its target starts
+    // a fresh interval that accumulates normally.
+    progressAfter(record, 52, 2)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([3, 5])
+    expect(savedPositions(onPosition)).toEqual([3, 50])
+  })
+
+  it('accumulates again when a watched segment is replayed', async () => {
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatchSeconds)
+    startWatching(record)
+
+    progressAfter(record, 2)
+    progressAfter(record, 4, 2)
+    act(() => record.onSeek?.(1))
+    progressAfter(record, 2, 1)
+    act(() => record.onSeek?.(1))
+    progressAfter(record, 2, 1)
+
+    // Rewatching the same segment adds to the total each time.
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2, 4, 5, 6])
+  })
+
+  it('does not credit time across a pause and resumes where playback actually is', async () => {
+    const onWatchSeconds = vi.fn()
+    const onPosition = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatchSeconds)
     startWatching(record)
 
     progressAfter(record, 2)
     players.getCurrentTime.mockReturnValue(null)
     act(() => record.onPause?.())
 
-    // The paused tail is the verified frontier itself: nothing new was watched.
-    expect(savedWatched(onWatched)).toEqual([2])
+    // Paused wall time is never credited: the total stays at what was watched.
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2])
 
     progressAfter(record, 30)
-    expect(savedWatched(onWatched)).toEqual([2])
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2])
 
-    // Resuming with a stale live position returns the player to the frontier,
-    // and playback verifies again from that restored point.
+    // Resuming neither seeks nor rewinds the player; accumulation restarts
+    // from wherever playback actually is.
     players.getCurrentTime.mockReturnValue(40)
     act(() => record.onPlay?.())
-    expect(players.seekTo).toHaveBeenCalledWith(2, 'seconds', true)
+    expect(players.seekTo).not.toHaveBeenCalled()
 
-    progressAfter(record, 3.5, 1.5)
-    expect(savedWatched(onWatched)).toEqual([2, 3.5])
-    expect(savedPositions(onPosition)).toEqual([2, 30, 2])
+    progressAfter(record, 42, 2)
+    progressAfter(record, 45, 3)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2, 4, 7])
+    expect(savedPositions(onPosition)).toEqual([2, 30, 42])
   })
 
-  it('never verifies watched time while buffering and resumes from the real position', async () => {
+  it('does not credit time while buffering and resumes accumulating from the real position', async () => {
+    const onWatchSeconds = vi.fn()
     const onPosition = vi.fn()
-    const onWatched = vi.fn()
-    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatched)
+    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatchSeconds)
     startWatching(record)
 
     progressAfter(record, 2)
@@ -723,20 +813,21 @@ describe('Video watch requirements', () => {
     act(() => record.onBuffer?.())
 
     progressAfter(record, 9)
-    expect(savedWatched(onWatched)).toEqual([2, 4])
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2, 4])
 
-    // Buffering ended with the live position far past the frontier, so the
-    // provider is pulled back once instead of crediting the gap.
+    // Buffering ended wherever the provider resumed; the gap does not count
+    // and the player is never pulled back.
+    players.getCurrentTime.mockReturnValue(12)
     act(() => record.onBufferEnd?.())
-    expect(players.seekTo).toHaveBeenCalledWith(4, 'seconds', true)
-    expect(savedPositions(onPosition)).toEqual([2, 9, 4])
+    expect(players.seekTo).not.toHaveBeenCalled()
+    expect(savedPositions(onPosition)).toEqual([2, 9])
 
-    progressAfter(record, 6, 2)
-    expect(savedWatched(onWatched)).toEqual([2, 4, 6])
-    expect(savedPositions(onPosition)).toEqual([2, 9, 4])
+    progressAfter(record, 14, 2)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2, 4, 6])
+    expect(savedPositions(onPosition)).toEqual([2, 9, 14])
   })
 
-  it('resumes an unfinished required video within its verified frontier', async () => {
+  it('resumes an unfinished required video at its saved playback position', async () => {
     const onPosition = vi.fn()
     const record = await mountVideo(requiredNode, 60, onPosition, 10, vi.fn())
 
@@ -747,24 +838,52 @@ describe('Video watch requirements', () => {
       record.onDuration?.(200)
     })
 
-    // The persisted position was saved before the requirement existed, so the
-    // resume rests at the verified frontier and never autoplays.
+    // The saved position is restored wholesale: watch progress no longer
+    // bounds where a resume may start, and the restore never autoplays.
     expect(players.seekTo).toHaveBeenCalledTimes(1)
-    expect(players.seekTo).toHaveBeenCalledWith(10, 'seconds', false)
+    expect(players.seekTo).toHaveBeenCalledWith(60, 'seconds', false)
     expect(record.playing).toBeFalsy()
+    expect(onPosition).not.toHaveBeenCalled()
   })
 
-  it('resumes a required video at its full position once the requirement is met', async () => {
-    const record = await mountVideo(requiredNode, 60, vi.fn(), 60, vi.fn())
+  it('continues accumulating from restored watch seconds after playback begins', async () => {
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(requiredNode, 60, vi.fn(), 10, onWatchSeconds)
+
+    await act(async () => {
+      record.onDuration?.(200)
+    })
+    startWatching(record)
+    progressAfter(record, 62, 2)
+
+    // The persisted 10 seconds were restored, and two more active seconds
+    // accrue from there.
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([12])
+  })
+
+  it('restores accumulated watch seconds into a component without a resume position', async () => {
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), 10, onWatchSeconds)
+
+    // Restoring alone never reports anything; totals only move through play.
+    expect(onWatchSeconds).not.toHaveBeenCalled()
+
+    startWatching(record)
+    progressAfter(record, 2)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([12])
+  })
+
+  it('resumes a required video at its saved position once the requirement is met', async () => {
+    const record = await mountVideo(requiredNode, 100, vi.fn(), 60, vi.fn())
 
     await act(async () => {
       record.onDuration?.(200)
     })
     expect(players.seekTo).toHaveBeenCalledTimes(1)
-    expect(players.seekTo).toHaveBeenCalledWith(60, 'seconds', false)
+    expect(players.seekTo).toHaveBeenCalledWith(100, 'seconds', false)
   })
 
-  it('seeds YouTube with the verified frontier for an unfinished required video', async () => {
+  it('seeds YouTube with the saved playback position regardless of watch progress', async () => {
     const record = await mountVideo(
       { ...requiredNode, provider: 'youtube', src: providerSources.youtube },
       60,
@@ -773,9 +892,9 @@ describe('Video watch requirements', () => {
       vi.fn()
     )
 
-    // The saved position is clamped before the player mounts, so the iframe
-    // never opens on unwatched time and no imperative seek is involved.
-    expect(record.config?.youtube?.playerVars?.start).toBe(10)
+    // The saved position seeds the iframe directly; watch progress no longer
+    // clamps it, and no imperative seek is ever involved.
+    expect(record.config?.youtube?.playerVars?.start).toBe(60)
 
     await act(async () => {
       record.onDuration?.(200)
@@ -783,97 +902,253 @@ describe('Video watch requirements', () => {
     expect(players.seekTo).not.toHaveBeenCalled()
   })
 
-  it('relaxes seeking once the authored minimum has been watched', async () => {
+  it('credits 30 wall seconds at 2x playback as 30 seconds of watch time', async () => {
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatchSeconds)
+    startWatching(record)
+
+    act(() => record.onPlaybackRateChange?.(2))
+    progressAfter(record, 60, 30)
+
+    // The credited amount is elapsed wall time at the active rate, never the
+    // media-time delta: 30 real seconds at 2x do not become a full minute.
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([30])
+  })
+
+  it('closes the active interval under the old rate when the rate changes mid-playback', async () => {
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatchSeconds)
+    startWatching(record)
+
+    progressAfter(record, 10, 10)
+    act(() => record.onPlaybackRateChange?.(2))
+    progressAfter(record, 34, 3)
+
+    // The elapsed 3 seconds are credited once under the new rate; the 24
+    // seconds of media the faster playback covered add nothing extra.
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([10, 13])
+  })
+
+  it('credits elapsed watch time independently of system clock changes', async () => {
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatchSeconds)
+    startWatching(record)
+    let systemClock = 1_000_000
+    vi.spyOn(Date, 'now').mockImplementation(() => systemClock)
+
+    // A wall-clock jump cannot satisfy the 60-second requirement; only the
+    // monotonic test clock advanced by progressAfter contributes watch time.
+    systemClock += 120_000
+    progressAfter(record, 2, 2)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2])
+
+    systemClock -= 240_000
+    progressAfter(record, 4, 2)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2, 4])
+  })
+
+  it('caps accumulated watch seconds at the authored minimum and keeps seeking free', async () => {
+    const onWatchSeconds = vi.fn()
     const onPosition = vi.fn()
-    const onWatched = vi.fn()
     const eagerNode: VideoNode = { ...vimeoNode, duration: 120, minWatchTime: 6 }
-    const record = await mountVideo(eagerNode, undefined, onPosition, undefined, onWatched)
+    const record = await mountVideo(eagerNode, undefined, onPosition, undefined, onWatchSeconds)
     startWatching(record)
 
     for (const tick of [2, 4, 6]) {
       progressAfter(record, tick, 2)
     }
-    expect(savedWatched(onWatched)).toEqual([2, 4, 6])
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2, 4, 6])
 
-    // The requirement is met: a forward seek is no longer blocked or corrected.
+    // Playback past the requirement neither grows nor re-reports the total.
+    progressAfter(record, 8, 2)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2, 4, 6])
+
+    // Seeking remains free at every stage of the requirement.
     act(() => record.onSeek?.(100))
     expect(players.seekTo).not.toHaveBeenCalled()
+    expect(savedPositions(onPosition)).toEqual([2, 8, 100])
 
-    act(() => record.onProgress?.({ playedSeconds: 110 }))
-    expect(savedPositions(onPosition)).toEqual([2, 100, 110])
-    expect(savedWatched(onWatched)).toEqual([2, 4, 6])
+    progressAfter(record, 110, 1)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2, 4, 6])
+    expect(savedPositions(onPosition)).toEqual([2, 8, 100, 110])
   })
 
-  it('completes the requirement at the natural end of shorter media', async () => {
-    const onPosition = vi.fn()
-    const onWatched = vi.fn()
-    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatched)
+  it('does not credit a seek to the end followed by the end event', async () => {
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatchSeconds)
     startWatching(record)
-
-    // The provider media is shorter than the authored duration describes.
-    await act(async () => {
-      record.onDuration?.(50)
-    })
-    for (let tick = 3; tick <= 48; tick += 3) {
-      progressAfter(record, tick, 3)
-    }
-    expect(savedWatched(onWatched)).toHaveLength(16)
-    expect(savedWatched(onWatched).at(-1)).toBe(48)
-
-    // Watching everything available satisfies the authored requirement even
-    // though the provider reported less time than the authored duration.
-    act(() => record.onEnded?.())
-    expect(savedWatched(onWatched)).toHaveLength(17)
-    expect(savedWatched(onWatched).at(-1)).toBe(60)
-    expect(savedPositions(onPosition).at(-1)).toBe(0)
-  })
-
-  it('does not complete at the end after rejecting a seek to the end', async () => {
-    const onWatched = vi.fn()
-    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatched)
-    startWatching(record)
-    await act(async () => {
-      record.onDuration?.(50)
-    })
 
     progressAfter(record, 3)
-    progressAfter(record, 50, 1)
+    act(() => record.onSeek?.(50))
     act(() => record.onEnded?.())
 
-    expect(savedWatched(onWatched)).toEqual([3])
+    // Landing on the end through a seek adds nothing: only the watched 3
+    // seconds count, so the requirement is not met by the seek alone.
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([3])
   })
 
-  it('never verifies or gates playback for a video without a requirement', async () => {
+  it('never credits the requirement through the end event alone', async () => {
+    const onWatchSeconds = vi.fn()
     const onPosition = vi.fn()
-    const onWatched = vi.fn()
-    const record = await mountVideo(vimeoNode, undefined, onPosition, undefined, onWatched)
+    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatchSeconds)
+    startWatching(record)
 
-    act(() => record.onProgress?.({ playedSeconds: 2 }))
-    act(() => record.onProgress?.({ playedSeconds: 40 }))
+    // The learner watched every available second, but the accumulated total
+    // only ever equals real watch time: the end event adds nothing beyond it.
+    progressAfter(record, 45, 45)
+    act(() => record.onEnded?.())
 
-    expect(savedWatched(onWatched)).toEqual([])
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([45])
+    expect(savedPositions(onPosition)).toEqual([45, 0])
+  })
+
+  it('credits the tail since the last tick when playback reaches the end', async () => {
+    const onWatchSeconds = vi.fn()
+    const tailNode: VideoNode = { ...vimeoNode, duration: 50, minWatchTime: 42 }
+    const record = await mountVideo(tailNode, undefined, vi.fn(), undefined, onWatchSeconds)
+    startWatching(record)
+
+    progressAfter(record, 38, 38)
+    // Four wall seconds pass before the provider reports the end; that active
+    // tail still belongs to the last interval and completes the requirement.
+    watchClock += 4000
+    act(() => record.onEnded?.())
+
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([38, 42])
+  })
+
+  it('flushes the accumulated watch tail once on teardown', async () => {
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatchSeconds)
+    startWatching(record)
+
+    progressAfter(record, 2)
+    progressAfter(record, 4, 2)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2, 4])
+
+    // Time accrues after the last progress tick; leaving mid-playback flushes
+    // that tail exactly once so at most one tick of watch time is lost.
+    watchClock += 1500
+    act(() => root.unmount())
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2, 4, 5.5])
+  })
+
+  it('never records watch time for a video without a requirement', async () => {
+    const onPosition = vi.fn()
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(vimeoNode, undefined, onPosition, undefined, onWatchSeconds)
+
+    progressAfter(record, 2)
+    progressAfter(record, 40)
+
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([])
     expect(players.seekTo).not.toHaveBeenCalled()
     expect(savedPositions(onPosition)).toEqual([2, 40])
   })
 
-  it('shows verified progress and completes the indicator at the authored minimum', async () => {
+  it('flushes a subsecond final increment and completes the indicator during playback', async () => {
     const eagerNode: VideoNode = { ...vimeoNode, duration: 120, minWatchTime: 6 }
-    await mountVideo(eagerNode, undefined, vi.fn(), undefined, vi.fn())
+    const onWatchSeconds = vi.fn()
+    await mountVideo(eagerNode, undefined, vi.fn(), undefined, onWatchSeconds)
     startWatching(players.latest())
     const requirement = () => container.querySelector('[data-video-requirement]')
 
     expect(requirement()?.getAttribute('data-complete')).toBe('false')
-    expect(requirement()?.textContent).toContain('0% watched')
+    expect(requirement()?.textContent).toContain('Required viewing 0:00 / 0:06')
 
     progressAfter(players.latest(), 2)
-    expect(requirement()?.textContent).toContain('33% watched')
+    expect(requirement()?.textContent).toContain('Required viewing 0:02 / 0:06')
 
     progressAfter(players.latest(), 4, 2)
-    expect(requirement()?.textContent).toContain('66% watched')
+    expect(requirement()?.textContent).toContain('Required viewing 0:04 / 0:06')
 
-    progressAfter(players.latest(), 6, 2)
+    progressAfter(players.latest(), 5.1, 1.1)
+    expect(requirement()?.getAttribute('data-complete')).toBe('false')
+    expect(requirement()?.textContent).toContain('Required viewing 0:05 / 0:06')
+
+    // The final half-second crosses the cap by less than the one-second save
+    // cadence. It must be persisted now, while playback remains active.
+    progressAfter(players.latest(), 6, 0.9)
     expect(requirement()?.getAttribute('data-complete')).toBe('true')
     expect(requirement()?.textContent).toContain('Required viewing complete')
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2, 4, 5.1, 6])
+
+    // Continued playback at the cap neither stalls completion nor creates
+    // repeated writes.
+    progressAfter(players.latest(), 8, 2)
+    expect(requirement()?.getAttribute('data-complete')).toBe('true')
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2, 4, 5.1, 6])
+  })
+
+  it('saves and restores required YouTube watch progress through the player session', async () => {
+    const youtubeNode: VideoNode = {
+      ...vimeoNode,
+      provider: 'youtube',
+      src: providerSources.youtube,
+      duration: 120,
+      minWatchTime: 6
+    }
+    const contentPackage = videoPackageFor(youtubeNode)
+    let savedState: PlayerState = { pages: {} }
+    const saveState = vi.fn((state: PlayerState) => {
+      savedState = state
+    })
+    window.scormBridge = {
+      restoreState: () => savedState,
+      saveState
+    }
+
+    const renderVideo = async (): Promise<RecordedPlayer> => {
+      await act(async () => {
+        root.render(
+          <PlayerI18nProvider>
+            <PlayerProvider contentPackage={contentPackage}>
+              <PageProvider pageId={VIDEO_PAGE_ID}>
+                <Video node={youtubeNode} />
+              </PageProvider>
+            </PlayerProvider>
+          </PlayerI18nProvider>
+        )
+      })
+      return players.latest()
+    }
+
+    const record = await renderVideo()
+    const requirement = () => container.querySelector('[data-video-requirement]')
+    expect(requirement()?.textContent).toContain('Required viewing 0:00 / 0:06')
+
+    startWatching(record)
+    progressAfter(record, 2, 2)
+    expect(requirement()?.textContent).toContain('Required viewing 0:02 / 0:06')
+
+    progressAfter(record, 4, 2)
+    expect(requirement()?.textContent).toContain('Required viewing 0:04 / 0:06')
+
+    // YouTube does not report `onSeek`: a seek appears as a progress jump. It is
+    // left at the learner's target without crediting the jump, then playback
+    // continues and the next real interval advances the requirement.
+    progressAfter(record, 40, 1)
+    expect(players.seekTo).not.toHaveBeenCalled()
+    expect(requirement()?.textContent).toContain('Required viewing 0:04 / 0:06')
+    expect(savedState.pages[VIDEO_PAGE_ID]?.videos).toEqual({ [youtubeNode.id]: 40 })
+    expect(savedState.pages[VIDEO_PAGE_ID]?.videoWatchSeconds).toEqual({ [youtubeNode.id]: 4 })
+
+    progressAfter(record, 41, 1)
+    expect(requirement()?.textContent).toContain('Required viewing 0:05 / 0:06')
+    expect(savedState.pages[VIDEO_PAGE_ID]?.videoWatchSeconds).toEqual({ [youtubeNode.id]: 5 })
+    expect(players.seekTo).not.toHaveBeenCalled()
+
+    // Unmount flushes the latest playback position. A fresh session restores
+    // YouTube's `start` from t while the requirement label is independently
+    // derived from the accumulated w value.
+    act(() => root.unmount())
+    root = createRoot(container)
+    const resumed = await renderVideo()
+
+    expect(resumed.config?.youtube?.playerVars?.start).toBe(41)
+    expect(requirement()?.textContent).toContain('Required viewing 0:05 / 0:06')
+    expect(resumed.playing).toBeFalsy()
+    expect(players.seekTo).not.toHaveBeenCalled()
   })
 
   it('renders no requirement indicator for a video without a minimum', async () => {
@@ -881,7 +1156,7 @@ describe('Video watch requirements', () => {
     expect(container.querySelector('[data-video-requirement]')).toBeNull()
   })
 
-  it('verifies and persists independent frontiers for every required video', async () => {
+  it('accumulates independent watch seconds for every required video', async () => {
     const first: VideoNode = {
       ...vimeoNode,
       id: 'video:first.mdx:1:1',
@@ -890,11 +1165,10 @@ describe('Video watch requirements', () => {
       minWatchTime: 6
     }
     const second: VideoNode = {
-      ...vimeoNode,
+      ...requiredNode,
       id: 'video:second.mdx:1:1',
-      src: './second.mp4',
-      duration: 120,
-      minWatchTime: 60
+      provider: 'youtube',
+      src: providerSources.youtube
     }
     const watchedByVideo = new Map<string, number>()
     const nodesById = new Map([first, second].map((node) => [node.id, node]))
@@ -902,7 +1176,7 @@ describe('Video watch requirements', () => {
       restoreState: (): PlayerState => ({ pages: {} }),
       saveState: (state) => {
         for (const [videoId, watched] of Object.entries(
-          state.pages[VIDEO_PAGE_ID]?.watchedVideos ?? {}
+          state.pages[VIDEO_PAGE_ID]?.videoWatchSeconds ?? {}
         )) {
           if (nodesById.has(videoId) && typeof watched === 'number') {
             watchedByVideo.set(videoId, watched)
@@ -925,15 +1199,14 @@ describe('Video watch requirements', () => {
     const [firstPlayer, secondPlayer] = players.records
     startWatching(firstPlayer, secondPlayer)
 
-    // The first video advances through continuous playback.
-    for (const tick of [2, 4, 6]) {
-      progressAfter(firstPlayer, tick, 2)
-    }
-    // The second video's own frontier is independent: its forward jump is
-    // rejected and pulled back while the first keeps its verified progress.
+    // The wall clock is shared, so each video's ticks are sequenced to keep
+    // every player's elapsed interval readable.
     progressAfter(secondPlayer, 3, 3)
+    // The second video's seekless YouTube jump is discarded whole, without
+    // touching the first video's accumulated total or either player.
     progressAfter(secondPlayer, 40, 1)
-    expect(players.seekTo).toHaveBeenCalledWith(3, 'seconds', true)
+    progressAfter(firstPlayer, 2, 2)
+    expect(players.seekTo).not.toHaveBeenCalled()
 
     expect(watchedByVideo.get(first.id)).toBe(6)
     expect(watchedByVideo.get(second.id)).toBe(3)
@@ -1310,50 +1583,67 @@ describe('usePlayerSession video watch requirements', () => {
     }
   }
 
-  it('persists a verified frontier separately from the playback position', () => {
+  it('persists accumulated watch seconds separately from the playback position', () => {
     const saveState = vi.fn()
     window.scormBridge = { saveState }
     renderSession(requiredVideoPackage)
 
     act(() => session?.setVideoPosition(PAGE_ID, VIDEO_ID, 30.5))
-    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, 12.34))
+    act(() => session?.setVideoWatchSeconds(PAGE_ID, VIDEO_ID, 5.34))
 
     const saved = lastSaved(saveState)
     expect(saved.pages[PAGE_ID]?.videos).toEqual({ [VIDEO_ID]: 30.5 })
-    expect(saved.pages[PAGE_ID]?.watchedVideos).toEqual({ [VIDEO_ID]: 12.3 })
+    expect(saved.pages[PAGE_ID]?.videoWatchSeconds).toEqual({ [VIDEO_ID]: 5.3 })
     // Video progress never contributes to package progress.
     expect(saveState.mock.calls.at(-1)?.[1]).toBe(getPackageProgress(requiredVideoPackage, saved))
   })
 
-  it('never rewinds a monotonic frontier and skips writes that change nothing', () => {
+  it('never rewinds a monotonic total, caps it at the requirement, and skips no-op writes', () => {
     const saveState = vi.fn()
     window.scormBridge = { saveState }
     renderSession(requiredVideoPackage)
 
-    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, 20.3))
+    act(() => session?.setVideoWatchSeconds(PAGE_ID, VIDEO_ID, 5.5))
     const calls = saveState.mock.calls.length
 
-    // A smaller reading never replaces a recorded frontier, and a value that
+    // A smaller reading never replaces a recorded total, and a value that
     // normalizes to the stored one is a no-op.
-    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, 5))
-    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, 20.34))
+    act(() => session?.setVideoWatchSeconds(PAGE_ID, VIDEO_ID, 2))
+    act(() => session?.setVideoWatchSeconds(PAGE_ID, VIDEO_ID, 5.54))
     expect(saveState.mock.calls.length).toBe(calls)
-    expect(lastSaved(saveState).pages[PAGE_ID]?.watchedVideos).toEqual({ [VIDEO_ID]: 20.3 })
+    expect(lastSaved(saveState).pages[PAGE_ID]?.videoWatchSeconds).toEqual({ [VIDEO_ID]: 5.5 })
 
-    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, 21))
-    expect(lastSaved(saveState).pages[PAGE_ID]?.watchedVideos).toEqual({ [VIDEO_ID]: 21 })
+    act(() => session?.setVideoWatchSeconds(PAGE_ID, VIDEO_ID, 6))
+    expect(lastSaved(saveState).pages[PAGE_ID]?.videoWatchSeconds).toEqual({ [VIDEO_ID]: 6 })
+
+    // A reading beyond the six-second requirement persists capped, changing
+    // nothing and never inflating completion.
+    act(() => session?.setVideoWatchSeconds(PAGE_ID, VIDEO_ID, 20))
+    expect(saveState.mock.calls.length).toBe(calls + 1)
+    expect(lastSaved(saveState).pages[PAGE_ID]?.videoWatchSeconds).toEqual({ [VIDEO_ID]: 6 })
   })
 
-  it('ignores invalid frontier readings', () => {
+  it('ignores invalid watch readings, including zero', () => {
     const saveState = vi.fn()
     window.scormBridge = { saveState }
     renderSession(requiredVideoPackage)
 
-    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, Number.NaN))
-    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, -1))
-    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, Number.POSITIVE_INFINITY))
+    act(() => session?.setVideoWatchSeconds(PAGE_ID, VIDEO_ID, Number.NaN))
+    act(() => session?.setVideoWatchSeconds(PAGE_ID, VIDEO_ID, -1))
+    act(() => session?.setVideoWatchSeconds(PAGE_ID, VIDEO_ID, 0))
+    act(() => session?.setVideoWatchSeconds(PAGE_ID, VIDEO_ID, Number.POSITIVE_INFINITY))
     expect(saveState).not.toHaveBeenCalled()
     expect(session?.state.pages[PAGE_ID]).toBeUndefined()
+  })
+
+  it('ignores watch seconds for a video without a requirement', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+    renderSession(videoPackageFor(vimeoNode))
+
+    act(() => session?.setVideoWatchSeconds(VIDEO_PAGE_ID, VIDEO_ID, 5))
+    expect(saveState).not.toHaveBeenCalled()
+    expect(session?.state.pages[VIDEO_PAGE_ID]).toBeUndefined()
   })
 
   it('keeps the page pending until the questionnaire and the required video are satisfied', () => {
@@ -1384,10 +1674,54 @@ describe('usePlayerSession video watch requirements', () => {
     act(() => session?.markCompleted(PAGE_ID))
     expect(session?.state.pages[PAGE_ID]?.completed).toBeUndefined()
 
-    // Meeting the verified frontier unlocks completion.
-    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, 6))
+    // Meeting the accumulated minimum unlocks completion.
+    act(() => session?.setVideoWatchSeconds(PAGE_ID, VIDEO_ID, 6))
     act(() => session?.markCompleted(PAGE_ID))
     expect(session?.state.pages[PAGE_ID]?.completed).toBe(true)
+  })
+
+  it('keeps the page pending until every required video meets its own minimum', () => {
+    const first: VideoNode = { ...requiredNode, id: 'video:first.mdx:1:1', minWatchTime: 6 }
+    const second: VideoNode = { ...requiredNode, id: 'video:second.mdx:1:1', minWatchTime: 10 }
+    const multiPackage: ContentPackage = {
+      metadata: { title: 'Multiple required videos' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: PAGE_ID,
+            source: 'lesson.mdx',
+            metadata: { title: 'Lesson' },
+            content: [first, second, questionnaireNode]
+          }
+        ]
+      }
+    }
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+    renderSession(multiPackage)
+
+    act(() => session?.markQuestionnaireSubmitted(PAGE_ID, questionnaireNode.id))
+
+    act(() => session?.setVideoWatchSeconds(PAGE_ID, first.id, 6))
+    act(() => session?.markCompleted(PAGE_ID))
+    // One satisfied video is not enough while the other is still short.
+    expect(session?.state.pages[PAGE_ID]?.completed).toBeUndefined()
+
+    act(() => session?.setVideoWatchSeconds(PAGE_ID, second.id, 3))
+    act(() => session?.markCompleted(PAGE_ID))
+    expect(session?.state.pages[PAGE_ID]?.completed).toBeUndefined()
+
+    act(() => session?.setVideoWatchSeconds(PAGE_ID, second.id, 10))
+    act(() => session?.markCompleted(PAGE_ID))
+    expect(session?.state.pages[PAGE_ID]?.completed).toBe(true)
+
+    const saved = lastSaved(saveState)
+    expect(saved.pages[PAGE_ID]?.videoWatchSeconds).toEqual({
+      [first.id]: 6,
+      [second.id]: 10
+    })
   })
 
   it('never gates a tiles item completion on a video requirement', () => {
@@ -1416,7 +1750,7 @@ describe('usePlayerSession video watch requirements', () => {
     expect(session?.state.pages[tilesId]?.completed).toBe(true)
   })
 
-  it('restores only the frontier each page owns, with a met requirement keeping completion', () => {
+  it('restores only the watch seconds each page owns, keeping met completion', () => {
     const saveState = vi.fn()
     window.scormBridge = {
       restoreState: (): PlayerState => ({
@@ -1424,7 +1758,7 @@ describe('usePlayerSession video watch requirements', () => {
           [PAGE_ID]: {
             visited: true,
             completed: true,
-            watchedVideos: { [VIDEO_ID]: 6, 'video:gone.mdx:1:1': 4 }
+            videoWatchSeconds: { [VIDEO_ID]: 6, 'video:gone.mdx:1:1': 4 }
           }
         }
       }),
@@ -1435,11 +1769,35 @@ describe('usePlayerSession video watch requirements', () => {
     expect(session?.state.pages[PAGE_ID]).toEqual({
       visited: true,
       completed: true,
-      watchedVideos: { [VIDEO_ID]: 6 }
+      videoWatchSeconds: { [VIDEO_ID]: 6 }
     })
   })
 
-  it('drops completion that predates the requirement but keeps verified progress', () => {
+  it('drops completion carried by legacy state saved under the old watchedVideos field', () => {
+    const saveState = vi.fn()
+    window.scormBridge = {
+      restoreState: (): PlayerState => ({
+        pages: {
+          [PAGE_ID]: {
+            visited: true,
+            completed: true,
+            // `watchedVideos` predates the accumulated model and is no longer
+            // a declared page field, so the stale completion behind it drops.
+            watchedVideos: { [VIDEO_ID]: 6 }
+          }
+          // Legacy page fields survive typechecking only as untyped state.
+        } as unknown as PlayerState['pages']
+      }),
+      saveState
+    }
+    renderSession(requiredVideoPackage)
+
+    // The old frontier field is unread, so the progress behind the stale
+    // completion flag no longer exists and completion cannot be restored.
+    expect(session?.state.pages[PAGE_ID]).toEqual({ visited: true })
+  })
+
+  it('drops completion that predates the requirement but keeps accumulated watch time', () => {
     const saveState = vi.fn()
     window.scormBridge = {
       restoreState: (): PlayerState => ({
@@ -1447,7 +1805,7 @@ describe('usePlayerSession video watch requirements', () => {
           [PAGE_ID]: {
             completed: true,
             videos: { [VIDEO_ID]: 20 },
-            watchedVideos: { [VIDEO_ID]: 3 }
+            videoWatchSeconds: { [VIDEO_ID]: 3 }
           }
         }
       }),
@@ -1457,7 +1815,7 @@ describe('usePlayerSession video watch requirements', () => {
 
     expect(session?.state.pages[PAGE_ID]).toEqual({
       videos: { [VIDEO_ID]: 20 },
-      watchedVideos: { [VIDEO_ID]: 3 }
+      videoWatchSeconds: { [VIDEO_ID]: 3 }
     })
   })
 })
@@ -1519,9 +1877,14 @@ describe('Video watch requirement unlocks a slides page', () => {
 
     const record = players.latest()
     startWatching(record)
-    for (const tick of [2, 4, 6]) {
-      progressAfter(record, tick, 2)
-    }
+    progressAfter(record, 2, 2)
+    progressAfter(record, 4, 2)
+    progressAfter(record, 5.1, 1.1)
+    expect(container.querySelector('[data-slides-next]')).toBeNull()
+
+    // The final 0.9 seconds crosses the remaining requirement without a pause
+    // or end event; the session update unlocks the next slide immediately.
+    progressAfter(record, 6, 0.9)
     expect(container.querySelector('[data-slides-next] button')).not.toBeNull()
 
     act(() => container.querySelector<HTMLButtonElement>('[data-slides-next] button')?.click())

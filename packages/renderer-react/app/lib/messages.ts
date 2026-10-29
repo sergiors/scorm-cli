@@ -25,7 +25,7 @@ export const en = {
   'path.locked': 'Locked',
   'video.label': 'Video',
   'video.error': 'This video could not be played.',
-  'video.requiredProgress': 'Required viewing: {percent}% watched',
+  'video.requiredProgress': 'Required viewing {watched} / {required}',
   'video.requiredComplete': 'Required viewing complete',
   'questionnaire.previous': 'Previous question',
   'questionnaire.next': 'Next question',
@@ -65,7 +65,7 @@ export const ptBR: Record<MessageId, string> = {
   'path.locked': 'Bloqueada',
   'video.label': 'Vídeo',
   'video.error': 'Não foi possível reproduzir este vídeo.',
-  'video.requiredProgress': 'Visualização obrigatória: {percent}% assistida',
+  'video.requiredProgress': 'Visualização obrigatória {watched} / {required}',
   'video.requiredComplete': 'Visualização obrigatória concluída',
   'questionnaire.previous': 'Pergunta anterior',
   'questionnaire.next': 'Próxima pergunta',
@@ -108,7 +108,7 @@ declare global {
     interface MessageArguments {
       'questionnaire.progress': { current: number; total: number }
       'questionnaire.summaryCorrect': { correct: number; total: number }
-      'video.requiredProgress': { percent: number }
+      'video.requiredProgress': { watched: string; required: string }
       'content.for': { title: string }
     }
 

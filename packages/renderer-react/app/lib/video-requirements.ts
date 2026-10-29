@@ -2,10 +2,10 @@ import type { ContentNode, ContentPackage, PlayerPageState, PlayerState, VideoNo
 import { collectVideoNodes, getPresentationNodes } from './content-helpers'
 
 /**
- * How close a verified frontier may be to the authored requirement while still
- * counting as met. Persisted progress is normalized to tenths of a second, so a
- * frontier recorded just below the whole-second requirement must not leave the
- * page permanently locked.
+ * How close accumulated watch time may be to the authored requirement while
+ * still counting as met. Persisted progress is normalized to tenths of a
+ * second, so a total recorded just below the whole-second requirement must not
+ * leave the page permanently locked.
  */
 const WATCH_COMPLETION_EPSILON_SECONDS = 0.05
 
@@ -15,18 +15,13 @@ export interface VideoWatchFields {
   minWatchTime?: number
 }
 
-/** The slice of page state that records verified watch frontiers. */
-export interface WatchedVideoState {
-  watchedVideos?: Record<string, number>
-}
-
 /** Reads a positive finite duration, rejecting zero, negatives and `Infinity`. */
 function positiveSeconds(value: number | undefined): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
 }
 
 /**
- * The continuous playback time a video requires before it stops gating its
+ * The accumulated active watch time a video requires before it stops gating its
  * page. `minWatchTime` is authored in seconds; a video without a positive value
  * has no requirement. When the authored duration is known, the requirement is
  * capped to it so malformed content can never create an unreachable gate.
@@ -46,18 +41,19 @@ export function isVideoRequired(video: VideoNode): boolean {
 }
 
 /**
- * The learner's verified frontier for a video, in seconds. A missing or invalid
- * persisted value reads as zero, so a fresh video starts with no progress.
+ * The learner's accumulated active watch time for a video, in seconds. A
+ * missing or invalid persisted value reads as zero, so a fresh video starts
+ * with no progress.
  */
 export function watchedVideoSeconds(
-  pageState: WatchedVideoState | undefined,
+  pageState: PlayerPageState | undefined,
   videoId: string
 ): number {
-  const value = pageState?.watchedVideos?.[videoId]
+  const value = pageState?.videoWatchSeconds?.[videoId]
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
 }
 
-/** Whether the verified frontier satisfies the video's authored requirement. */
+/** Whether accumulated watch time satisfies the video's authored requirement. */
 export function isVideoRequirementMet(
   video: VideoNode,
   pageState: PlayerPageState | undefined
@@ -88,7 +84,7 @@ export function arePackageVideoRequirementsMet(
 }
 
 export interface VideoRequirementProgress {
-  /** The verified continuous playback frontier, in seconds. */
+  /** The accumulated active watch time, in seconds. */
   watched: number
   /** The authored minimum watch time, in seconds. */
   required: number
@@ -101,7 +97,7 @@ export interface VideoRequirementProgress {
 /**
  * The display projection of a video's requirement, or `undefined` when the
  * video has none. A satisfied requirement always projects as 100%, even when
- * the persisted frontier rounds just below the authored value.
+ * the persisted total rounds just below the authored value.
  */
 export function videoRequirementProgress(
   video: VideoNode,

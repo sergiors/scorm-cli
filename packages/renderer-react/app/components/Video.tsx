@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useIntl } from 'react-intl'
+import { useIntl, type IntlShape } from 'react-intl'
 import ReactPlayer from 'react-player'
 import type { Config } from 'react-player'
 import type { VideoNode, VideoProvider } from '../types'
@@ -17,6 +17,18 @@ import { Progress } from './ui/progress'
  * promptly a pause reads a recent position.
  */
 const PROGRESS_INTERVAL_MS = 1000
+
+/** Formats an author-facing watch duration as localized minutes and seconds. */
+function formatWatchTime(intl: IntlShape, seconds: number): string {
+  const wholeSeconds = Math.max(0, Math.round(seconds))
+  const minutes = Math.floor(wholeSeconds / 60)
+  const remainder = wholeSeconds % 60
+  const paddedRemainder = intl.formatNumber(remainder, {
+    minimumIntegerDigits: 2,
+    useGrouping: false
+  })
+  return `${intl.formatNumber(minutes)}:${paddedRemainder}`
+}
 
 /**
  * The provider-specific configuration ReactPlayer needs for an embedded video.
@@ -72,15 +84,21 @@ export function Video({ node }: { node: VideoNode }) {
     position: pageState?.videos?.[node.id],
     minWatchTime: node.minWatchTime,
     duration: node.duration,
-    watchedUntil: watchedVideoSeconds(pageState, node.id),
+    watchSeconds: watchedVideoSeconds(pageState, node.id),
     onPosition: (seconds) => actions.setVideoPosition(pageId, node.id, seconds),
-    onWatched: (seconds) => actions.setVideoWatchedUntil(pageId, node.id, seconds)
+    onWatchSeconds: (seconds) => actions.setVideoWatchSeconds(pageId, node.id, seconds)
   })
   const requirement = videoRequirementProgress(node, pageState)
   const requirementLabel = requirement
     ? requirement.complete
       ? intl.formatMessage({ id: 'video.requiredComplete' })
-      : intl.formatMessage({ id: 'video.requiredProgress' }, { percent: requirement.percent })
+      : intl.formatMessage(
+          { id: 'video.requiredProgress' },
+          {
+            watched: formatWatchTime(intl, requirement.watched),
+            required: formatWatchTime(intl, requirement.required)
+          }
+        )
     : undefined
   const { ref, inView } = useMediaInView<HTMLDivElement>()
   const [ready, setReady] = useState(false)
@@ -128,6 +146,7 @@ export function Video({ node }: { node: VideoNode }) {
             onSeek={player.onSeek}
             onBuffer={player.onBuffer}
             onBufferEnd={player.onBufferEnd}
+            onPlaybackRateChange={player.onPlaybackRateChange}
             onEnded={player.onEnded}
           />
         ) : null}

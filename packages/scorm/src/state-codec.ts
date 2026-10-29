@@ -10,7 +10,7 @@ type CompactValue = number | readonly number[]
 /**
  * Compact suspend-data payload. Keys in `d` are
  * `<pageIndex>.<kind>.<entityIndex>` where `kind` is `a` (answer), `t`
- * (video position), `w` (verified video watch frontier), `q` (questionnaire
+ * (video position), `w` (accumulated video watch seconds), `q` (questionnaire
  * attempt history), `r` (active retry), `c` (completed questionnaire), or `i`
  * (active stepper question).
  */
@@ -179,12 +179,8 @@ function createSuspendDataCodec() {
     videos[video.id] = deciseconds / 10
   }
 
-  /**
-   * Stores one valid verified watch frontier under its semantic video ID. Only
-   * a video that declares a positive requirement keeps a frontier, and the
-   * value is capped at the authored duration when one is known.
-   */
-  function assignWatchedFrontier(
+  /** Stores accumulated watch seconds only for videos with a positive requirement. */
+  function assignVideoWatchSeconds(
     fresh: PlayerState,
     page: ManifestPage,
     videoIndex: string,
@@ -200,12 +196,10 @@ function createSuspendDataCodec() {
     }
     const video = page.videos?.[videoIndex]
     if (!isRecord(video) || !safeKey(video.id) || !isPositiveSeconds(video.minWatchTime)) return
-    const seconds = isPositiveSeconds(video.duration)
-      ? Math.min(deciseconds / 10, video.duration)
-      : deciseconds / 10
+    const seconds = Math.min(deciseconds / 10, video.minWatchTime)
     const pageState = fresh.pages[page.id] ?? (fresh.pages[page.id] = {})
-    const watched = pageState.watchedVideos ?? (pageState.watchedVideos = {})
-    watched[video.id] = Math.round(seconds * 10) / 10
+    const videoWatchSeconds = pageState.videoWatchSeconds ?? (pageState.videoWatchSeconds = {})
+    videoWatchSeconds[video.id] = seconds
   }
 
   /** Flat `d` layout keyed by `<pageIndex>.<kind>.<entityIndex>`. */
@@ -238,7 +232,7 @@ function createSuspendDataCodec() {
       } else if (parsedKey.kind === 't') {
         assignVideoPosition(fresh, page, parsedKey.entityIndex, value)
       } else if (parsedKey.kind === 'w') {
-        assignWatchedFrontier(fresh, page, parsedKey.entityIndex, value)
+        assignVideoWatchSeconds(fresh, page, parsedKey.entityIndex, value)
       } else if (parsedKey.kind === 'q') {
         if (!pageIndexed || !Array.isArray(value)) return
         const questionnaire = page.questionnaires?.[parsedKey.entityIndex]
@@ -421,7 +415,9 @@ function createSuspendDataCodec() {
       if (!canonicalIndex(pageIndex) || !safeKey(page.id) || !isRecord(page.videos)) return
       const pageState = state.pages[page.id]
       const videoPositions = isRecord(pageState?.videos) ? pageState.videos : {}
-      const watchedVideos = isRecord(pageState?.watchedVideos) ? pageState.watchedVideos : {}
+      const videoWatchSeconds = isRecord(pageState?.videoWatchSeconds)
+        ? pageState.videoWatchSeconds
+        : {}
       Object.entries(page.videos).forEach(([videoIndex, video]) => {
         if (!safeVideoIndex(videoIndex) || !isRecord(video) || !safeKey(video.id)) return
         const seconds = videoPositions[video.id]
@@ -433,11 +429,9 @@ function createSuspendDataCodec() {
         }
 
         if (!isPositiveSeconds(video.minWatchTime)) return
-        const watched = watchedVideos[video.id]
+        const watched = videoWatchSeconds[video.id]
         if (typeof watched !== 'number' || !Number.isFinite(watched) || watched <= 0) return
-        const bounded = isPositiveSeconds(video.duration)
-          ? Math.min(watched, video.duration)
-          : watched
+        const bounded = Math.min(watched, video.minWatchTime)
         const deciseconds = Math.round(bounded * 10)
         if (!Number.isSafeInteger(deciseconds) || deciseconds === 0) return
         data[makeDataKey(pageIndex, 'w', videoIndex)] = deciseconds
@@ -555,7 +549,7 @@ const codec = createSuspendDataCodec()
 
 /**
  * Encodes manifest-indexed progress/answers, manifest-owned video positions,
- * and verified watch frontiers.
+ * and accumulated watch seconds.
  */
 export function encodeSuspendData(
   manifest: ContentManifest,

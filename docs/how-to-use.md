@@ -87,7 +87,7 @@ Import components from `scorm-cli/authoring`.
 | `Content`       | Accordion section body                | Markdown and supported flow content                                                                                                                                            |
 | `Path`          | Ordered navigation path               | `children`                                                                                                                                                                     |
 | `Image`         | Static image                          | `src`, `alt`, `caption` (optional)                                                                                                                                             |
-| `Video`         | Video player                          | `src` (YouTube/Vimeo single-video URL), `title` (optional), `poster` (preview until ready), `duration` (optional seconds), `minWatchTime` (optional seconds)                   |
+| `Video`         | Video player                          | `src` (YouTube/Vimeo single-video URL), `title` (optional), `poster` (preview until ready), `duration` (optional), `minWatchTime` (optional; requires `duration`)              |
 | `Questionnaire` | Assessment wrapper                    | `children`, `contributesToScore` (bool), `expanded` (bool), `maxAttempts` (-1 or positive integer), `revealCorrectAnswers` (bool, optional), `shuffleOptions` (bool, optional) |
 | `Question`      | Single question                       | `children`, `type` ('single-choice', 'multiple-choice', 'true-false')                                                                                                          |
 | `Prompt`        | Question text                         | `children` (string)                                                                                                                                                            |
@@ -147,21 +147,26 @@ Its `variant` defaults to `note`; supported variants are `note`, `info`, `tip`,
 
 ### Required video viewing
 
-`<Video>` accepts two optional duration props. Values can be numeric seconds or
-compact strings with `h`, `m`, and `s` units, such as `"30s"`, `"2m"`,
-`"1m30s"`, and `"1h20m30s"`:
+`<Video>` accepts `duration` and `minWatchTime` as numeric seconds or compact
+strings with `h`, `m`, and `s` units, such as `"30s"`, `"2m"`, `"1m30s"`, and
+`"1h20m30s"`. Numeric seconds may be fractional. Both values must be positive,
+except that `minWatchTime="0m0s"` explicitly disables the viewing requirement:
 
-- `duration`: the expected length of the video. When present, it must be a
-  positive number and `minWatchTime` must not exceed it.
-- `minWatchTime`: the minimum amount of continuous playback a learner must
-  complete. It must be positive, except `"0m0s"` is accepted as no watch
-  requirement. A video without `minWatchTime` has no viewing requirement and
-  behaves exactly as before.
+- `duration`: the expected length of the video. It must be a positive number
+  whenever provided, and is required whenever `minWatchTime` is provided.
+- `minWatchTime`: the minimum amount of active playback time a learner must
+  accumulate. It cannot exceed `duration`. A video without `minWatchTime` has no
+  viewing requirement.
 
 ```mdx
 <Video src="https://vimeo.com/90509568" title="Lesson overview" duration={420} minWatchTime={300} />
 
-<Video src="https://www.youtube.com/watch?v=M7lc1UVf-VE" title="Introduction" minWatchTime="3m" />
+<Video
+  src="https://www.youtube.com/watch?v=M7lc1UVf-VE"
+  title="Introduction"
+  duration="8m"
+  minWatchTime="3m"
+/>
 ```
 
 A required video gates its page in **Scroll** and **Slides**: the page completes
@@ -169,18 +174,15 @@ only after its end/display rule, every questionnaire, and every required video
 are all satisfied. This also gates progress to the next page and package
 completion. Tiles items are unchanged and still complete when opened.
 
-Only normal, continuous playback counts toward the requirement. Pausing,
-buffering, and seeking do not add verified time. Seeking backward is always
-allowed. A forward seek beyond the learner's verified position is blocked and
-the player is returned to that position; on YouTube, where seeks are not
-reported directly, a progress discontinuity is detected the same way. Once the
-minimum is met, seeking is unrestricted. Watching to the natural end of a
-shorter media also completes the requirement.
+Active playback time accumulates toward the requirement, including across
+separate play sessions. Pausing and buffering do not add watch time. Seeking is
+always unrestricted; seeking itself does not add watch time, but active playback
+after a seek does.
 
-Verified progress is stored per video and restored with the rest of the learner
-state, so a resumed session continues from the saved verified point. The video
-still never autoplays: a resume leaves it paused. Required videos show a
-compact, localized progress indicator with accessible progress-bar semantics.
+Accumulated watch time is stored per video and restored with the rest of the
+learner state. The video still never autoplays: a resume leaves it paused.
+Required videos show a compact, localized progress indicator with accessible
+progress-bar semantics.
 
 Video playback itself does not contribute to the package progress percentage;
 it only gates page completion when `minWatchTime` is authored.

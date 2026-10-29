@@ -783,6 +783,8 @@ describe('parsePackage', () => {
 
   // Each source is the exact JSX attribute text, so both quoted duration
   // strings and numeric expressions exercise the same optionalSeconds grammar.
+  // Every source stays within the authored duration, which the requirement
+  // now demands.
   it.each([
     ['"30s"', 30],
     ['"2m"', 120],
@@ -796,13 +798,49 @@ describe('parsePackage', () => {
     ['"2h"', 7200]
   ] as const)('accepts a minWatchTime authored as %s', async (source, expected) => {
     const root = await makeLesson(
-      `<Video src="https://youtu.be/M7lc1UVf-VE" minWatchTime=${source} />`
+      `<Video src="https://youtu.be/M7lc1UVf-VE" duration="3h" minWatchTime=${source} />`
     )
     const [video] = await lessonContent(root)
     expect(video).toMatchObject({ minWatchTime: expected })
     await rm(root, { recursive: true, force: true })
     temp = ''
   })
+
+  // The duration grammar is shared with minWatchTime, so each valid format
+  // must also parse for the `duration` attribute itself.
+  it.each([
+    ['"30s"', 30],
+    ['"2m"', 120],
+    ['"1m30s"', 90],
+    ['" 2M "', 120],
+    ['"90"', 90],
+    ['{90}', 90],
+    ['{2.5}', 2.5],
+    ['"0.5"', 0.5],
+    ['"2h"', 7200]
+  ] as const)('accepts a duration authored as %s', async (source, expected) => {
+    const root = await makeLesson(`<Video src="https://youtu.be/M7lc1UVf-VE" duration=${source} />`)
+    const [video] = await lessonContent(root)
+    expect(video).toMatchObject({ duration: expected })
+    expect(video).not.toHaveProperty('minWatchTime')
+    await rm(root, { recursive: true, force: true })
+    temp = ''
+  })
+
+  // A requirement without an authored duration could be capped by nothing, so
+  // the parser refuses every authored shape — including the explicit "0m0s"
+  // opt-out — until a duration declares the media length.
+  it.each([['minWatchTime={90}'], ['minWatchTime="30s"'], ['minWatchTime="0m0s"']] as const)(
+    'rejects a %s reading without an authored duration',
+    async (attribute) => {
+      const root = await makeLesson(`<Video src="https://youtu.be/M7lc1UVf-VE" ${attribute} />`)
+      await expect(lessonContent(root)).rejects.toThrow(
+        /"duration" is required when "minWatchTime" is provided$/
+      )
+      await rm(root, { recursive: true, force: true })
+      temp = ''
+    }
+  )
 
   it('keeps a minWatchTime equal to the duration and a duration without a requirement', async () => {
     const root = await makeLesson(

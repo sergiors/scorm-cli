@@ -14,9 +14,9 @@ import { arePackageVideoRequirementsMet, arePageVideoRequirementsMet } from './v
 
 /**
  * The single completion rule for a Scroll/Slides page: every authored
- * questionnaire has a completed result and every required video has reached its
- * verified minimum watch time. The page's own boundary rule (its end sentinel
- * for Scroll, being displayed for Slides) is applied by the presentation.
+ * questionnaire has a completed result and every required video has accumulated
+ * its minimum watch time. The page's own boundary rule (its end sentinel for
+ * Scroll, being displayed for Slides) is applied by the presentation.
  */
 export function isPageRequirementsComplete(
   nodes: ContentNode[],

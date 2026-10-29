@@ -36,9 +36,9 @@ export interface ContentManifest {
           id: string
           src: string
           provider: VideoProvider
-          /** Authored duration in seconds, used to bound a persisted frontier. */
+          /** Authored video duration in seconds. */
           duration?: number
-          /** Authored minimum watch time in seconds. */
+          /** Authored minimum accumulated watch time in seconds. */
           minWatchTime?: number
         }
       >

@@ -808,8 +808,8 @@ describe('compact suspend-data codec', () => {
   })
 })
 
-describe('verified watch frontiers in the suspend-data codec', () => {
-  it('encodes frontiers as flat w keys only where a requirement is authored', () => {
+describe('accumulated video watch seconds in the suspend-data codec', () => {
+  it('encodes watch seconds as flat w keys only where a requirement is authored', () => {
     const videoManifest = structuredClone(manifest)
     assignRequiredVideos(videoManifest, {
       'page-one': [
@@ -823,7 +823,7 @@ describe('verified watch frontiers in the suspend-data codec', () => {
       pages: {
         'page-one': {
           videos: { 'video-a': 41 },
-          watchedVideos: { 'video-a': 61.2, 'video-b': 50, 'video-c': 8.06 }
+          videoWatchSeconds: { 'video-a': 61.2, 'video-b': 50, 'video-c': 8.06 }
         }
       }
     }
@@ -832,11 +832,12 @@ describe('verified watch frontiers in the suspend-data codec', () => {
       v: 1,
       p: 0,
       x: '00',
-      // The playback position and the verified frontier coexist as flat keys.
-      d: { '0.t.0': 410, '0.w.0': 612, '0.w.2': 81 }
+      // The playback position and the accumulated watch time coexist as flat
+      // keys. video-a's 61.2s total is capped at its authored 60s requirement.
+      d: { '0.t.0': 410, '0.w.0': 600, '0.w.2': 81 }
     })
-    // Semantic ids, requirements and progress wording never reach the payload.
-    expect(JSON.stringify(encoded)).not.toMatch(/video-a|video-b|video-c|watched|minWatch/)
+    // Semantic ids, requirements and watch wording never reach the payload.
+    expect(JSON.stringify(encoded)).not.toMatch(/video-a|video-b|video-c|watch|minWatch/)
 
     const serialized = JSON.stringify(encoded)
     const decoded = decodeSuspendData(videoManifest, serialized)
@@ -844,44 +845,50 @@ describe('verified watch frontiers in the suspend-data codec', () => {
       pages: {
         'page-one': {
           videos: { 'video-a': 41 },
-          watchedVideos: { 'video-a': 61.2, 'video-c': 8.1 }
+          videoWatchSeconds: { 'video-a': 60, 'video-c': 8.1 }
         }
       }
     })
     expect(encodeSuspendData(videoManifest, decoded, 0)).toEqual(encoded)
   })
 
-  it('caps a persisted frontier at the authored duration and keeps unbounded ones', () => {
+  it('caps persisted watch seconds at the authored requirement, with or without a duration', () => {
     const videoManifest = structuredClone(manifest)
     assignRequiredVideos(videoManifest, {
-      'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120]]
+      'page-one': [
+        ['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120],
+        ['video-b', 'https://youtu.be/b', 'youtube', 60]
+      ]
     })
     const encoded = encodeSuspendData(
       videoManifest,
-      { pages: { 'page-one': { watchedVideos: { 'video-a': 300 } } } },
+      {
+        pages: {
+          'page-one': { videoWatchSeconds: { 'video-a': 300, 'video-b': 300 } }
+        }
+      },
       0
     )
-    expect(encoded).toEqual({ v: 1, p: 0, x: '00', d: { '0.w.0': 1200 } })
+    // Neither the authored duration nor its absence widens the cap: the stored
+    // total never exceeds the minute the requirement asks for.
+    expect(encoded).toEqual({ v: 1, p: 0, x: '00', d: { '0.w.0': 600, '0.w.1': 600 } })
     expect(decodeSuspendData(videoManifest, encoded)).toEqual({
-      pages: { 'page-one': { watchedVideos: { 'video-a': 120 } } }
+      pages: { 'page-one': { videoWatchSeconds: { 'video-a': 60, 'video-b': 60 } } }
     })
 
-    const unbounded = structuredClone(manifest)
-    assignRequiredVideos(unbounded, {
-      'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo', 60]]
-    })
-    const openEncoded = encodeSuspendData(
-      unbounded,
-      { pages: { 'page-one': { watchedVideos: { 'video-a': 300 } } } },
+    // A total within the cap persists at tenth-of-a-second precision.
+    const precise = encodeSuspendData(
+      videoManifest,
+      { pages: { 'page-one': { videoWatchSeconds: { 'video-a': 45.67 } } } },
       0
     )
-    expect(openEncoded).toEqual({ v: 1, p: 0, x: '00', d: { '0.w.0': 3000 } })
-    expect(decodeSuspendData(unbounded, openEncoded)).toEqual({
-      pages: { 'page-one': { watchedVideos: { 'video-a': 300 } } }
+    expect(precise.d).toEqual({ '0.w.0': 457 })
+    expect(decodeSuspendData(videoManifest, precise)).toEqual({
+      pages: { 'page-one': { videoWatchSeconds: { 'video-a': 45.7 } } }
     })
   })
 
-  it('maps frontiers through the page-local video indexes of the current manifest', () => {
+  it('maps watch seconds through the page-local video indexes of the current manifest', () => {
     const originalManifest = structuredClone(manifest)
     assignRequiredVideos(originalManifest, {
       'page-one': [
@@ -889,12 +896,14 @@ describe('verified watch frontiers in the suspend-data codec', () => {
         ['video-c', 'https://vimeo.com/c', 'vimeo', 25]
       ]
     })
+    // Both totals stay within either requirement's cap, so the mapping, not
+    // capping, is what the assertions observe.
     const encoded = encodeSuspendData(
       originalManifest,
-      { pages: { 'page-one': { watchedVideos: { 'video-a': 61.2, 'video-c': 3 } } } },
+      { pages: { 'page-one': { videoWatchSeconds: { 'video-a': 20.4, 'video-c': 8 } } } },
       0
     )
-    expect(encoded.d).toEqual({ '0.w.0': 612, '0.w.1': 30 })
+    expect(encoded.d).toEqual({ '0.w.0': 204, '0.w.1': 80 })
 
     const reorderedManifest = structuredClone(manifest)
     assignRequiredVideos(reorderedManifest, {
@@ -905,7 +914,7 @@ describe('verified watch frontiers in the suspend-data codec', () => {
     })
     const restored = decodeSuspendData(reorderedManifest, encoded)
     expect(restored).toEqual({
-      pages: { 'page-one': { watchedVideos: { 'video-c': 61.2, 'video-a': 3 } } }
+      pages: { 'page-one': { videoWatchSeconds: { 'video-c': 20.4, 'video-a': 8 } } }
     })
     // The mapping is stable: re-encoding the restored state yields the same
     // indexes under the reordered manifest.
@@ -916,7 +925,7 @@ describe('verified watch frontiers in the suspend-data codec', () => {
     expect(decodeSuspendData(reorderedManifest, encoded)).toEqual({ pages: {} })
   })
 
-  it('ignores malformed frontier keys while keeping valid entries', () => {
+  it('ignores malformed w keys while keeping valid entries', () => {
     const videoManifest = structuredClone(manifest)
     assignRequiredVideos(videoManifest, {
       'page-one': [
@@ -931,8 +940,8 @@ describe('verified watch frontiers in the suspend-data codec', () => {
         x: '00',
         d: {
           // Valid entry that must survive.
-          '0.w.0': 612,
-          // video-b has no requirement, so its frontier is meaningless.
+          '0.w.0': 456,
+          // video-b has no requirement, so its watch total is meaningless.
           '0.w.1': 45,
           '0.w.9': 99,
           '0.w.01': 1,
@@ -942,40 +951,43 @@ describe('verified watch frontiers in the suspend-data codec', () => {
           '0.w': 1,
           '0.w.0.0': 1,
           '__proto__.w.0': 1,
-          '9.w.0': 612
+          '9.w.0': 456
         }
       })
-    ).toEqual({ pages: { 'page-one': { watchedVideos: { 'video-a': 61.2 } } } })
+    ).toEqual({ pages: { 'page-one': { videoWatchSeconds: { 'video-a': 45.6 } } } })
   })
 
-  it('keeps legacy position-only payloads restoring while frontiers stay absent', () => {
+  it('keeps legacy payloads decoding while watch seconds stay absent', () => {
     const videoManifest = structuredClone(manifest)
     assignRequiredVideos(videoManifest, {
       'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120]]
     })
-    // A payload saved before watch frontiers existed decodes its position and
-    // never fabricates a frontier.
+    // A payload saved before watch seconds existed (no `w` key) decodes its
+    // position and never fabricates accumulated watch time.
     expect(decodeSuspendData(videoManifest, { v: 1, p: 0, x: '00', d: { '0.t.0': 410 } })).toEqual({
       pages: { 'page-one': { videos: { 'video-a': 41 } } }
     })
 
-    // Old renderer state carrying frontiers for videos without requirements
-    // contributes nothing.
+    // Old renderer state that carried the previous `watchedVideos` frontier
+    // field contributes nothing to the new flat keys, whatever it carries.
     const legacyManifest = structuredClone(manifest)
     assignVideos(legacyManifest, { 'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']] })
-    expect(
-      encodeSuspendData(
-        legacyManifest,
-        { pages: { 'page-one': { watchedVideos: { 'video-a': 61.2 } } } },
-        0
-      )
-    ).toEqual({ v: 1, p: 0, x: '00' })
-    expect(decodeSuspendData(legacyManifest, { v: 1, p: 0, x: '00', d: { '0.w.0': 612 } })).toEqual(
+    const legacyState = {
+      pages: {
+        'page-one': {
+          // `watchedVideos` predates the accumulated model and is no longer a
+          // declared page field, so the codec must overlook it entirely.
+          watchedVideos: { 'video-a': 61.2 }
+        }
+      }
+    } as unknown as PlayerState
+    expect(encodeSuspendData(legacyManifest, legacyState, 0)).toEqual({ v: 1, p: 0, x: '00' })
+    expect(decodeSuspendData(legacyManifest, { v: 1, p: 0, x: '00', d: { '0.w.0': 456 } })).toEqual(
       { pages: {} }
     )
   })
 
-  it('carries watch frontiers through the embedded LMS runtime', () => {
+  it('carries accumulated watch seconds through the embedded LMS runtime', () => {
     const videoManifest = structuredClone(manifest)
     assignRequiredVideos(videoManifest, {
       'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120]]
@@ -986,7 +998,7 @@ describe('verified watch frontiers in the suspend-data codec', () => {
         pages: {
           'page-one': {
             videos: { 'video-a': 41 },
-            watchedVideos: { 'video-a': 61.2 }
+            videoWatchSeconds: { 'video-a': 61.2 }
           }
         }
       },
@@ -1016,25 +1028,27 @@ describe('verified watch frontiers in the suspend-data codec', () => {
     window.parent = window
     vm.runInNewContext(createScormRuntime(videoManifest), { window })
 
-    // A resume restores the position and its verified frontier together.
+    // A resume restores the position and its accumulated watch time together,
+    // with the total capped at the authored requirement.
     expect(window.scormBridge.getResumeState()).toEqual({
       location: 'page:resume',
       pages: {
         'page-one': {
           videos: { 'video-a': 41 },
-          watchedVideos: { 'video-a': 61.2 }
+          videoWatchSeconds: { 'video-a': 60 }
         }
       }
     })
 
-    // A save writes both flat keys and never leaks the semantic video id.
+    // A save writes both flat keys and never leaks the semantic video id; a
+    // total beyond the requirement persists capped, not rewritten.
     expect(
       window.scormBridge.saveState({
         location: 'page:next',
         pages: {
           'page-one': {
             videos: { 'video-a': 55 },
-            watchedVideos: { 'video-a': 75 }
+            videoWatchSeconds: { 'video-a': 75 }
           }
         }
       })
@@ -1044,9 +1058,9 @@ describe('verified watch frontiers in the suspend-data codec', () => {
       v: 1,
       p: 0,
       x: '00',
-      d: { '0.t.0': 550, '0.w.0': 750 }
+      d: { '0.t.0': 550, '0.w.0': 600 }
     })
-    expect(JSON.stringify(compact)).not.toMatch(/video-a|watched/)
+    expect(JSON.stringify(compact)).not.toMatch(/video-a|watch/)
   })
 })
 

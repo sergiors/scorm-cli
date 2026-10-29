@@ -395,7 +395,7 @@ describe('sanitizePlayerState videos', () => {
   })
 })
 
-describe('sanitizePlayerState watch frontiers', () => {
+describe('sanitizePlayerState accumulated watch seconds', () => {
   const requiredVideo: VideoNode = {
     type: 'video',
     id: 'video:req.mdx:1:1',
@@ -411,8 +411,8 @@ describe('sanitizePlayerState watch frontiers', () => {
     src: 'https://vimeo.com/open',
     duration: 90
   }
-  const frontierPackage: ContentPackage = {
-    metadata: { title: 'Frontiers package' },
+  const watchPackage: ContentPackage = {
+    metadata: { title: 'Watch seconds package' },
     presentation: {
       type: 'scroll',
       pages: [
@@ -434,27 +434,32 @@ describe('sanitizePlayerState watch frontiers', () => {
     }
   }
 
-  it('keeps a frontier for a required video and normalizes it to tenths', () => {
-    const state = sanitizePlayerState(frontierPackage, {
-      pages: { 'page:a.mdx': { watchedVideos: { [requiredVideo.id]: 12.34 } } }
+  it('keeps watch seconds for a required video and normalizes them to tenths', () => {
+    const state = sanitizePlayerState(watchPackage, {
+      pages: { 'page:a.mdx': { videoWatchSeconds: { [requiredVideo.id]: 12.34 } } }
     })
-    expect(state.pages['page:a.mdx']?.watchedVideos).toEqual({ [requiredVideo.id]: 12.3 })
+    expect(state.pages['page:a.mdx']?.videoWatchSeconds).toEqual({ [requiredVideo.id]: 12.3 })
   })
 
-  it('caps a frontier at the authored duration', () => {
-    const state = sanitizePlayerState(frontierPackage, {
-      pages: { 'page:a.mdx': { watchedVideos: { [requiredVideo.id]: 119.96 } } }
+  it('caps watch seconds at the authored requirement, not the duration', () => {
+    const state = sanitizePlayerState(watchPackage, {
+      pages: {
+        'page:a.mdx': { videoWatchSeconds: { [requiredVideo.id]: 119.96 } }
+      }
     })
-    expect(state.pages['page:a.mdx']?.watchedVideos).toEqual({ [requiredVideo.id]: 120 })
+    // A total beyond the minute-long requirement is trimmed to it even though
+    // the media duration is two minutes.
+    expect(state.pages['page:a.mdx']?.videoWatchSeconds).toEqual({ [requiredVideo.id]: 30 })
   })
 
-  it('drops frontiers for videos without a requirement, stale ids, and invalid values', () => {
-    const state = sanitizePlayerState(frontierPackage, {
+  it('drops watch seconds for videos without a requirement, stale ids, zero and invalid values', () => {
+    const state = sanitizePlayerState(watchPackage, {
       pages: {
         'page:a.mdx': {
-          watchedVideos: {
+          videoWatchSeconds: {
             [unrequiredVideo.id]: 45,
             'video:gone.mdx:1:1': 10,
+            zero: 0,
             negative: -1,
             nan: Number.NaN,
             infinite: Number.POSITIVE_INFINITY
@@ -462,41 +467,52 @@ describe('sanitizePlayerState watch frontiers', () => {
         }
       }
     })
-    // Nothing survives: the frontier only ever belongs to a required video.
+    // Nothing survives: the total only ever belongs to a required video.
     expect(state.pages['page:a.mdx']).toBeUndefined()
   })
 
-  it('scopes frontiers to the page that owns each video', () => {
-    const state = sanitizePlayerState(frontierPackage, {
+  it('drops legacy watch frontiers saved under the previous watchedVideos field', () => {
+    const state = sanitizePlayerState(watchPackage, {
       pages: {
-        'page:a.mdx': { watchedVideos: { 'video:b.mdx:1:1': 55 } },
-        'page:b.mdx': { watchedVideos: { 'video:b.mdx:1:1': 7.5 } }
+        'page:a.mdx': { completed: true, watchedVideos: { [requiredVideo.id]: 20 } }
+      }
+    })
+    // The old field is no longer read, so the stale completion predating the
+    // unread progress cannot survive either.
+    expect(state.pages['page:a.mdx']).toBeUndefined()
+  })
+
+  it('scopes watch seconds to the page that owns each video', () => {
+    const state = sanitizePlayerState(watchPackage, {
+      pages: {
+        'page:a.mdx': { videoWatchSeconds: { 'video:b.mdx:1:1': 55 } },
+        'page:b.mdx': { videoWatchSeconds: { 'video:b.mdx:1:1': 7.5 } }
       }
     })
     expect(state.pages['page:a.mdx']).toBeUndefined()
-    expect(state.pages['page:b.mdx']?.watchedVideos).toEqual({ 'video:b.mdx:1:1': 7.5 })
+    expect(state.pages['page:b.mdx']?.videoWatchSeconds).toEqual({ 'video:b.mdx:1:1': 7.5 })
   })
 
   it('restores page completion only when every required video was watched', () => {
-    const watched = sanitizePlayerState(frontierPackage, {
+    const watched = sanitizePlayerState(watchPackage, {
       pages: {
         'page:a.mdx': {
           completed: true,
-          watchedVideos: { [requiredVideo.id]: 29.95 }
+          videoWatchSeconds: { [requiredVideo.id]: 29.95 }
         }
       }
     })
-    // The frontier sits within the completion tolerance of the requirement.
+    // The total sits within the completion tolerance of the requirement.
     expect(watched.pages['page:a.mdx']?.completed).toBe(true)
 
-    const unwatched = sanitizePlayerState(frontierPackage, {
+    const unwatched = sanitizePlayerState(watchPackage, {
       pages: {
-        'page:a.mdx': { completed: true, watchedVideos: { [requiredVideo.id]: 10 } }
+        'page:a.mdx': { completed: true, videoWatchSeconds: { [requiredVideo.id]: 10 } }
       }
     })
     // A stale completion predating the requirement cannot survive a restore.
     expect(unwatched.pages['page:a.mdx']).toEqual({
-      watchedVideos: { [requiredVideo.id]: 10 }
+      videoWatchSeconds: { [requiredVideo.id]: 10 }
     })
   })
 
@@ -545,7 +561,7 @@ describe('sanitizePlayerState watch frontiers', () => {
   })
 
   it('drops completion and keeps playback for legacy state saved before requirements', () => {
-    const state = sanitizePlayerState(frontierPackage, {
+    const state = sanitizePlayerState(watchPackage, {
       pages: {
         'page:a.mdx': {
           completed: true,
