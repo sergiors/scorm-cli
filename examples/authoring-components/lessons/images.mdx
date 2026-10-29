@@ -1,0 +1,25 @@
+---
+title: Add images
+---
+
+import { Image, Callout } from 'scorm-cli/authoring'
+
+# Add images with context
+
+Local image paths must resolve to assets inside the content package, though the parser also accepts absolute remote asset URLs. `<Image>` requires explicit alternative text.
+
+## Image: asset source, required alt text
+
+`<Image>` can be authored as a block or inline with paragraph text. Its required attributes are `src` and `alt`; `caption` is optional. Keep the alternative concise and useful for someone who cannot see the image.
+
+<Image
+  src="../assets/course-landscape.jpg"
+  alt="A mountain landscape beneath a wide, open sky"
+  caption="A landscape photo bundled locally with this course."
+/>
+
+Here the same locally bundled image can sit in a sentence: <Image src="../assets/course-landscape.jpg" alt="A mountain landscape beneath a wide, open sky" /> illustrates the inline form.
+
+<Callout variant="info" title="Make images usable">
+  Provide meaningful image alternatives.
+</Callout>

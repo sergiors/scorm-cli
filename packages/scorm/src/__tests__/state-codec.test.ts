@@ -242,10 +242,11 @@ describe('compact suspend-data codec', () => {
       }
     })
 
+    // A removed page leaves the saved two-bit visited bitmap oversized for the
+    // one-page manifest, so every page-indexed key — the positions included —
+    // is discarded instead of being trusted against the wrong page list.
     delete updatedManifest.pages['1']
-    expect(decodeSuspendData(updatedManifest, encoded)).toEqual({
-      pages: { 'page-one': { videos: { 'video-b': 1.1 } } }
-    })
+    expect(decodeSuspendData(updatedManifest, encoded)).toEqual({ pages: {} })
   })
 
   it('decodes payloads without video data and ignores invalid or unknown video indexes', () => {
@@ -955,6 +956,38 @@ describe('accumulated video watch seconds in the suspend-data codec', () => {
         }
       })
     ).toEqual({ pages: { 'page-one': { videoWatchSeconds: { 'video-a': 45.6 } } } })
+  })
+
+  it('drops page-indexed video position and watch keys when the visited bitmap is oversized', () => {
+    const videoManifest = structuredClone(manifest)
+    assignRequiredVideos(videoManifest, {
+      'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120]],
+      'page-two': [['video-b', 'https://youtu.be/b', 'youtube']]
+    })
+    const payload = {
+      v: 1,
+      p: 0,
+      // Three pages' worth of visited bits cannot belong to a two-page
+      // manifest, so every page-indexed key lost its meaning.
+      x: '000',
+      d: { '0.t.0': 410, '0.w.0': 600, '1.t.0': 220 }
+    }
+    // Position and watch keys alike restore nothing under an oversized bitmap.
+    expect(decodeSuspendData(videoManifest, payload)).toEqual({ pages: {} })
+
+    // The very same keys restore once the bitmap fits the page list, with the
+    // watch total still capped at the requirement and every index honored.
+    expect(
+      decodeSuspendData(videoManifest, {
+        ...payload,
+        x: '00'
+      })
+    ).toEqual({
+      pages: {
+        'page-one': { videos: { 'video-a': 41 }, videoWatchSeconds: { 'video-a': 60 } },
+        'page-two': { videos: { 'video-b': 22 } }
+      }
+    })
   })
 
   it('keeps legacy payloads decoding while watch seconds stay absent', () => {

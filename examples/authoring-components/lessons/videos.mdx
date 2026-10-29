@@ -1,0 +1,29 @@
+---
+title: Add video
+---
+
+import { Video, Callout } from 'scorm-cli/authoring'
+
+# Add video with context
+
+`<Video>` embeds one supported hosted video and must use an individual YouTube or Vimeo URL. The provider is inferred from the URL in `src`; you do not need to specify it separately. Optional attributes are `title` and `poster`.
+
+## Video: supported hosted source
+
+<Video src="https://www.youtube.com/watch?v=M7lc1UVf-VE" title="YouTube player API sample" />
+
+<Video src="https://vimeo.com/76979871" title="Vimeo player sample" />
+
+<Video
+  src="https://vimeo.com/90509568"
+  title="Construct GTC Teaser"
+  duration="1m19s"
+  minWatchTime="5s"
+/>
+
+Local video files, direct media URLs, playlists, and unrelated hosts are not supported by this component.
+
+<Callout variant="info" title="Make video usable">
+  Provide a descriptive video title. If a local poster path is supplied, it must also resolve to an
+  asset in the package.
+</Callout>

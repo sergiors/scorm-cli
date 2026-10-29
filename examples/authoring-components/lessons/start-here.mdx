@@ -16,13 +16,14 @@ This course introduces the small set of authoring components that shapes a SCORM
 
 ## Follow the tour
 
-The slide deck already gives these lessons an order. A `<Path>` is a separate in-content navigation component: its `<Page ref="…" />` children point to pages declared by the root presentation.
+The root `<Scroll>` presents these lessons continuously in the order declared by the course entry file. Optionally, a `<Path>` adds separate in-content navigation alongside that root presentation: its `<Page ref="…" />` children point to pages declared by `<Scroll>`. After setting up the project, continue through the component tour in this order.
 
 <Path>
   <Page ref="lessons/presentations.mdx" />
   <Page ref="lessons/content-components.mdx" />
-  <Page ref="lessons/media.mdx" />
+  <Page ref="lessons/images.mdx" />
+  <Page ref="lessons/videos.mdx" />
   <Page ref="lessons/assessment.mdx" />
 </Path>
 
-Start by comparing the three presentation containers. Then explore content composition, media, and finally interactive assessment.
+Start by comparing the three presentation containers. Then explore content composition, images, video, and finally interactive assessment.

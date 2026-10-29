@@ -12,7 +12,7 @@ cli
   .command('build <content>', 'Build a SCORM package from authored content')
   .option('-o, --output <path>', 'Output ZIP path (default: dist/<content-name>.zip)')
   .option('--scorm <version>', 'SCORM version: 1.2 (default) or 2004')
-  .example('scorm build examples/typescript-content')
+  .example('scorm build examples/authoring-components')
   .action(async (content: string, options: { output?: string; scorm?: string | number }) => {
     try {
       const scormVersion = parseScormVersion(options.scorm)
@@ -27,7 +27,7 @@ cli
 cli
   .command('preview <content>', 'Preview authored content and watch for changes')
   .option('-p, --port <port>', 'Port for the local preview server')
-  .example('scorm preview examples/typescript-content')
+  .example('scorm preview examples/authoring-components')
   .action((content: string, options: { port?: string | number }) =>
     runPreviewCommand(content, options, loadRenderer)
   )

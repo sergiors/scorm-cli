@@ -9,7 +9,7 @@
 
 ## Examples
 
-- [Scroll Example](https://github.com/sergiors/scorm-cli/tree/main/examples/typescript-content): Continuous content with Markdown, media, and questionnaires.
+- [Authoring Components Example](https://github.com/sergiors/scorm-cli/tree/main/examples/authoring-components): A guided tour of presentation, content, media, and assessment authoring components.
 - [Slides Example](https://github.com/sergiors/scorm-cli/tree/main/examples/typescript-slides): One-page-at-a-time presentation with sequential navigation.
 - [Tiles Example](https://github.com/sergiors/scorm-cli/tree/main/examples/typescript-tiles): Tile-based presentation with navigable items.
 - [Accessibility Example](https://github.com/sergiors/scorm-cli/tree/main/examples/accessibility-basics): Accessibility content and questionnaires.

@@ -10,10 +10,12 @@ import type {
   PlayerState,
   QuestionnaireNode,
   ItemNode,
+  VideoNode,
   VideoProvider
 } from '../../app/types'
 import type { ContentProvider } from '../../app/lib/content-loader'
 import { getPresentationNodes } from '@scorm-cli/core'
+import { reactPlayerMock as players, type RecordedPlayer } from './react-player-mock'
 import {
   headingDepths,
   inlineContentProvider,
@@ -964,6 +966,21 @@ describe('PackageView scroll Virtuoso-owned geometry', () => {
 })
 
 describe('PackageView scroll completion gating', () => {
+  let watchClock = 0
+
+  /** Drives a playing provider's progress tick on the mocked performance clock. */
+  function driveWatch(record: RecordedPlayer, seconds: number, elapsed = seconds): void {
+    watchClock += elapsed * 1000
+    act(() => record.onProgress?.({ playedSeconds: seconds }))
+  }
+
+  /** Begins one player's active playback against a fresh performance spy. */
+  function startWatch(record: RecordedPlayer): void {
+    watchClock = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => watchClock)
+    act(() => record.onPlay?.())
+  }
+
   it('completes a questionnaire-free page at its end and unlocks the next', () => {
     const saveState = vi.fn()
     window.scormBridge = { saveState }
@@ -1027,6 +1044,126 @@ describe('PackageView scroll completion gating', () => {
     setEndIntersecting(1, true)
 
     expect(markCompleted).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the next page locked at its end until every required video is watched', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+    const firstVideo: VideoNode = {
+      type: 'video',
+      id: 'video:required-a.mdx:1:1',
+      provider: 'vimeo',
+      src: 'https://vimeo.com/a',
+      title: 'First',
+      duration: 60,
+      minWatchTime: 2
+    }
+    const secondVideo: VideoNode = {
+      type: 'video',
+      id: 'video:required-b.mdx:1:1',
+      provider: 'youtube',
+      src: 'https://youtu.be/b',
+      title: 'Second',
+      duration: 60,
+      minWatchTime: 3
+    }
+    const videoGatePackage: ContentPackage = {
+      metadata: { title: 'Video gated package' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'page:video-gate.mdx',
+            source: 'video-gate.mdx',
+            metadata: { title: 'Video gate' },
+            content: [firstVideo, secondVideo]
+          },
+          plainPage(2)
+        ]
+      }
+    }
+    players.reset()
+    act(() => root.render(<Player contentPackage={videoGatePackage} />))
+    expect(virtualizedTotal()).toBe(1)
+
+    // Both lazy players mount only once their frames approach the viewport.
+    const frames = Array.from(container.querySelectorAll('[data-slot="media-frame"]'))
+    expect(frames).toHaveLength(2)
+    frames.forEach((frame) => driveObserver(frame, true))
+    const firstPlayer = players.records.find((record) => record.url === firstVideo.src)
+    const secondPlayer = players.records.find((record) => record.url === secondVideo.src)
+    expect(firstPlayer).toBeDefined()
+    expect(secondPlayer).toBeDefined()
+
+    setEndIntersecting(0, true)
+    expect(container.querySelector('[data-scroll-locked]')).not.toBeNull()
+    expect(lastSaved(saveState).pages['page:video-gate.mdx']?.completed).toBeUndefined()
+
+    // Watching the first video to its own minimum still leaves the page gated
+    // on the second one: requirements are conjunctive.
+    startWatch(firstPlayer!)
+    driveWatch(firstPlayer!, 1, 1)
+    driveWatch(firstPlayer!, 2, 1)
+    const requirements = () => Array.from(container.querySelectorAll('[data-video-requirement]'))
+    expect(requirements()[0]?.getAttribute('data-complete')).toBe('true')
+    expect(requirements()[1]?.getAttribute('data-complete')).toBe('false')
+    expect(container.querySelector('[data-scroll-locked]')).not.toBeNull()
+    expect(virtualizedTotal()).toBe(1)
+
+    // Meeting the second video's own minimum unlocks the next page.
+    startWatch(secondPlayer!)
+    driveWatch(secondPlayer!, 2, 2)
+    driveWatch(secondPlayer!, 3, 1)
+    expect(requirements()[1]?.getAttribute('data-complete')).toBe('true')
+    expect(container.querySelector('[data-scroll-locked]')).toBeNull()
+    expect(virtualizedTotal()).toBe(2)
+    const saved = lastSaved(saveState).pages['page:video-gate.mdx']
+    expect(saved?.completed).toBe(true)
+    expect(saved?.videoWatchSeconds).toEqual({ [firstVideo.id]: 2, [secondVideo.id]: 3 })
+  })
+
+  it('completes a page with an optional video at its end without any watch requirement', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+    const optionalVideo: VideoNode = {
+      type: 'video',
+      id: 'video:optional.mdx:1:1',
+      provider: 'vimeo',
+      src: 'https://vimeo.com/optional',
+      title: 'Optional clip'
+    }
+    const optionalPackage: ContentPackage = {
+      metadata: { title: 'Optional video package' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'page:video-optional.mdx',
+            source: 'video-optional.mdx',
+            metadata: { title: 'Optional video' },
+            content: [optionalVideo]
+          },
+          plainPage(2)
+        ]
+      }
+    }
+    players.reset()
+    act(() => root.render(<Player contentPackage={optionalPackage} />))
+    expect(container.querySelector('[data-video-requirement]')).toBeNull()
+
+    const frame = container.querySelector('[data-slot="media-frame"]')
+    expect(frame).not.toBeNull()
+    driveObserver(frame as Element, true)
+    expect(container.querySelector('[data-testid="react-player"]')).not.toBeNull()
+
+    // A mounted player without a requirement never gates the page end.
+    setEndIntersecting(0, true)
+    expect(virtualizedTotal()).toBe(2)
+    const saved = lastSaved(saveState).pages['page:video-optional.mdx']
+    expect(saved?.completed).toBe(true)
+    expect(saved?.videoWatchSeconds).toBeUndefined()
   })
 })
 

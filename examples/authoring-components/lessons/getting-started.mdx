@@ -1,0 +1,79 @@
+---
+title: Get started with scorm-cli
+---
+
+import { Callout, Path, Page } from 'scorm-cli/authoring'
+
+# Install and run scorm-cli
+
+Use Node.js `>=20.19.0` and pnpm to install the published `scorm-cli` package as a development dependency in your project:
+
+```sh
+pnpm add -D scorm-cli
+```
+
+## Create your course content
+
+Make a content directory such as `content/`. Add an `index.mdx` at its root to declare one authoring presentation, then put each referenced lesson in a file under `content/lessons/`:
+
+```text
+content/
+  index.mdx
+  lessons/
+    introduction.mdx
+    next-steps.mdx
+```
+
+For example, the root `content/index.mdx` can declare a continuous `<Scroll>` presentation with two lesson files:
+
+```mdx
+---
+title: My Course
+---
+
+import { Scroll, Page } from 'scorm-cli/authoring'
+
+<Scroll>
+  <Page src="lessons/introduction.mdx" />
+  <Page src="lessons/next-steps.mdx" />
+</Scroll>
+```
+
+Each referenced lesson file needs its own title frontmatter and can contain Markdown and supported authoring components:
+
+```mdx
+---
+title: Introduction
+---
+
+# Welcome
+
+Introduce the course and what learners will be able to do.
+```
+
+The `src` paths are relative to the content directory. `<Scroll>` is the root presentation used by this course; `<Slides>` presents pages as a sequence, while `<Tiles>` lets learners choose among content items. See the presentation lesson for their authoring forms.
+
+## Preview and build
+
+Start the local preview server while authoring:
+
+```sh
+pnpm exec scorm-cli preview ./content
+```
+
+When your course is ready, create its SCORM package:
+
+```sh
+pnpm exec scorm-cli build ./content
+```
+
+<Callout variant="info" title="Check your content before sharing">
+  Preview reports authoring validation errors as you work. Fix those errors, then build again to
+  produce the SCORM package.
+</Callout>
+
+Optionally, a `<Path>` in lesson content can provide in-content navigation to pages declared by the root `<Scroll>`; it supplements the root presentation rather than replacing it:
+
+<Path>
+  <Page ref="lessons/start-here.mdx" />
+</Path>

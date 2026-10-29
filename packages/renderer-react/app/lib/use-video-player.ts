@@ -20,6 +20,23 @@ const SEEK_END_MARGIN_SECONDS = 1
  */
 const WATCH_CLOCK_TOLERANCE_SECONDS = 1
 
+/**
+ * How far media may lag the advance expected from elapsed wall time before a
+ * progress interval is treated as stalled rather than active playback. A
+ * suspended or throttled page can leave a long wall gap whose media barely
+ * moved, which must never be credited as watching. The generous allowance keeps
+ * normal provider progress caching and interleaved callbacks from being
+ * discarded.
+ */
+const WATCH_STALL_TOLERANCE_SECONDS = 5
+
+/**
+ * The most wall time a pause, buffer, end, rate-change or teardown tail may
+ * credit without a fresh progress reading to verify it. A longer gap is a
+ * delayed callback, not uninterrupted playback.
+ */
+const WATCH_MAX_UNVERIFIED_SECONDS = 5
+
 /** How often accumulated watch time is written while it advances. */
 const WATCH_PERSIST_INTERVAL_SECONDS = 1
 
@@ -191,12 +208,17 @@ function initialWatchSeconds(options: VideoPlayerOptions): number {
  * elapsed watching time, kept separate from the playback position. Time is
  * credited only while playback is active and only by the monotonic interval
  * reported to {@link VideoPlayerBinding.onProgress}; the change in media
- * position is never itself credited. Pausing, buffering, seeking and ending
- * close or re-baseline the active interval, so no gap counts. YouTube never
- * reports seeks, so a progress reading whose media advance disagrees with
+ * position is never itself credited. Playback must have started: progress
+ * ticks a provider emits while merely loading or paused buffer nothing.
+ * Pausing, buffering, seeking, ending and hiding the page close or re-baseline
+ * the active interval, so no gap counts. YouTube never reports seeks, so a
+ * progress reading whose media advance disagrees with
  * `elapsed × playbackRate` discards that interval instead of treating the jump
- * as watched time. `onPlaybackRateChange` keeps that expectation accurate: 30
- * seconds at 2× credits 30 seconds, not 60.
+ * as watched time. A media advance far behind that expectation is likewise a
+ * stalled or suspended provider, not watching. Tails reported without a fresh
+ * progress reading (pause, buffer, end, rate change, teardown) are bounded.
+ * `onPlaybackRateChange` keeps the expectation accurate: 30 seconds at 2×
+ * credits 30 seconds, not 60.
  *
  * Seeking is always allowed and is never blocked or reverted. Rewatching a
  * segment accumulates again. The total is monotonic, capped at the authored
@@ -247,12 +269,20 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
   const playbackRef = useRef(false)
   const endedRef = useRef(false)
   /**
-   * Whether playback is known to be paused. It starts `false` because the
-   * player never autoplays: progress events are themselves produced by playback,
-   * while an explicit pause, buffer or end is what marks the interruption.
+   * Whether playback is known to be paused. It starts `true` because the player
+   * never autoplays: only an explicit play starts the watch clock. Providers
+   * keep polling progress while merely loading, and Vimeo can report a changed
+   * loaded range with the same played position, so treating a not-yet-started
+   * player as playing would credit buffering as watching.
    */
-  const pausedRef = useRef(false)
+  const pausedRef = useRef(true)
   const bufferingRef = useRef(false)
+  /**
+   * Whether the document is hidden. Browser suspension and background timer
+   * throttling stop progress callbacks while wall time keeps moving, so hidden
+   * time is never active watching.
+   */
+  const hiddenRef = useRef(typeof document !== 'undefined' && document.visibilityState === 'hidden')
   const lastPersistedRef = useRef<number | undefined>(startsAtInitial ? initialSeconds : undefined)
   const lastProgressRef = useRef<number | undefined>(startsAtInitial ? initialSeconds : undefined)
   const lastWatchPersistedRef = useRef<number | undefined>(undefined)
@@ -341,15 +371,32 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
   /**
    * Credits the monotonic time elapsed in the current active-playback segment.
    * The credited amount is always elapsed time, never a media-time delta, so a
-   * faster playback rate cannot inflate it. YouTube's seekless progress jumps
-   * are detected by comparing the media advance with `elapsed × playbackRate`;
-   * a discontinuous interval is discarded whole and the segment re-baselined,
-   * never rewound. Seeking is otherwise free.
+   * faster playback rate cannot inflate it. A progress reading whose media
+   * advance disagrees with `elapsed × playbackRate` is discarded whole and the
+   * segment re-baselined, never rewound: a forward YouTube jump means a seek
+   * (YouTube reports none), a backward jump means a seek on any provider, and
+   * media far behind the expectation means a stall or a suspended page.
+   * Seeking is otherwise free.
+   *
+   * `verifyProgress` is set only for a provider progress reading, whose media
+   * position can be checked against the wall gap. Pause, buffer, end, rate and
+   * teardown tails have no such reading (Vimeo's cached clock can lag), so they
+   * are instead bounded rather than compared.
    */
   const creditWatchInterval = useCallback(
-    (position?: number) => {
+    (position?: number, verifyProgress = false) => {
       const required = requiredWatchSeconds(optionsRef.current)
       if (required === undefined || watchSecondsRef.current >= required) {
+        stopWatchSegment()
+        return
+      }
+      if (
+        !playbackRef.current ||
+        pausedRef.current ||
+        bufferingRef.current ||
+        endedRef.current ||
+        hiddenRef.current
+      ) {
         stopWatchSegment()
         return
       }
@@ -368,12 +415,15 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
       const elapsedSeconds = Math.max(0, now - segment.monotonicSeconds)
       const expectedAdvance = elapsedSeconds * playbackRateRef.current
       const mediaAdvance = current - segment.mediaSeconds
-      const discontinuous =
-        optionsRef.current.provider === 'youtube' &&
-        (mediaAdvance < -WATCH_CLOCK_TOLERANCE_SECONDS ||
+      const seeked =
+        mediaAdvance < -WATCH_CLOCK_TOLERANCE_SECONDS ||
+        (optionsRef.current.provider === 'youtube' &&
           mediaAdvance > expectedAdvance + WATCH_CLOCK_TOLERANCE_SECONDS)
+      const stalled =
+        verifyProgress && mediaAdvance < expectedAdvance - WATCH_STALL_TOLERANCE_SECONDS
+      const unverifiedGap = !verifyProgress && elapsedSeconds > WATCH_MAX_UNVERIFIED_SECONDS
 
-      if (!discontinuous) {
+      if (!seeked && !stalled && !unverifiedGap) {
         const credited = Math.min(required, watchSecondsRef.current + elapsedSeconds)
         if (credited > watchSecondsRef.current) {
           watchSecondsRef.current = credited
@@ -408,6 +458,38 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
       mountedRef.current = false
     }
   }, [creditWatchInterval, currentSeconds, report, reportWatch])
+
+  // A hidden document can be suspended or throttled while wall time keeps
+  // moving. Credit the visible tail, then end the interval so the gap before
+  // the next callback is never counted. Returning to a still-active player
+  // starts a fresh interval at the media's real position.
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+    // Re-read at subscribe time in case visibility changed before the listener
+    // was attached.
+    hiddenRef.current = document.visibilityState === 'hidden'
+    const handleVisibilityChange = () => {
+      const hidden = document.visibilityState === 'hidden'
+      if (hidden === hiddenRef.current) {
+        return
+      }
+      if (hidden) {
+        creditWatchInterval(currentSeconds())
+        reportWatch(watchSecondsRef.current, true)
+        stopWatchSegment()
+        hiddenRef.current = true
+        return
+      }
+      hiddenRef.current = false
+      if (playbackRef.current && !pausedRef.current && !bufferingRef.current && !endedRef.current) {
+        rebaselineWatch(currentSeconds() ?? lastProgressRef.current ?? 0)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [creditWatchInterval, currentSeconds, rebaselineWatch, reportWatch, stopWatchSegment])
 
   // Restores Vimeo's position imperatively, exactly once, and only once a usable
   // duration has been observed. Called from both `onReady` (a probe, which no-ops
@@ -492,10 +574,10 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
     endedRef.current = false
     playbackRef.current = true
     pausedRef.current = false
-    bufferingRef.current = false
-    // The first active interval begins wherever playback actually is. Paused or
-    // buffered gaps before this point were ended with their interval and never
-    // count.
+    // Buffering is cleared only by its own end event. A provider can announce
+    // play before the buffer is full, and ticks in that window are not watching.
+    // The first active interval begins wherever playback actually is; paused or
+    // buffered gaps before this point never count.
     const seconds = currentSeconds()
     rebaselineWatch(seconds ?? lastProgressRef.current ?? 0)
   }, [currentSeconds, rebaselineWatch])
@@ -519,7 +601,7 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
         report(seconds, false)
         return
       }
-      creditWatchInterval(seconds)
+      creditWatchInterval(seconds, true)
       report(seconds, false)
     },
     [creditWatchInterval, report]
@@ -562,9 +644,9 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
       // unsampled tail rather than treating it as active watching.
       stopWatchSegment()
       lastProgressRef.current = seconds
-      if (pausedRef.current || bufferingRef.current || endedRef.current) {
-        // A paused or buffered seek must not start an interval; playback will
-        // establish the next one.
+      if (pausedRef.current || bufferingRef.current || endedRef.current || hiddenRef.current) {
+        // A paused, buffered or hidden seek must not start an interval;
+        // playback will establish the next one.
         stopWatchSegment()
       } else {
         rebaselineWatch(seconds)
@@ -589,7 +671,7 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
 
   const onBufferEnd = useCallback(() => {
     bufferingRef.current = false
-    if (!pausedRef.current && !endedRef.current) {
+    if (!pausedRef.current && !endedRef.current && !hiddenRef.current) {
       // Buffering ended at wherever the provider resumed; the gap does not
       // count, so the next interval starts from that real position.
       const seconds = currentSeconds()
@@ -605,7 +687,11 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
         return
       }
       const active =
-        playbackRef.current && !pausedRef.current && !bufferingRef.current && !endedRef.current
+        playbackRef.current &&
+        !pausedRef.current &&
+        !bufferingRef.current &&
+        !endedRef.current &&
+        !hiddenRef.current
       // Close the interval under the old rate before adopting the new one, so a
       // mid-interval rate change can neither inflate nor invalidate it.
       const seconds = currentSeconds()

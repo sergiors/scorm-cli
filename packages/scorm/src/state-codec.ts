@@ -230,8 +230,10 @@ function createSuspendDataCodec() {
         const answers = pageState.answers ?? (pageState.answers = {})
         answers[question.id] = answer
       } else if (parsedKey.kind === 't') {
+        if (!pageIndexed) return
         assignVideoPosition(fresh, page, parsedKey.entityIndex, value)
       } else if (parsedKey.kind === 'w') {
+        if (!pageIndexed) return
         assignVideoWatchSeconds(fresh, page, parsedKey.entityIndex, value)
       } else if (parsedKey.kind === 'q') {
         if (!pageIndexed || !Array.isArray(value)) return

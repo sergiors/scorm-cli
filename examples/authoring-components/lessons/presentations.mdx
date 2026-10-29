@@ -6,7 +6,7 @@ import { Callout, Path, Page } from 'scorm-cli/authoring'
 
 # One course, three presentation styles
 
-Every course entry point has exactly one root presentation: `<Scroll>`, `<Slides>`, or `<Tiles>`. These are not content blocks to place inside a lesson; they organize referenced files at the package root.
+Every course entry point has exactly one root presentation: `<Scroll>`, `<Slides>`, or `<Tiles>`. This course chooses `<Scroll>` for a continuous presentation; `<Slides>` and `<Tiles>` are alternatives. These are not content blocks to place inside a lesson; they organize referenced files at the package root.
 
 ## Scroll and Slides use Pages
 
@@ -21,7 +21,7 @@ import { Scroll, Page } from 'scorm-cli/authoring'
 </Scroll>
 ```
 
-The course entry file uses `<Slides>` in the same way. `src` is a package-relative file path; the referenced page has its own frontmatter title and lesson content.
+The course entry file uses `<Scroll>` in the same way. `src` is a package-relative file path; the referenced page has its own frontmatter title and lesson content. Choose `<Slides>` instead when you want those pages presented as a sequence.
 
 ## Tiles use Items instead
 
@@ -40,7 +40,7 @@ This `Item` is not an accordion section: it points to a separate file. An accord
 
 ## Page has two distinct jobs
 
-`<Page src="…" />` belongs directly under root `<Scroll>` or `<Slides>`. Inside a flow-content `<Path>`, a self-closing `<Page ref="…" />` refers to one of those root pages. It is not a nested lesson, and `src` and `ref` are not interchangeable.
+`<Page src="…" />` belongs directly under root `<Scroll>` or `<Slides>`. Optionally, a flow-content `<Path>` can add in-content navigation alongside that root presentation: its self-closing `<Page ref="…" />` refers to one of the root pages. A `<Path>` does not replace the course's root presentation. A referenced page is not a nested lesson, and `src` and `ref` are not interchangeable.
 
 <Callout variant="warning" title="Keep the nesting direct">
   A presentation cannot contain arbitrary content or another presentation. Use only its declared
@@ -51,6 +51,7 @@ Continue to the content components.
 
 <Path>
   <Page ref="lessons/content-components.mdx" />
-  <Page ref="lessons/media.mdx" />
+  <Page ref="lessons/images.mdx" />
+  <Page ref="lessons/videos.mdx" />
   <Page ref="lessons/assessment.mdx" />
 </Path>

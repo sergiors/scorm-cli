@@ -23,7 +23,7 @@ const cli = cac('scorm-cli')
 cli
   .command('preview <content>', 'Preview authored content from source with live HMR')
   .option('-p, --port <port>', 'Port for the local preview server')
-  .example('pnpm preview examples/typescript-content')
+  .example('pnpm preview examples/authoring-components')
   .action((content: string, options: { port?: string | number }) =>
     runPreviewCommand(
       resolvePreviewContentPath(content, repositoryRoot),

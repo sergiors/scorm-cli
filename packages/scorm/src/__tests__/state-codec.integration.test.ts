@@ -323,6 +323,62 @@ describe('suspend-data codec integration', () => {
     })
   })
 
+  it('matches browser and Node codecs for watch-second capping and oversized bitmaps', () => {
+    const videoManifest = structuredClone(manifest)
+    videoManifest.pages['3']!.videos = {
+      '0': {
+        id: 'video:lesson.mdx:3:1',
+        src: 'https://vimeo.com/a',
+        provider: 'vimeo',
+        minWatchTime: 60,
+        duration: 120
+      }
+    }
+    const state: PlayerState = {
+      pages: {
+        'page-3': {
+          videos: { 'video:lesson.mdx:3:1': 41 },
+          videoWatchSeconds: { 'video:lesson.mdx:3:1': 300 }
+        }
+      }
+    }
+    const context: Record<string, unknown> = {}
+    vm.createContext(context)
+    vm.runInContext(browserCodecSource(), context)
+    const browserEncode = context.compactEncode as (
+      manifest: unknown,
+      state: unknown,
+      progress: number
+    ) => string
+    const browserDecode = context.compactDecode as (manifest: unknown, raw: unknown) => PlayerState
+
+    // Both runtimes cap the persisted watch total at the authored requirement
+    // beside the playback position, and restore that same cap.
+    const encoded = encodeSuspendData(videoManifest, state, 0)
+    expect(encoded.d).toEqual({ '3.t.0': 410, '3.w.0': 600 })
+    expect(JSON.parse(browserEncode(videoManifest, state, 0))).toEqual(encoded)
+    const expectedRestore = {
+      pages: {
+        'page-3': {
+          videos: { 'video:lesson.mdx:3:1': 41 },
+          videoWatchSeconds: { 'video:lesson.mdx:3:1': 60 }
+        }
+      }
+    }
+    expect(decodeSuspendData(videoManifest, encoded)).toEqual(expectedRestore)
+    expect(normalize(browserDecode(videoManifest, JSON.stringify(encoded)))).toEqual(
+      expectedRestore
+    )
+
+    // A visited bitmap oversized for the five-page manifest discards the same
+    // indexed keys in both runtimes instead of restoring any of them.
+    const oversized = { ...encoded, x: '000000' }
+    expect(decodeSuspendData(videoManifest, oversized)).toEqual({ pages: {} })
+    expect(normalize(browserDecode(videoManifest, JSON.stringify(oversized)))).toEqual({
+      pages: {}
+    })
+  })
+
   it('keeps browser and Node behavior in parity across defaults, bounds, and malformed indexes', () => {
     const context: Record<string, unknown> = {}
     vm.createContext(context)

@@ -171,6 +171,18 @@ function progressAfter(record: RecordedPlayer, seconds: number, elapsed = second
   act(() => record.onProgress?.({ playedSeconds: seconds }))
 }
 
+/**
+ * Shadows the jsdom visibility state, notifies the binding's listener, and
+ * leaves the shadow configurable so tests clean it up at the end of a suite.
+ */
+function setDocumentHidden(hidden: boolean): void {
+  Object.defineProperty(document, 'visibilityState', {
+    value: hidden ? 'hidden' : 'visible',
+    configurable: true
+  })
+  act(() => document.dispatchEvent(new Event('visibilitychange')))
+}
+
 function lastSaved(saveState: { mock: { calls: unknown[][] } }): PlayerState {
   const calls = saveState.mock.calls
   return calls[calls.length - 1]?.[0] as PlayerState
@@ -1210,6 +1222,217 @@ describe('Video watch requirements', () => {
 
     expect(watchedByVideo.get(first.id)).toBe(6)
     expect(watchedByVideo.get(second.id)).toBe(3)
+  })
+})
+
+describe('Video watch accrual guards', () => {
+  const requiredNode: VideoNode = { ...vimeoNode, duration: 120, minWatchTime: 60 }
+
+  afterEach(() => {
+    delete (document as unknown as Record<string, unknown>).visibilityState
+  })
+
+  it.each<VideoProvider>(['vimeo', 'youtube'])(
+    'does not accrue required viewing from progress polls before playback starts for %s',
+    async (provider) => {
+      const onWatchSeconds = vi.fn()
+      watchClock = 0
+      vi.spyOn(performance, 'now').mockImplementation(() => watchClock)
+      const record = await mountVideo(
+        { ...requiredNode, provider, src: providerSources[provider] },
+        undefined,
+        vi.fn(),
+        undefined,
+        onWatchSeconds
+      )
+      const requirement = () => container.querySelector('[data-video-requirement]')
+
+      // Providers keep polling progress while a player is merely loading, and
+      // none of that load time is watching: the requirement stays untouched
+      // until the learner actually plays.
+      progressAfter(record, 30, 30)
+      progressAfter(record, 45, 15)
+
+      expect(savedWatchSeconds(onWatchSeconds)).toEqual([])
+      expect(requirement()?.getAttribute('data-complete')).toBe('false')
+      expect(requirement()?.textContent).toContain('Required viewing 0:00 / 1:00')
+    }
+  )
+
+  it('does not accrue required viewing from polls at a paused restored Vimeo seek', async () => {
+    const onPosition = vi.fn()
+    const onWatchSeconds = vi.fn()
+    watchClock = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => watchClock)
+    const record = await mountVideo(requiredNode, 60, onPosition, undefined, onWatchSeconds)
+
+    await act(async () => {
+      record.onReady?.()
+    })
+    await act(async () => {
+      record.onDuration?.(200)
+    })
+    // The restore seeks imperatively and leaves the player paused.
+    expect(players.seekTo).toHaveBeenCalledTimes(1)
+    expect(players.seekTo).toHaveBeenCalledWith(60, 'seconds', false)
+
+    // Provider polls beside and beyond the restored position are inert for the
+    // requirement while the player stays paused.
+    progressAfter(record, 60, 2)
+    progressAfter(record, 66, 6)
+
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([])
+    expect(container.querySelector('[data-video-requirement]')?.textContent).toContain(
+      'Required viewing 0:00 / 1:00'
+    )
+    // The resumed position itself still persists on its normal cadence.
+    expect(savedPositions(onPosition)).toEqual([66])
+  })
+
+  it('credits a small media lag but discards a progress gap whose media barely advanced', async () => {
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatchSeconds)
+    startWatching(record)
+
+    progressAfter(record, 2, 2)
+    // Provider progress caching can trail the wall clock; a short interval
+    // still counts as watching.
+    progressAfter(record, 2.6, 2)
+    // A long wall gap whose media barely moved is a stalled or suspended
+    // provider, not watching: the whole interval is discarded, never credited.
+    progressAfter(record, 3, 30)
+    // Once intervals are real again, accumulation resumes from the media's
+    // actual position.
+    progressAfter(record, 5, 2)
+
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2, 4, 6])
+    expect(players.seekTo).not.toHaveBeenCalled()
+  })
+
+  it('ignores wall time while the document is hidden and resumes accumulation on return', async () => {
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatchSeconds)
+    startWatching(record)
+
+    progressAfter(record, 4, 4)
+    // Hiding the page credits the visible tail and closes the interval.
+    setDocumentHidden(true)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([4])
+
+    // A suspended page stops callbacks while wall time keeps moving; a stray
+    // poll that reaches the hook through the hidden interval counts nothing.
+    watchClock += 30_000
+    progressAfter(record, 4.1, 1)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([4])
+
+    // Returning to a visible page re-baselines at the media's real position.
+    setDocumentHidden(false)
+    progressAfter(record, 6.1, 2)
+
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([4, 6])
+  })
+
+  it('does not accrue while mounted with the document already hidden until it becomes visible', async () => {
+    const onWatchSeconds = vi.fn()
+    setDocumentHidden(true)
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatchSeconds)
+    startWatching(record)
+
+    progressAfter(record, 10, 10)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([])
+
+    setDocumentHidden(false)
+    progressAfter(record, 12, 2)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([2])
+  })
+})
+
+describe('Unverified watch tails stay bounded', () => {
+  const requiredNode: VideoNode = { ...vimeoNode, duration: 120, minWatchTime: 60 }
+  const tailNode: VideoNode = { ...vimeoNode, duration: 50, minWatchTime: 42 }
+
+  it('credits a pause tail at the unverified bound but discards a longer one', async () => {
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatchSeconds)
+    startWatching(record)
+
+    progressAfter(record, 4, 4)
+    // Five wall seconds without a fresh progress reading is still active
+    // playback, so the pause tail credits it.
+    watchClock += 5000
+    players.getCurrentTime.mockReturnValue(null)
+    act(() => record.onPause?.())
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([4, 9])
+
+    act(() => record.onPlay?.())
+    progressAfter(record, 6, 2)
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([4, 9, 11])
+
+    // A longer unverified tail is a delayed callback, not uninterrupted
+    // playback, so it cannot inflate the total.
+    watchClock += 5500
+    act(() => record.onPause?.())
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([4, 9, 11])
+  })
+
+  it('does not credit a long end tail without a fresh progress reading', async () => {
+    const onWatchSeconds = vi.fn()
+    const onPosition = vi.fn()
+    const record = await mountVideo(tailNode, undefined, onPosition, undefined, onWatchSeconds)
+    startWatching(record)
+
+    progressAfter(record, 38, 38)
+    watchClock += 10000
+    act(() => record.onEnded?.())
+
+    // The end tail is bounded: a long one neither completes the requirement by
+    // itself nor disturbs the finished reset.
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([38])
+    expect(savedPositions(onPosition)).toEqual([38, 0])
+  })
+
+  it('does not credit a long buffered tail without a fresh progress reading', async () => {
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatchSeconds)
+    startWatching(record)
+
+    progressAfter(record, 4, 4)
+    watchClock += 9000
+    players.getCurrentTime.mockReturnValue(null)
+    act(() => record.onBuffer?.())
+
+    // Buffering resumed at its own real position and accumulation continues
+    // from there, never from the wall gap.
+    players.getCurrentTime.mockReturnValue(4)
+    act(() => record.onBufferEnd?.())
+    progressAfter(record, 6, 2)
+
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([4, 6])
+  })
+
+  it('does not credit a long rate-change tail without a fresh progress reading', async () => {
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatchSeconds)
+    startWatching(record)
+
+    progressAfter(record, 10, 10)
+    watchClock += 8000
+    act(() => record.onPlaybackRateChange?.(2))
+    progressAfter(record, 14, 2)
+
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([10, 12])
+  })
+
+  it('does not flush a long watch tail on teardown', async () => {
+    const onWatchSeconds = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatchSeconds)
+    startWatching(record)
+
+    progressAfter(record, 4, 4)
+    watchClock += 9000
+    act(() => root.unmount())
+
+    expect(savedWatchSeconds(onWatchSeconds)).toEqual([4])
   })
 })
 
