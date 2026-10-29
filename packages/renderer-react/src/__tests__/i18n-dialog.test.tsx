@@ -3,9 +3,10 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { useIntl } from 'react-intl'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { PackageView } from '../../app/components/PackageView'
+import { Presentation } from '../../app/components/Presentation'
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from '../../app/components/ui/dialog'
 import type { ContentPackage } from '../../app/types'
+import { PlayerProvider } from '../../app/lib/player-context'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
 import { tilesPackage, inlineContentProvider } from './fixtures'
 
@@ -66,10 +67,12 @@ describe('i18n: tiles dialog', () => {
     act(() =>
       root.render(
         <PlayerI18nProvider lang="pt-BR">
-          <PackageView
-            contentPackage={ptTilesPackage}
-            contentProvider={inlineContentProvider(ptTilesPackage)}
-          />
+          <PlayerProvider contentPackage={ptTilesPackage}>
+            <Presentation
+              contentPackage={ptTilesPackage}
+              contentProvider={inlineContentProvider(ptTilesPackage)}
+            />
+          </PlayerProvider>
         </PlayerI18nProvider>
       )
     )

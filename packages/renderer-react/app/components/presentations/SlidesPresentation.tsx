@@ -1,23 +1,23 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useIntl } from 'react-intl'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import type { ContentNode, PageNode } from '../types'
-import { getSequentialAccess } from '../lib/content-helpers'
-import { useContentLoader, type ContentProvider } from '../lib/content-loader'
-import { PageProvider, usePlayerActions, usePlayerState } from '../lib/player-context'
-import { isPageRequirementsComplete } from '../lib/page-completion'
-import { clampPageIndex } from '../lib/sequence'
-import { READING_PAGE_ATTRIBUTE } from '../lib/reading-anchors'
+import type { ContentNode, PageNode } from '../../types'
+import { getSequentialAccess } from '../../lib/content-helpers'
+import { useContentLoader, type ContentProvider } from '../../lib/content-loader'
+import { PageProvider, usePlayerActions, usePlayerState } from '../../lib/player-context'
+import { isPageRequirementsComplete } from '../../lib/page-completion'
+import { clampPageIndex } from '../../lib/sequence'
+import { READING_PAGE_ATTRIBUTE } from '../../lib/reading-anchors'
 import {
   hasReadingPage,
   invalidateReadingAnchorCache,
   scrollToReadingPosition
-} from '../lib/reading-anchor-dom'
-import { useReadingAnchorTracking } from '../lib/use-reading-anchor'
-import { Button } from './ui/button'
-import { Skeleton } from './ui/skeleton'
-import { ContentLoadError } from './ContentLoadError'
-import { ContentRenderer } from './ContentRenderer'
+} from '../../lib/reading-anchor-dom'
+import { useReadingAnchorTracking } from '../../lib/use-reading-anchor'
+import { Button } from '../ui/button'
+import { Skeleton } from '../ui/skeleton'
+import { ContentLoadError } from '../ContentLoadError'
+import { ContentRenderer } from '../ContentRenderer'
 
 /**
  * The single shared column framing a slide's content: one responsive width and

@@ -1,17 +1,16 @@
 import { FormattedMessage } from 'react-intl'
 import type { ContentPackage } from '../types'
 import type { ContentProvider } from '../lib/content-loader'
-import { PlayerProvider } from '../lib/player-context'
-import { ScrollPresentation } from './ScrollPresentation'
-import { SlidesPresentation } from './SlidesPresentation'
-import { TilesPresentation } from './TilesPresentation'
+import { ScrollPresentation } from './presentations/ScrollPresentation'
+import { SlidesPresentation } from './presentations/SlidesPresentation'
+import { TilesPresentation } from './presentations/TilesPresentation'
 
-export interface PackageViewProps {
+export interface PresentationProps {
   contentPackage: ContentPackage
   /**
    * The single runtime source of each page/item's authored content, supplied by
-   * the Vite package-data module. Every generated package lazily loads its page
-   * and item bodies through it, so no content is embedded in the initial bundle.
+   * the Vite package-data module. Every generated package lazy-loads its page and
+   * item bodies through it, so no content is embedded in the initial bundle.
    */
   contentProvider: ContentProvider
 }
@@ -21,20 +20,12 @@ export interface PackageViewProps {
  *
  * There is no package chrome: no header, sidebar, breadcrumb, global navigation
  * or progress/completion UI. Session restoration, transitions, persistence and
- * completion reporting are provided once by {@link PlayerProvider}; presentations
+ * completion reporting are provided once by `PlayerProvider`; presentations
  * consume only the semantic state/actions they need. Which nodes may be accessed
  * is decided by the shared sequential progression policy; each presentation
  * decides how it exposes that decision.
  */
-export function PackageView({ contentPackage, contentProvider }: PackageViewProps) {
-  return (
-    <PlayerProvider contentPackage={contentPackage}>
-      <PackagePresentation contentPackage={contentPackage} contentProvider={contentProvider} />
-    </PlayerProvider>
-  )
-}
-
-function PackagePresentation({ contentPackage, contentProvider }: PackageViewProps) {
+export function Presentation({ contentPackage, contentProvider }: PresentationProps) {
   const { presentation } = contentPackage
 
   if (presentation.type === 'tiles') {

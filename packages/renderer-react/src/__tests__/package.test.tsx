@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { PackageApp } from '../../app/App'
-import { PackageView } from '../../app/components/PackageView'
+import { Presentation } from '../../app/components/Presentation'
+import { PlayerProvider } from '../../app/lib/player-context'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
 import type { ContentPackage } from '../../app/types'
 import {
@@ -32,15 +33,17 @@ const headingScrollPackage: ContentPackage = {
 function renderView(contentPackage: ContentPackage) {
   return renderToStaticMarkup(
     <PlayerI18nProvider lang={contentPackage.metadata.lang}>
-      <PackageView
-        contentPackage={contentPackage}
-        contentProvider={inlineContentProvider(contentPackage)}
-      />
+      <PlayerProvider contentPackage={contentPackage}>
+        <Presentation
+          contentPackage={contentPackage}
+          contentProvider={inlineContentProvider(contentPackage)}
+        />
+      </PlayerProvider>
     </PlayerI18nProvider>
   )
 }
 
-describe('PackageView scroll presentation', () => {
+describe('Presentation scroll presentation', () => {
   it('renders only the first page', () => {
     const html = renderView(scrollPackage)
     // The scene is named after the page metadata; the visible body is authored.
@@ -140,7 +143,7 @@ describe('PackageView scroll presentation', () => {
   })
 })
 
-describe('PackageView tiles presentation', () => {
+describe('Presentation tiles presentation', () => {
   it('renders tile cards using the authored titles', () => {
     const html = renderView(tilesPackage)
     expect(html).toContain('Functions')
@@ -178,7 +181,7 @@ describe('PackageView tiles presentation', () => {
   })
 })
 
-describe('PackageView shared', () => {
+describe('Presentation shared', () => {
   it('does not render any progress or completion UI of its own', () => {
     const scrollHtml = renderView(scrollPackage)
     const tilesHtml = renderView(tilesPackage)

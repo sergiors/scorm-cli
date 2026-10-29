@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ContentRenderer as ContentRendererBase } from '../../app/components/ContentRenderer'
-import { PackageView as PackageViewBase } from '../../app/components/PackageView'
+import { Presentation as PresentationBase } from '../../app/components/Presentation'
 import { PageProvider, PlayerProvider } from '../../app/lib/player-context'
 import type { ContentProvider } from '../../app/lib/content-loader'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
@@ -41,14 +41,15 @@ function ContentRenderer({
 }
 
 /**
- * Wraps the player in the i18n provider and supplies the inline content
- * provider the build wires through `virtual:package-data`. Call sites that pass
- * their own provider (a lazy one) keep it.
+ * Wraps the presentation in the player's i18n and player providers, matching how
+ * `PackageApp` renders the tree, and supplies the inline content provider the
+ * build wires through `virtual:package-data`. Call sites that pass their own
+ * provider (a lazy one) keep it.
  */
-function PackageView({
+function Presentation({
   contentProvider,
   ...props
-}: Omit<ComponentProps<typeof PackageViewBase>, 'contentProvider'> & {
+}: Omit<ComponentProps<typeof PresentationBase>, 'contentProvider'> & {
   contentProvider?: ContentProvider
 }) {
   const provider = useMemo(
@@ -57,7 +58,9 @@ function PackageView({
   )
   return (
     <PlayerI18nProvider lang={props.contentPackage.metadata.lang}>
-      <PackageViewBase {...props} contentProvider={provider} />
+      <PlayerProvider contentPackage={props.contentPackage}>
+        <PresentationBase {...props} contentProvider={provider} />
+      </PlayerProvider>
     </PlayerI18nProvider>
   )
 }
@@ -73,7 +76,7 @@ let root: Root
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   virtuosoMock.reset()
-  // PackageView resets the document scroll through `window.scrollTo` when a
+  // Presentation resets the document scroll through `window.scrollTo` when a
   // page opens; jsdom does not implement it, so stub it to keep the run quiet.
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
   container = document.createElement('div')
@@ -404,7 +407,7 @@ describe('PathView navigation', () => {
   })
 })
 
-describe('PackageView Path navigation', () => {
+describe('Presentation Path navigation', () => {
   const gateway: PageNode = {
     type: 'page',
     id: 'page:gateway.mdx',
@@ -450,7 +453,7 @@ describe('PackageView Path navigation', () => {
       saveState
     }
 
-    act(() => root.render(<PackageView contentPackage={contentPackage} />))
+    act(() => root.render(<Presentation contentPackage={contentPackage} />))
 
     // The gateway is complete, so its Path offers the first reference and locks
     // the rest.
@@ -488,7 +491,7 @@ describe('PackageView Path navigation', () => {
       saveState
     }
 
-    act(() => root.render(<PackageView contentPackage={contentPackage} />))
+    act(() => root.render(<Presentation contentPackage={contentPackage} />))
 
     // The visited reference stays open and unlocks the entry after it.
     expect(entries().map((entry) => entry.dataset.pathStatus)).toEqual(['visited', 'available'])

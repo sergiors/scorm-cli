@@ -25,7 +25,7 @@ export function ImageView({ node, anchor }: ContentNodeViewProps<'image'>) {
   const [failed, setFailed] = useState(false)
 
   return (
-    <figure {...readingAnchorAttributes(anchor)} className="not-prose space-y-2.5">
+    <figure {...readingAnchorAttributes(anchor)} className="not-prose space-y-2.5 text-center">
       <AspectRatio
         ratio={16 / 9}
         data-slot="media-frame"

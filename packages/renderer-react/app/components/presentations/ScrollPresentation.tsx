@@ -2,21 +2,21 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 import { Lock } from 'lucide-react'
 import { Virtuoso, type ListItem, type VirtuosoHandle } from 'react-virtuoso'
-import type { ContentNode, PageNode } from '../types'
-import { getSequentialAccess } from '../lib/content-helpers'
-import { useContentLoader, type ContentProvider, type ContentLoader } from '../lib/content-loader'
-import { PageProvider, usePlayerActions, usePlayerState } from '../lib/player-context'
-import { READING_PAGE_ATTRIBUTE } from '../lib/reading-anchors'
+import type { ContentNode, PageNode } from '../../types'
+import { getSequentialAccess } from '../../lib/content-helpers'
+import { useContentLoader, type ContentProvider, type ContentLoader } from '../../lib/content-loader'
+import { PageProvider, usePlayerActions, usePlayerState } from '../../lib/player-context'
+import { READING_PAGE_ATTRIBUTE } from '../../lib/reading-anchors'
 import {
   hasReadingPage,
   invalidateReadingAnchorCache,
   resolveReadingAnchor,
   scrollToReadingPosition
-} from '../lib/reading-anchor-dom'
-import { isPageRequirementsComplete } from '../lib/page-completion'
-import { ContentRenderer } from './ContentRenderer'
-import { ContentLoadError } from './ContentLoadError'
-import { Skeleton } from './ui/skeleton'
+} from '../../lib/reading-anchor-dom'
+import { isPageRequirementsComplete } from '../../lib/page-completion'
+import { ContentRenderer } from '../ContentRenderer'
+import { ContentLoadError } from '../ContentLoadError'
+import { Skeleton } from '../ui/skeleton'
 
 /**
  * A page's end sentinel counts as reached once it enters the viewport, extended

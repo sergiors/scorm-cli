@@ -2,7 +2,8 @@
 import { StrictMode, act, useMemo } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PackageView } from '../../app/components/PackageView'
+import { Presentation } from '../../app/components/Presentation'
+import { PlayerProvider } from '../../app/lib/player-context'
 import type {
   ContentNode,
   ContentPackage,
@@ -33,17 +34,19 @@ import { virtuosoMock } from './virtuoso-mock'
 vi.mock('react-virtuoso', () => import('./virtuoso-mock'))
 
 /**
- * Renders a package under the player's i18n provider, mirroring `PackageApp`.
- * The provider normally lives at the app boundary; these tests render
- * `PackageView` directly, so they supply it here. The inline provider answers
- * from the package's own content, so these tests render synchronously exactly as
- * an embedded package used to.
+ * Renders a package under the player's i18n and player providers, mirroring
+ * `PackageApp`. The providers normally live at the app boundary; these tests
+ * render `Presentation` directly, so they supply them here. The inline provider
+ * answers from the package's own content, so these tests render synchronously
+ * exactly as an embedded package used to.
  */
 function Player({ contentPackage }: { contentPackage: ContentPackage }) {
   const contentProvider = useMemo(() => inlineContentProvider(contentPackage), [contentPackage])
   return (
     <PlayerI18nProvider lang={contentPackage.metadata.lang}>
-      <PackageView contentPackage={contentPackage} contentProvider={contentProvider} />
+      <PlayerProvider contentPackage={contentPackage}>
+        <Presentation contentPackage={contentPackage} contentProvider={contentProvider} />
+      </PlayerProvider>
     </PlayerI18nProvider>
   )
 }
@@ -58,7 +61,9 @@ function LazyPlayer({
 }) {
   return (
     <PlayerI18nProvider lang={contentPackage.metadata.lang}>
-      <PackageView contentPackage={contentPackage} contentProvider={contentProvider} />
+      <PlayerProvider contentPackage={contentPackage}>
+        <Presentation contentPackage={contentPackage} contentProvider={contentProvider} />
+      </PlayerProvider>
     </PlayerI18nProvider>
   )
 }
@@ -573,7 +578,7 @@ function tileButtons(): HTMLButtonElement[] {
   return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-tile] button'))
 }
 
-describe('PackageView scroll interactions', () => {
+describe('Presentation scroll interactions', () => {
   it('renders only the accessible page and leaves locked pages unmounted', () => {
     act(() => root.render(<Player contentPackage={gatedPackage} />))
 
@@ -640,7 +645,7 @@ describe('PackageView scroll interactions', () => {
   })
 })
 
-describe('PackageView media loading', () => {
+describe('Presentation media loading', () => {
   const providers: Array<{ provider: VideoProvider; src: string }> = [
     { provider: 'youtube', src: 'https://youtu.be/abc123' },
     { provider: 'vimeo', src: 'https://vimeo.com/42' }
@@ -695,7 +700,7 @@ describe('PackageView media loading', () => {
   )
 })
 
-describe('PackageView scroll natural layout', () => {
+describe('Presentation scroll natural layout', () => {
   it('keeps the page scene at its natural content height with no viewport sizing or centering', () => {
     act(() => root.render(<Player contentPackage={gatedPackage} />))
 
@@ -921,7 +926,7 @@ describe('PackageView scroll natural layout', () => {
   })
 })
 
-describe('PackageView scroll Virtuoso-owned geometry', () => {
+describe('Presentation scroll Virtuoso-owned geometry', () => {
   it('gives Virtuoso no custom item-height compensation for natural-height pages', () => {
     act(() => root.render(<Player contentPackage={progressPackage} />))
 
@@ -965,7 +970,7 @@ describe('PackageView scroll Virtuoso-owned geometry', () => {
   })
 })
 
-describe('PackageView scroll completion gating', () => {
+describe('Presentation scroll completion gating', () => {
   let watchClock = 0
 
   /** Drives a playing provider's progress tick on the mocked performance clock. */
@@ -1167,7 +1172,7 @@ describe('PackageView scroll completion gating', () => {
   })
 })
 
-describe('PackageView scroll accessible list and locking', () => {
+describe('Presentation scroll accessible list and locking', () => {
   it('exposes every accessible page and never a locked one', () => {
     window.scormBridge = { restoreState: restoreAllFourPages }
 
@@ -1244,7 +1249,7 @@ describe('PackageView scroll accessible list and locking', () => {
   })
 })
 
-describe('PackageView strict sequential access from restored state', () => {
+describe('Presentation strict sequential access from restored state', () => {
   it('exposes only the completed prefix and its immediate successor, preserving stored state', () => {
     const saveState = vi.fn()
     // An inconsistent restore: later pages are already completed while page one
@@ -1329,7 +1334,7 @@ describe('PackageView strict sequential access from restored state', () => {
   })
 })
 
-describe('PackageView scroll lazy page loading', () => {
+describe('Presentation scroll lazy page loading', () => {
   it('shows a page skeleton for the first page until its module resolves', async () => {
     const { provider, calls, resolve } = deferredProvider(progressPackage)
 
@@ -1480,7 +1485,7 @@ describe('PackageView scroll lazy page loading', () => {
   })
 })
 
-describe('PackageView scroll current page tracking', () => {
+describe('Presentation scroll current page tracking', () => {
   function renderFourPages(saveState = vi.fn()) {
     window.scormBridge = { restoreState: restoreAllFourPages, saveState }
     act(() => root.render(<Player contentPackage={progressPackage} />))
@@ -1540,7 +1545,7 @@ describe('PackageView scroll current page tracking', () => {
   })
 })
 
-describe('PackageView scroll top-item location', () => {
+describe('Presentation scroll top-item location', () => {
   /**
    * Renders four reachable pages with a viewport tall enough to show several at
    * once, so the "next" page is mounted and visible below the top before it
@@ -1647,7 +1652,7 @@ describe('PackageView scroll top-item location', () => {
   })
 })
 
-describe('PackageView scroll exact location tracking', () => {
+describe('Presentation scroll exact location tracking', () => {
   /** Four reachable pages whose heights differ, so a short page can be skipped. */
   function renderVariableHeights(saveState = vi.fn()) {
     virtuosoMock.itemHeights = [1000, 50, 1000, 1000]
@@ -1769,7 +1774,7 @@ describe('PackageView scroll exact location tracking', () => {
   })
 })
 
-describe('PackageView scroll active page marker', () => {
+describe('Presentation scroll active page marker', () => {
   function renderFourPages() {
     window.scormBridge = { restoreState: restoreAllFourPages, saveState: vi.fn() }
     act(() => root.render(<Player contentPackage={progressPackage} />))
@@ -1801,7 +1806,7 @@ describe('PackageView scroll active page marker', () => {
   })
 })
 
-describe('PackageView scroll locked boundary', () => {
+describe('Presentation scroll locked boundary', () => {
   it('shows the boundary at the bottom of the current page only once its end is reached', () => {
     act(() => root.render(<Player contentPackage={gatedPackage} />))
 
@@ -1879,7 +1884,7 @@ describe('PackageView scroll locked boundary', () => {
   })
 })
 
-describe('PackageView scroll persistence', () => {
+describe('Presentation scroll persistence', () => {
   it('stores each answer under its page namespace', () => {
     const saveState = vi.fn()
     window.scormBridge = { saveState }
@@ -2182,7 +2187,7 @@ describe('PackageView scroll persistence', () => {
   })
 })
 
-describe('PackageView same-page Path navigation', () => {
+describe('Presentation same-page Path navigation', () => {
   it('keeps a completed page and its visited self-reference stable', () => {
     const saveState = vi.fn()
     window.scormBridge = { saveState }
@@ -2204,7 +2209,7 @@ describe('PackageView same-page Path navigation', () => {
   })
 })
 
-describe('PackageView non-adjacent Path navigation', () => {
+describe('Presentation non-adjacent Path navigation', () => {
   /** A completed prefix that leaves the last page accessible and in range. */
   function restoreWithCompletedPrefix(): {
     location: string
@@ -2323,7 +2328,7 @@ describe('PackageView non-adjacent Path navigation', () => {
   })
 })
 
-describe('PackageView Path jump supersession', () => {
+describe('Presentation Path jump supersession', () => {
   const gatePage: PageNode = {
     type: 'page',
     id: 'page:gate.mdx',
@@ -2404,7 +2409,7 @@ describe('PackageView Path jump supersession', () => {
   })
 })
 
-describe('PackageView short-page jump navigation', () => {
+describe('Presentation short-page jump navigation', () => {
   it('jumps to the referenced short page through the virtualizer', () => {
     const saveState = vi.fn()
     window.scormBridge = { restoreState: restoreShortPages, saveState }
@@ -2424,7 +2429,7 @@ describe('PackageView short-page jump navigation', () => {
   })
 })
 
-describe('PackageView scroll location revisiting', () => {
+describe('Presentation scroll location revisiting', () => {
   it('updates the location again when a page is revisited after another', () => {
     const saveState = vi.fn()
     window.scormBridge = {
@@ -2474,7 +2479,7 @@ describe('PackageView scroll location revisiting', () => {
   })
 })
 
-describe('PackageView scroll reload start', () => {
+describe('Presentation scroll reload start', () => {
   /** Completed prefix so the middle page is accessible; its next stays locked. */
   function restoreMiddleLockedNext(): {
     location: string
@@ -2619,7 +2624,7 @@ describe('PackageView scroll reload start', () => {
   })
 })
 
-describe('PackageView slides presentation', () => {
+describe('Presentation slides presentation', () => {
   it('renders exactly one page at a time', () => {
     act(() => root.render(<Player contentPackage={slidesPackage} />))
 
@@ -2692,7 +2697,7 @@ describe('PackageView slides presentation', () => {
   })
 })
 
-describe('PackageView slides lazy loading', () => {
+describe('Presentation slides lazy loading', () => {
   /** The previous-slide control, which is icon-only (no text label). */
   function previousSlideControl(): HTMLButtonElement | null {
     return container.querySelector<HTMLButtonElement>('[data-slides-previous] button')
@@ -2833,7 +2838,7 @@ describe('PackageView slides lazy loading', () => {
   })
 })
 
-describe('PackageView tiles interactions', () => {
+describe('Presentation tiles interactions', () => {
   it('renders cards and opens the selected tile in a dialog', () => {
     act(() => root.render(<Player contentPackage={tilesPackage} />))
 
@@ -2987,7 +2992,7 @@ describe('PackageView tiles interactions', () => {
   })
 })
 
-describe('PackageView tiles lazy item loading', () => {
+describe('Presentation tiles lazy item loading', () => {
   it('keeps every card visible and loads an item body only when it is opened', async () => {
     const { provider, calls, resolve } = deferredProvider(tilesPackage)
 

@@ -3,7 +3,8 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getPresentationNodes } from '@scorm-cli/core'
-import { PackageView } from '../../app/components/PackageView'
+import { Presentation } from '../../app/components/Presentation'
+import { PlayerProvider } from '../../app/lib/player-context'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
 import type { ContentNode, ContentPackage, PlayerState } from '../../app/types'
 import type { ContentProvider } from '../../app/lib/content-loader'
@@ -204,7 +205,9 @@ function render(contentPackage: ContentPackage, provider: ContentProvider): void
   act(() =>
     root.render(
       <PlayerI18nProvider lang={contentPackage.metadata.lang}>
-        <PackageView contentPackage={contentPackage} contentProvider={provider} />
+        <PlayerProvider contentPackage={contentPackage}>
+          <Presentation contentPackage={contentPackage} contentProvider={provider} />
+        </PlayerProvider>
       </PlayerI18nProvider>
     )
   )

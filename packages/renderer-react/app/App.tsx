@@ -1,7 +1,8 @@
 import type { ContentPackage } from './types'
 import type { ContentProvider } from './lib/content-loader'
-import { PackageView } from './components/PackageView'
+import { Presentation } from './components/Presentation'
 import { PlayerI18nProvider } from './lib/player-i18n'
+import { PlayerProvider } from './lib/player-context'
 
 export interface PackageAppProps {
   contentPackage: ContentPackage
@@ -25,7 +26,9 @@ export interface PackageAppProps {
 export function PackageApp({ contentPackage, contentProvider }: PackageAppProps) {
   return (
     <PlayerI18nProvider lang={contentPackage.metadata.lang}>
-      <PackageView contentPackage={contentPackage} contentProvider={contentProvider} />
+      <PlayerProvider contentPackage={contentPackage}>
+        <Presentation contentPackage={contentPackage} contentProvider={contentProvider} />
+      </PlayerProvider>
     </PlayerI18nProvider>
   )
 }
