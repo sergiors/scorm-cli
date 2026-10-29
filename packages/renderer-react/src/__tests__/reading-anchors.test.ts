@@ -27,8 +27,8 @@ const image: ContentNode = {
 const video: ContentNode = {
   type: 'video',
   id: 'video:lesson.mdx:4:1',
-  provider: 'native',
-  src: './clip.mp4'
+  provider: 'vimeo',
+  src: 'https://vimeo.com/clip'
 }
 
 const code: ContentNode = {

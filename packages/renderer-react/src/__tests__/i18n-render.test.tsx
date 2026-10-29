@@ -46,9 +46,8 @@ function renderApp(contentPackage: ContentPackage): string {
 const videoNode = {
   type: 'video' as const,
   id: 'video:lesson.mdx:1:1',
-  provider: 'native' as const,
-  src: './lesson.mp4',
-  captions: './lesson.vtt'
+  provider: 'vimeo' as const,
+  src: 'https://vimeo.com/42'
 }
 
 const pathNode: PathNode = {

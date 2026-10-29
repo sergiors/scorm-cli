@@ -27,7 +27,9 @@ const manifest: ContentManifest = {
     '0': {
       id: 'page:one',
       title: 'One',
-      videos: { '0': { id: 'video:lesson.mdx:0:1', src: 'lesson.mp4', provider: 'native' } },
+      videos: {
+        '0': { id: 'video:lesson.mdx:0:1', src: 'https://youtu.be/keepnames', provider: 'youtube' }
+      },
       questions: {
         '0': {
           id: 'q-one',

@@ -79,7 +79,7 @@ describe('content manifest callout bodies', () => {
               question('q-inner', 'Inner pick', 'single-choice')
             ])
           ]),
-          { type: 'video', id: 'callout-video', src: 'clip.mp4', provider: 'native' }
+          { type: 'video', id: 'callout-video', src: 'https://vimeo.com/42', provider: 'vimeo' }
         ])
       ]
     ])
@@ -142,7 +142,7 @@ describe('content manifest callout bodies', () => {
       },
       videos: {
         // Videos nested in callout bodies keep their manifest slots too.
-        '0': { id: 'callout-video', src: 'clip.mp4', provider: 'native' }
+        '0': { id: 'callout-video', src: 'https://vimeo.com/42', provider: 'vimeo' }
       }
     })
 

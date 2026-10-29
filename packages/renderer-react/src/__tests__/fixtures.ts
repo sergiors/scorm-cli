@@ -161,11 +161,9 @@ export const richContent: ContentNode[] = [
   {
     type: 'video',
     id: 'video:lesson.mdx:1:1',
-    provider: 'native',
-    src: './assets/lesson.mp4',
-    title: 'Lesson video',
-    poster: './assets/poster.png',
-    captions: './assets/lesson.vtt'
+    provider: 'vimeo',
+    src: 'https://vimeo.com/42',
+    title: 'Lesson video'
   },
   questionnaireNode
 ]

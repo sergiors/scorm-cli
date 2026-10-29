@@ -252,8 +252,11 @@ describe('callout packages', () => {
 
   it('assigns stable source ids to videos nested inside callout bodies', async () => {
     const root = await scrollPackage(
-      ['<Callout variant="note">', '  <Video src="clips/clip.mp4" />', '</Callout>'].join('\n'),
-      ['clips/clip.mp4']
+      [
+        '<Callout variant="note">',
+        '  <Video src="https://youtu.be/M7lc1UVf-VE" />',
+        '</Callout>'
+      ].join('\n')
     )
     expect(await firstPageContent(root)).toMatchObject([
       {

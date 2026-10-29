@@ -539,22 +539,20 @@ describe('parsePackage', () => {
     ])
   })
 
-  it('parses semantic video with poster and captions', async () => {
+  it('parses semantic video with poster', async () => {
     const root = await makeLesson(
-      `<Video src="https://cdn.example.test/lesson.mp4" title="Lesson" poster="assets/poster.svg" captions="assets/captions.vtt" />\n\n` +
+      `<Video src="https://vimeo.com/42" title="Lesson" poster="assets/poster.svg" />\n\n` +
         `## Next steps\n\nUse **types** to model your data.\n\n- Describe each value\n- Let the editor check usage\n\n\`\`\`ts\nconst x: number = 1;\n\`\`\``
     )
     await asset(root, 'assets/poster.svg')
-    await asset(root, 'assets/captions.vtt')
     expect(await lessonContent(root)).toMatchObject([
       {
         type: 'video',
         id: 'video:lesson.mdx:4:1',
-        provider: 'native',
-        src: 'https://cdn.example.test/lesson.mp4',
+        provider: 'vimeo',
+        src: 'https://vimeo.com/42',
         title: 'Lesson',
-        poster: 'assets/poster.svg',
-        captions: 'assets/captions.vtt'
+        poster: 'assets/poster.svg'
       },
       {
         type: 'heading',
@@ -598,49 +596,41 @@ describe('parsePackage', () => {
 
   it('infers video providers, preserves provider URLs, and includes frontmatter in stable IDs', async () => {
     const root = await makeLesson(
-      '<Video src="assets/local.mp4" />\n\n' +
-        '<Video src="https://youtu.be/abc123" />\n\n' +
-        '<Video src="https://www.youtube.com/watch?v=xyz" />\n\n' +
-        '<Video src="https://www.youtube-nocookie.com/embed/xyz" />\n\n' +
+      '<Video src="https://youtu.be/M7lc1UVf-VE" />\n\n' +
+        '<Video src="https://www.youtube.com/watch?v=M7lc1UVf-VE" />\n\n' +
+        '<Video src="https://www.youtube-nocookie.com/embed/M7lc1UVf-VE" />\n\n' +
         '<Video src="https://player.vimeo.com/video/42" />\n\n' +
         '<Video src="https://vimeo.com/99" />'
     )
-    await asset(root, 'assets/local.mp4')
     const videos = await lessonContent(root)
     expect(videos).toEqual([
       {
         type: 'video',
         id: 'video:lesson.mdx:4:1',
-        provider: 'native',
-        src: 'assets/local.mp4'
+        provider: 'youtube',
+        src: 'https://youtu.be/M7lc1UVf-VE'
       },
       {
         type: 'video',
         id: 'video:lesson.mdx:6:1',
         provider: 'youtube',
-        src: 'https://youtu.be/abc123'
+        src: 'https://www.youtube.com/watch?v=M7lc1UVf-VE'
       },
       {
         type: 'video',
         id: 'video:lesson.mdx:8:1',
         provider: 'youtube',
-        src: 'https://www.youtube.com/watch?v=xyz'
+        src: 'https://www.youtube-nocookie.com/embed/M7lc1UVf-VE'
       },
       {
         type: 'video',
         id: 'video:lesson.mdx:10:1',
-        provider: 'youtube',
-        src: 'https://www.youtube-nocookie.com/embed/xyz'
-      },
-      {
-        type: 'video',
-        id: 'video:lesson.mdx:12:1',
         provider: 'vimeo',
         src: 'https://player.vimeo.com/video/42'
       },
       {
         type: 'video',
-        id: 'video:lesson.mdx:14:1',
+        id: 'video:lesson.mdx:12:1',
         provider: 'vimeo',
         src: 'https://vimeo.com/99'
       }
@@ -649,21 +639,134 @@ describe('parsePackage', () => {
   })
 
   it('does not accept an authored provider attribute', async () => {
-    const root = await makeLesson('<Video src="https://youtu.be/abc123" provider="youtube" />')
+    const root = await makeLesson('<Video src="https://youtu.be/M7lc1UVf-VE" provider="youtube" />')
     await expect(lessonContent(root)).rejects.toThrow(/unknown attribute "provider"/)
   })
 
-  it('parses authored duration and minWatchTime as semantic seconds', async () => {
-    const root = await makeLesson(
-      '<Video src="assets/local.mp4" duration={420} minWatchTime={300} />'
+  /** Supported single-video URL forms. */
+  it.each([
+    ['https://youtu.be/M7lc1UVf-VE', 'youtube'],
+    ['http://youtu.be/M7lc1UVf-VE', 'youtube'],
+    ['//youtu.be/M7lc1UVf-VE', 'youtube'],
+    ['https://www.youtube.com/watch?v=M7lc1UVf-VE', 'youtube'],
+    ['https://www.youtube.com/watch?feature=share&v=M7lc1UVf-VE', 'youtube'],
+    ['https://m.youtube.com/watch?v=M7lc1UVf-VE', 'youtube'],
+    ['//www.youtube.com/watch?v=M7lc1UVf-VE', 'youtube'],
+    ['https://www.youtube.com/embed/M7lc1UVf-VE', 'youtube'],
+    ['https://www.youtube.com/shorts/M7lc1UVf-VE', 'youtube'],
+    ['https://www.youtube.com/live/M7lc1UVf-VE', 'youtube'],
+    ['https://www.youtube-nocookie.com/embed/M7lc1UVf-VE', 'youtube'],
+    ['https://m.youtube-nocookie.com/shorts/M7lc1UVf-VE', 'youtube'],
+    ['https://vimeo.com/99', 'vimeo'],
+    ['https://vimeo.com/99/?h=8272103f6e#t=10s', 'vimeo'],
+    ['https://player.vimeo.com/video/42?h=8272103f6e', 'vimeo'],
+    ['//vimeo.com/99?h=8272103f6e#t=10s', 'vimeo'],
+    ['//player.vimeo.com/video/42#t=10s', 'vimeo']
+  ] as const)('parses the supported source %s as %s', async (source, provider) => {
+    const root = await makeLesson(`<Video src="${source}" />`)
+    expect(await lessonContent(root)).toEqual([
+      { type: 'video', id: 'video:lesson.mdx:4:1', provider, src: source }
+    ])
+  })
+
+  it.each([
+    ['https://youtu.be/xyz', 'YouTube'],
+    ['https://www.youtube.com/watch?v=xyz', 'YouTube'],
+    ['https://www.youtube.com/watch?v=%4D7lc1UVf-VE', 'YouTube'],
+    ['https://www.youtube.com/watch?v=M7lc1UVf-VE&v=abcdefghijk', 'YouTube'],
+    ['https://www.youtube.com/embed/M7lc1UVf-VE/extra', 'YouTube'],
+    ['https://www.youtube.com/channel/M7lc1UVf-VE', 'YouTube'],
+    ['https://www.youtube.com/playlist?list=PL1234567890', 'YouTube'],
+    ['https://www.youtube.com/user/GoogleDevelopers', 'YouTube'],
+    ['//youtube.com/channel/M7lc1UVf-VE', 'YouTube'],
+    ['https://www.youtube-nocookie.com/embed/xyz', 'YouTube'],
+    ['https://vimeo.com/not-a-number', 'Vimeo'],
+    ['https://vimeo.com/123.mp4', 'Vimeo'],
+    ['https://player.vimeo.com/video/123.m3u8', 'Vimeo'],
+    ['https://vimeo.com/path/123', 'Vimeo'],
+    ['https://vimeo.com/channels/staffpicks/123456789', 'Vimeo'],
+    ['https://vimeo.com/album/1234567/video/123456789', 'Vimeo'],
+    ['https://vimeo.com/0abc', 'Vimeo']
+  ] as const)(
+    'rejects non-video provider URL %s with a source-aware error',
+    async (source, provider) => {
+      const root = await makeLesson(`# Lesson\n\n<Video src="${source}" />`)
+      await expect(lessonContent(root)).rejects.toThrow(
+        new RegExp(`lesson\\.mdx:3:1: Video "src" must be an individual ${provider} video URL`)
+      )
+    }
+  )
+
+  it('rejects a local video path with the declaring file location and the received source', async () => {
+    const root = await makeLesson('# Lesson\n\n<Video src="media/lesson.mp4" />')
+    await expect(lessonContent(root)).rejects.toThrow(
+      /lesson\.mdx:3:1: Video "src" must be an absolute YouTube or Vimeo URL; local paths and relative URLs are not supported \(received "media\/lesson\.mp4"\)$/
     )
-    await asset(root, 'assets/local.mp4')
+  })
+
+  it('rejects protocol-relative sources on hosts outside the provider allowlist', async () => {
+    const root = await makeLesson('# Lesson\n\n<Video src="//evil.com/watch?v=M7lc1UVf-VE" />')
+    await expect(lessonContent(root)).rejects.toThrow(
+      /lesson\.mdx:3:1: Video "src" must use a supported YouTube or Vimeo single-video host;.*received host "evil\.com"/
+    )
+  })
+
+  it('rejects direct media hosted outside YouTube and Vimeo', async () => {
+    for (const [source, host] of [
+      ['https://cdn.example.test/lesson.mp4', 'cdn.example.test'],
+      ['https://example.com/clips/lesson.mp4', 'example.com']
+    ] as const) {
+      const root = await makeLesson(`# Lesson\n\n<Video src="${source}" />`)
+      await expect(lessonContent(root)).rejects.toThrow(
+        `Video "src" must use a supported YouTube or Vimeo single-video host; local paths and direct media URLs are not supported (received host "${host}")`
+      )
+      await rm(root, { recursive: true, force: true })
+      temp = ''
+    }
+  })
+
+  it('rejects non-http video sources with the received protocol', async () => {
+    for (const [source, protocol] of [
+      ['ftp://youtu.be/M7lc1UVf-VE', 'ftp:'],
+      ['file:///lesson.mp4', 'file:']
+    ] as const) {
+      const root = await makeLesson(`# Lesson\n\n<Video src="${source}" />`)
+      await expect(lessonContent(root)).rejects.toThrow(
+        `Video "src" must use the http: or https: protocol (received "${protocol}")`
+      )
+      await rm(root, { recursive: true, force: true })
+      temp = ''
+    }
+  })
+
+  it('keeps duration and minWatchTime parsing while classifying providers', async () => {
+    // A supported source with requirement attributes parses both attributes;
+    // provider classification runs after the semantic seconds grammar.
+    const root = await makeLesson(
+      '<Video src="https://youtu.be/M7lc1UVf-VE" duration="1h20m30s" minWatchTime="90.5" />'
+    )
     expect(await lessonContent(root)).toEqual([
       {
         type: 'video',
         id: 'video:lesson.mdx:4:1',
-        provider: 'native',
-        src: 'assets/local.mp4',
+        provider: 'youtube',
+        src: 'https://youtu.be/M7lc1UVf-VE',
+        duration: 4830,
+        minWatchTime: 90.5
+      }
+    ])
+  })
+
+  it('parses authored duration and minWatchTime as semantic seconds', async () => {
+    const root = await makeLesson(
+      '<Video src="https://youtu.be/M7lc1UVf-VE" duration={420} minWatchTime={300} />'
+    )
+    expect(await lessonContent(root)).toEqual([
+      {
+        type: 'video',
+        id: 'video:lesson.mdx:4:1',
+        provider: 'youtube',
+        src: 'https://youtu.be/M7lc1UVf-VE',
         duration: 420,
         minWatchTime: 300
       }
@@ -672,9 +775,8 @@ describe('parsePackage', () => {
 
   it('parses duration strings and fractional seconds', async () => {
     const root = await makeLesson(
-      '<Video src="assets/local.mp4" duration="1h20m30s" minWatchTime="90.5" />'
+      '<Video src="https://youtu.be/M7lc1UVf-VE" duration="1h20m30s" minWatchTime="90.5" />'
     )
-    await asset(root, 'assets/local.mp4')
     const [video] = await lessonContent(root)
     expect(video).toMatchObject({ duration: 4830, minWatchTime: 90.5 })
   })
@@ -693,8 +795,9 @@ describe('parsePackage', () => {
     ['"0m0s"', 0],
     ['"2h"', 7200]
   ] as const)('accepts a minWatchTime authored as %s', async (source, expected) => {
-    const root = await makeLesson(`<Video src="assets/local.mp4" minWatchTime=${source} />`)
-    await asset(root, 'assets/local.mp4')
+    const root = await makeLesson(
+      `<Video src="https://youtu.be/M7lc1UVf-VE" minWatchTime=${source} />`
+    )
     const [video] = await lessonContent(root)
     expect(video).toMatchObject({ minWatchTime: expected })
     await rm(root, { recursive: true, force: true })
@@ -703,16 +806,16 @@ describe('parsePackage', () => {
 
   it('keeps a minWatchTime equal to the duration and a duration without a requirement', async () => {
     const root = await makeLesson(
-      '<Video src="assets/local.mp4" duration="2m" minWatchTime={120} />'
+      '<Video src="https://youtu.be/M7lc1UVf-VE" duration="2m" minWatchTime={120} />'
     )
-    await asset(root, 'assets/local.mp4')
     expect((await lessonContent(root))[0]).toMatchObject({
       duration: 120,
       minWatchTime: 120
     })
 
-    const durationOnly = await makeLesson('<Video src="assets/local.mp4" duration="2m" />')
-    await asset(durationOnly, 'assets/local.mp4')
+    const durationOnly = await makeLesson(
+      '<Video src="https://youtu.be/M7lc1UVf-VE" duration="2m" />'
+    )
     expect((await lessonContent(durationOnly))[0]).toMatchObject({ duration: 120 })
     expect((await lessonContent(durationOnly))[0]).not.toHaveProperty('minWatchTime')
     await rm(durationOnly, { recursive: true, force: true })
@@ -721,9 +824,8 @@ describe('parsePackage', () => {
 
   it('rejects a minWatchTime that exceeds the authored duration', async () => {
     const root = await makeLesson(
-      '<Video src="assets/local.mp4" duration={90} minWatchTime="2m" />'
+      '<Video src="https://youtu.be/M7lc1UVf-VE" duration={90} minWatchTime="2m" />'
     )
-    await asset(root, 'assets/local.mp4')
     await expect(lessonContent(root)).rejects.toThrow(/"minWatchTime" must not exceed "duration"$/)
   })
 
@@ -739,8 +841,7 @@ describe('parsePackage', () => {
     ['minWatchTime=""'],
     ['minWatchTime="2m 30s"']
   ] as const)('rejects an unusable %s reading', async (attribute) => {
-    const root = await makeLesson(`<Video src="assets/local.mp4" ${attribute} />`)
-    await asset(root, 'assets/local.mp4')
+    const root = await makeLesson(`<Video src="https://youtu.be/M7lc1UVf-VE" ${attribute} />`)
     await expect(lessonContent(root)).rejects.toThrow(secondsError)
     await rm(root, { recursive: true, force: true })
     temp = ''
@@ -1306,6 +1407,10 @@ describe('parsePackage', () => {
       ['<Image src="x" alt="" extra="no" />', /unknown attribute "extra"/],
       ['<Image src="x" />', /explicit string "alt" attribute/],
       ['<Video src="x" autoplay />', /unknown attribute "autoplay"/],
+      [
+        '<Video src="https://vimeo.com/42" captions="assets/captions.vtt" />',
+        /unknown attribute "captions"/
+      ],
       ['<Video title="Missing source" />', /"src" must be a non-empty string/],
       [
         '<Image src="x" alt="" {...props} />',
@@ -1325,11 +1430,15 @@ describe('parsePackage', () => {
 
   it('resolves all local assets relative to the declaring file and rejects missing assets', async () => {
     const root = await makeLesson(
-      `![missing](assets/missing.svg)\n\n<Video src="media/video.mp4" poster="assets/poster.svg" captions="assets/captions.vtt" />`
+      `![missing](assets/missing.svg)\n\n<Video src="https://youtu.be/M7lc1UVf-VE" poster="assets/poster.svg" />`
     )
     await expect(parsePackage(root)).rejects.toThrow(/asset "assets\/missing\.svg" does not exist/)
     await asset(root, 'assets/missing.svg')
-    await expect(parsePackage(root)).rejects.toThrow(/asset "media\/video\.mp4" does not exist/)
+    // An embedded video `src` needs no local file; its poster remains a local
+    // asset reference.
+    await expect(parsePackage(root)).rejects.toThrow(/asset "assets\/poster\.svg" does not exist/)
+    await asset(root, 'assets/poster.svg')
+    await expect(parsePackage(root)).resolves.toBeDefined()
   })
 
   it('rejects unsupported Markdown nodes and MDX JavaScript with locations', async () => {

@@ -245,14 +245,14 @@ describe('sanitizePlayerState videos', () => {
   const pageAVideo: VideoNode = {
     type: 'video',
     id: 'video:a.mdx:1:1',
-    provider: 'native',
-    src: './a.mp4'
+    provider: 'vimeo',
+    src: 'https://vimeo.com/a'
   }
   const pageBVideo: VideoNode = {
     type: 'video',
     id: 'video:b.mdx:1:1',
-    provider: 'native',
-    src: './b.mp4'
+    provider: 'vimeo',
+    src: 'https://vimeo.com/b'
   }
   /** A scroll package whose two pages each own a distinct video. */
   const videoPackage: ContentPackage = {
@@ -399,16 +399,16 @@ describe('sanitizePlayerState watch frontiers', () => {
   const requiredVideo: VideoNode = {
     type: 'video',
     id: 'video:req.mdx:1:1',
-    provider: 'native',
-    src: './req.mp4',
+    provider: 'vimeo',
+    src: 'https://vimeo.com/req',
     duration: 120,
     minWatchTime: 30
   }
   const unrequiredVideo: VideoNode = {
     type: 'video',
     id: 'video:open.mdx:1:1',
-    provider: 'native',
-    src: './open.mp4',
+    provider: 'vimeo',
+    src: 'https://vimeo.com/open',
     duration: 90
   }
   const frontierPackage: ContentPackage = {

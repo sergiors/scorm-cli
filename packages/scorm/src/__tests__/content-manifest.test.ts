@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ContentNode, ContentPackage, QuestionOption } from '@scorm-cli/core'
+import type { ContentNode, ContentPackage, QuestionOption, VideoProvider } from '@scorm-cli/core'
 import { createContentManifest } from '../content-manifest'
 
 const question = (id: string, prompt: string, options: QuestionOption[] = []) => ({
@@ -67,7 +67,9 @@ describe('content manifest', () => {
             id: 'video-only',
             source: 'video.mdx',
             metadata: { title: 'Video' },
-            content: [{ type: 'video', id: 'stable-video', src: 'clip.mp4', provider: 'native' }]
+            content: [
+              { type: 'video', id: 'stable-video', src: 'https://vimeo.com/42', provider: 'vimeo' }
+            ]
           },
           {
             type: 'page',
@@ -119,7 +121,7 @@ describe('content manifest', () => {
     })
     expect(manifest.pages['2']!.questions).toEqual({})
     expect(manifest.pages['2']!.videos).toEqual({
-      '0': { id: 'stable-video', src: 'clip.mp4', provider: 'native' }
+      '0': { id: 'stable-video', src: 'https://vimeo.com/42', provider: 'vimeo' }
     })
     expect(manifest.pages['3']!.videos).toEqual({
       '0': { id: 'second-video', src: 'https://vimeo.com/42', provider: 'vimeo' }
@@ -346,11 +348,12 @@ describe('content manifest', () => {
   })
 
   it('indexes videos from content blocks without playback state', () => {
-    const video = (
-      id: string,
-      provider: 'native' | 'youtube' | 'vimeo',
-      src: string
-    ): ContentNode => ({ type: 'video', id, provider, src })
+    const video = (id: string, provider: VideoProvider, src: string): ContentNode => ({
+      type: 'video',
+      id,
+      provider,
+      src
+    })
     const content: ContentPackage = {
       metadata: { title: 'Videos' },
       presentation: {
@@ -362,7 +365,7 @@ describe('content manifest', () => {
             source: 'videos.mdx',
             metadata: { title: 'Videos' },
             content: [
-              video('video:videos.mdx:1:1', 'native', 'assets/local.mp4'),
+              video('video:videos.mdx:1:1', 'vimeo', 'https://vimeo.com/7'),
               {
                 type: 'quote',
                 children: [
@@ -403,7 +406,7 @@ describe('content manifest', () => {
             id: 'p-second',
             source: 'second.mdx',
             metadata: { title: 'Second' },
-            content: [video('video:second.mdx:1:1', 'native', 'assets/second.mp4')]
+            content: [video('video:second.mdx:1:1', 'youtube', 'https://youtu.be/second')]
           }
         ]
       }
@@ -413,8 +416,8 @@ describe('content manifest', () => {
     expect(manifest.pages['0']!.videos).toEqual({
       '0': {
         id: 'video:videos.mdx:1:1',
-        src: 'assets/local.mp4',
-        provider: 'native'
+        src: 'https://vimeo.com/7',
+        provider: 'vimeo'
       },
       '1': {
         id: 'video:videos.mdx:2:1',
@@ -425,8 +428,8 @@ describe('content manifest', () => {
     expect(manifest.pages['1']!.videos).toEqual({
       '0': {
         id: 'video:second.mdx:1:1',
-        src: 'assets/second.mp4',
-        provider: 'native'
+        src: 'https://youtu.be/second',
+        provider: 'youtube'
       }
     })
     expect(Object.keys(manifest.pages['0']!.videos ?? {})).toEqual(['0', '1'])
@@ -471,12 +474,12 @@ describe('content manifest', () => {
               {
                 type: 'video',
                 id: 'video:required',
-                src: 'short.mp4',
-                provider: 'native',
+                src: 'https://youtu.be/required',
+                provider: 'youtube',
                 duration: 120,
                 minWatchTime: 60
               },
-              { type: 'video', id: 'video:open', src: 'clip.mp4', provider: 'youtube' }
+              { type: 'video', id: 'video:open', src: 'https://youtu.be/open', provider: 'youtube' }
             ]
           }
         ]
@@ -487,12 +490,12 @@ describe('content manifest', () => {
     expect(videos).toEqual({
       '0': {
         id: 'video:required',
-        src: 'short.mp4',
-        provider: 'native',
+        src: 'https://youtu.be/required',
+        provider: 'youtube',
         duration: 120,
         minWatchTime: 60
       },
-      '1': { id: 'video:open', src: 'clip.mp4', provider: 'youtube' }
+      '1': { id: 'video:open', src: 'https://youtu.be/open', provider: 'youtube' }
     })
     // Only the watched fields the content actually declares are present.
     expect(Object.keys(videos!['0']!)).toEqual([

@@ -1,12 +1,12 @@
 import vm from 'node:vm'
 import { describe, expect, it } from 'vitest'
-import type { ContentPackage, PlayerState } from '@scorm-cli/core'
+import type { ContentPackage, PlayerState, VideoProvider } from '@scorm-cli/core'
 import { createContentManifest } from '../content-manifest'
 import { decodeSuspendData, encodeSuspendData } from '../state-codec'
 import { createScormRuntime } from '../runtime'
 import type { ContentManifest } from '../content-manifest'
 
-type VideoFixture = [id: string, src: string, provider: 'native' | 'youtube' | 'vimeo']
+type VideoFixture = [id: string, src: string, provider: VideoProvider]
 
 function assignVideos(manifest: ContentManifest, byPage: Record<string, VideoFixture[]>): void {
   Object.values(manifest.pages).forEach((page) => {
@@ -23,7 +23,7 @@ function assignVideos(manifest: ContentManifest, byPage: Record<string, VideoFix
 type RequiredVideoFixture = [
   id: string,
   src: string,
-  provider: 'native' | 'youtube' | 'vimeo',
+  provider: VideoProvider,
   minWatchTime?: number,
   duration?: number
 ]
@@ -140,13 +140,13 @@ describe('compact suspend-data codec', () => {
     const videoManifest = structuredClone(manifest)
     assignVideos(videoManifest, {
       'page-one': [
-        ['video-a', 'a.mp4', 'native'],
+        ['video-a', 'https://vimeo.com/a', 'vimeo'],
         ['video-b', 'https://youtu.be/abc', 'youtube'],
-        ['video-c', 'c.mp4', 'native']
+        ['video-c', 'https://vimeo.com/c', 'vimeo']
       ],
       'page-two': [
-        ['video-d', 'd.mp4', 'native'],
-        ['video-e', 'e.mp4', 'native']
+        ['video-d', 'https://youtu.be/d', 'youtube'],
+        ['video-e', 'https://youtu.be/e', 'youtube']
       ]
     })
     const emptyState: PlayerState = { pages: {} }
@@ -205,10 +205,10 @@ describe('compact suspend-data codec', () => {
     const originalManifest = structuredClone(manifest)
     assignVideos(originalManifest, {
       'page-one': [
-        ['video-a', 'a.mp4', 'native'],
-        ['video-c', 'c.mp4', 'native']
+        ['video-a', 'https://vimeo.com/a', 'vimeo'],
+        ['video-c', 'https://vimeo.com/c', 'vimeo']
       ],
-      'page-two': [['video-b', 'b.mp4', 'native']]
+      'page-two': [['video-b', 'https://youtu.be/b', 'youtube']]
     })
     const encoded = encodeSuspendData(
       originalManifest,
@@ -229,10 +229,10 @@ describe('compact suspend-data codec', () => {
 
     const updatedManifest = structuredClone(manifest)
     assignVideos(updatedManifest, {
-      'page-one': [['video-b', 'b.mp4', 'native']],
+      'page-one': [['video-b', 'https://youtu.be/b', 'youtube']],
       'page-two': [
-        ['video-new', 'new.mp4', 'native'],
-        ['video-a', 'a.mp4', 'native']
+        ['video-new', 'https://vimeo.com/new', 'vimeo'],
+        ['video-a', 'https://vimeo.com/a', 'vimeo']
       ]
     })
     expect(decodeSuspendData(updatedManifest, encoded)).toEqual({
@@ -251,8 +251,8 @@ describe('compact suspend-data codec', () => {
   it('decodes payloads without video data and ignores invalid or unknown video indexes', () => {
     const videoManifest = structuredClone(manifest)
     assignVideos(videoManifest, {
-      'page-one': [['video-a', 'a.mp4', 'native']],
-      'page-two': [['video-b', 'b.mp4', 'native']]
+      'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']],
+      'page-two': [['video-b', 'https://youtu.be/b', 'youtube']]
     })
     expect(decodeSuspendData(videoManifest, { v: 1, p: 0, x: '00' })).toEqual({ pages: {} })
     expect(
@@ -269,7 +269,7 @@ describe('compact suspend-data codec', () => {
   it('rejects non-index video dictionary keys instead of serializing semantic IDs', () => {
     const malformedManifest = structuredClone(manifest)
     malformedManifest.pages['0']!.videos = {
-      'video-a': { id: 'video-a', src: 'a.mp4', provider: 'native' }
+      'video-a': { id: 'video-a', src: 'https://vimeo.com/a', provider: 'vimeo' }
     }
     expect(
       encodeSuspendData(
@@ -302,7 +302,7 @@ describe('compact suspend-data codec', () => {
           correctAnswers: ['extra-a']
         }
       },
-      videos: { '0': { id: 'video-extra', src: 'extra.mp4', provider: 'native' } }
+      videos: { '0': { id: 'video-extra', src: 'https://vimeo.com/extra', provider: 'vimeo' } }
     }
     const encoded = encodeSuspendData(
       malformedManifest,
@@ -352,8 +352,8 @@ describe('compact suspend-data codec', () => {
   it('uses current page and video indexes and ignores semantic video IDs', () => {
     const videoManifest = structuredClone(manifest)
     assignVideos(videoManifest, {
-      'page-one': [['current-a', 'a.mp4', 'native']],
-      'page-two': [['current-b', 'b.mp4', 'native']]
+      'page-one': [['current-a', 'https://vimeo.com/a', 'vimeo']],
+      'page-two': [['current-b', 'https://youtu.be/b', 'youtube']]
     })
     expect(
       decodeSuspendData(videoManifest, {
@@ -377,7 +377,7 @@ describe('compact suspend-data codec', () => {
   it('ignores missing and malformed video entries without rejecting valid state', () => {
     const videoManifest = structuredClone(manifest)
     assignVideos(videoManifest, {
-      'page-one': [['video-a', 'a.mp4', 'native']]
+      'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']]
     })
     expect(
       decodeSuspendData(videoManifest, {
@@ -572,7 +572,7 @@ describe('compact suspend-data codec', () => {
 
   it('ignores malformed or unknown flat v1 keys without rejecting valid entries', () => {
     const videoManifest = structuredClone(manifest)
-    assignVideos(videoManifest, { 'page-one': [['video-a', 'a.mp4', 'native']] })
+    assignVideos(videoManifest, { 'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']] })
     expect(
       decodeSuspendData(videoManifest, {
         v: 1,
@@ -678,8 +678,8 @@ describe('compact suspend-data codec', () => {
   it('round-trips mixed answers and video positions through flat v1 keys', () => {
     const mixedManifest = structuredClone(manifest)
     assignVideos(mixedManifest, {
-      'page-one': [['video-a', 'a.mp4', 'native']],
-      'page-two': [['video-b', 'b.mp4', 'native']]
+      'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']],
+      'page-two': [['video-b', 'https://youtu.be/b', 'youtube']]
     })
     const state: PlayerState = {
       pages: {
@@ -726,7 +726,7 @@ describe('compact suspend-data codec', () => {
 
   it('omits d for states with no valid answers or video positions', () => {
     const videoManifest = structuredClone(manifest)
-    assignVideos(videoManifest, { 'page-one': [['video-a', 'a.mp4', 'native']] })
+    assignVideos(videoManifest, { 'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']] })
     expect(
       encodeSuspendData(videoManifest, { pages: { 'page-one': { visited: true } } }, 0)
     ).toEqual({ v: 1, p: 0, x: '10' })
@@ -736,8 +736,8 @@ describe('compact suspend-data codec', () => {
   it('keeps flat keys smaller than an equivalent nested grouping', () => {
     const mixedManifest = structuredClone(manifest)
     assignVideos(mixedManifest, {
-      'page-one': [['video-a', 'a.mp4', 'native']],
-      'page-two': [['video-b', 'b.mp4', 'native']]
+      'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']],
+      'page-two': [['video-b', 'https://youtu.be/b', 'youtube']]
     })
     const state: PlayerState = {
       pages: {
@@ -813,10 +813,10 @@ describe('verified watch frontiers in the suspend-data codec', () => {
     const videoManifest = structuredClone(manifest)
     assignRequiredVideos(videoManifest, {
       'page-one': [
-        ['video-a', 'a.mp4', 'native', 60, 120],
+        ['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120],
         // No authored requirement: never a w key, whatever the state carries.
-        ['video-b', 'b.mp4', 'native'],
-        ['video-c', 'c.mp4', 'native', 25]
+        ['video-b', 'https://youtu.be/b', 'youtube'],
+        ['video-c', 'https://vimeo.com/c', 'vimeo', 25]
       ]
     })
     const state: PlayerState = {
@@ -854,7 +854,7 @@ describe('verified watch frontiers in the suspend-data codec', () => {
   it('caps a persisted frontier at the authored duration and keeps unbounded ones', () => {
     const videoManifest = structuredClone(manifest)
     assignRequiredVideos(videoManifest, {
-      'page-one': [['video-a', 'a.mp4', 'native', 60, 120]]
+      'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120]]
     })
     const encoded = encodeSuspendData(
       videoManifest,
@@ -867,7 +867,9 @@ describe('verified watch frontiers in the suspend-data codec', () => {
     })
 
     const unbounded = structuredClone(manifest)
-    assignRequiredVideos(unbounded, { 'page-one': [['video-a', 'a.mp4', 'native', 60]] })
+    assignRequiredVideos(unbounded, {
+      'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo', 60]]
+    })
     const openEncoded = encodeSuspendData(
       unbounded,
       { pages: { 'page-one': { watchedVideos: { 'video-a': 300 } } } },
@@ -883,8 +885,8 @@ describe('verified watch frontiers in the suspend-data codec', () => {
     const originalManifest = structuredClone(manifest)
     assignRequiredVideos(originalManifest, {
       'page-one': [
-        ['video-a', 'a.mp4', 'native', 60, 120],
-        ['video-c', 'c.mp4', 'native', 25]
+        ['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120],
+        ['video-c', 'https://vimeo.com/c', 'vimeo', 25]
       ]
     })
     const encoded = encodeSuspendData(
@@ -897,8 +899,8 @@ describe('verified watch frontiers in the suspend-data codec', () => {
     const reorderedManifest = structuredClone(manifest)
     assignRequiredVideos(reorderedManifest, {
       'page-one': [
-        ['video-c', 'c.mp4', 'native', 25],
-        ['video-a', 'a.mp4', 'native', 60, 120]
+        ['video-c', 'https://vimeo.com/c', 'vimeo', 25],
+        ['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120]
       ]
     })
     const restored = decodeSuspendData(reorderedManifest, encoded)
@@ -918,8 +920,8 @@ describe('verified watch frontiers in the suspend-data codec', () => {
     const videoManifest = structuredClone(manifest)
     assignRequiredVideos(videoManifest, {
       'page-one': [
-        ['video-a', 'a.mp4', 'native', 60, 120],
-        ['video-b', 'b.mp4', 'native']
+        ['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120],
+        ['video-b', 'https://youtu.be/b', 'youtube']
       ]
     })
     expect(
@@ -949,7 +951,7 @@ describe('verified watch frontiers in the suspend-data codec', () => {
   it('keeps legacy position-only payloads restoring while frontiers stay absent', () => {
     const videoManifest = structuredClone(manifest)
     assignRequiredVideos(videoManifest, {
-      'page-one': [['video-a', 'a.mp4', 'native', 60, 120]]
+      'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120]]
     })
     // A payload saved before watch frontiers existed decodes its position and
     // never fabricates a frontier.
@@ -960,7 +962,7 @@ describe('verified watch frontiers in the suspend-data codec', () => {
     // Old renderer state carrying frontiers for videos without requirements
     // contributes nothing.
     const legacyManifest = structuredClone(manifest)
-    assignVideos(legacyManifest, { 'page-one': [['video-a', 'a.mp4', 'native']] })
+    assignVideos(legacyManifest, { 'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo']] })
     expect(
       encodeSuspendData(
         legacyManifest,
@@ -976,7 +978,7 @@ describe('verified watch frontiers in the suspend-data codec', () => {
   it('carries watch frontiers through the embedded LMS runtime', () => {
     const videoManifest = structuredClone(manifest)
     assignRequiredVideos(videoManifest, {
-      'page-one': [['video-a', 'a.mp4', 'native', 60, 120]]
+      'page-one': [['video-a', 'https://vimeo.com/a', 'vimeo', 60, 120]]
     })
     const initial = encodeSuspendData(
       videoManifest,

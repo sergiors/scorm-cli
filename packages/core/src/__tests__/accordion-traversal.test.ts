@@ -81,10 +81,9 @@ describe('accordion traversals', () => {
           {
             type: 'video',
             id: 'video:one.mdx:3:3',
-            provider: 'native',
-            src: 'videos/clip.mp4',
-            poster: 'videos/poster.png',
-            captions: 'videos/captions.vtt'
+            provider: 'vimeo',
+            src: 'https://vimeo.com/7',
+            poster: 'videos/poster.png'
           }
         ]
       },
@@ -110,8 +109,8 @@ describe('accordion traversals', () => {
       'images/body.png',
       'images/list.png',
       'images/title.png',
-      'videos/captions.vtt',
-      'videos/clip.mp4',
+      // An embedded video `src` is a provider URL, never a local asset; only
+      // its poster remains a local reference.
       'videos/poster.png'
     ])
   })
@@ -126,8 +125,8 @@ describe('accordion traversals', () => {
           {
             type: 'video',
             id: 'video:one.mdx:2:5',
-            provider: 'native',
-            src: 'videos/direct.mp4'
+            provider: 'youtube',
+            src: 'https://youtu.be/abc123'
           },
           {
             type: 'quote',
@@ -145,7 +144,12 @@ describe('accordion traversals', () => {
     ])
 
     expect(collectVideoNodes([accordion])).toEqual([
-      { type: 'video', id: 'video:one.mdx:2:5', provider: 'native', src: 'videos/direct.mp4' },
+      {
+        type: 'video',
+        id: 'video:one.mdx:2:5',
+        provider: 'youtube',
+        src: 'https://youtu.be/abc123'
+      },
       {
         type: 'video',
         id: 'video:one.mdx:3:7',

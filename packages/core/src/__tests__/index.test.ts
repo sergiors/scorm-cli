@@ -31,8 +31,8 @@ const contentPackage: ContentPackage = {
           {
             type: 'video',
             id: 'video:a.mdx:1:1',
-            provider: 'native',
-            src: 'https://example.test/v.mp4'
+            provider: 'vimeo',
+            src: 'https://vimeo.com/42'
           }
         ]
       },
@@ -369,10 +369,9 @@ describe('core package helpers', () => {
               {
                 type: 'video',
                 id: 'video:nested.mdx:2:1',
-                provider: 'native',
-                src: 'media/lesson.mp4',
-                poster: 'media/lesson-poster.svg',
-                captions: 'media/lesson-captions.vtt'
+                provider: 'vimeo',
+                src: 'https://vimeo.com/42',
+                poster: 'media/lesson-poster.svg'
               }
             ]
           }
@@ -386,9 +385,9 @@ describe('core package helpers', () => {
       'inline/list.svg',
       'inline/quote-nested.svg',
       'inline/quote.svg',
-      'media/lesson-captions.vtt',
-      'media/lesson-poster.svg',
-      'media/lesson.mp4'
+      // An embedded video `src` is a provider URL, never a local asset; only
+      // its poster remains a local reference.
+      'media/lesson-poster.svg'
     ])
   })
 })
@@ -418,8 +417,8 @@ describe('collectVideoNodes', () => {
                           {
                             type: 'video',
                             id: 'video:page.mdx:1:1',
-                            provider: 'native',
-                            src: 'first.mp4'
+                            provider: 'youtube',
+                            src: 'https://youtu.be/abc123'
                           },
                           {
                             type: 'questionnaire',

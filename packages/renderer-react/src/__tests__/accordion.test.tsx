@@ -457,7 +457,12 @@ describe('accordion nested integrations', () => {
               shuffleOptions: false,
               questions: [singleChoiceQuestion]
             },
-            { type: 'video', id: 'video:acc.mdx:2:1', provider: 'native', src: './v.mp4' }
+            {
+              type: 'video',
+              id: 'video:acc.mdx:2:1',
+              provider: 'vimeo',
+              src: 'https://vimeo.com/42'
+            }
           ]
         }
       ]
@@ -471,7 +476,7 @@ describe('accordion nested integrations', () => {
     // The video keeps its shared media frame and lazy player binding.
     expect(html).toContain('data-slot="media-frame"')
     expect(html).toContain('data-testid="react-player"')
-    expect(html).toContain('./v.mp4')
+    expect(html).toContain('https://vimeo.com/42')
   })
 
   it('mounts a closed section body only after opening it', () => {

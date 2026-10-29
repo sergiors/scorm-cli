@@ -87,11 +87,22 @@ Import components from `scorm-cli/authoring`.
 | `Content`       | Accordion section body                | Markdown and supported flow content                                                                                                                                            |
 | `Path`          | Ordered navigation path               | `children`                                                                                                                                                                     |
 | `Image`         | Static image                          | `src`, `alt`, `caption` (optional)                                                                                                                                             |
-| `Video`         | Video player                          | `src`, `title` (optional), `poster` (optional), `captions` (optional), `duration` (optional seconds), `minWatchTime` (optional seconds)                                        |
+| `Video`         | Video player                          | `src` (YouTube/Vimeo single-video URL), `title` (optional), `poster` (preview until ready), `duration` (optional seconds), `minWatchTime` (optional seconds)                   |
 | `Questionnaire` | Assessment wrapper                    | `children`, `contributesToScore` (bool), `expanded` (bool), `maxAttempts` (-1 or positive integer), `revealCorrectAnswers` (bool, optional), `shuffleOptions` (bool, optional) |
 | `Question`      | Single question                       | `children`, `type` ('single-choice', 'multiple-choice', 'true-false')                                                                                                          |
 | `Prompt`        | Question text                         | `children` (string)                                                                                                                                                            |
 | `Option`        | Answer choice                         | `children` (string), `value`, `correct` (bool)                                                                                                                                 |
+
+`<Video src>` supports only individual YouTube and Vimeo videos, using absolute
+HTTP(S) or safe protocol-relative URLs. YouTube supports `youtu.be/<11-character
+ID>`, `watch?v=<11-character ID>`, and `/embed/`, `/shorts/`, or `/live/` routes;
+playlist and user routes are not supported. Vimeo supports
+`vimeo.com/<numeric ID>` and `player.vimeo.com/video/<numeric ID>`, including
+share query strings and fragments. Local paths, relative URLs, and direct media
+URLs (such as MP4 or HLS streams) are not supported. The provider is inferred
+from the URL, so no provider prop is needed.
+The optional `poster` image is shown in the reserved video frame until the hosted
+player is ready.
 
 `Questionnaire.maxAttempts` defaults to `1` and counts total submissions,
 including the first submission. Use `-1` for unlimited attempts; otherwise it
@@ -148,9 +159,9 @@ compact strings with `h`, `m`, and `s` units, such as `"30s"`, `"2m"`,
   behaves exactly as before.
 
 ```mdx
-<Video src="media/lesson.mp4" title="Lesson overview" duration={420} minWatchTime={300} />
+<Video src="https://vimeo.com/90509568" title="Lesson overview" duration={420} minWatchTime={300} />
 
-<Video src="https://www.youtube.com/watch?v=example" title="Introduction" minWatchTime="3m" />
+<Video src="https://www.youtube.com/watch?v=M7lc1UVf-VE" title="Introduction" minWatchTime="3m" />
 ```
 
 A required video gates its page in **Scroll** and **Slides**: the page completes

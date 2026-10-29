@@ -255,8 +255,8 @@ describe('suspend-data codec integration', () => {
     videoManifest.pages['3']!.videos = {
       '0': {
         id: 'video:lesson.mdx:4:1',
-        src: 'lesson.mp4',
-        provider: 'native'
+        src: 'https://vimeo.com/42',
+        provider: 'vimeo'
       }
     }
     videoManifest.pages['4']!.videos = {

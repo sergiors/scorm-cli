@@ -218,7 +218,6 @@ export interface VideoNode {
   src: string
   title?: string
   poster?: string
-  captions?: string
   /** Authored media duration in seconds, when the content declares one. */
   duration?: number
   /**
@@ -228,7 +227,7 @@ export interface VideoNode {
   minWatchTime?: number
 }
 
-export type VideoProvider = 'native' | 'youtube' | 'vimeo'
+export type VideoProvider = 'youtube' | 'vimeo'
 
 export interface QuestionNode {
   type: 'question'
@@ -587,7 +586,6 @@ export function collectAssetReferences(contentPackage: ContentPackage): string[]
         case 'video':
           addLocal(node.src)
           addLocal(node.poster)
-          addLocal(node.captions)
           break
         case 'list':
           for (const item of node.items) {

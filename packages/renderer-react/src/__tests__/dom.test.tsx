@@ -641,7 +641,6 @@ describe('PackageView scroll interactions', () => {
 describe('PackageView media loading', () => {
   const providers: Array<{ provider: VideoProvider; src: string }> = [
     { provider: 'youtube', src: 'https://youtu.be/abc123' },
-    { provider: 'native', src: './clip.mp4' },
     { provider: 'vimeo', src: 'https://vimeo.com/42' }
   ]
 

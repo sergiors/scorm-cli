@@ -25,7 +25,12 @@ describe('content manifest accordion bodies', () => {
                     defaultOpen: true,
                     title: [{ type: 'text', value: 'Overview' }],
                     content: [
-                      { type: 'video', id: 'stable-video', src: 'clip.mp4', provider: 'native' }
+                      {
+                        type: 'video',
+                        id: 'stable-video',
+                        src: 'https://vimeo.com/42',
+                        provider: 'vimeo'
+                      }
                     ]
                   },
                   {
@@ -83,7 +88,7 @@ describe('content manifest accordion bodies', () => {
         '0': { id: 'acc-quiz', maxAttempts: 3, questionCount: 1 }
       },
       videos: {
-        '0': { id: 'stable-video', src: 'clip.mp4', provider: 'native' }
+        '0': { id: 'stable-video', src: 'https://vimeo.com/42', provider: 'vimeo' }
       }
     })
   })

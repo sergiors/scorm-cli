@@ -53,14 +53,7 @@ function normalizedBlock(node: ContentNode): string | null {
     case 'image':
       return `image:${node.src}:${node.alt}:${node.caption ?? ''}`
     case 'video':
-      return [
-        'video',
-        node.provider,
-        node.src,
-        node.title ?? '',
-        node.poster ?? '',
-        node.captions ?? ''
-      ].join(':')
+      return ['video', node.provider, node.src, node.title ?? '', node.poster ?? ''].join(':')
     case 'code':
       return `code:${node.language ?? ''}:${node.value.replace(/\r\n?/g, '\n')}`
     case 'questionnaire':

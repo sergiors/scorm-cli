@@ -22,7 +22,7 @@ describe('CLI build orchestration', () => {
     )
     await writeFile(
       path.join(contentDir, 'lesson.mdx'),
-      `---\ntitle: Lesson\n---\n<Image src="media/picture.svg" alt="Picture" />\n\n<Video src="https://youtu.be/abc" />\n\n[Guide](files/guide.pdf?download=1#page-2)`
+      `---\ntitle: Lesson\n---\n<Image src="media/picture.svg" alt="Picture" />\n\n<Video src="https://youtu.be/M7lc1UVf-VE" />\n\n[Guide](files/guide.pdf?download=1#page-2)`
     )
     await writeFile(path.join(contentDir, 'media', 'picture.svg'), '<svg/>')
     await writeFile(path.join(contentDir, 'files', 'guide.pdf'), 'pdf')
@@ -68,7 +68,7 @@ describe('CLI build orchestration', () => {
     expect(Object.keys(pageVideos)).toEqual(['0'])
     expect(pageVideos['0']).toEqual({
       id: expect.any(String),
-      src: 'https://youtu.be/abc',
+      src: 'https://youtu.be/M7lc1UVf-VE',
       provider: 'youtube'
     })
     expect(contentManifest).not.toHaveProperty('videos')

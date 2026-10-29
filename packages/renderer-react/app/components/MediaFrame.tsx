@@ -16,6 +16,8 @@ export interface MediaFrameProps extends ComponentProps<'div'> {
    * showing a placeholder (or a provider's black player) forever.
    */
   error?: ReactNode
+  /** Optional media preview shown until the frame reports it is ready. */
+  poster?: string
   /**
    * The authored media the frame reserves geometry for. Both kinds share the
    * same static fill, but a `'video'` adds a low-fidelity player silhouette (a
@@ -29,13 +31,13 @@ export interface MediaFrameProps extends ComponentProps<'div'> {
  * The reserved frame shared by every authored media block (a block image or a
  * video). The AST carries no intrinsic media dimensions, so a stable 16:9 box
  * is reserved through the shadcn {@link AspectRatio} primitive to prevent layout
- * shift while the media loads; the media itself is expected to `object-contain`
- * inside it, keeping portrait or arbitrarily shaped content uncropped rather
- * than stretched. Until the media reports {@link MediaFrameProps.ready}, a small
- * non-animated shadcn skeleton fills the same geometry — the frame has no
- * shimmer, fade or transition of its own. A video additionally overlays a
- * low-fidelity player silhouette (see {@link VideoPlaceholder}) so its reserved
- * box reads as a player; an image keeps the bare generic skeleton.
+ * shift while the media loads; poster previews and media itself use
+ * `object-contain`, keeping portrait or arbitrarily shaped content uncropped
+ * rather than stretched. Until the media reports {@link MediaFrameProps.ready},
+ * an optional poster fills the frame; without one, a small non-animated shadcn
+ * skeleton is used. A video without a poster additionally overlays a low-fidelity
+ * player silhouette (see {@link VideoPlaceholder}); the frame has no shimmer,
+ * fade or transition of its own.
  *
  * A {@link MediaFrameProps.error} message takes over from the placeholder: a
  * failed load is a settled state, so it shows a small static error instead of
@@ -44,6 +46,7 @@ export interface MediaFrameProps extends ComponentProps<'div'> {
 export function MediaFrame({
   ready,
   error,
+  poster,
   kind = 'image',
   className,
   children,
@@ -65,7 +68,15 @@ export function MediaFrame({
         >
           {error}
         </div>
-      ) : ready ? null : kind === 'video' ? (
+      ) : ready ? null : poster ? (
+        <img
+          src={poster}
+          alt=""
+          aria-hidden="true"
+          data-slot="media-frame-poster"
+          className="absolute inset-0 h-full w-full object-contain"
+        />
+      ) : kind === 'video' ? (
         <VideoPlaceholder />
       ) : (
         <Skeleton aria-hidden="true" className="absolute inset-0 animate-none rounded-none" />

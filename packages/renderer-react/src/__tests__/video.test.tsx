@@ -27,14 +27,12 @@ declare global {
 
 const VIDEO_ID = 'video:lesson.mdx:1:1'
 
-const nativeNode: VideoNode = {
+const vimeoNode: VideoNode = {
   type: 'video',
   id: VIDEO_ID,
-  provider: 'native',
-  src: './lesson.mp4',
-  title: 'Lesson video',
-  poster: './poster.png',
-  captions: './lesson.vtt'
+  provider: 'vimeo',
+  src: 'https://vimeo.com/42',
+  title: 'Lesson video'
 }
 
 const VIDEO_PAGE_ID = 'page:video-test.mdx'
@@ -73,7 +71,6 @@ function VideoContext({ node }: { node: VideoNode }) {
 
 /** A canonical source per provider; ReactPlayer never sees a sniffed host. */
 const providerSources: Record<VideoProvider, string> = {
-  native: './lesson.mp4',
   youtube: 'https://youtu.be/abc123',
   vimeo: 'https://vimeo.com/42'
 }
@@ -189,11 +186,11 @@ function renderSession(contentPackage: ContentPackage): void {
 }
 
 describe('Video provider inputs', () => {
-  it.each<VideoProvider>(['native', 'youtube', 'vimeo'])(
+  it.each<VideoProvider>(['youtube', 'vimeo'])(
     'feeds the canonical source and controls to ReactPlayer for %s',
     async (provider) => {
       const record = await mountVideo(
-        { ...nativeNode, provider, src: providerSources[provider] },
+        { ...vimeoNode, provider, src: providerSources[provider] },
         undefined,
         () => {}
       )
@@ -206,27 +203,46 @@ describe('Video provider inputs', () => {
     }
   )
 
-  it('preserves poster and caption tracks for native playback', async () => {
-    const record = await mountVideo(nativeNode, undefined, () => {})
+  it('seeds the YouTube player with the saved position through playerVars.start', async () => {
+    const record = await mountVideo(
+      { ...vimeoNode, provider: 'youtube', src: providerSources.youtube },
+      12.3,
+      () => {}
+    )
 
-    expect(record.config?.file?.attributes).toEqual({
-      preload: 'metadata',
-      poster: './poster.png'
-    })
-    expect(record.config?.file?.tracks).toEqual([
+    expect(record.config?.youtube?.playerVars?.start).toBe(12.3)
+  })
+
+  it('omits the YouTube start parameter when there is nothing to resume', async () => {
+    const record = await mountVideo(
+      { ...vimeoNode, provider: 'youtube', src: providerSources.youtube },
+      0,
+      () => {}
+    )
+
+    expect(record.config?.youtube).toBeUndefined()
+  })
+
+  it('clamps the YouTube start before the authored end', async () => {
+    const record = await mountVideo(
       {
-        kind: 'captions',
-        src: './lesson.vtt',
-        srcLang: 'und',
-        label: 'Captions',
-        default: true
-      }
-    ])
+        ...vimeoNode,
+        provider: 'youtube',
+        src: providerSources.youtube,
+        duration: 200
+      },
+      300,
+      () => {}
+    )
+
+    // The provider duration is unknown before mount, but the authored duration
+    // bounds the initial cue so a stale position cannot start past the end.
+    expect(record.config?.youtube?.playerVars?.start).toBe(199)
   })
 
   it('titles the Vimeo iframe from the authored title', async () => {
     const record = await mountVideo(
-      { ...nativeNode, provider: 'vimeo', src: providerSources.vimeo },
+      { ...vimeoNode, provider: 'vimeo', src: providerSources.vimeo },
       undefined,
       () => {}
     )
@@ -234,24 +250,12 @@ describe('Video provider inputs', () => {
     expect(record.config?.vimeo?.title).toBe('Lesson video')
   })
 
-  it('localizes the caption track label for the authored language', async () => {
-    await act(async () => {
-      root.render(
-        <PlayerI18nProvider lang="pt-BR">
-          <VideoContext node={nativeNode} />
-        </PlayerI18nProvider>
-      )
-    })
-    const record = players.latest()
-    expect(record.config?.file?.tracks?.[0]?.label).toBe('Legendas')
-  })
-
-  it.each<VideoProvider>(['native', 'youtube', 'vimeo'])(
+  it.each<VideoProvider>(['youtube', 'vimeo'])(
     'reserves the same stable 16:9 placeholder frame for %s until it is ready',
     (provider) => {
       const html = renderToStaticMarkup(
         <PlayerI18nProvider>
-          <VideoContext node={{ ...nativeNode, provider, src: providerSources[provider] }} />
+          <VideoContext node={{ ...vimeoNode, provider, src: providerSources[provider] }} />
         </PlayerI18nProvider>
       )
 
@@ -271,7 +275,7 @@ describe('Video provider inputs', () => {
   )
 
   it('reveals the player frame on the first usable duration, not on ready', async () => {
-    const record = await mountVideo(nativeNode, undefined, () => {})
+    const record = await mountVideo(vimeoNode, undefined, () => {})
 
     // Mounted but not yet playing media: the static placeholder fills the frame.
     expect(container.querySelector('[data-slot="skeleton"]')).not.toBeNull()
@@ -289,8 +293,22 @@ describe('Video provider inputs', () => {
     expect(container.querySelector('[data-slot="skeleton"]')).toBeNull()
   })
 
+  it('shows the authored poster until the player is ready, then removes it', async () => {
+    const record = await mountVideo({ ...vimeoNode, poster: './poster.png' }, undefined, () => {})
+
+    const poster = container.querySelector('[data-slot="media-frame-poster"]')
+    expect(poster?.getAttribute('src')).toBe('./poster.png')
+    expect(poster?.getAttribute('alt')).toBe('')
+
+    await act(async () => {
+      record.onDuration?.(120)
+    })
+
+    expect(container.querySelector('[data-slot="media-frame-poster"]')).toBeNull()
+  })
+
   it('shows a decorative player silhouette until the media is ready, then yields it', async () => {
-    const record = await mountVideo(nativeNode, undefined, () => {})
+    const record = await mountVideo(vimeoNode, undefined, () => {})
 
     const placeholder = container.querySelector('[data-slot="media-frame-placeholder"]')
     expect(placeholder).not.toBeNull()
@@ -326,8 +344,8 @@ describe('Video page ownership', () => {
     expect(() =>
       renderToStaticMarkup(
         <PlayerI18nProvider>
-          <PlayerProvider contentPackage={videoPackageFor(nativeNode)}>
-            <Video node={nativeNode} />
+          <PlayerProvider contentPackage={videoPackageFor(vimeoNode)}>
+            <Video node={vimeoNode} />
           </PlayerProvider>
         </PlayerI18nProvider>
       )
@@ -338,7 +356,7 @@ describe('Video page ownership', () => {
 describe('Video resume and persistence', () => {
   it('waits for a usable duration before seeking to the restored position and never autoplays', async () => {
     const onPosition = vi.fn()
-    const record = await mountVideo(nativeNode, 12.3, onPosition)
+    const record = await mountVideo(vimeoNode, 12.3, onPosition)
 
     // Not ready yet: no seek, no autoplay, nothing persisted.
     expect(players.seekTo).not.toHaveBeenCalled()
@@ -367,7 +385,7 @@ describe('Video resume and persistence', () => {
   })
 
   it('does not seek when there is no restored position', async () => {
-    const record = await mountVideo(nativeNode, 0, () => {})
+    const record = await mountVideo(vimeoNode, 0, () => {})
     await act(async () => {
       record.onReady?.()
     })
@@ -379,7 +397,7 @@ describe('Video resume and persistence', () => {
 
   it('throttles progress to five seconds and persists promptly on pause and seek', async () => {
     const onPosition = vi.fn()
-    const record = await mountVideo(nativeNode, 0, onPosition)
+    const record = await mountVideo(vimeoNode, 0, onPosition)
     await act(async () => {
       record.onReady?.()
     })
@@ -397,7 +415,7 @@ describe('Video resume and persistence', () => {
 
   it('falls back to the last progress tick when the provider exposes no live time', async () => {
     const onPosition = vi.fn()
-    const record = await mountVideo(nativeNode, 0, onPosition)
+    const record = await mountVideo(vimeoNode, 0, onPosition)
     await act(async () => {
       record.onReady?.()
     })
@@ -412,7 +430,7 @@ describe('Video resume and persistence', () => {
 
   it('resets a finished video to the beginning and ignores the trailing pause', async () => {
     const onPosition = vi.fn()
-    const record = await mountVideo(nativeNode, 0, onPosition)
+    const record = await mountVideo(vimeoNode, 0, onPosition)
     await act(async () => {
       record.onReady?.()
     })
@@ -432,7 +450,7 @@ describe('Video resume and persistence', () => {
 
   it('persists a replay position once play clears the ended guard', async () => {
     const onPosition = vi.fn()
-    const record = await mountVideo(nativeNode, 0, onPosition)
+    const record = await mountVideo(vimeoNode, 0, onPosition)
     await act(async () => {
       record.onReady?.()
     })
@@ -449,7 +467,7 @@ describe('Video resume and persistence', () => {
 
   it('flushes the latest progress tick once on teardown', async () => {
     const onPosition = vi.fn()
-    const record = await mountVideo(nativeNode, 0, onPosition)
+    const record = await mountVideo(vimeoNode, 0, onPosition)
     await act(async () => {
       record.onReady?.()
     })
@@ -466,7 +484,7 @@ describe('Video resume and persistence', () => {
 
   it('does not flush the finished duration after an end reset', async () => {
     const onPosition = vi.fn()
-    const record = await mountVideo(nativeNode, 0, onPosition)
+    const record = await mountVideo(vimeoNode, 0, onPosition)
     await act(async () => {
       record.onReady?.()
     })
@@ -480,7 +498,7 @@ describe('Video resume and persistence', () => {
 
   it('ignores a late provider event after unmount', async () => {
     const onPosition = vi.fn()
-    const record = await mountVideo(nativeNode, undefined, onPosition)
+    const record = await mountVideo(vimeoNode, undefined, onPosition)
 
     act(() => root.unmount())
     act(() => {
@@ -492,7 +510,7 @@ describe('Video resume and persistence', () => {
   })
 
   it('threads the restored position into nested quote content only', async () => {
-    const quote: ContentNode = { type: 'quote', children: [nativeNode] }
+    const quote: ContentNode = { type: 'quote', children: [vimeoNode] }
     const questionnaire: ContentNode = {
       type: 'questionnaire',
       id: 'questionnaire:lesson.mdx:1:1',
@@ -568,7 +586,7 @@ describe('Video resume and persistence', () => {
 })
 
 describe('Video watch requirements', () => {
-  const requiredNode: VideoNode = { ...nativeNode, duration: 120, minWatchTime: 60 }
+  const requiredNode: VideoNode = { ...vimeoNode, duration: 120, minWatchTime: 60 }
 
   it('persists the verified frontier only while playback advances continuously', async () => {
     const onPosition = vi.fn()
@@ -646,34 +664,25 @@ describe('Video watch requirements', () => {
     expect(players.seekTo).toHaveBeenCalledWith(3, 'seconds', true)
   })
 
-  it.each<VideoProvider>(['native', 'vimeo'])(
-    'blocks a reported %s seek beyond the frontier and always allows backward seeking',
-    async (provider) => {
-      const onWatched = vi.fn()
-      const onPosition = vi.fn()
-      const record = await mountVideo(
-        { ...requiredNode, provider, src: providerSources[provider] },
-        undefined,
-        onPosition,
-        undefined,
-        onWatched
-      )
-      startWatching(record)
+  it('blocks a reported Vimeo seek beyond the frontier and always allows backward seeking', async () => {
+    const onWatched = vi.fn()
+    const onPosition = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatched)
+    startWatching(record)
 
-      progressAfter(record, 3)
-      act(() => record.onSeek?.(50))
+    progressAfter(record, 3)
+    act(() => record.onSeek?.(50))
 
-      // Native and Vimeo report seeks directly, so the blocked seek returns
-      // the player to the frontier immediately.
-      expect(players.seekTo).toHaveBeenCalledTimes(1)
-      expect(players.seekTo).toHaveBeenCalledWith(3, 'seconds', true)
-      expect(savedWatched(onWatched)).toEqual([3])
+    // Vimeo reports seeks directly, so the blocked seek returns the player to
+    // the frontier immediately.
+    expect(players.seekTo).toHaveBeenCalledTimes(1)
+    expect(players.seekTo).toHaveBeenCalledWith(3, 'seconds', true)
+    expect(savedWatched(onWatched)).toEqual([3])
 
-      act(() => record.onSeek?.(1))
-      expect(players.seekTo).toHaveBeenCalledTimes(1)
-      expect(savedPositions(onPosition)).toEqual([3, 1])
-    }
-  )
+    act(() => record.onSeek?.(1))
+    expect(players.seekTo).toHaveBeenCalledTimes(1)
+    expect(savedPositions(onPosition)).toEqual([3, 1])
+  })
 
   it('never verifies watched time across a pause and resumes through the frontier', async () => {
     const onPosition = vi.fn()
@@ -755,10 +764,29 @@ describe('Video watch requirements', () => {
     expect(players.seekTo).toHaveBeenCalledWith(60, 'seconds', false)
   })
 
+  it('seeds YouTube with the verified frontier for an unfinished required video', async () => {
+    const record = await mountVideo(
+      { ...requiredNode, provider: 'youtube', src: providerSources.youtube },
+      60,
+      vi.fn(),
+      10,
+      vi.fn()
+    )
+
+    // The saved position is clamped before the player mounts, so the iframe
+    // never opens on unwatched time and no imperative seek is involved.
+    expect(record.config?.youtube?.playerVars?.start).toBe(10)
+
+    await act(async () => {
+      record.onDuration?.(200)
+    })
+    expect(players.seekTo).not.toHaveBeenCalled()
+  })
+
   it('relaxes seeking once the authored minimum has been watched', async () => {
     const onPosition = vi.fn()
     const onWatched = vi.fn()
-    const eagerNode: VideoNode = { ...nativeNode, duration: 120, minWatchTime: 6 }
+    const eagerNode: VideoNode = { ...vimeoNode, duration: 120, minWatchTime: 6 }
     const record = await mountVideo(eagerNode, undefined, onPosition, undefined, onWatched)
     startWatching(record)
 
@@ -818,7 +846,7 @@ describe('Video watch requirements', () => {
   it('never verifies or gates playback for a video without a requirement', async () => {
     const onPosition = vi.fn()
     const onWatched = vi.fn()
-    const record = await mountVideo(nativeNode, undefined, onPosition, undefined, onWatched)
+    const record = await mountVideo(vimeoNode, undefined, onPosition, undefined, onWatched)
 
     act(() => record.onProgress?.({ playedSeconds: 2 }))
     act(() => record.onProgress?.({ playedSeconds: 40 }))
@@ -829,7 +857,7 @@ describe('Video watch requirements', () => {
   })
 
   it('shows verified progress and completes the indicator at the authored minimum', async () => {
-    const eagerNode: VideoNode = { ...nativeNode, duration: 120, minWatchTime: 6 }
+    const eagerNode: VideoNode = { ...vimeoNode, duration: 120, minWatchTime: 6 }
     await mountVideo(eagerNode, undefined, vi.fn(), undefined, vi.fn())
     startWatching(players.latest())
     const requirement = () => container.querySelector('[data-video-requirement]')
@@ -849,20 +877,20 @@ describe('Video watch requirements', () => {
   })
 
   it('renders no requirement indicator for a video without a minimum', async () => {
-    await mountVideo(nativeNode, undefined, vi.fn(), undefined, vi.fn())
+    await mountVideo(vimeoNode, undefined, vi.fn(), undefined, vi.fn())
     expect(container.querySelector('[data-video-requirement]')).toBeNull()
   })
 
   it('verifies and persists independent frontiers for every required video', async () => {
     const first: VideoNode = {
-      ...nativeNode,
+      ...vimeoNode,
       id: 'video:first.mdx:1:1',
       src: './first.mp4',
       duration: 120,
       minWatchTime: 6
     }
     const second: VideoNode = {
-      ...nativeNode,
+      ...vimeoNode,
       id: 'video:second.mdx:1:1',
       src: './second.mp4',
       duration: 120,
@@ -914,7 +942,7 @@ describe('Video watch requirements', () => {
 
 describe('Video provider ready timing', () => {
   const youtubeNode: VideoNode = {
-    ...nativeNode,
+    ...vimeoNode,
     provider: 'youtube',
     src: providerSources.youtube
   }
@@ -964,41 +992,57 @@ describe('Video provider ready timing', () => {
     expect(container.querySelector('[data-slot="skeleton"]')).toBeNull()
   })
 
-  it('seeks exactly once when the duration arrives after the early ready', async () => {
+  it('never seeks for YouTube, carrying the resume position in playerVars.start instead', async () => {
     const onPosition = vi.fn()
     const record = await mountVideo(youtubeNode, 12.3, onPosition)
 
-    await reportReady(record, 2)
-    expect(players.seekTo).not.toHaveBeenCalled()
+    // The position is forwarded to the provider up front, so no imperative seek
+    // is ever issued — the black-frame path is avoided entirely.
+    expect(record.config?.youtube?.playerVars?.start).toBe(12.3)
 
+    await reportReady(record, 2)
     await reportDuration(record, 213)
-    expect(players.seekTo).toHaveBeenCalledTimes(1)
-    expect(players.seekTo).toHaveBeenCalledWith(12.3, 'seconds', false)
-    // Still never autoplays, and the restored position was already persisted.
+    expect(players.seekTo).not.toHaveBeenCalled()
+    // Still never autoplays, and the resumed position was already persisted.
     expect(record.playing).toBeFalsy()
     expect(onPosition).not.toHaveBeenCalled()
 
-    // A stray repeat of the duration signal must not re-apply the seek.
+    // A stray repeat of either signal must not re-apply anything.
     await reportDuration(record, 213)
-    expect(players.seekTo).toHaveBeenCalledTimes(1)
+    expect(players.seekTo).not.toHaveBeenCalled()
   })
 
-  it('ignores a zero, negative or NaN duration', async () => {
+  it('keeps the YouTube start stable when later progress updates the saved position', async () => {
+    const onPosition = vi.fn()
+    const record = await mountVideo(youtubeNode, 12.3, onPosition)
+
+    startWatching(record)
+    progressAfter(record, 20, 8)
+
+    // Playback persisted a new position, so the component re-rendered with it;
+    // the provider's initial start must remain the value it mounted with.
+    expect(onPosition).toHaveBeenCalled()
+    expect(players.latest().config?.youtube?.playerVars?.start).toBe(12.3)
+    expect(players.seekTo).not.toHaveBeenCalled()
+  })
+
+  it('ignores a zero, negative or NaN duration without seeking', async () => {
     const record = await mountVideo(youtubeNode, 12.3, () => {})
     await reportReady(record)
 
     await reportDuration(record, 0)
     await reportDuration(record, -5)
     await reportDuration(record, Number.NaN)
-    expect(players.seekTo).not.toHaveBeenCalled()
+    expect(container.querySelector('[data-slot="skeleton"]')).not.toBeNull()
 
+    // A usable duration reveals the frame but still never seeks for YouTube.
     await reportDuration(record, 90)
-    expect(players.seekTo).toHaveBeenCalledTimes(1)
-    expect(players.seekTo).toHaveBeenCalledWith(12.3, 'seconds', false)
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeNull()
+    expect(players.seekTo).not.toHaveBeenCalled()
   })
 
   it('reveals a live stream with an infinite duration without seeking', async () => {
-    const record = await mountVideo(nativeNode, 12.3, () => {})
+    const record = await mountVideo(vimeoNode, 12.3, () => {})
 
     // A live stream reports a positive `Infinity`. ReactPlayer treats any truthy
     // duration as ready and emits `onDuration` only once, so the reading must
@@ -1010,23 +1054,23 @@ describe('Video provider ready timing', () => {
     expect(players.seekTo).not.toHaveBeenCalled()
   })
 
-  it('clamps a restored position at or beyond the duration to just before the end', async () => {
-    const record = await mountVideo(youtubeNode, 300, () => {})
+  it('clamps a restored Vimeo position at or beyond the duration to just before the end', async () => {
+    const record = await mountVideo(vimeoNode, 300, () => {})
     await reportDuration(record, 200)
 
     expect(players.seekTo).toHaveBeenCalledTimes(1)
     expect(players.seekTo).toHaveBeenCalledWith(199, 'seconds', false)
   })
 
-  it('rests a position past the end of very short media at the start', async () => {
-    const record = await mountVideo(youtubeNode, 5, () => {})
+  it('rests a Vimeo position past the end of very short media at the start', async () => {
+    const record = await mountVideo(vimeoNode, 5, () => {})
     await reportDuration(record, 0.5)
 
     expect(players.seekTo).toHaveBeenCalledWith(0, 'seconds', false)
   })
 
-  it('closes the restore window once playback takes over', async () => {
-    const record = await mountVideo(youtubeNode, 12.3, () => {})
+  it('closes the Vimeo restore window once playback takes over', async () => {
+    const record = await mountVideo(vimeoNode, 12.3, () => {})
     await reportDuration(record, 200)
     expect(players.seekTo).toHaveBeenCalledTimes(1)
 
@@ -1037,8 +1081,8 @@ describe('Video provider ready timing', () => {
     expect(players.seekTo).not.toHaveBeenCalled()
   })
 
-  it('closes the restore window when the learner seeks before the duration arrives', async () => {
-    const record = await mountVideo(youtubeNode, 12.3, () => {})
+  it('closes the Vimeo restore window when the learner seeks before the duration arrives', async () => {
+    const record = await mountVideo(vimeoNode, 12.3, () => {})
     await reportReady(record)
 
     act(() => record.onSeek?.(3))
@@ -1046,26 +1090,19 @@ describe('Video provider ready timing', () => {
     expect(players.seekTo).not.toHaveBeenCalled()
   })
 
-  it.each<VideoProvider>(['native', 'vimeo'])(
-    'restores the position once a %s provider reports its duration',
-    async (provider) => {
-      const record = await mountVideo(
-        { ...nativeNode, provider, src: providerSources[provider] },
-        30,
-        () => {}
-      )
+  it('restores the Vimeo position once the provider reports its duration', async () => {
+    const record = await mountVideo(vimeoNode, 30, () => {})
 
-      await reportReady(record)
-      expect(players.seekTo).not.toHaveBeenCalled()
+    await reportReady(record)
+    expect(players.seekTo).not.toHaveBeenCalled()
 
-      await reportDuration(record, 120)
-      expect(players.seekTo).toHaveBeenCalledTimes(1)
-      expect(players.seekTo).toHaveBeenCalledWith(30, 'seconds', false)
-    }
-  )
+    await reportDuration(record, 120)
+    expect(players.seekTo).toHaveBeenCalledTimes(1)
+    expect(players.seekTo).toHaveBeenCalledWith(30, 'seconds', false)
+  })
 
   it('does not seek without a restored position, even once the duration arrives', async () => {
-    const record = await mountVideo(nativeNode, 0, () => {})
+    const record = await mountVideo(vimeoNode, 0, () => {})
     await reportReady(record, 2)
     await reportDuration(record, 200)
     expect(players.seekTo).not.toHaveBeenCalled()
@@ -1074,16 +1111,16 @@ describe('Video provider ready timing', () => {
 
 describe('Media failure fallbacks', () => {
   it('replaces the video placeholder with a static error state when the player errors', async () => {
-    const record = await mountVideo(nativeNode, 12.3, () => {})
-    expect(container.querySelector('[data-slot="skeleton"]')).not.toBeNull()
+    const record = await mountVideo({ ...vimeoNode, poster: './poster.png' }, 12.3, () => {})
+    expect(container.querySelector('[data-slot="media-frame-poster"]')).not.toBeNull()
 
     await act(async () => {
       record.onError?.()
     })
 
-    // The placeholder stops and the provider player is gone, so the frame shows
-    // a small readable error rather than a player stuck on a black frame.
-    expect(container.querySelector('[data-slot="skeleton"]')).toBeNull()
+    // The poster stops and the provider player is gone, so the frame shows a
+    // small readable error rather than a player stuck on a black frame.
+    expect(container.querySelector('[data-slot="media-frame-poster"]')).toBeNull()
     expect(container.querySelector('[data-testid="react-player"]')).toBeNull()
     const error = container.querySelector('[data-slot="media-frame-error"]')
     expect(error?.getAttribute('role')).toBe('alert')
@@ -1124,14 +1161,14 @@ describe('usePlayerSession video positions', () => {
           id: PAGE_ID,
           source: 'lesson.mdx',
           metadata: { title: 'Lesson' },
-          content: [nativeNode]
+          content: [vimeoNode]
         }
       ]
     }
   }
 
   const secondVideoNode: VideoNode = {
-    ...nativeNode,
+    ...vimeoNode,
     id: 'video:second.mdx:1:1',
     src: './second.mp4'
   }
@@ -1146,7 +1183,7 @@ describe('usePlayerSession video positions', () => {
           id: 'page:first.mdx',
           source: 'first.mdx',
           metadata: { title: 'First' },
-          content: [nativeNode]
+          content: [vimeoNode]
         },
         {
           type: 'page',
@@ -1256,7 +1293,7 @@ describe('usePlayerSession video positions', () => {
 
 describe('usePlayerSession video watch requirements', () => {
   const PAGE_ID = 'page:lesson.mdx'
-  const requiredNode: VideoNode = { ...nativeNode, duration: 120, minWatchTime: 6 }
+  const requiredNode: VideoNode = { ...vimeoNode, duration: 120, minWatchTime: 6 }
   const requiredVideoPackage: ContentPackage = {
     metadata: { title: 'Required video package' },
     presentation: {
@@ -1426,7 +1463,7 @@ describe('usePlayerSession video watch requirements', () => {
 })
 
 describe('Video watch requirement unlocks a slides page', () => {
-  const slideVideo: VideoNode = { ...nativeNode, duration: 120, minWatchTime: 6 }
+  const slideVideo: VideoNode = { ...vimeoNode, duration: 120, minWatchTime: 6 }
 
   beforeEach(() => {
     // Slides presentations scroll onto the displayed slide; jsdom cannot.

@@ -529,12 +529,11 @@ describe('accordion packages', () => {
         '          <Option value="two">Two</Option>',
         '        </Question>',
         '      </Questionnaire>',
-        '      <Video src="clips/clip.mp4" />',
+        '      <Video src="https://vimeo.com/42" />',
         '    </Content>',
         '  </Item>',
         '</Accordion>'
-      ].join('\n'),
-      ['clips/clip.mp4']
+      ].join('\n')
     )
     const [accordion] = await firstPageContent(root)
     expect(accordion).toMatchObject({

@@ -137,16 +137,16 @@ export interface ImageProps {
   caption?: string
 }
 
-/** Props for `<Video src="..." />` and its optional media references. */
+/** Props for `<Video src="..." />`. */
 export interface VideoProps {
-  /** Path to the video, relative to the declaring file. */
+  /** Absolute HTTP(S) YouTube or Vimeo URL in a supported player format. */
   src: string
   /** Optional visible title. */
   title?: string
-  /** Optional poster image shown before playback. */
+  /**
+   * Optional poster image shown as a preview until the hosted player is ready.
+   */
   poster?: string
-  /** Optional captions track. */
-  captions?: string
 }
 
 /** Props for `<Questionnaire>`, which contains one or more `<Question>`. */
@@ -251,7 +251,7 @@ export function Image(_props: ImageProps): never {
   return authoringStub('Image')
 }
 
-/** Video with optional poster and captions. See {@link VideoProps}. */
+/** Video embed. See {@link VideoProps}. */
 export function Video(_props: VideoProps): never {
   return authoringStub('Video')
 }

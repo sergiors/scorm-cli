@@ -30,7 +30,8 @@ const records: RecordedPlayer[] = []
  * Recording it here lets tests assert the restore demands a paused seek rather
  * than inheriting the provider's default.
  */
-const seekTo = vi.fn<(amount: number, type?: 'seconds' | 'fraction', keepPlaying?: boolean) => void>()
+const seekTo =
+  vi.fn<(amount: number, type?: 'seconds' | 'fraction', keepPlaying?: boolean) => void>()
 const getCurrentTime = vi.fn<() => number | null>(() => null)
 
 /**
@@ -68,10 +69,14 @@ export const reactPlayerMock = {
  */
 export const MockReactPlayer = forwardRef<unknown, RecordedPlayer>(
   function MockReactPlayer(props, ref) {
-    const registered = useRef(false)
-    if (!registered.current) {
-      registered.current = true
+    const recordIndex = useRef<number | null>(null)
+    if (recordIndex.current === null) {
+      recordIndex.current = records.length
       records.push(props)
+    } else {
+      // Keep the registry current so a re-render's props (notably the stable
+      // provider config) can be asserted without adding another player entry.
+      records[recordIndex.current] = props
     }
     useImperativeHandle(ref, () => ({
       seekTo,

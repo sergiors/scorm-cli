@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, type RefObject } from 'react'
 import type ReactPlayer from 'react-player'
+import type { VideoProvider } from '../types'
 import { requiredWatchSeconds } from './video-requirements'
 
 /** Persistence cadence: a playing video is saved only once it moves this far. */
@@ -41,10 +42,10 @@ export interface VideoProgress {
  * The imperative slice of ReactPlayer's runtime surface the restore relies on.
  * ReactPlayer v2's public `seekTo` type declares only `(amount, type)`, but the
  * runtime forwards a third `keepPlaying` argument to the provider, whose default
- * is provider-specific: YouTube pauses (`false`), while Vimeo and the native file
- * player keep playing (`true`). This structural view adds only the missing
- * parameter, so the restore can demand a paused seek explicitly without widening
- * the whole player to `any`.
+ * is provider-specific: YouTube pauses (`false`), while Vimeo keeps playing
+ * (`true`). This structural view adds only the missing parameter, so the restore
+ * can demand a paused seek explicitly without widening the whole player to
+ * `any`.
  */
 interface SeekablePlayer {
   seekTo(amount: number, type: 'seconds' | 'fraction', keepPlaying: boolean): void
@@ -52,8 +53,16 @@ interface SeekablePlayer {
 
 export interface VideoPlayerOptions {
   /**
-   * Restored semantic position in seconds, applied once — and only once — the
-   * provider has reported a usable media duration. Never used to autoplay: a
+   * The embedded provider. It decides how a restored position is applied: Vimeo
+   * is seeked imperatively once the media knows its duration, while YouTube is
+   * initialized with `playerVars.start` because seeking during its iframe
+   * initialization can leave the player stuck on a black frame.
+   */
+  provider: VideoProvider
+  /**
+   * Restored semantic position in seconds. For YouTube it seeds the provider's
+   * initial `start` parameter; for Vimeo it is applied once — and only once —
+   * the provider has reported a usable media duration. Never used to autoplay: a
    * resume leaves the video paused at the saved spot.
    */
   position?: number
@@ -80,6 +89,13 @@ export interface VideoPlayerOptions {
  */
 export interface VideoPlayerBinding {
   ref: RefObject<ReactPlayer | null>
+  /**
+   * The stable position a resumed video must start from, derived once for the
+   * lifetime of the component. YouTube turns it into `playerVars.start`; Vimeo
+   * ignores it and restores imperatively instead. Undefined when there is
+   * nothing to resume (no saved position, or the beginning).
+   */
+  initialSeconds: number | undefined
   onReady: () => void
   /**
    * Reports the media duration and returns whether the reading marked the media
@@ -100,37 +116,90 @@ export interface VideoPlayerBinding {
 }
 
 /**
+ * The highest position a resume may start from. A required video that has not
+ * yet met its minimum can resume no further than its verified frontier, so a
+ * legacy or inconsistent playback position can never bypass the requirement.
+ */
+function resumedSeconds(
+  position: number | undefined,
+  video: Pick<VideoPlayerOptions, 'minWatchTime' | 'duration'>,
+  watchedUntil: number
+): number | undefined {
+  if (position === undefined || !Number.isFinite(position) || position < 0) {
+    return undefined
+  }
+  const required = requiredWatchSeconds(video)
+  const incomplete =
+    required !== undefined && watchedUntil < required - WATCH_COMPLETION_EPSILON_SECONDS
+  return incomplete ? Math.min(position, watchedUntil) : position
+}
+
+/**
+ * The position a YouTube player is initialized with, resolved from the
+ * persisted session before the player mounts. It is read once, because
+ * `playerVars.start` must not change for the lifetime of a mounted player: a
+ * changed `start` never re-seeks, it only confuses the next cue. A saved
+ * position at or beyond the authored duration rests just before the end, so the
+ * iframe can never be cued past the media (the provider's own duration is not
+ * known yet; Vimeo keeps its duration-aware imperative clamp at restore time).
+ */
+function initialResumeSeconds(options: VideoPlayerOptions): number | undefined {
+  const watchedUntil =
+    typeof options.watchedUntil === 'number' &&
+    Number.isFinite(options.watchedUntil) &&
+    options.watchedUntil > 0
+      ? options.watchedUntil
+      : 0
+  const resumePosition = resumedSeconds(options.position, options, watchedUntil)
+  if (resumePosition === undefined) {
+    return undefined
+  }
+  const duration = options.duration
+  if (
+    typeof duration === 'number' &&
+    Number.isFinite(duration) &&
+    duration > 0 &&
+    resumePosition >= duration
+  ) {
+    return Math.max(0, duration - SEEK_END_MARGIN_SECONDS)
+  }
+  return resumePosition
+}
+
+/**
  * Binds ReactPlayer's callback/imperative surface to the semantic
  * restore-and-persist behaviour the learner session expects, without holding any
  * React state: playback progress never causes a render.
  *
- * The restore is gated on a usable media duration rather than on `onReady`.
- * ReactPlayer's YouTube provider reports ready twice — first when the iframe API
- * is ready, before the video is cued and its duration is known, and again once
- * the video is cued — and a seek issued before the duration exists is dropped by
- * YouTube (and can leave the player wedged on a black frame). ReactPlayer emits
- * `onDuration` exactly once, after `onReady`, as soon as `getDuration()` returns
- * a non-zero value (it polls every 100ms until then), which is the first moment a
- * seek can reliably land. A live stream is the exception: it reports a positive
- * infinity, which still marks the media as rendered but leaves no finite position
- * to seek to, so the frame is revealed without a restore. The position is
- * therefore applied a single time on the first valid duration, and a persisted
- * position at or beyond the duration is
- * clamped to just before the end so it can never seek past the media. The restore
- * window closes as soon as playback, a learner seek or the end takes over, and
- * the video never autoplays: the restoring seek passes `keepPlaying: false`
- * explicitly, so the pause holds across providers rather than depending on
- * ReactPlayer's provider-specific default. A required video that has not yet met
- * its minimum can resume no further than its verified frontier, so a legacy or
- * inconsistent playback position can never bypass the requirement.
+ * Resume is provider-specific because ReactPlayer's providers initialize very
+ * differently:
+ *
+ * - YouTube is resumed through `playerVars.start`, which ReactPlayer forwards to
+ *   the iframe on creation and on every cue. A position captured for the
+ *   component lifetime therefore lands with the media itself, without an
+ *   imperative seek. Seeking during YouTube's iframe initialization is dropped
+ *   or can wedge the player on a black frame, so no imperative restore is issued
+ *   for it at all — not on `onReady`, not on `onDuration`.
+ * - Vimeo keeps the imperative restore: it is gated on a usable media duration
+ *   (never on `onReady`) and applied exactly once to a seekable player. A
+ *   persisted position at or beyond the duration rests just before the end so it
+ *   can never seek past the media. The restore passes `keepPlaying: false`
+ *   explicitly, because Vimeo defaults the seek to keeping playback going. The
+ *   restore window closes as soon as playback, a learner seek or the end takes
+ *   over, and the video never autoplays.
+ *
+ * `onDuration` remains the signal that reveals the player frame for both
+ * providers, because YouTube's `onReady` fires when the iframe API loads, before
+ * the video is cued. A live stream reports a positive infinity, which still
+ * marks the media as rendered but leaves no finite position to seek to, so the
+ * frame is revealed without a restore.
  *
  * Positions are persisted on coarse `onProgress` ticks (at most once every
  * {@link PERSIST_INTERVAL_SECONDS}) and immediately on pause, seek and end, so a
  * provider that emits frequent progress events never triggers a per-frame React
  * update or SCORM commit. A finished video persists a reset to the beginning so
  * replaying it resumes from the start, and teardown flushes the latest known
- * position once. ReactPlayer's own controls are left in place, so no playback
- * chrome is duplicated here.
+ * position once. Provider controls are not rendered by this binding.
  *
  * A video that declares a minimum watch time additionally owns a verified
  * frontier, kept separate from the playback position. The frontier only grows
@@ -164,7 +233,22 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
   const ref = useRef<ReactPlayer | null>(null)
   const mountedRef = useRef(true)
   const durationRef = useRef<number | undefined>(undefined)
-  const seededRef = useRef(false)
+  /**
+   * The resume position for this mounted player. `useRef` keeps the first
+   * render's value, so a later state write can never rewrite the provider's
+   * initial start.
+   */
+  const initialSeconds = useRef(initialResumeSeconds(options)).current
+  /**
+   * YouTube really starts at {@link initialSeconds}, because it is passed to the
+   * iframe at creation. Vimeo starts at the beginning and is imperatively seeked
+   * once its duration is known, so it must not seed playback bookkeeping from a
+   * position the provider has not reached yet.
+   */
+  const startsAtInitial = options.provider === 'youtube' && initialSeconds !== undefined
+  const seededRef = useRef(startsAtInitial)
+  // YouTube is resumed by `playerVars.start`, so it never restores imperatively;
+  // Vimeo seeks once its duration is known.
   const restoredRef = useRef(false)
   const playbackRef = useRef(false)
   const endedRef = useRef(false)
@@ -175,10 +259,14 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
    */
   const pausedRef = useRef(false)
   const bufferingRef = useRef(false)
-  const lastPersistedRef = useRef<number | undefined>(undefined)
-  const lastProgressRef = useRef<number | undefined>(undefined)
-  /** The previous playback reading, used only to judge continuity. */
-  const lastTickRef = useRef(0)
+  const lastPersistedRef = useRef<number | undefined>(startsAtInitial ? initialSeconds : undefined)
+  const lastProgressRef = useRef<number | undefined>(startsAtInitial ? initialSeconds : undefined)
+  /**
+   * The previous playback reading, used only to judge continuity. For a YouTube
+   * resume it starts at the provider's initial position, so the first tick after
+   * `playerVars.start` is continuous rather than a rejected jump.
+   */
+  const lastTickRef = useRef(startsAtInitial ? (initialSeconds ?? 0) : 0)
   /** Beginning of the current uninterrupted playback segment, in media/wall time. */
   const continuityStartRef = useRef<{ mediaSeconds: number; wallSeconds: number } | undefined>(
     undefined
@@ -285,8 +373,7 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
       const elapsedWallSeconds = Math.max(0, now - continuityStart.wallSeconds)
       const continuous =
         last <= frontier + WATCH_CLOCK_TOLERANCE_SECONDS + WATCH_COMPLETION_EPSILON_SECONDS &&
-        seconds - continuityStart.mediaSeconds <=
-          elapsedWallSeconds + WATCH_CLOCK_TOLERANCE_SECONDS
+        seconds - continuityStart.mediaSeconds <= elapsedWallSeconds + WATCH_CLOCK_TOLERANCE_SECONDS
 
       if (continuous) {
         lastTickRef.current = seconds
@@ -364,25 +451,25 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
     }
   }, [currentSeconds, report, reportWatched])
 
-  // Applies the restored position exactly once, and only once a usable duration
-  // has been observed. Called from both `onReady` (a probe, which no-ops while
-  // the duration is unknown) and `onDuration` (the gate), so whichever provider
-  // timing occurs, the seek lands after the media is seekable.
+  // Restores Vimeo's position imperatively, exactly once, and only once a usable
+  // duration has been observed. Called from both `onReady` (a probe, which no-ops
+  // while the duration is unknown) and `onDuration` (the gate). YouTube never
+  // reaches a seek: it is resumed through `playerVars.start` instead.
   const restore = useCallback(() => {
+    if (optionsRef.current.provider !== 'vimeo') {
+      return
+    }
     if (restoredRef.current || playbackRef.current) {
       return
     }
-    const position = optionsRef.current.position
-    if (position === undefined || !Number.isFinite(position) || position < 0) {
+    const resumePosition = resumedSeconds(
+      optionsRef.current.position,
+      optionsRef.current,
+      watchedUntilRef.current
+    )
+    if (resumePosition === undefined) {
       return
     }
-    const required = requiredWatchSeconds(optionsRef.current)
-    const incomplete =
-      required !== undefined &&
-      watchedUntilRef.current < required - WATCH_COMPLETION_EPSILON_SECONDS
-    // An unfinished required video can only resume within its verified frontier;
-    // resuming beyond it would expose unwatched time before playback starts.
-    const resumePosition = incomplete ? Math.min(position, watchedUntilRef.current) : position
     // The restored position is already persisted, so it seeds the throttle once
     // and a nearby first progress tick is not written straight back.
     if (!seededRef.current) {
@@ -398,8 +485,7 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
     const duration = durationRef.current
     if (duration === undefined || !Number.isFinite(duration) || duration <= 0) {
       // Not seekable yet: a seek issued before the provider knows the media
-      // duration is dropped (YouTube) or wedges the player, so wait for
-      // `onDuration`.
+      // duration is dropped, so wait for `onDuration`.
       return
     }
     // A persisted position at or beyond the end would seek onto (or past) the
@@ -407,9 +493,9 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
     const target =
       resumePosition < duration ? resumePosition : Math.max(0, duration - SEEK_END_MARGIN_SECONDS)
     // `'seconds'` keeps a sub-second target from being read as a fraction, and
-    // `keepPlaying: false` guarantees the seek leaves playback paused. ReactPlayer
-    // only defaults it to `false` for YouTube; Vimeo and the native file player
-    // default to `true`, which would autoplay the restore on those providers.
+    // `keepPlaying: false` guarantees the seek leaves playback paused. Vimeo
+    // defaults the seek to keeping playback going, which would autoplay the
+    // restore.
     seekTo(target, false)
     lastTickRef.current = target
     restoredRef.current = true
@@ -418,9 +504,10 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
   const onReady = useCallback(() => {
     // A ready signal is only a probe: for YouTube it fires when the iframe API
     // loads, before the video is cued and its duration is known, so the restore
-    // is deferred to `onDuration`. `'seconds'` is explicit because ReactPlayer
-    // treats an untyped amount below one as a fraction, which would mis-seek a
-    // restored position such as 0.5s.
+    // is deferred to `onDuration`; YouTube has no imperative restore at all. For
+    // Vimeo, `'seconds'` is explicit because ReactPlayer treats an untyped amount
+    // below one as a fraction, which would mis-seek a restored position such as
+    // 0.5s.
     restore()
   }, [restore])
 
@@ -596,6 +683,7 @@ export function useVideoPlayer(options: VideoPlayerOptions): VideoPlayerBinding 
 
   return {
     ref,
+    initialSeconds,
     onReady,
     onDuration,
     onPlay,

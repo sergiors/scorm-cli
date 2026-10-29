@@ -807,11 +807,9 @@ describe('ContentRenderer images and video', () => {
       {
         type: 'video',
         id: 'video:test.mdx:1:1',
-        provider: 'native',
-        src: './v.mp4',
-        title: 'Intro video',
-        poster: './poster.png',
-        captions: './v.vtt'
+        provider: 'vimeo',
+        src: 'https://vimeo.com/42',
+        title: 'Intro video'
       }
     ])
     expect(html).toContain('role="group"')
@@ -827,7 +825,7 @@ describe('ContentRenderer images and video', () => {
 
   it('omits the figcaption when no title is provided', () => {
     const html = render([
-      { type: 'video', id: 'video:test.mdx:1:1', provider: 'native', src: './v.mp4' }
+      { type: 'video', id: 'video:test.mdx:1:1', provider: 'vimeo', src: 'https://vimeo.com/42' }
     ])
     expect(html).toContain('aria-label="Video"')
     expect(html).not.toContain('<figcaption')
@@ -835,7 +833,7 @@ describe('ContentRenderer images and video', () => {
 
   it('gives a video placeholder a low-fidelity player silhouette, not a bare box', () => {
     const html = render([
-      { type: 'video', id: 'video:test.mdx:1:1', provider: 'native', src: './v.mp4' }
+      { type: 'video', id: 'video:test.mdx:1:1', provider: 'vimeo', src: 'https://vimeo.com/42' }
     ])
 
     // The video placeholder is its own variant of the shared frame...
@@ -858,7 +856,7 @@ describe('ContentRenderer images and video', () => {
 
   it('keeps the video placeholder free of any animation', () => {
     const html = render([
-      { type: 'video', id: 'video:test.mdx:1:1', provider: 'native', src: './v.mp4' }
+      { type: 'video', id: 'video:test.mdx:1:1', provider: 'vimeo', src: 'https://vimeo.com/42' }
     ])
 
     // No shimmer/pulse, no fade or transition: the silhouette is static.
