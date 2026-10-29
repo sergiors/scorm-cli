@@ -55,12 +55,13 @@ function presentationNodes(contentPackage: ContentPackage): Array<PageNode | Ite
  * Reduces one authored node's content to the minimal, semantic AST the session
  * layer needs. The player's scoring, resume sanitisation and completion gating
  * only ever inspect questionnaires (ids, attempt cap, question types, option
- * values and correctness) and video ids; everything else is presentation and
- * travels with the node's lazily loaded module. Nesting containers that locate
- * those nodes — lists, quotes, callouts and accordions — are preserved so the
- * shared core helpers can reach them. Keeping this summary in the initial package
- * means no page or item body lands in the entry chunk, while the shared core
- * helpers keep operating on ordinary content nodes.
+ * values and correctness) and videos (id plus the authored duration and
+ * minimum watch time that define a required-viewing gate); everything else is
+ * presentation and travels with the node's lazily loaded module. Nesting
+ * containers that locate those nodes — lists, quotes, callouts and accordions —
+ * are preserved so the shared core helpers can reach them. Keeping this summary
+ * in the initial package means no page or item body lands in the entry chunk,
+ * while the shared core helpers keep operating on ordinary content nodes.
  *
  * Prompt and option strings are omitted from this semantic summary because
  * they remain part of the lazily loaded page or item module.
@@ -92,7 +93,14 @@ function semanticNodeContent(content: readonly ContentNode[]): ContentNode[] {
           })
           break
         case 'video':
-          summary.push({ type: 'video', id: node.id, provider: node.provider, src: node.src })
+          summary.push({
+            type: 'video',
+            id: node.id,
+            provider: node.provider,
+            src: node.src,
+            ...(node.duration === undefined ? {} : { duration: node.duration }),
+            ...(node.minWatchTime === undefined ? {} : { minWatchTime: node.minWatchTime })
+          })
           break
         case 'list':
           for (const item of node.items) {

@@ -674,7 +674,7 @@ describe('PackageView media loading', () => {
       // primitive now puts the authored ratio into a `--ratio` CSS variable on
       // the frame box itself and the utility consumes it through CSS
       // `aspect-ratio`, with no padding-bottom wrapper element.
-      const frame = container.querySelector<HTMLElement>('[data-slot="media-frame"]')
+      const frame = container.querySelector<HTMLElement>('[data-slot="video-frame"]')
       expect(frame).not.toBeNull()
       expect(frame?.style.getPropertyValue('--ratio')).toBe('1.7777777777777777')
       expect(frame?.classList.contains('aspect-(--ratio)')).toBe(true)
@@ -1088,7 +1088,7 @@ describe('PackageView scroll completion gating', () => {
     expect(virtualizedTotal()).toBe(1)
 
     // Both lazy players mount only once their frames approach the viewport.
-    const frames = Array.from(container.querySelectorAll('[data-slot="media-frame"]'))
+    const frames = Array.from(container.querySelectorAll('[data-slot="video-frame"]'))
     expect(frames).toHaveLength(2)
     frames.forEach((frame) => driveObserver(frame, true))
     const firstPlayer = players.records.find((record) => record.url === firstVideo.src)
@@ -1153,7 +1153,7 @@ describe('PackageView scroll completion gating', () => {
     act(() => root.render(<Player contentPackage={optionalPackage} />))
     expect(container.querySelector('[data-video-requirement]')).toBeNull()
 
-    const frame = container.querySelector('[data-slot="media-frame"]')
+    const frame = container.querySelector('[data-slot="video-frame"]')
     expect(frame).not.toBeNull()
     driveObserver(frame as Element, true)
     expect(container.querySelector('[data-testid="react-player"]')).not.toBeNull()

@@ -791,7 +791,7 @@ describe('ContentRenderer images and video', () => {
     expect(html).toContain('animate-none')
   })
 
-  it('renders a block image without a caption in the shared frame, with no figcaption', () => {
+  it('renders a block image without a caption in the media frame, with no figcaption', () => {
     const html = render([{ type: 'image', src: './a.png', alt: 'A picture' }])
     expect(html).toContain('<img')
     expect(html).toContain('data-slot="media-frame"')
@@ -814,8 +814,11 @@ describe('ContentRenderer images and video', () => {
     ])
     expect(html).toContain('role="group"')
     expect(html).toContain('aria-label="Intro video"')
-    // The video reserves the same 16:9 frame as a block image, through the
-    // CSS `aspect-ratio` utility rather than a padding-bottom wrapper.
+    // The video reserves its own dedicated 16:9 frame — separate from the block
+    // image's media frame — through the CSS `aspect-ratio` utility rather than a
+    // padding-bottom wrapper.
+    expect(html).toContain('data-slot="video-frame"')
+    expect(html).not.toContain('data-slot="media-frame"')
     expect(html).toMatch(/--ratio:1\.7777777777777777/)
     expect(html).toContain('aspect-(--ratio)')
     expect(html).not.toContain('padding-bottom')
@@ -836,8 +839,9 @@ describe('ContentRenderer images and video', () => {
       { type: 'video', id: 'video:test.mdx:1:1', provider: 'vimeo', src: 'https://vimeo.com/42' }
     ])
 
-    // The video placeholder is its own variant of the shared frame...
-    expect(html).toContain('data-slot="media-frame-placeholder"')
+    // The video placeholder is its own variant of the dedicated video frame...
+    expect(html).toContain('data-slot="video-frame-placeholder"')
+    expect(html).not.toContain('data-slot="media-frame-placeholder"')
     expect(html).toContain('data-kind="video"')
     // ...filled by exactly one static shadcn Skeleton over the whole reserved
     // box (no bottom progress/control row)...
@@ -875,6 +879,7 @@ describe('ContentRenderer images and video', () => {
     // The image keeps the bare static skeleton and gains no player chrome.
     expect(html).toContain('data-slot="skeleton"')
     expect(html).not.toContain('data-slot="media-frame-placeholder"')
+    expect(html).not.toContain('data-slot="video-frame-placeholder"')
     expect(html).not.toContain('data-kind="video"')
     expect(html).not.toContain('<svg')
   })

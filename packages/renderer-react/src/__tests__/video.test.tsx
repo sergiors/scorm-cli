@@ -11,6 +11,7 @@ import { getPackageProgress } from '../../app/lib/content-helpers'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
 import { usePlayerSession, type PlayerSession } from '../../app/lib/use-player-session'
 import { inlineContentProvider, questionnaireNode } from './fixtures'
+import { createPackageDataPlugin, RESOLVED_PACKAGE_DATA_ID } from '../vite-app'
 import type {
   ContentNode,
   ContentPackage,
@@ -59,6 +60,28 @@ function videoPackageOf(nodes: VideoNode[]): ContentPackage {
   }
 }
 
+/** The semantic summary the generated package actually hands to the session. */
+function semanticPackage(contentPackage: ContentPackage): ContentPackage {
+  const plugin = createPackageDataPlugin({ current: contentPackage })
+  const load = plugin.load
+  const code =
+    typeof load === 'function'
+      ? Reflect.apply(load, undefined, [RESOLVED_PACKAGE_DATA_ID, undefined])
+      : load !== undefined
+        ? Reflect.apply(load.handler, undefined, [RESOLVED_PACKAGE_DATA_ID, undefined])
+        : undefined
+  if (typeof code !== 'string') {
+    throw new Error('Package data module was not generated')
+  }
+  const marker = 'const contentPackage = '
+  const start = code.indexOf(marker)
+  const end = code.indexOf(';\nexport default contentPackage', start)
+  if (start < 0 || end < 0) {
+    throw new Error('Package data module has an unexpected shape')
+  }
+  return JSON.parse(code.slice(start + marker.length, end)) as ContentPackage
+}
+
 function VideoContext({ node }: { node: VideoNode }) {
   return (
     <PlayerProvider contentPackage={videoPackageFor(node)}>
@@ -101,10 +124,19 @@ async function mountVideo(
   position: number | undefined,
   onPosition: (seconds: number) => void,
   watchSeconds?: number,
-  onWatchSeconds?: (seconds: number) => void
+  onWatchSeconds?: (seconds: number) => void,
+  session?: {
+    /**
+     * The package the session layer receives. Production gives it the generated
+     * semantic summary while the rendered node comes from the lazy content
+     * module, so tests can reproduce that split.
+     */
+    contentPackage?: ContentPackage
+    onSaveState?: (state: PlayerState) => void
+  }
 ): Promise<RecordedPlayer> {
   const pageId = VIDEO_PAGE_ID
-  const contentPackage = videoPackageFor(node)
+  const contentPackage = session?.contentPackage ?? videoPackageFor(node)
   let lastPosition = position
   let lastWatch = watchSeconds
   window.scormBridge = {
@@ -122,6 +154,7 @@ async function mountVideo(
             }
     }),
     saveState: (state) => {
+      session?.onSaveState?.(state)
       const nextPosition = state.pages[pageId]?.videos?.[node.id]
       if (nextPosition !== undefined && nextPosition !== lastPosition) {
         lastPosition = nextPosition
@@ -271,11 +304,13 @@ describe('Video provider inputs', () => {
         </PlayerI18nProvider>
       )
 
-      // The frame reserves the media geometry before the provider player mounts,
-      // so the placeholder occupies exactly the box the media will. The frame
-      // element itself is the ratio box: an authored `--ratio` CSS variable
-      // consumed by the CSS `aspect-ratio` utility.
-      expect(html).toContain('data-slot="media-frame"')
+      // The video reserves the media geometry before the provider player mounts
+      // in its own dedicated video frame, so the placeholder occupies exactly
+      // the box the media will. The frame element itself is the ratio box: an
+      // authored `--ratio` CSS variable consumed by the CSS `aspect-ratio`
+      // utility. The shared image media frame no longer hosts videos.
+      expect(html).toContain('data-slot="video-frame"')
+      expect(html).not.toContain('data-slot="media-frame"')
       expect(html).toMatch(/--ratio:1\.7777777777777777/)
       expect(html).toContain('aspect-(--ratio)')
       expect(html).not.toContain('padding-bottom')
@@ -308,7 +343,9 @@ describe('Video provider inputs', () => {
   it('shows the authored poster until the player is ready, then removes it', async () => {
     const record = await mountVideo({ ...vimeoNode, poster: './poster.png' }, undefined, () => {})
 
-    const poster = container.querySelector('[data-slot="media-frame-poster"]')
+    const poster = container.querySelector('[data-slot="video-frame-poster"]')
+    // The poster fills the video's own dedicated frame, not the shared media frame.
+    expect(container.querySelector('[data-slot="video-frame"]')).not.toBeNull()
     expect(poster?.getAttribute('src')).toBe('./poster.png')
     expect(poster?.getAttribute('alt')).toBe('')
 
@@ -316,15 +353,17 @@ describe('Video provider inputs', () => {
       record.onDuration?.(120)
     })
 
-    expect(container.querySelector('[data-slot="media-frame-poster"]')).toBeNull()
+    expect(container.querySelector('[data-slot="video-frame-poster"]')).toBeNull()
   })
 
   it('shows a decorative player silhouette until the media is ready, then yields it', async () => {
     const record = await mountVideo(vimeoNode, undefined, () => {})
 
-    const placeholder = container.querySelector('[data-slot="media-frame-placeholder"]')
+    const placeholder = container.querySelector('[data-slot="video-frame-placeholder"]')
     expect(placeholder).not.toBeNull()
     expect(placeholder?.getAttribute('data-kind')).toBe('video')
+    // The silhouette stands in the video's own dedicated frame.
+    expect(placeholder?.closest('[data-slot="video-frame"]')).not.toBeNull()
     // Decorative only: hidden from assistive tech and carrying no focusable or
     // interactive control of its own.
     expect(placeholder?.getAttribute('aria-hidden')).toBe('true')
@@ -344,7 +383,7 @@ describe('Video provider inputs', () => {
     await act(async () => {
       record.onDuration?.(120)
     })
-    expect(container.querySelector('[data-slot="media-frame-placeholder"]')).toBeNull()
+    expect(container.querySelector('[data-slot="video-frame-placeholder"]')).toBeNull()
   })
 })
 
@@ -1225,6 +1264,62 @@ describe('Video watch requirements', () => {
   })
 })
 
+describe('Required viewing through provider playback sequences', () => {
+  const providerNode = (provider: VideoProvider): VideoNode => ({
+    ...vimeoNode,
+    provider,
+    src: providerSources[provider],
+    duration: 120,
+    minWatchTime: 5
+  })
+
+  it.each<VideoProvider>(['youtube', 'vimeo'])(
+    'accumulates and persists required viewing from the %s provider sequence',
+    async (provider) => {
+      const node = providerNode(provider)
+      const onWatchSeconds = vi.fn()
+      const onSaveState = vi.fn()
+      const record = await mountVideo(node, undefined, vi.fn(), undefined, onWatchSeconds, {
+        // The session layer sees the generated semantic summary, while the
+        // rendered Video gets the full lazily loaded node — exactly production.
+        contentPackage: semanticPackage(videoPackageFor(node)),
+        onSaveState
+      })
+      const requirement = () => container.querySelector('[data-video-requirement]')
+      expect(requirement()?.getAttribute('data-complete')).toBe('false')
+
+      startWatching()
+      if (provider === 'youtube') {
+        // YouTube enters BUFFERING and then PLAYING; ReactPlayer reports the
+        // PLAYING transition as `onPlay` immediately followed by `onBufferEnd`.
+        act(() => record.onBuffer?.())
+        act(() => {
+          record.onPlay?.()
+          record.onBufferEnd?.()
+        })
+      } else {
+        // Vimeo reports `bufferstart`, then `play`, and finishes buffering after
+        // playback has been announced.
+        act(() => record.onBuffer?.())
+        act(() => record.onPlay?.())
+        act(() => record.onBufferEnd?.())
+      }
+
+      progressAfter(record, 2, 2)
+      progressAfter(record, 4, 2)
+      progressAfter(record, 5, 1)
+
+      // The provider sequence starts the watch clock, the requirement UI tracks
+      // it, and the session persists the same total rather than dropping it.
+      expect(requirement()?.getAttribute('data-complete')).toBe('true')
+      expect(savedWatchSeconds(onWatchSeconds)).toEqual([2, 4, 5])
+      expect(lastSaved(onSaveState).pages[VIDEO_PAGE_ID]?.videoWatchSeconds).toEqual({
+        [node.id]: 5
+      })
+    }
+  )
+})
+
 describe('Video watch accrual guards', () => {
   const requiredNode: VideoNode = { ...vimeoNode, duration: 120, minWatchTime: 60 }
 
@@ -1608,7 +1703,7 @@ describe('Video provider ready timing', () => {
 describe('Media failure fallbacks', () => {
   it('replaces the video placeholder with a static error state when the player errors', async () => {
     const record = await mountVideo({ ...vimeoNode, poster: './poster.png' }, 12.3, () => {})
-    expect(container.querySelector('[data-slot="media-frame-poster"]')).not.toBeNull()
+    expect(container.querySelector('[data-slot="video-frame-poster"]')).not.toBeNull()
 
     await act(async () => {
       record.onError?.()
@@ -1616,9 +1711,9 @@ describe('Media failure fallbacks', () => {
 
     // The poster stops and the provider player is gone, so the frame shows a
     // small readable error rather than a player stuck on a black frame.
-    expect(container.querySelector('[data-slot="media-frame-poster"]')).toBeNull()
+    expect(container.querySelector('[data-slot="video-frame-poster"]')).toBeNull()
     expect(container.querySelector('[data-testid="react-player"]')).toBeNull()
-    const error = container.querySelector('[data-slot="media-frame-error"]')
+    const error = container.querySelector('[data-slot="video-frame-error"]')
     expect(error?.getAttribute('role')).toBe('alert')
     expect(error?.textContent).toBe('This video could not be played.')
   })

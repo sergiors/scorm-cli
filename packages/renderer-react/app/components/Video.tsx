@@ -8,7 +8,7 @@ import { useMediaInView } from '../lib/use-media-in-view'
 import { useVideoPlayer } from '../lib/use-video-player'
 import { usePageId, usePlayerActions, usePlayerState } from '../lib/player-context'
 import { videoRequirementProgress, watchedVideoSeconds } from '../lib/video-requirements'
-import { MediaFrame } from './MediaFrame'
+import { VideoFrame } from './VideoFrame'
 import { Progress } from './ui/progress'
 
 /**
@@ -117,12 +117,11 @@ export function Video({ node }: { node: VideoNode }) {
 
   return (
     <figure>
-      <MediaFrame
+      <VideoFrame
         ref={ref}
         role="group"
         aria-label={label}
         ready={ready}
-        kind="video"
         poster={node.poster}
         error={failed ? errorMessage : undefined}
         className={cn('rounded-2xl border not-prose', '[&_iframe]:h-full [&_iframe]:w-full')}
@@ -150,7 +149,7 @@ export function Video({ node }: { node: VideoNode }) {
             onEnded={player.onEnded}
           />
         ) : null}
-      </MediaFrame>
+      </VideoFrame>
       {requirement ? (
         <div
           data-video-requirement

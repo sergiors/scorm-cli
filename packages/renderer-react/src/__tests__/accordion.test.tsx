@@ -473,8 +473,8 @@ describe('accordion nested integrations', () => {
     // The questionnaire keeps its whole interactive surface inside the body.
     expect(html).toContain('data-slot="questionnaire"')
     expect(html).toContain('Which option is correct?')
-    // The video keeps its shared media frame and lazy player binding.
-    expect(html).toContain('data-slot="media-frame"')
+    // The video keeps its dedicated video frame and lazy player binding.
+    expect(html).toContain('data-slot="video-frame"')
     expect(html).toContain('data-testid="react-player"')
     expect(html).toContain('https://vimeo.com/42')
   })

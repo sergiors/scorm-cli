@@ -388,11 +388,8 @@ function BlockImageView({ node, anchor }: ContentNodeViewProps<'image'>) {
   const [failed, setFailed] = useState(false)
 
   return (
-    <figure
-      {...readingAnchorAttributes(anchor)}
-      className={node.caption ? 'space-y-2.5' : undefined}
-    >
-      <MediaFrame ready={loaded || failed} className="rounded-2xl not-prose">
+    <figure {...readingAnchorAttributes(anchor)} className="not-prose space-y-2.5">
+      <MediaFrame ready={loaded || failed}>
         <img
           src={node.src}
           alt={node.alt}
