@@ -26,6 +26,8 @@ export const en = {
   'video.label': 'Video',
   'video.captions': 'Captions',
   'video.error': 'This video could not be played.',
+  'video.requiredProgress': 'Required viewing: {percent}% watched',
+  'video.requiredComplete': 'Required viewing complete',
   'questionnaire.previous': 'Previous question',
   'questionnaire.next': 'Next question',
   'questionnaire.submit': 'Submit questionnaire',
@@ -65,6 +67,8 @@ export const ptBR: Record<MessageId, string> = {
   'video.label': 'Vídeo',
   'video.captions': 'Legendas',
   'video.error': 'Não foi possível reproduzir este vídeo.',
+  'video.requiredProgress': 'Visualização obrigatória: {percent}% assistida',
+  'video.requiredComplete': 'Visualização obrigatória concluída',
   'questionnaire.previous': 'Pergunta anterior',
   'questionnaire.next': 'Próxima pergunta',
   'questionnaire.submit': 'Enviar questionário',
@@ -106,6 +110,7 @@ declare global {
     interface MessageArguments {
       'questionnaire.progress': { current: number; total: number }
       'questionnaire.summaryCorrect': { correct: number; total: number }
+      'video.requiredProgress': { percent: number }
       'content.for': { title: string }
     }
 

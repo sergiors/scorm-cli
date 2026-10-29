@@ -14,12 +14,11 @@ import {
   isPackageComplete
 } from './content-helpers'
 import {
-  arePackageQuestionnairesComplete,
-  arePageQuestionnairesComplete,
   findAuthoredQuestionnaire,
   hasUnlimitedQuestionnaireAttempts,
   questionnaireAttemptsRemaining
 } from './questionnaire-completion'
+import { areNodeRequirementsComplete, arePackageRequirementsComplete } from './page-completion'
 import { getQuestionnaireResult } from './questionnaire'
 import {
   sanitizePlayerState,
@@ -143,6 +142,14 @@ export interface PlayerSession {
    * no-op.
    */
   setVideoPosition(pageId: string, videoId: string, seconds: number): void
+  /**
+   * Persists the verified continuous-playback frontier for a required video,
+   * scoped to the page/item that owns it. The frontier is monotonic: a smaller
+   * value can never replace a recorded one. Non-finite and negative values are
+   * ignored, values are normalized to tenths, and an unchanged frontier is a
+   * no-op. Page completion uses this value, never the playback position.
+   */
+  setVideoWatchedUntil(pageId: string, videoId: string, seconds: number): void
 }
 
 /**
@@ -167,14 +174,16 @@ export interface PlayerSession {
  * Completion semantics differ by presentation:
  * - Scroll and Slides pages are visited as soon as they are displayed. A page
  *   completes once its own completion rule is met (for Scroll, its end boundary
- *   was reached; for Slides, it is simply displayed) and every questionnaire on
- *   the page has satisfied its gate: submitted and completed. The page being
- *   viewed is stored as the lesson location. Both resume on that page after a
- *   refresh: the location the runtime read back (SCORM 1.2
+ *   was reached; for Slides, it is simply displayed), every questionnaire on
+ *   the page has satisfied its gate (submitted and completed), and every
+ *   required video has reached its verified continuous watch time. The page
+ *   being viewed is stored as the lesson location. Both resume on that page
+ *   after a refresh: the location the runtime read back (SCORM 1.2
  *   `cmi.core.lesson_location` / SCORM 2004 `cmi.location`, normalized to
  *   `PlayerState.location`) seeds the initial reading position, while restored
- *   answers, submissions and progress are unaffected. The package is complete
- *   once every page is completed.
+ *   answers, submissions, watch frontiers and progress are unaffected. The
+ *   package is complete once every page is completed and, for Scroll/Slides,
+ *   every video requirement is met.
  * - Tiles items are visited (and stored as the location) as they are opened;
  *   the package is complete once every item has been opened. A saved location
  *   reopens that item's dialog on mount.
@@ -292,13 +301,14 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
   )
 
   // Completion is the single place a page can become done. Re-check the
-  // authored questionnaire gate here as well as in the presentations, so a
-  // pending retry assessment can never mark a page complete by any caller.
+  // authored questionnaire and video gates here as well as in the
+  // presentations, so a pending retry assessment or an unfinished required
+  // video can never mark a page complete by any caller.
   const markCompleted = useCallback(
     (id: string) => {
       applyState((previous) => {
         const node = getPresentationNodes(contentPackage).find((candidate) => candidate.id === id)
-        if (node && !arePageQuestionnairesComplete(node.content, previous.pages[id])) {
+        if (node && !areNodeRequirementsComplete(contentPackage, node, previous.pages[id])) {
           return previous
         }
         return updatePageState(previous, id, (page) =>
@@ -536,15 +546,45 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
     [applyState]
   )
 
+  // Stores the verified continuous-playback frontier separately from the
+  // playback position: resuming a video may seek backward to the saved position,
+  // while page completion can only ever use time actually played through. The
+  // frontier is monotonic, so a stale or out-of-order provider reading can never
+  // rewind it. Package progress never depends on video progress, so the
+  // accompanying `saveState` write carries the unchanged integer progress.
+  const setVideoWatchedUntil = useCallback(
+    (pageId: string, videoId: string, seconds: number) => {
+      if (!Number.isFinite(seconds) || seconds < 0) {
+        return
+      }
+      const normalized = normalizeVideoPosition(seconds)
+      applyState((previous) =>
+        updatePageState(previous, pageId, (page) => {
+          const current = page.watchedVideos?.[videoId]
+          if (current !== undefined && current >= normalized) {
+            return page
+          }
+          return {
+            ...page,
+            watchedVideos: { ...page.watchedVideos, [videoId]: normalized }
+          }
+        })
+      )
+    },
+    [applyState]
+  )
+
   // Package completion reuses the canonical done-node rule for every
   // presentation, but additionally requires every authored questionnaire to be
-  // completed. Tiles mark an item done as soon as it is opened, so without this
-  // gate an open tile with a pending assessment could report the whole package
-  // complete. Progress, done-node IDs and Tiles navigation intentionally keep
-  // their existing semantics.
+  // completed and — for Scroll and Slides — every required video to meet its
+  // verified watch time. Tiles mark an item done as soon as it is opened, so
+  // without the questionnaire gate an open tile with a pending assessment could
+  // report the whole package complete; Tiles deliberately ignore video
+  // requirements. Progress, done-node IDs and Tiles navigation intentionally
+  // keep their existing semantics.
   const packageComplete =
     isPackageComplete(contentPackage, getDoneNodeIds(contentPackage, state)) &&
-    arePackageQuestionnairesComplete(contentPackage, state)
+    arePackageRequirementsComplete(contentPackage, state)
   useScormBridge(packageComplete)
 
   // The score is derived by core from the authored AST and the owned state on
@@ -565,6 +605,7 @@ export function usePlayerSession(contentPackage: ContentPackage): PlayerSession 
     markQuestionnaireSubmitted,
     retryQuestionnaire,
     completeQuestionnaire,
-    setVideoPosition
+    setVideoPosition,
+    setVideoWatchedUntil
   }
 }

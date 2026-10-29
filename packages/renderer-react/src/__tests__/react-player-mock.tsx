@@ -18,6 +18,8 @@ export interface RecordedPlayer {
   onProgress?: (progress: { playedSeconds: number }) => void
   onPause?: () => void
   onSeek?: (seconds: number) => void
+  onBuffer?: () => void
+  onBufferEnd?: () => void
   onEnded?: () => void
 }
 

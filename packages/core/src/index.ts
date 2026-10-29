@@ -219,6 +219,13 @@ export interface VideoNode {
   title?: string
   poster?: string
   captions?: string
+  /** Authored media duration in seconds, when the content declares one. */
+  duration?: number
+  /**
+   * Authored minimum continuous watch time in seconds. A video without this
+   * positive value does not gate its page's completion.
+   */
+  minWatchTime?: number
 }
 
 export type VideoProvider = 'native' | 'youtube' | 'vimeo'
@@ -270,6 +277,12 @@ export interface PlayerPageState {
   activeQuestionnaireItems?: Record<string, string>
   /** Playback positions in semantic seconds, keyed by stable video node ID. */
   videos?: Record<string, number>
+  /**
+   * Verified continuous playback frontiers in semantic seconds, keyed by stable
+   * video node ID. Kept separate from playback positions so seeking backward or
+   * resuming never erases watch progress a video requirement already earned.
+   */
+  watchedVideos?: Record<string, number>
 }
 
 export interface PlayerState {

@@ -29,7 +29,8 @@ export function PlayerProvider({
       markQuestionnaireSubmitted: session.markQuestionnaireSubmitted,
       retryQuestionnaire: session.retryQuestionnaire,
       completeQuestionnaire: session.completeQuestionnaire,
-      setVideoPosition: session.setVideoPosition
+      setVideoPosition: session.setVideoPosition,
+      setVideoWatchedUntil: session.setVideoWatchedUntil
     }),
     [
       session.markSeen,
@@ -40,7 +41,8 @@ export function PlayerProvider({
       session.markQuestionnaireSubmitted,
       session.retryQuestionnaire,
       session.completeQuestionnaire,
-      session.setVideoPosition
+      session.setVideoPosition,
+      session.setVideoWatchedUntil
     ]
   )
 

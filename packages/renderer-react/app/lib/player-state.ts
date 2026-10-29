@@ -6,18 +6,20 @@ import type {
   PlayerState,
   QuestionNode,
   QuestionnaireNode,
-  ItemNode
+  ItemNode,
+  VideoNode
 } from '../types'
 import { collectQuestionnaires, collectVideoNodes } from './content-helpers'
 import { hasUnlimitedQuestionnaireAttempts } from './questionnaire-completion'
 import { decodeReadingLocation, isReadingAnchorId } from './reading-location'
+import { arePageVideoRequirementsMet, isVideoRequired } from './video-requirements'
 
 /** A fresh player state with no location and no recorded pages. */
 export function emptyPlayerState(): PlayerState {
   return { pages: {} }
 }
 
-/** The semantic precision of a persisted video position: tenths of a second. */
+/** The semantic precision of persisted video progress: tenths of a second. */
 export function normalizeVideoPosition(seconds: number): number {
   return Math.round(seconds * 10) / 10
 }
@@ -52,7 +54,8 @@ function sanitizeAnswer(question: QuestionNode, value: unknown): AnswerValue | u
 function sanitizePageState(
   node: PageNode | ItemNode,
   raw: Record<string, unknown>,
-  videoIds: ReadonlySet<string>
+  videosById: ReadonlyMap<string, VideoNode>,
+  gateCompletionOnVideoRequirements: boolean
 ): PlayerPageState | undefined {
   const questionnaires = collectQuestionnaires(node.content)
   const questions = new Map<string, QuestionNode>()
@@ -70,6 +73,26 @@ function sanitizePageState(
   if (raw.visited === true) page.visited = true
   const completedWasPersisted = raw.completed === true
 
+  // The verified watch frontier is scoped to the videos this node owns and only
+  // meaningful for a video that declares a positive requirement. Invalid values
+  // are dropped, a frontier beyond the authored duration is capped, and the rest
+  // is normalized to tenths exactly like a playback position.
+  if (isRecord(raw.watchedVideos)) {
+    const watchedVideos: Record<string, number> = {}
+    for (const [videoId, value] of Object.entries(raw.watchedVideos)) {
+      const video = videosById.get(videoId)
+      if (!video || !isVideoRequired(video)) continue
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) continue
+      const duration = video.duration
+      const bounded =
+        typeof duration === 'number' && Number.isFinite(duration) && duration > 0
+          ? Math.min(value, duration)
+          : value
+      watchedVideos[videoId] = normalizeVideoPosition(bounded)
+    }
+    if (Object.keys(watchedVideos).length > 0) page.watchedVideos = watchedVideos
+  }
+
   // Completion is restored strictly from its own persisted field. It is never
   // inferred from attempt history, submission status, or page completion.
   const completed = new Set<string>()
@@ -82,13 +105,18 @@ function sanitizePageState(
   }
 
   // A page cannot be complete while any authored questionnaire still has a
-  // pending result. Older suspend data could carry such a stale flag, so drop
-  // it and let the presentation reporter restore completion only after every
-  // questionnaire is completed.
+  // pending result or any required video is still short of its verified
+  // minimum. Older suspend data could carry such a stale flag, so drop it and
+  // let the presentation reporter restore completion only after every
+  // requirement is met.
   const hasPendingQuestionnaire = questionnaires.some(
     (questionnaire) => !completed.has(questionnaire.id)
   )
-  if (completedWasPersisted && !hasPendingQuestionnaire) page.completed = true
+  const hasPendingVideoRequirement =
+    gateCompletionOnVideoRequirements && !arePageVideoRequirementsMet(node.content, page)
+  if (completedWasPersisted && !hasPendingQuestionnaire && !hasPendingVideoRequirement) {
+    page.completed = true
+  }
 
   if (isRecord(raw.answers)) {
     const answers: Record<string, AnswerValue> = {}
@@ -177,7 +205,7 @@ function sanitizePageState(
   if (isRecord(raw.videos)) {
     const videos: Record<string, number> = {}
     for (const [videoId, value] of Object.entries(raw.videos)) {
-      if (!videoIds.has(videoId)) continue
+      if (!videosById.has(videoId)) continue
       if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) continue
       videos[videoId] = normalizeVideoPosition(value)
     }
@@ -265,13 +293,16 @@ function sanitizePageState(
  * cap keeps every recorded attempt and always leaves a retry available. A
  * recorded attempt restores its submitted result even though suspend data never
  * encoded submissions, while completion is restored only from its own field.
- * Video positions are scoped to the page/item that owns the video, so a video
- * moved to another node never retains a position under its old node. A persisted
- * active stepper question survives only while it names a question authored by
- * that page's questionnaire. A persisted page completion survives only when
- * every authored questionnaire has completed
- * its result; an in-progress retry stays unsubmitted. A submitted questionnaire
- * with no legacy history is seeded with one score from its sanitized answers. The
+ * Video positions and verified watch frontiers are scoped to the page/item that
+ * owns the video, so a video moved to another node never retains progress under
+ * its old node. A watch frontier is kept only for a video with an authored
+ * requirement, is capped at the authored duration, and is normalized like a
+ * position. A persisted page completion survives only when every authored
+ * questionnaire has completed its result and, for Scroll/Slides presentations,
+ * every required video has reached its verified minimum; Tiles retain their
+ * questionnaire-only gate. An in-progress retry stays unsubmitted. A submitted
+ * questionnaire with no legacy history is seeded with one score from its
+ * sanitized answers. The
  * result is always a plain in-memory state — never the raw persisted object — so
  * the renderer can mutate it without touching whatever the bridge returned. A
  * persisted global shuffle seed is kept only when it is a non-negative safe
@@ -320,7 +351,12 @@ export function sanitizePlayerState(contentPackage: ContentPackage, raw: unknown
   for (const [pageId, pageRaw] of Object.entries(raw.pages)) {
     const node = byId.get(pageId)
     if (!node || !isRecord(pageRaw)) continue
-    const page = sanitizePageState(node, pageRaw, nodeVideoIds(node))
+    const page = sanitizePageState(
+      node,
+      pageRaw,
+      nodeVideos(node),
+      presentation.type !== 'tiles'
+    )
     if (page) state.pages[pageId] = page
   }
 
@@ -328,13 +364,12 @@ export function sanitizePlayerState(contentPackage: ContentPackage, raw: unknown
 }
 
 /**
- * The ids of every video authored inside a single page/item's nested AST.
- * Reuses the canonical core traversal directly on the node's content, so a page
- * only accepts positions for the videos it actually owns.
+ * Every video authored inside a single page/item's nested AST, keyed by its
+ * stable id. Reuses the canonical core traversal directly on the node's content,
+ * so a page only accepts progress for the videos it actually owns.
  */
-function nodeVideoIds(node: PageNode | ItemNode): Set<string> {
-  const videos = collectVideoNodes(node.content)
-  return new Set(videos.map((video) => video.id))
+function nodeVideos(node: PageNode | ItemNode): Map<string, VideoNode> {
+  return new Map(collectVideoNodes(node.content).map((video) => [video.id, video]))
 }
 
 /**

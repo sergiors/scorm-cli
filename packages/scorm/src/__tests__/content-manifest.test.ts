@@ -456,6 +456,55 @@ describe('content manifest', () => {
     })
   })
 
+  it('carries authored watch requirements onto manifest video entries', () => {
+    const content: ContentPackage = {
+      metadata: { title: 'Requirements' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: 'p-required',
+            source: 'required.mdx',
+            metadata: { title: 'Required' },
+            content: [
+              {
+                type: 'video',
+                id: 'video:required',
+                src: 'short.mp4',
+                provider: 'native',
+                duration: 120,
+                minWatchTime: 60
+              },
+              { type: 'video', id: 'video:open', src: 'clip.mp4', provider: 'youtube' }
+            ]
+          }
+        ]
+      }
+    }
+
+    const videos = createContentManifest(content).pages['0']!.videos
+    expect(videos).toEqual({
+      '0': {
+        id: 'video:required',
+        src: 'short.mp4',
+        provider: 'native',
+        duration: 120,
+        minWatchTime: 60
+      },
+      '1': { id: 'video:open', src: 'clip.mp4', provider: 'youtube' }
+    })
+    // Only the watched fields the content actually declares are present.
+    expect(Object.keys(videos!['0']!)).toEqual([
+      'id',
+      'src',
+      'provider',
+      'duration',
+      'minWatchTime'
+    ])
+    expect(Object.keys(videos!['1']!)).toEqual(['id', 'src', 'provider'])
+  })
+
   it('includes the package language and defaults legacy package metadata to English', () => {
     const content: ContentPackage = {
       metadata: { title: 'Localized', lang: 'pt-BR' },

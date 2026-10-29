@@ -7,7 +7,9 @@ import { cn } from '../lib/utils'
 import { useMediaInView } from '../lib/use-media-in-view'
 import { useVideoPlayer } from '../lib/use-video-player'
 import { usePageId, usePlayerActions, usePlayerState } from '../lib/player-context'
+import { videoRequirementProgress, watchedVideoSeconds } from '../lib/video-requirements'
 import { MediaFrame } from './MediaFrame'
+import { Progress } from './ui/progress'
 
 /**
  * How often ReactPlayer reports a progress tick while playing. Coarse on
@@ -84,10 +86,21 @@ export function Video({ node }: { node: VideoNode }) {
   if (!pageId) {
     throw new Error('Video must be rendered within a PageProvider')
   }
+  const pageState = state.pages[pageId]
   const player = useVideoPlayer({
-    position: state.pages[pageId]?.videos?.[node.id],
-    onPosition: (seconds) => actions.setVideoPosition(pageId, node.id, seconds)
+    position: pageState?.videos?.[node.id],
+    minWatchTime: node.minWatchTime,
+    duration: node.duration,
+    watchedUntil: watchedVideoSeconds(pageState, node.id),
+    onPosition: (seconds) => actions.setVideoPosition(pageId, node.id, seconds),
+    onWatched: (seconds) => actions.setVideoWatchedUntil(pageId, node.id, seconds)
   })
+  const requirement = videoRequirementProgress(node, pageState)
+  const requirementLabel = requirement
+    ? requirement.complete
+      ? intl.formatMessage({ id: 'video.requiredComplete' })
+      : intl.formatMessage({ id: 'video.requiredProgress' }, { percent: requirement.percent })
+    : undefined
   const { ref, inView } = useMediaInView<HTMLDivElement>()
   const [ready, setReady] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -135,10 +148,22 @@ export function Video({ node }: { node: VideoNode }) {
             onProgress={player.onProgress}
             onPause={player.onPause}
             onSeek={player.onSeek}
+            onBuffer={player.onBuffer}
+            onBufferEnd={player.onBufferEnd}
             onEnded={player.onEnded}
           />
         ) : null}
       </MediaFrame>
+      {requirement ? (
+        <div
+          data-video-requirement
+          data-complete={requirement.complete ? 'true' : 'false'}
+          className="not-prose mt-3 space-y-2"
+        >
+          <p className="text-sm text-muted-foreground">{requirementLabel}</p>
+          <Progress value={requirement.percent} aria-label={requirementLabel} className="h-1.5" />
+        </div>
+      ) : null}
       {node.title ? <figcaption>{node.title}</figcaption> : null}
     </figure>
   )

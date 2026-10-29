@@ -315,7 +315,7 @@ function CalloutView({ node, context, path }: ContentNodeViewProps<'callout'>) {
   return (
     <Alert role="note" data-slot="callout" data-variant={node.variant} className={surface}>
       <Icon aria-hidden="true" />
-      {node.title ? <AlertTitle className="mb-3">{node.title}</AlertTitle> : null}
+      {node.title ? <AlertTitle className="mb-2.5">{node.title}</AlertTitle> : null}
       <AlertDescription className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 overflow-x-auto">
         <ContentRenderer nodes={node.children} {...context} readingAnchorPath={path} />
       </AlertDescription>

@@ -395,6 +395,170 @@ describe('sanitizePlayerState videos', () => {
   })
 })
 
+describe('sanitizePlayerState watch frontiers', () => {
+  const requiredVideo: VideoNode = {
+    type: 'video',
+    id: 'video:req.mdx:1:1',
+    provider: 'native',
+    src: './req.mp4',
+    duration: 120,
+    minWatchTime: 30
+  }
+  const unrequiredVideo: VideoNode = {
+    type: 'video',
+    id: 'video:open.mdx:1:1',
+    provider: 'native',
+    src: './open.mp4',
+    duration: 90
+  }
+  const frontierPackage: ContentPackage = {
+    metadata: { title: 'Frontiers package' },
+    presentation: {
+      type: 'scroll',
+      pages: [
+        {
+          type: 'page',
+          id: 'page:a.mdx',
+          source: 'a.mdx',
+          metadata: { title: 'A' },
+          content: [requiredVideo, unrequiredVideo]
+        },
+        {
+          type: 'page',
+          id: 'page:b.mdx',
+          source: 'b.mdx',
+          metadata: { title: 'B' },
+          content: [{ ...requiredVideo, id: 'video:b.mdx:1:1', src: './b.mp4', minWatchTime: 10 }]
+        }
+      ]
+    }
+  }
+
+  it('keeps a frontier for a required video and normalizes it to tenths', () => {
+    const state = sanitizePlayerState(frontierPackage, {
+      pages: { 'page:a.mdx': { watchedVideos: { [requiredVideo.id]: 12.34 } } }
+    })
+    expect(state.pages['page:a.mdx']?.watchedVideos).toEqual({ [requiredVideo.id]: 12.3 })
+  })
+
+  it('caps a frontier at the authored duration', () => {
+    const state = sanitizePlayerState(frontierPackage, {
+      pages: { 'page:a.mdx': { watchedVideos: { [requiredVideo.id]: 119.96 } } }
+    })
+    expect(state.pages['page:a.mdx']?.watchedVideos).toEqual({ [requiredVideo.id]: 120 })
+  })
+
+  it('drops frontiers for videos without a requirement, stale ids, and invalid values', () => {
+    const state = sanitizePlayerState(frontierPackage, {
+      pages: {
+        'page:a.mdx': {
+          watchedVideos: {
+            [unrequiredVideo.id]: 45,
+            'video:gone.mdx:1:1': 10,
+            negative: -1,
+            nan: Number.NaN,
+            infinite: Number.POSITIVE_INFINITY
+          }
+        }
+      }
+    })
+    // Nothing survives: the frontier only ever belongs to a required video.
+    expect(state.pages['page:a.mdx']).toBeUndefined()
+  })
+
+  it('scopes frontiers to the page that owns each video', () => {
+    const state = sanitizePlayerState(frontierPackage, {
+      pages: {
+        'page:a.mdx': { watchedVideos: { 'video:b.mdx:1:1': 55 } },
+        'page:b.mdx': { watchedVideos: { 'video:b.mdx:1:1': 7.5 } }
+      }
+    })
+    expect(state.pages['page:a.mdx']).toBeUndefined()
+    expect(state.pages['page:b.mdx']?.watchedVideos).toEqual({ 'video:b.mdx:1:1': 7.5 })
+  })
+
+  it('restores page completion only when every required video was watched', () => {
+    const watched = sanitizePlayerState(frontierPackage, {
+      pages: {
+        'page:a.mdx': {
+          completed: true,
+          watchedVideos: { [requiredVideo.id]: 29.95 }
+        }
+      }
+    })
+    // The frontier sits within the completion tolerance of the requirement.
+    expect(watched.pages['page:a.mdx']?.completed).toBe(true)
+
+    const unwatched = sanitizePlayerState(frontierPackage, {
+      pages: {
+        'page:a.mdx': { completed: true, watchedVideos: { [requiredVideo.id]: 10 } }
+      }
+    })
+    // A stale completion predating the requirement cannot survive a restore.
+    expect(unwatched.pages['page:a.mdx']).toEqual({
+      watchedVideos: { [requiredVideo.id]: 10 }
+    })
+  })
+
+  it('exempts tiles completion from video requirements but keeps questionnaire gates', () => {
+    const tilesPackage: ContentPackage = {
+      metadata: { title: 'Tiles video package' },
+      presentation: {
+        type: 'tiles',
+        items: [
+          {
+            type: 'item',
+            id: 'item:video-only',
+            source: 'video-only.mdx',
+            metadata: { title: 'Video only' },
+            content: [requiredVideo]
+          },
+          {
+            type: 'item',
+            id: 'item:video-and-questionnaire',
+            source: 'video-and-questionnaire.mdx',
+            metadata: { title: 'Video and questionnaire' },
+            content: [requiredVideo, questionnaireNode]
+          }
+        ]
+      }
+    }
+
+    const pendingQuestionnaire = sanitizePlayerState(tilesPackage, {
+      pages: {
+        'item:video-only': { completed: true },
+        'item:video-and-questionnaire': { completed: true }
+      }
+    })
+    expect(pendingQuestionnaire.pages['item:video-only']?.completed).toBe(true)
+    expect(pendingQuestionnaire.pages['item:video-and-questionnaire']?.completed).toBeUndefined()
+
+    const completedQuestionnaire = sanitizePlayerState(tilesPackage, {
+      pages: {
+        'item:video-and-questionnaire': {
+          completed: true,
+          completedQuestionnaires: [questionnaireNode.id]
+        }
+      }
+    })
+    expect(completedQuestionnaire.pages['item:video-and-questionnaire']?.completed).toBe(true)
+  })
+
+  it('drops completion and keeps playback for legacy state saved before requirements', () => {
+    const state = sanitizePlayerState(frontierPackage, {
+      pages: {
+        'page:a.mdx': {
+          completed: true,
+          videos: { [requiredVideo.id]: 20 }
+        }
+      }
+    })
+    expect(state.pages['page:a.mdx']).toEqual({
+      videos: { [requiredVideo.id]: 20 }
+    })
+  })
+})
+
 describe('sanitizePlayerState attempt history', () => {
   /** The shared questionnaire fixture with an authored cap of three attempts. */
   const retryQuestionnaire: QuestionnaireNode = { ...questionnaireNode, maxAttempts: 3 }

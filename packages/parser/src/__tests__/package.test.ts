@@ -37,6 +37,10 @@ async function lessonContent(root: string) {
   return page.content
 }
 
+/** The message the parser reports for an unusable duration attribute reading. */
+const secondsError =
+  /"(duration|minWatchTime)" must be a positive number of seconds or a duration such as "30s", "2m", "1m30s", or "1h20m30s"/
+
 describe('parsePackage', () => {
   it('defaults package language to English and canonicalizes valid BCP-47 tags', async () => {
     for (const [frontmatter, expected] of [
@@ -647,6 +651,99 @@ describe('parsePackage', () => {
   it('does not accept an authored provider attribute', async () => {
     const root = await makeLesson('<Video src="https://youtu.be/abc123" provider="youtube" />')
     await expect(lessonContent(root)).rejects.toThrow(/unknown attribute "provider"/)
+  })
+
+  it('parses authored duration and minWatchTime as semantic seconds', async () => {
+    const root = await makeLesson(
+      '<Video src="assets/local.mp4" duration={420} minWatchTime={300} />'
+    )
+    await asset(root, 'assets/local.mp4')
+    expect(await lessonContent(root)).toEqual([
+      {
+        type: 'video',
+        id: 'video:lesson.mdx:4:1',
+        provider: 'native',
+        src: 'assets/local.mp4',
+        duration: 420,
+        minWatchTime: 300
+      }
+    ])
+  })
+
+  it('parses duration strings and fractional seconds', async () => {
+    const root = await makeLesson(
+      '<Video src="assets/local.mp4" duration="1h20m30s" minWatchTime="90.5" />'
+    )
+    await asset(root, 'assets/local.mp4')
+    const [video] = await lessonContent(root)
+    expect(video).toMatchObject({ duration: 4830, minWatchTime: 90.5 })
+  })
+
+  // Each source is the exact JSX attribute text, so both quoted duration
+  // strings and numeric expressions exercise the same optionalSeconds grammar.
+  it.each([
+    ['"30s"', 30],
+    ['"2m"', 120],
+    ['"1m30s"', 90],
+    ['" 2M "', 120],
+    ['"90"', 90],
+    ['{90}', 90],
+    ['{2.5}', 2.5],
+    ['"0.5"', 0.5],
+    ['"0m0s"', 0],
+    ['"2h"', 7200]
+  ] as const)('accepts a minWatchTime authored as %s', async (source, expected) => {
+    const root = await makeLesson(`<Video src="assets/local.mp4" minWatchTime=${source} />`)
+    await asset(root, 'assets/local.mp4')
+    const [video] = await lessonContent(root)
+    expect(video).toMatchObject({ minWatchTime: expected })
+    await rm(root, { recursive: true, force: true })
+    temp = ''
+  })
+
+  it('keeps a minWatchTime equal to the duration and a duration without a requirement', async () => {
+    const root = await makeLesson(
+      '<Video src="assets/local.mp4" duration="2m" minWatchTime={120} />'
+    )
+    await asset(root, 'assets/local.mp4')
+    expect((await lessonContent(root))[0]).toMatchObject({
+      duration: 120,
+      minWatchTime: 120
+    })
+
+    const durationOnly = await makeLesson('<Video src="assets/local.mp4" duration="2m" />')
+    await asset(durationOnly, 'assets/local.mp4')
+    expect((await lessonContent(durationOnly))[0]).toMatchObject({ duration: 120 })
+    expect((await lessonContent(durationOnly))[0]).not.toHaveProperty('minWatchTime')
+    await rm(durationOnly, { recursive: true, force: true })
+    temp = ''
+  })
+
+  it('rejects a minWatchTime that exceeds the authored duration', async () => {
+    const root = await makeLesson(
+      '<Video src="assets/local.mp4" duration={90} minWatchTime="2m" />'
+    )
+    await asset(root, 'assets/local.mp4')
+    await expect(lessonContent(root)).rejects.toThrow(/"minWatchTime" must not exceed "duration"$/)
+  })
+
+  it.each([
+    ['duration={0}'],
+    ['duration={-5}'],
+    ['duration="later"'],
+    ['duration="1m30.5s"'],
+    ['duration={true}'],
+    ['duration'],
+    ['minWatchTime="0s"'],
+    ['minWatchTime="1m30"'],
+    ['minWatchTime=""'],
+    ['minWatchTime="2m 30s"']
+  ] as const)('rejects an unusable %s reading', async (attribute) => {
+    const root = await makeLesson(`<Video src="assets/local.mp4" ${attribute} />`)
+    await asset(root, 'assets/local.mp4')
+    await expect(lessonContent(root)).rejects.toThrow(secondsError)
+    await rm(root, { recursive: true, force: true })
+    temp = ''
   })
 
   it('preserves question Markdown and normalizes multiline whitespace', async () => {

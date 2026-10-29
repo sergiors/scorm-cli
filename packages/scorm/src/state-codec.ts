@@ -10,8 +10,9 @@ type CompactValue = number | readonly number[]
 /**
  * Compact suspend-data payload. Keys in `d` are
  * `<pageIndex>.<kind>.<entityIndex>` where `kind` is `a` (answer), `t`
- * (video position), `q` (questionnaire attempt history), `r` (active retry),
- * `c` (completed questionnaire), or `i` (active stepper question).
+ * (video position), `w` (verified video watch frontier), `q` (questionnaire
+ * attempt history), `r` (active retry), `c` (completed questionnaire), or `i`
+ * (active stepper question).
  */
 export interface CompactSuspendData {
   readonly v: 1
@@ -41,22 +42,25 @@ function createSuspendDataCodec() {
   const withinAttemptLimit = (historyLength: number, maxAttempts: number): boolean =>
     maxAttempts === -1 || historyLength <= maxAttempts
 
+  const isPositiveSeconds = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0
+
   /** Builds the single flat data key for a manifest page/kind/entity. */
   const makeDataKey = (
     pageIndex: string,
-    kind: 'a' | 't' | 'q' | 'r' | 'c' | 'i',
+    kind: 'a' | 't' | 'w' | 'q' | 'r' | 'c' | 'i',
     entityIndex: string
   ): string => `${pageIndex}.${kind}.${entityIndex}`
 
   /**
    * Parses a flat data key. Returns undefined unless it is exactly three
    * segments: two canonical non-negative safe-integer indexes around a kind of
-   * `a`, `t`, `q`, `r`, `c`, or `i`.
+   * `a`, `t`, `w`, `q`, `r`, `c`, or `i`.
    */
   const parseDataKey = (
     key: string
   ):
-    | { pageIndex: string; kind: 'a' | 't' | 'q' | 'r' | 'c' | 'i'; entityIndex: string }
+    | { pageIndex: string; kind: 'a' | 't' | 'w' | 'q' | 'r' | 'c' | 'i'; entityIndex: string }
     | undefined => {
     const segments = key.split('.')
     if (segments.length !== 3) return undefined
@@ -64,6 +68,7 @@ function createSuspendDataCodec() {
     if (
       kind !== 'a' &&
       kind !== 't' &&
+      kind !== 'w' &&
       kind !== 'q' &&
       kind !== 'r' &&
       kind !== 'c' &&
@@ -174,6 +179,35 @@ function createSuspendDataCodec() {
     videos[video.id] = deciseconds / 10
   }
 
+  /**
+   * Stores one valid verified watch frontier under its semantic video ID. Only
+   * a video that declares a positive requirement keeps a frontier, and the
+   * value is capped at the authored duration when one is known.
+   */
+  function assignWatchedFrontier(
+    fresh: PlayerState,
+    page: ManifestPage,
+    videoIndex: string,
+    deciseconds: unknown
+  ): void {
+    if (
+      !safeVideoIndex(videoIndex) ||
+      typeof deciseconds !== 'number' ||
+      !Number.isSafeInteger(deciseconds) ||
+      deciseconds <= 0
+    ) {
+      return
+    }
+    const video = page.videos?.[videoIndex]
+    if (!isRecord(video) || !safeKey(video.id) || !isPositiveSeconds(video.minWatchTime)) return
+    const seconds = isPositiveSeconds(video.duration)
+      ? Math.min(deciseconds / 10, video.duration)
+      : deciseconds / 10
+    const pageState = fresh.pages[page.id] ?? (fresh.pages[page.id] = {})
+    const watched = pageState.watchedVideos ?? (pageState.watchedVideos = {})
+    watched[video.id] = Math.round(seconds * 10) / 10
+  }
+
   /** Flat `d` layout keyed by `<pageIndex>.<kind>.<entityIndex>`. */
   function decodeData(
     encoded: Record<string, unknown>,
@@ -203,6 +237,8 @@ function createSuspendDataCodec() {
         answers[question.id] = answer
       } else if (parsedKey.kind === 't') {
         assignVideoPosition(fresh, page, parsedKey.entityIndex, value)
+      } else if (parsedKey.kind === 'w') {
+        assignWatchedFrontier(fresh, page, parsedKey.entityIndex, value)
       } else if (parsedKey.kind === 'q') {
         if (!pageIndexed || !Array.isArray(value)) return
         const questionnaire = page.questionnaires?.[parsedKey.entityIndex]
@@ -383,15 +419,28 @@ function createSuspendDataCodec() {
 
     entries.forEach(([pageIndex, page]) => {
       if (!canonicalIndex(pageIndex) || !safeKey(page.id) || !isRecord(page.videos)) return
-      const videoState = state.pages[page.id]?.videos
-      if (!isRecord(videoState)) return
+      const pageState = state.pages[page.id]
+      const videoPositions = isRecord(pageState?.videos) ? pageState.videos : {}
+      const watchedVideos = isRecord(pageState?.watchedVideos) ? pageState.watchedVideos : {}
       Object.entries(page.videos).forEach(([videoIndex, video]) => {
         if (!safeVideoIndex(videoIndex) || !isRecord(video) || !safeKey(video.id)) return
-        const seconds = videoState[video.id]
-        if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) return
-        const deciseconds = Math.round(seconds * 10)
+        const seconds = videoPositions[video.id]
+        if (typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0) {
+          const deciseconds = Math.round(seconds * 10)
+          if (Number.isSafeInteger(deciseconds) && deciseconds !== 0) {
+            data[makeDataKey(pageIndex, 't', videoIndex)] = deciseconds
+          }
+        }
+
+        if (!isPositiveSeconds(video.minWatchTime)) return
+        const watched = watchedVideos[video.id]
+        if (typeof watched !== 'number' || !Number.isFinite(watched) || watched <= 0) return
+        const bounded = isPositiveSeconds(video.duration)
+          ? Math.min(watched, video.duration)
+          : watched
+        const deciseconds = Math.round(bounded * 10)
         if (!Number.isSafeInteger(deciseconds) || deciseconds === 0) return
-        data[makeDataKey(pageIndex, 't', videoIndex)] = deciseconds
+        data[makeDataKey(pageIndex, 'w', videoIndex)] = deciseconds
       })
     })
 
@@ -504,7 +553,10 @@ function createSuspendDataCodec() {
 
 const codec = createSuspendDataCodec()
 
-/** Encodes manifest-indexed progress/answers and manifest-owned video positions. */
+/**
+ * Encodes manifest-indexed progress/answers, manifest-owned video positions,
+ * and verified watch frontiers.
+ */
 export function encodeSuspendData(
   manifest: ContentManifest,
   state: PlayerState,

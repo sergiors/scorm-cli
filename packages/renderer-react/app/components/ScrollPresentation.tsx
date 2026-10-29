@@ -13,7 +13,7 @@ import {
   resolveReadingAnchor,
   scrollToReadingPosition
 } from '../lib/reading-anchor-dom'
-import { arePageQuestionnairesComplete } from '../lib/questionnaire-completion'
+import { isPageRequirementsComplete } from '../lib/page-completion'
 import { ContentRenderer } from './ContentRenderer'
 import { ContentLoadError } from './ContentLoadError'
 import { Skeleton } from './ui/skeleton'
@@ -634,8 +634,8 @@ interface PageSceneProps {
  * One page in the virtualized document. It keeps its natural content height, so
  * Virtuoso measures the rendered height and owns the surrounding geometry. Its
  * end sentinel is a completion signal only — the page completes once its end was
- * reached and every questionnaire it contains was submitted — and never
- * positions the list.
+ * reached and every questionnaire and required video it contains is satisfied —
+ * and never positions the list.
  */
 function PageScene({
   page,
@@ -675,7 +675,7 @@ function PageScene({
     return () => observer.disconnect()
   }, [])
 
-  const complete = endReached && arePageQuestionnairesComplete(nodes, pageState)
+  const complete = endReached && isPageRequirementsComplete(nodes, pageState)
 
   return (
     <div

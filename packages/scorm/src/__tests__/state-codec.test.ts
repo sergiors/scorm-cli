@@ -19,6 +19,38 @@ function assignVideos(manifest: ContentManifest, byPage: Record<string, VideoFix
   })
 }
 
+/** A video entry with the authored watch fields the manifest copies from content. */
+type RequiredVideoFixture = [
+  id: string,
+  src: string,
+  provider: 'native' | 'youtube' | 'vimeo',
+  minWatchTime?: number,
+  duration?: number
+]
+
+function assignRequiredVideos(
+  manifest: ContentManifest,
+  byPage: Record<string, RequiredVideoFixture[]>
+): void {
+  Object.values(manifest.pages).forEach((page) => {
+    const videos = byPage[page.id]
+    if (videos) {
+      page.videos = Object.fromEntries(
+        videos.map(([id, src, provider, minWatchTime, duration], videoIndex) => [
+          String(videoIndex),
+          {
+            id,
+            src,
+            provider,
+            ...(minWatchTime !== undefined ? { minWatchTime } : {}),
+            ...(duration !== undefined ? { duration } : {})
+          }
+        ])
+      )
+    }
+  })
+}
+
 const packageContent: ContentPackage = {
   metadata: { title: 'Codec test' },
   presentation: {
@@ -773,6 +805,246 @@ describe('compact suspend-data codec', () => {
     expect(calls.some(([key]) => key === 'cmi.suspend_data')).toBe(false)
     expect(calls.at(-1)).toEqual(['commit'])
     expect(events.some((event) => event.name === 'lms.suspend-data-too-large')).toBe(true)
+  })
+})
+
+describe('verified watch frontiers in the suspend-data codec', () => {
+  it('encodes frontiers as flat w keys only where a requirement is authored', () => {
+    const videoManifest = structuredClone(manifest)
+    assignRequiredVideos(videoManifest, {
+      'page-one': [
+        ['video-a', 'a.mp4', 'native', 60, 120],
+        // No authored requirement: never a w key, whatever the state carries.
+        ['video-b', 'b.mp4', 'native'],
+        ['video-c', 'c.mp4', 'native', 25]
+      ]
+    })
+    const state: PlayerState = {
+      pages: {
+        'page-one': {
+          videos: { 'video-a': 41 },
+          watchedVideos: { 'video-a': 61.2, 'video-b': 50, 'video-c': 8.06 }
+        }
+      }
+    }
+    const encoded = encodeSuspendData(videoManifest, state, 0)
+    expect(encoded).toEqual({
+      v: 1,
+      p: 0,
+      x: '00',
+      // The playback position and the verified frontier coexist as flat keys.
+      d: { '0.t.0': 410, '0.w.0': 612, '0.w.2': 81 }
+    })
+    // Semantic ids, requirements and progress wording never reach the payload.
+    expect(JSON.stringify(encoded)).not.toMatch(/video-a|video-b|video-c|watched|minWatch/)
+
+    const serialized = JSON.stringify(encoded)
+    const decoded = decodeSuspendData(videoManifest, serialized)
+    expect(decoded).toEqual({
+      pages: {
+        'page-one': {
+          videos: { 'video-a': 41 },
+          watchedVideos: { 'video-a': 61.2, 'video-c': 8.1 }
+        }
+      }
+    })
+    expect(encodeSuspendData(videoManifest, decoded, 0)).toEqual(encoded)
+  })
+
+  it('caps a persisted frontier at the authored duration and keeps unbounded ones', () => {
+    const videoManifest = structuredClone(manifest)
+    assignRequiredVideos(videoManifest, {
+      'page-one': [['video-a', 'a.mp4', 'native', 60, 120]]
+    })
+    const encoded = encodeSuspendData(
+      videoManifest,
+      { pages: { 'page-one': { watchedVideos: { 'video-a': 300 } } } },
+      0
+    )
+    expect(encoded).toEqual({ v: 1, p: 0, x: '00', d: { '0.w.0': 1200 } })
+    expect(decodeSuspendData(videoManifest, encoded)).toEqual({
+      pages: { 'page-one': { watchedVideos: { 'video-a': 120 } } }
+    })
+
+    const unbounded = structuredClone(manifest)
+    assignRequiredVideos(unbounded, { 'page-one': [['video-a', 'a.mp4', 'native', 60]] })
+    const openEncoded = encodeSuspendData(
+      unbounded,
+      { pages: { 'page-one': { watchedVideos: { 'video-a': 300 } } } },
+      0
+    )
+    expect(openEncoded).toEqual({ v: 1, p: 0, x: '00', d: { '0.w.0': 3000 } })
+    expect(decodeSuspendData(unbounded, openEncoded)).toEqual({
+      pages: { 'page-one': { watchedVideos: { 'video-a': 300 } } }
+    })
+  })
+
+  it('maps frontiers through the page-local video indexes of the current manifest', () => {
+    const originalManifest = structuredClone(manifest)
+    assignRequiredVideos(originalManifest, {
+      'page-one': [
+        ['video-a', 'a.mp4', 'native', 60, 120],
+        ['video-c', 'c.mp4', 'native', 25]
+      ]
+    })
+    const encoded = encodeSuspendData(
+      originalManifest,
+      { pages: { 'page-one': { watchedVideos: { 'video-a': 61.2, 'video-c': 3 } } } },
+      0
+    )
+    expect(encoded.d).toEqual({ '0.w.0': 612, '0.w.1': 30 })
+
+    const reorderedManifest = structuredClone(manifest)
+    assignRequiredVideos(reorderedManifest, {
+      'page-one': [
+        ['video-c', 'c.mp4', 'native', 25],
+        ['video-a', 'a.mp4', 'native', 60, 120]
+      ]
+    })
+    const restored = decodeSuspendData(reorderedManifest, encoded)
+    expect(restored).toEqual({
+      pages: { 'page-one': { watchedVideos: { 'video-c': 61.2, 'video-a': 3 } } }
+    })
+    // The mapping is stable: re-encoding the restored state yields the same
+    // indexes under the reordered manifest.
+    expect(encodeSuspendData(reorderedManifest, restored, 0)).toEqual(encoded)
+
+    // A page removed from the manifest contributes nothing.
+    delete reorderedManifest.pages['0']
+    expect(decodeSuspendData(reorderedManifest, encoded)).toEqual({ pages: {} })
+  })
+
+  it('ignores malformed frontier keys while keeping valid entries', () => {
+    const videoManifest = structuredClone(manifest)
+    assignRequiredVideos(videoManifest, {
+      'page-one': [
+        ['video-a', 'a.mp4', 'native', 60, 120],
+        ['video-b', 'b.mp4', 'native']
+      ]
+    })
+    expect(
+      decodeSuspendData(videoManifest, {
+        v: 1,
+        p: 0,
+        x: '00',
+        d: {
+          // Valid entry that must survive.
+          '0.w.0': 612,
+          // video-b has no requirement, so its frontier is meaningless.
+          '0.w.1': 45,
+          '0.w.9': 99,
+          '0.w.01': 1,
+          '0.w.-1': 1,
+          '0.w.2b': 5,
+          '0.w.2': 0,
+          '0.w': 1,
+          '0.w.0.0': 1,
+          '__proto__.w.0': 1,
+          '9.w.0': 612
+        }
+      })
+    ).toEqual({ pages: { 'page-one': { watchedVideos: { 'video-a': 61.2 } } } })
+  })
+
+  it('keeps legacy position-only payloads restoring while frontiers stay absent', () => {
+    const videoManifest = structuredClone(manifest)
+    assignRequiredVideos(videoManifest, {
+      'page-one': [['video-a', 'a.mp4', 'native', 60, 120]]
+    })
+    // A payload saved before watch frontiers existed decodes its position and
+    // never fabricates a frontier.
+    expect(decodeSuspendData(videoManifest, { v: 1, p: 0, x: '00', d: { '0.t.0': 410 } })).toEqual({
+      pages: { 'page-one': { videos: { 'video-a': 41 } } }
+    })
+
+    // Old renderer state carrying frontiers for videos without requirements
+    // contributes nothing.
+    const legacyManifest = structuredClone(manifest)
+    assignVideos(legacyManifest, { 'page-one': [['video-a', 'a.mp4', 'native']] })
+    expect(
+      encodeSuspendData(
+        legacyManifest,
+        { pages: { 'page-one': { watchedVideos: { 'video-a': 61.2 } } } },
+        0
+      )
+    ).toEqual({ v: 1, p: 0, x: '00' })
+    expect(decodeSuspendData(legacyManifest, { v: 1, p: 0, x: '00', d: { '0.w.0': 612 } })).toEqual(
+      { pages: {} }
+    )
+  })
+
+  it('carries watch frontiers through the embedded LMS runtime', () => {
+    const videoManifest = structuredClone(manifest)
+    assignRequiredVideos(videoManifest, {
+      'page-one': [['video-a', 'a.mp4', 'native', 60, 120]]
+    })
+    const initial = encodeSuspendData(
+      videoManifest,
+      {
+        pages: {
+          'page-one': {
+            videos: { 'video-a': 41 },
+            watchedVideos: { 'video-a': 61.2 }
+          }
+        }
+      },
+      0
+    )
+    const values: Record<string, string> = {
+      'cmi.suspend_data': JSON.stringify(initial),
+      'cmi.core.lesson_location': 'page:resume'
+    }
+    const window: any = {
+      __SCORM_DEVTOOLS__: true,
+      parent: null,
+      API: {
+        LMSInitialize: () => 'true',
+        LMSGetValue: (key: string) => values[key] ?? '',
+        LMSSetValue: (key: string, value: string) => {
+          values[key] = value
+          return 'true'
+        },
+        LMSCommit: () => 'true',
+        LMSFinish: () => 'true'
+      },
+      addEventListener: () => undefined,
+      dispatchEvent: () => undefined,
+      CustomEvent: class {}
+    }
+    window.parent = window
+    vm.runInNewContext(createScormRuntime(videoManifest), { window })
+
+    // A resume restores the position and its verified frontier together.
+    expect(window.scormBridge.getResumeState()).toEqual({
+      location: 'page:resume',
+      pages: {
+        'page-one': {
+          videos: { 'video-a': 41 },
+          watchedVideos: { 'video-a': 61.2 }
+        }
+      }
+    })
+
+    // A save writes both flat keys and never leaks the semantic video id.
+    expect(
+      window.scormBridge.saveState({
+        location: 'page:next',
+        pages: {
+          'page-one': {
+            videos: { 'video-a': 55 },
+            watchedVideos: { 'video-a': 75 }
+          }
+        }
+      })
+    ).toBe(true)
+    const compact = JSON.parse(values['cmi.suspend_data']!)
+    expect(compact).toEqual({
+      v: 1,
+      p: 0,
+      x: '00',
+      d: { '0.t.0': 550, '0.w.0': 750 }
+    })
+    expect(JSON.stringify(compact)).not.toMatch(/video-a|watched/)
   })
 })
 

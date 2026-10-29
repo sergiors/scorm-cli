@@ -87,7 +87,7 @@ Import components from `scorm-cli/authoring`.
 | `Content`       | Accordion section body                | Markdown and supported flow content                                                                                                                                            |
 | `Path`          | Ordered navigation path               | `children`                                                                                                                                                                     |
 | `Image`         | Static image                          | `src`, `alt`, `caption` (optional)                                                                                                                                             |
-| `Video`         | Video player                          | `src`, `title` (optional), `poster` (optional), `captions` (optional)                                                                                                          |
+| `Video`         | Video player                          | `src`, `title` (optional), `poster` (optional), `captions` (optional), `duration` (optional seconds), `minWatchTime` (optional seconds)                                        |
 | `Questionnaire` | Assessment wrapper                    | `children`, `contributesToScore` (bool), `expanded` (bool), `maxAttempts` (-1 or positive integer), `revealCorrectAnswers` (bool, optional), `shuffleOptions` (bool, optional) |
 | `Question`      | Single question                       | `children`, `type` ('single-choice', 'multiple-choice', 'true-false')                                                                                                          |
 | `Prompt`        | Question text                         | `children` (string)                                                                                                                                                            |
@@ -133,6 +133,46 @@ Its `variant` defaults to `note`; supported variants are `note`, `info`, `tip`,
   </Item>
 </Accordion>
 ```
+
+### Required video viewing
+
+`<Video>` accepts two optional duration props. Values can be numeric seconds or
+compact strings with `h`, `m`, and `s` units, such as `"30s"`, `"2m"`,
+`"1m30s"`, and `"1h20m30s"`:
+
+- `duration`: the expected length of the video. When present, it must be a
+  positive number and `minWatchTime` must not exceed it.
+- `minWatchTime`: the minimum amount of continuous playback a learner must
+  complete. It must be positive, except `"0m0s"` is accepted as no watch
+  requirement. A video without `minWatchTime` has no viewing requirement and
+  behaves exactly as before.
+
+```mdx
+<Video src="media/lesson.mp4" title="Lesson overview" duration={420} minWatchTime={300} />
+
+<Video src="https://www.youtube.com/watch?v=example" title="Introduction" minWatchTime="3m" />
+```
+
+A required video gates its page in **Scroll** and **Slides**: the page completes
+only after its end/display rule, every questionnaire, and every required video
+are all satisfied. This also gates progress to the next page and package
+completion. Tiles items are unchanged and still complete when opened.
+
+Only normal, continuous playback counts toward the requirement. Pausing,
+buffering, and seeking do not add verified time. Seeking backward is always
+allowed. A forward seek beyond the learner's verified position is blocked and
+the player is returned to that position; on YouTube, where seeks are not
+reported directly, a progress discontinuity is detected the same way. Once the
+minimum is met, seeking is unrestricted. Watching to the natural end of a
+shorter media also completes the requirement.
+
+Verified progress is stored per video and restored with the rest of the learner
+state, so a resumed session continues from the saved verified point. The video
+still never autoplays: a resume leaves it paused. Required videos show a
+compact, localized progress indicator with accessible progress-bar semantics.
+
+Video playback itself does not contribute to the package progress percentage;
+it only gates page completion when `minWatchTime` is authored.
 
 ## CLI Commands
 

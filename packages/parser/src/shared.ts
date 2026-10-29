@@ -28,6 +28,9 @@ export function attrs(node: AstNode, file: string): Attributes {
   return Object.fromEntries(entries)
 }
 
+/** Attributes that accept time strings such as "2m" in an expression. */
+const durationAttributes = new Set(['duration', 'minWatchTime'])
+
 function parseStaticAttributeValue(
   name: string,
   value: unknown,
@@ -67,6 +70,10 @@ function parseStaticAttributeValue(
 
   if (/^\d+$/.test(value.value)) {
     return Number(value.value)
+  }
+
+  if (durationAttributes.has(name) && value.value.trim()) {
+    return value.value
   }
 
   throw new Error(

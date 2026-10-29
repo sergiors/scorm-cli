@@ -4,11 +4,13 @@ import { createRoot, type Root } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Video } from '../../app/components/Video'
+import { SlidesPresentation } from '../../app/components/SlidesPresentation'
 import { ContentRenderer } from '../../app/components/ContentRenderer'
 import { PageProvider, PlayerProvider } from '../../app/lib/player-context'
 import { getPackageProgress } from '../../app/lib/content-helpers'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
 import { usePlayerSession, type PlayerSession } from '../../app/lib/use-player-session'
+import { inlineContentProvider, questionnaireNode } from './fixtures'
 import type {
   ContentNode,
   ContentPackage,
@@ -38,6 +40,10 @@ const nativeNode: VideoNode = {
 const VIDEO_PAGE_ID = 'page:video-test.mdx'
 
 function videoPackageFor(node: VideoNode): ContentPackage {
+  return videoPackageOf([node])
+}
+
+function videoPackageOf(nodes: VideoNode[]): ContentPackage {
   return {
     metadata: { title: 'Video test' },
     presentation: {
@@ -48,7 +54,7 @@ function videoPackageFor(node: VideoNode): ContentPackage {
           id: VIDEO_PAGE_ID,
           source: 'video-test.mdx',
           metadata: { title: 'Video test' },
-          content: [node]
+          content: nodes
         }
       ]
     }
@@ -96,20 +102,38 @@ afterEach(() => {
 async function mountVideo(
   node: VideoNode,
   position: number | undefined,
-  onPosition: (seconds: number) => void
+  onPosition: (seconds: number) => void,
+  watchedUntil?: number,
+  onWatched?: (seconds: number) => void
 ): Promise<RecordedPlayer> {
   const pageId = VIDEO_PAGE_ID
   const contentPackage = videoPackageFor(node)
   let lastPosition = position
+  let lastWatched = watchedUntil
   window.scormBridge = {
     restoreState: (): PlayerState => ({
-      pages: position === undefined ? {} : { [pageId]: { videos: { [node.id]: position } } }
+      pages:
+        position === undefined && watchedUntil === undefined
+          ? {}
+          : {
+              [pageId]: {
+                ...(position === undefined ? {} : { videos: { [node.id]: position } }),
+                ...(watchedUntil === undefined
+                  ? {}
+                  : { watchedVideos: { [node.id]: watchedUntil } })
+              }
+            }
     }),
     saveState: (state) => {
       const nextPosition = state.pages[pageId]?.videos?.[node.id]
       if (nextPosition !== undefined && nextPosition !== lastPosition) {
         lastPosition = nextPosition
         onPosition(nextPosition)
+      }
+      const nextWatched = state.pages[pageId]?.watchedVideos?.[node.id]
+      if (nextWatched !== undefined && nextWatched !== lastWatched) {
+        lastWatched = nextWatched
+        onWatched?.(nextWatched)
       }
     }
   }
@@ -129,6 +153,25 @@ async function mountVideo(
 
 function savedPositions(onPosition: { mock: { calls: unknown[][] } }): number[] {
   return onPosition.mock.calls.map((call) => call[0] as number)
+}
+
+function savedWatched(onWatched: { mock: { calls: unknown[][] } }): number[] {
+  return onWatched.mock.calls.map((call) => call[0] as number)
+}
+
+let watchClock = 0
+
+function startWatching(...records: RecordedPlayer[]): void {
+  watchClock = 0
+  vi.spyOn(Date, 'now').mockImplementation(() => watchClock)
+  for (const record of records) {
+    act(() => record.onPlay?.())
+  }
+}
+
+function progressAfter(record: RecordedPlayer, seconds: number, elapsed = seconds): void {
+  watchClock += elapsed * 1000
+  act(() => record.onProgress?.({ playedSeconds: seconds }))
 }
 
 function lastSaved(saveState: { mock: { calls: unknown[][] } }): PlayerState {
@@ -524,6 +567,351 @@ describe('Video resume and persistence', () => {
   })
 })
 
+describe('Video watch requirements', () => {
+  const requiredNode: VideoNode = { ...nativeNode, duration: 120, minWatchTime: 60 }
+
+  it('persists the verified frontier only while playback advances continuously', async () => {
+    const onPosition = vi.fn()
+    const onWatched = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatched)
+    startWatching(record)
+
+    progressAfter(record, 2)
+    progressAfter(record, 4, 2)
+    progressAfter(record, 5.8, 1.8)
+
+    // Every continuous tick extends the frontier and persists it; the position
+    // is persisted on its own coarse cadence for a later resume.
+    expect(savedWatched(onWatched)).toEqual([2, 4, 5.8])
+    expect(savedPositions(onPosition)).toEqual([2])
+  })
+
+  it('rejects a YouTube seekless progress jump beyond the frontier and pulls playback back', async () => {
+    const onWatched = vi.fn()
+    const onPosition = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatched)
+    startWatching(record)
+
+    progressAfter(record, 3)
+    progressAfter(record, 40, 1)
+
+    // YouTube never emits `onSeek`, so only the progress discontinuity itself
+    // can reject the jump and pull the provider back to the frontier.
+    expect(players.seekTo).toHaveBeenCalledTimes(1)
+    expect(players.seekTo).toHaveBeenCalledWith(3, 'seconds', true)
+
+    // The frontier did not move, and playback measures from it again.
+    progressAfter(record, 4, 1)
+    expect(savedWatched(onWatched)).toEqual([3, 4])
+    expect(savedPositions(onPosition)).toEqual([3])
+  })
+
+  it('does not credit repeated immediate jumps within the discontinuity tolerance', async () => {
+    const onWatched = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatched)
+    startWatching(record)
+
+    progressAfter(record, 2)
+    // Each 0.9s jump is small enough to pass the provider discontinuity check,
+    // but repeated jumps without elapsed time must not move the watch frontier.
+    progressAfter(record, 2.9, 0)
+    progressAfter(record, 3.9, 0)
+    progressAfter(record, 2.9, 0)
+    progressAfter(record, 3.9, 0)
+    progressAfter(record, 2.9, 0)
+    progressAfter(record, 3.9, 0)
+
+    expect(savedWatched(onWatched)).toEqual([2])
+    expect(players.seekTo.mock.calls).toEqual([
+      [2, 'seconds', true],
+      [2, 'seconds', true],
+      [2, 'seconds', true]
+    ])
+  })
+
+  it('limits cumulative progress by elapsed time, including while the tab is hidden', async () => {
+    const onWatched = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatched)
+    startWatching(record)
+    progressAfter(record, 2)
+
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    progressAfter(record, 3.8, 1)
+    progressAfter(record, 4.5, 0.25)
+
+    // The first reading is within the one-second discontinuity tolerance, but
+    // only one second of elapsed wall time is credited. The cumulative media
+    // advance then exceeds elapsed playback plus that tolerance, so the last is corrected.
+    expect(savedWatched(onWatched)).toEqual([2, 3])
+    expect(players.seekTo).toHaveBeenCalledWith(3, 'seconds', true)
+  })
+
+  it.each<VideoProvider>(['native', 'vimeo'])(
+    'blocks a reported %s seek beyond the frontier and always allows backward seeking',
+    async (provider) => {
+      const onWatched = vi.fn()
+      const onPosition = vi.fn()
+      const record = await mountVideo(
+        { ...requiredNode, provider, src: providerSources[provider] },
+        undefined,
+        onPosition,
+        undefined,
+        onWatched
+      )
+      startWatching(record)
+
+      progressAfter(record, 3)
+      act(() => record.onSeek?.(50))
+
+      // Native and Vimeo report seeks directly, so the blocked seek returns
+      // the player to the frontier immediately.
+      expect(players.seekTo).toHaveBeenCalledTimes(1)
+      expect(players.seekTo).toHaveBeenCalledWith(3, 'seconds', true)
+      expect(savedWatched(onWatched)).toEqual([3])
+
+      act(() => record.onSeek?.(1))
+      expect(players.seekTo).toHaveBeenCalledTimes(1)
+      expect(savedPositions(onPosition)).toEqual([3, 1])
+    }
+  )
+
+  it('never verifies watched time across a pause and resumes through the frontier', async () => {
+    const onPosition = vi.fn()
+    const onWatched = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatched)
+    startWatching(record)
+
+    progressAfter(record, 2)
+    players.getCurrentTime.mockReturnValue(null)
+    act(() => record.onPause?.())
+
+    // The paused tail is the verified frontier itself: nothing new was watched.
+    expect(savedWatched(onWatched)).toEqual([2])
+
+    progressAfter(record, 30)
+    expect(savedWatched(onWatched)).toEqual([2])
+
+    // Resuming with a stale live position returns the player to the frontier,
+    // and playback verifies again from that restored point.
+    players.getCurrentTime.mockReturnValue(40)
+    act(() => record.onPlay?.())
+    expect(players.seekTo).toHaveBeenCalledWith(2, 'seconds', true)
+
+    progressAfter(record, 3.5, 1.5)
+    expect(savedWatched(onWatched)).toEqual([2, 3.5])
+    expect(savedPositions(onPosition)).toEqual([2, 30, 2])
+  })
+
+  it('never verifies watched time while buffering and resumes from the real position', async () => {
+    const onPosition = vi.fn()
+    const onWatched = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatched)
+    startWatching(record)
+
+    progressAfter(record, 2)
+    progressAfter(record, 4, 2)
+    players.getCurrentTime.mockReturnValue(null)
+    act(() => record.onBuffer?.())
+
+    progressAfter(record, 9)
+    expect(savedWatched(onWatched)).toEqual([2, 4])
+
+    // Buffering ended with the live position far past the frontier, so the
+    // provider is pulled back once instead of crediting the gap.
+    act(() => record.onBufferEnd?.())
+    expect(players.seekTo).toHaveBeenCalledWith(4, 'seconds', true)
+    expect(savedPositions(onPosition)).toEqual([2, 9, 4])
+
+    progressAfter(record, 6, 2)
+    expect(savedWatched(onWatched)).toEqual([2, 4, 6])
+    expect(savedPositions(onPosition)).toEqual([2, 9, 4])
+  })
+
+  it('resumes an unfinished required video within its verified frontier', async () => {
+    const onPosition = vi.fn()
+    const record = await mountVideo(requiredNode, 60, onPosition, 10, vi.fn())
+
+    await act(async () => {
+      record.onReady?.()
+    })
+    await act(async () => {
+      record.onDuration?.(200)
+    })
+
+    // The persisted position was saved before the requirement existed, so the
+    // resume rests at the verified frontier and never autoplays.
+    expect(players.seekTo).toHaveBeenCalledTimes(1)
+    expect(players.seekTo).toHaveBeenCalledWith(10, 'seconds', false)
+    expect(record.playing).toBeFalsy()
+  })
+
+  it('resumes a required video at its full position once the requirement is met', async () => {
+    const record = await mountVideo(requiredNode, 60, vi.fn(), 60, vi.fn())
+
+    await act(async () => {
+      record.onDuration?.(200)
+    })
+    expect(players.seekTo).toHaveBeenCalledTimes(1)
+    expect(players.seekTo).toHaveBeenCalledWith(60, 'seconds', false)
+  })
+
+  it('relaxes seeking once the authored minimum has been watched', async () => {
+    const onPosition = vi.fn()
+    const onWatched = vi.fn()
+    const eagerNode: VideoNode = { ...nativeNode, duration: 120, minWatchTime: 6 }
+    const record = await mountVideo(eagerNode, undefined, onPosition, undefined, onWatched)
+    startWatching(record)
+
+    for (const tick of [2, 4, 6]) {
+      progressAfter(record, tick, 2)
+    }
+    expect(savedWatched(onWatched)).toEqual([2, 4, 6])
+
+    // The requirement is met: a forward seek is no longer blocked or corrected.
+    act(() => record.onSeek?.(100))
+    expect(players.seekTo).not.toHaveBeenCalled()
+
+    act(() => record.onProgress?.({ playedSeconds: 110 }))
+    expect(savedPositions(onPosition)).toEqual([2, 100, 110])
+    expect(savedWatched(onWatched)).toEqual([2, 4, 6])
+  })
+
+  it('completes the requirement at the natural end of shorter media', async () => {
+    const onPosition = vi.fn()
+    const onWatched = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, onPosition, undefined, onWatched)
+    startWatching(record)
+
+    // The provider media is shorter than the authored duration describes.
+    await act(async () => {
+      record.onDuration?.(50)
+    })
+    for (let tick = 3; tick <= 48; tick += 3) {
+      progressAfter(record, tick, 3)
+    }
+    expect(savedWatched(onWatched)).toHaveLength(16)
+    expect(savedWatched(onWatched).at(-1)).toBe(48)
+
+    // Watching everything available satisfies the authored requirement even
+    // though the provider reported less time than the authored duration.
+    act(() => record.onEnded?.())
+    expect(savedWatched(onWatched)).toHaveLength(17)
+    expect(savedWatched(onWatched).at(-1)).toBe(60)
+    expect(savedPositions(onPosition).at(-1)).toBe(0)
+  })
+
+  it('does not complete at the end after rejecting a seek to the end', async () => {
+    const onWatched = vi.fn()
+    const record = await mountVideo(requiredNode, undefined, vi.fn(), undefined, onWatched)
+    startWatching(record)
+    await act(async () => {
+      record.onDuration?.(50)
+    })
+
+    progressAfter(record, 3)
+    progressAfter(record, 50, 1)
+    act(() => record.onEnded?.())
+
+    expect(savedWatched(onWatched)).toEqual([3])
+  })
+
+  it('never verifies or gates playback for a video without a requirement', async () => {
+    const onPosition = vi.fn()
+    const onWatched = vi.fn()
+    const record = await mountVideo(nativeNode, undefined, onPosition, undefined, onWatched)
+
+    act(() => record.onProgress?.({ playedSeconds: 2 }))
+    act(() => record.onProgress?.({ playedSeconds: 40 }))
+
+    expect(savedWatched(onWatched)).toEqual([])
+    expect(players.seekTo).not.toHaveBeenCalled()
+    expect(savedPositions(onPosition)).toEqual([2, 40])
+  })
+
+  it('shows verified progress and completes the indicator at the authored minimum', async () => {
+    const eagerNode: VideoNode = { ...nativeNode, duration: 120, minWatchTime: 6 }
+    await mountVideo(eagerNode, undefined, vi.fn(), undefined, vi.fn())
+    startWatching(players.latest())
+    const requirement = () => container.querySelector('[data-video-requirement]')
+
+    expect(requirement()?.getAttribute('data-complete')).toBe('false')
+    expect(requirement()?.textContent).toContain('0% watched')
+
+    progressAfter(players.latest(), 2)
+    expect(requirement()?.textContent).toContain('33% watched')
+
+    progressAfter(players.latest(), 4, 2)
+    expect(requirement()?.textContent).toContain('66% watched')
+
+    progressAfter(players.latest(), 6, 2)
+    expect(requirement()?.getAttribute('data-complete')).toBe('true')
+    expect(requirement()?.textContent).toContain('Required viewing complete')
+  })
+
+  it('renders no requirement indicator for a video without a minimum', async () => {
+    await mountVideo(nativeNode, undefined, vi.fn(), undefined, vi.fn())
+    expect(container.querySelector('[data-video-requirement]')).toBeNull()
+  })
+
+  it('verifies and persists independent frontiers for every required video', async () => {
+    const first: VideoNode = {
+      ...nativeNode,
+      id: 'video:first.mdx:1:1',
+      src: './first.mp4',
+      duration: 120,
+      minWatchTime: 6
+    }
+    const second: VideoNode = {
+      ...nativeNode,
+      id: 'video:second.mdx:1:1',
+      src: './second.mp4',
+      duration: 120,
+      minWatchTime: 60
+    }
+    const watchedByVideo = new Map<string, number>()
+    const nodesById = new Map([first, second].map((node) => [node.id, node]))
+    window.scormBridge = {
+      restoreState: (): PlayerState => ({ pages: {} }),
+      saveState: (state) => {
+        for (const [videoId, watched] of Object.entries(
+          state.pages[VIDEO_PAGE_ID]?.watchedVideos ?? {}
+        )) {
+          if (nodesById.has(videoId) && typeof watched === 'number') {
+            watchedByVideo.set(videoId, watched)
+          }
+        }
+      }
+    }
+    await act(async () => {
+      root.render(
+        <PlayerI18nProvider>
+          <PlayerProvider contentPackage={videoPackageOf([first, second])}>
+            <PageProvider pageId={VIDEO_PAGE_ID}>
+              <Video node={first} />
+              <Video node={second} />
+            </PageProvider>
+          </PlayerProvider>
+        </PlayerI18nProvider>
+      )
+    })
+    const [firstPlayer, secondPlayer] = players.records
+    startWatching(firstPlayer, secondPlayer)
+
+    // The first video advances through continuous playback.
+    for (const tick of [2, 4, 6]) {
+      progressAfter(firstPlayer, tick, 2)
+    }
+    // The second video's own frontier is independent: its forward jump is
+    // rejected and pulled back while the first keeps its verified progress.
+    progressAfter(secondPlayer, 3, 3)
+    progressAfter(secondPlayer, 40, 1)
+    expect(players.seekTo).toHaveBeenCalledWith(3, 'seconds', true)
+
+    expect(watchedByVideo.get(first.id)).toBe(6)
+    expect(watchedByVideo.get(second.id)).toBe(3)
+  })
+})
+
 describe('Video provider ready timing', () => {
   const youtubeNode: VideoNode = {
     ...nativeNode,
@@ -863,5 +1251,243 @@ describe('usePlayerSession video positions', () => {
     const videos = saved.pages[PAGE_ID]?.videos ?? {}
     expect(Object.values(videos).every((value) => typeof value === 'number')).toBe(true)
     expect(JSON.stringify(saved)).not.toMatch(/player|iframe|YT\.|youtube|vimeo/i)
+  })
+})
+
+describe('usePlayerSession video watch requirements', () => {
+  const PAGE_ID = 'page:lesson.mdx'
+  const requiredNode: VideoNode = { ...nativeNode, duration: 120, minWatchTime: 6 }
+  const requiredVideoPackage: ContentPackage = {
+    metadata: { title: 'Required video package' },
+    presentation: {
+      type: 'scroll',
+      pages: [
+        {
+          type: 'page',
+          id: PAGE_ID,
+          source: 'lesson.mdx',
+          metadata: { title: 'Lesson' },
+          content: [requiredNode]
+        }
+      ]
+    }
+  }
+
+  it('persists a verified frontier separately from the playback position', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+    renderSession(requiredVideoPackage)
+
+    act(() => session?.setVideoPosition(PAGE_ID, VIDEO_ID, 30.5))
+    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, 12.34))
+
+    const saved = lastSaved(saveState)
+    expect(saved.pages[PAGE_ID]?.videos).toEqual({ [VIDEO_ID]: 30.5 })
+    expect(saved.pages[PAGE_ID]?.watchedVideos).toEqual({ [VIDEO_ID]: 12.3 })
+    // Video progress never contributes to package progress.
+    expect(saveState.mock.calls.at(-1)?.[1]).toBe(getPackageProgress(requiredVideoPackage, saved))
+  })
+
+  it('never rewinds a monotonic frontier and skips writes that change nothing', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+    renderSession(requiredVideoPackage)
+
+    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, 20.3))
+    const calls = saveState.mock.calls.length
+
+    // A smaller reading never replaces a recorded frontier, and a value that
+    // normalizes to the stored one is a no-op.
+    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, 5))
+    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, 20.34))
+    expect(saveState.mock.calls.length).toBe(calls)
+    expect(lastSaved(saveState).pages[PAGE_ID]?.watchedVideos).toEqual({ [VIDEO_ID]: 20.3 })
+
+    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, 21))
+    expect(lastSaved(saveState).pages[PAGE_ID]?.watchedVideos).toEqual({ [VIDEO_ID]: 21 })
+  })
+
+  it('ignores invalid frontier readings', () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+    renderSession(requiredVideoPackage)
+
+    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, Number.NaN))
+    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, -1))
+    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, Number.POSITIVE_INFINITY))
+    expect(saveState).not.toHaveBeenCalled()
+    expect(session?.state.pages[PAGE_ID]).toBeUndefined()
+  })
+
+  it('keeps the page pending until the questionnaire and the required video are satisfied', () => {
+    const quizPackage: ContentPackage = {
+      metadata: { title: 'Quiz and video package' },
+      presentation: {
+        type: 'scroll',
+        pages: [
+          {
+            type: 'page',
+            id: PAGE_ID,
+            source: 'lesson.mdx',
+            metadata: { title: 'Lesson' },
+            content: [requiredNode, questionnaireNode]
+          }
+        ]
+      }
+    }
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+    renderSession(quizPackage)
+
+    act(() => session?.markQuestionnaireSubmitted(PAGE_ID, questionnaireNode.id))
+    // The single-attempt default completes the submitted result automatically.
+    expect(session?.state.pages[PAGE_ID]?.completedQuestionnaires).toEqual([questionnaireNode.id])
+
+    // The unwatched required video keeps the page pending.
+    act(() => session?.markCompleted(PAGE_ID))
+    expect(session?.state.pages[PAGE_ID]?.completed).toBeUndefined()
+
+    // Meeting the verified frontier unlocks completion.
+    act(() => session?.setVideoWatchedUntil(PAGE_ID, VIDEO_ID, 6))
+    act(() => session?.markCompleted(PAGE_ID))
+    expect(session?.state.pages[PAGE_ID]?.completed).toBe(true)
+  })
+
+  it('never gates a tiles item completion on a video requirement', () => {
+    const tilesId = 'item:video.mdx'
+    const tilesPackage: ContentPackage = {
+      metadata: { title: 'Tiles video package' },
+      presentation: {
+        type: 'tiles',
+        items: [
+          {
+            type: 'item',
+            id: tilesId,
+            source: 'video.mdx',
+            metadata: { title: 'Video item' },
+            content: [requiredNode]
+          }
+        ]
+      }
+    }
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+    renderSession(tilesPackage)
+
+    act(() => session?.markSeen(tilesId))
+    act(() => session?.markCompleted(tilesId))
+    expect(session?.state.pages[tilesId]?.completed).toBe(true)
+  })
+
+  it('restores only the frontier each page owns, with a met requirement keeping completion', () => {
+    const saveState = vi.fn()
+    window.scormBridge = {
+      restoreState: (): PlayerState => ({
+        pages: {
+          [PAGE_ID]: {
+            visited: true,
+            completed: true,
+            watchedVideos: { [VIDEO_ID]: 6, 'video:gone.mdx:1:1': 4 }
+          }
+        }
+      }),
+      saveState
+    }
+    renderSession(requiredVideoPackage)
+
+    expect(session?.state.pages[PAGE_ID]).toEqual({
+      visited: true,
+      completed: true,
+      watchedVideos: { [VIDEO_ID]: 6 }
+    })
+  })
+
+  it('drops completion that predates the requirement but keeps verified progress', () => {
+    const saveState = vi.fn()
+    window.scormBridge = {
+      restoreState: (): PlayerState => ({
+        pages: {
+          [PAGE_ID]: {
+            completed: true,
+            videos: { [VIDEO_ID]: 20 },
+            watchedVideos: { [VIDEO_ID]: 3 }
+          }
+        }
+      }),
+      saveState
+    }
+    renderSession(requiredVideoPackage)
+
+    expect(session?.state.pages[PAGE_ID]).toEqual({
+      videos: { [VIDEO_ID]: 20 },
+      watchedVideos: { [VIDEO_ID]: 3 }
+    })
+  })
+})
+
+describe('Video watch requirement unlocks a slides page', () => {
+  const slideVideo: VideoNode = { ...nativeNode, duration: 120, minWatchTime: 6 }
+
+  beforeEach(() => {
+    // Slides presentations scroll onto the displayed slide; jsdom cannot.
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+  })
+
+  function slidesVideoPackage(): ContentPackage {
+    return {
+      metadata: { title: 'Slides video' },
+      presentation: {
+        type: 'slides',
+        pages: [
+          {
+            type: 'page',
+            id: 'page:first.mdx',
+            source: 'first.mdx',
+            metadata: { title: 'First' },
+            content: [slideVideo]
+          },
+          {
+            type: 'page',
+            id: 'page:second.mdx',
+            source: 'second.mdx',
+            metadata: { title: 'Second' },
+            content: [
+              { type: 'paragraph', children: [{ type: 'text', value: 'After the video.' }] }
+            ]
+          }
+        ]
+      }
+    }
+  }
+
+  it('shows the next control only once the required video is watched', async () => {
+    const saveState = vi.fn()
+    window.scormBridge = { saveState }
+    const contentPackage = slidesVideoPackage()
+    const provider = inlineContentProvider(contentPackage)
+    const pages =
+      contentPackage.presentation.type === 'slides' ? contentPackage.presentation.pages : []
+    await act(async () => {
+      root.render(
+        <PlayerI18nProvider>
+          <PlayerProvider contentPackage={contentPackage}>
+            <SlidesPresentation pages={[...pages]} contentProvider={provider} />
+          </PlayerProvider>
+        </PlayerI18nProvider>
+      )
+    })
+
+    // The unwatched video keeps the slide gated: no next control.
+    expect(container.querySelector('[data-slides-next]')).toBeNull()
+
+    const record = players.latest()
+    startWatching(record)
+    for (const tick of [2, 4, 6]) {
+      progressAfter(record, tick, 2)
+    }
+    expect(container.querySelector('[data-slides-next] button')).not.toBeNull()
+
+    act(() => container.querySelector<HTMLButtonElement>('[data-slides-next] button')?.click())
+    expect(lastSaved(saveState).location).toBe('page:second.mdx')
   })
 })

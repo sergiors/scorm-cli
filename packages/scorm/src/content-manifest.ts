@@ -30,7 +30,18 @@ export interface ContentManifest {
       >
       /** Stable preorder questionnaire indexes and the bounds needed by suspend-data validation. */
       questionnaires?: Record<string, { id: string; maxAttempts: number; questionCount: number }>
-      videos?: Record<string, { id: string; src: string; provider: VideoProvider }>
+      videos?: Record<
+        string,
+        {
+          id: string
+          src: string
+          provider: VideoProvider
+          /** Authored duration in seconds, used to bound a persisted frontier. */
+          duration?: number
+          /** Authored minimum watch time in seconds. */
+          minWatchTime?: number
+        }
+      >
     }
   >
 }
@@ -135,9 +146,15 @@ export function createContentManifest(contentPackage: ContentPackage): ContentMa
       ])
     )
     const videos = Object.fromEntries(
-      collectVideoNodes(node.content).map(({ id, src, provider }, videoIndex) => [
+      collectVideoNodes(node.content).map((video, videoIndex) => [
         String(videoIndex),
-        { id, src, provider }
+        {
+          id: video.id,
+          src: video.src,
+          provider: video.provider,
+          ...(video.duration !== undefined ? { duration: video.duration } : {}),
+          ...(video.minWatchTime !== undefined ? { minWatchTime: video.minWatchTime } : {})
+        }
       ])
     )
     pages[String(pageIndex)] = {

@@ -5,7 +5,7 @@ import type { ContentNode, PageNode } from '../types'
 import { getSequentialAccess } from '../lib/content-helpers'
 import { useContentLoader, type ContentProvider } from '../lib/content-loader'
 import { PageProvider, usePlayerActions, usePlayerState } from '../lib/player-context'
-import { arePageQuestionnairesComplete } from '../lib/questionnaire-completion'
+import { isPageRequirementsComplete } from '../lib/page-completion'
 import { clampPageIndex } from '../lib/sequence'
 import { READING_PAGE_ATTRIBUTE } from '../lib/reading-anchors'
 import {
@@ -67,9 +67,10 @@ export interface SlidesPresentationProps {
  * Shows exactly one page at a time, in order. Only the current page's content
  * is loaded and rendered, so neighbouring pages are never exposed. Advancing is
  * gated by the shared sequential progression policy: the next control appears
- * only once the active page is complete — every questionnaire on it submitted —
- * and stepping back is always available while a previous page exists. A Path can
- * only jump to a page the policy reports as accessible.
+ * only once the active page is complete — every questionnaire submitted and
+ * every required video watched — and stepping back is always available while a
+ * previous page exists. A Path can only jump to a page the policy reports as
+ * accessible.
  *
  * The current page's module is loaded on display; while it resolves a stable,
  * full-height skeleton stands in, so the slide never flashes an empty or wrong
@@ -213,7 +214,7 @@ export function SlidesPresentation({ pages, contentProvider }: SlidesPresentatio
   }
 
   const pageState = pageStates[currentPage.id]
-  const pageComplete = arePageQuestionnairesComplete(currentPage.content, pageState)
+  const pageComplete = isPageRequirementsComplete(currentPage.content, pageState)
   const hasNext = currentIndex < pages.length - 1
   const hasPrevious = currentIndex > 0
   const showNext = hasNext && pageComplete && loaded
