@@ -2,7 +2,7 @@
 import { StrictMode, act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { QuestionnaireView } from '../../app/components/QuestionnaireView'
+import { QuestionnaireView } from '../../app/components/views/QuestionnaireView'
 import { PageProvider, PlayerProvider, usePlayerState } from '../../app/lib/player-context'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
 import type {

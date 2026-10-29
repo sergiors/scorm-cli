@@ -1,10 +1,11 @@
 import { Check, Circle, Lock, type LucideIcon } from 'lucide-react'
 import { useIntl } from 'react-intl'
-import type { PageNode, PathNode } from '../types'
-import type { MessageId } from '../lib/messages'
-import { getSequentialAccess } from '../lib/content-helpers'
-import { usePlayerState } from '../lib/player-context'
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from './ui/item'
+import type { PageNode, PathNode } from '../../types'
+import type { MessageId } from '../../lib/messages'
+import { getSequentialAccess } from '../../lib/content-helpers'
+import { usePlayerState } from '../../lib/player-context'
+import type { ContentNodeRenderContext } from './types'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '../ui/item'
 
 /**
  * The state of a single Path entry, derived from the shared sequential access
@@ -42,6 +43,13 @@ export interface PathViewProps {
    * this is the case whenever the surrounding presentation cannot switch pages.
    */
   onNavigatePathPage?: (pageId: string) => void
+
+  /**
+   * The surrounding content renderer's threaded context. When present, its page
+   * and navigation wiring supplies the presentation props above, so this view
+   * can be dispatched directly from the block registry.
+   */
+  context?: Pick<ContentNodeRenderContext, 'pathPages' | 'onNavigatePathPage'>
 }
 
 /**
@@ -53,18 +61,20 @@ export interface PathViewProps {
  */
 export function PathView({
   node,
-  pathPages = [],
-  onNavigatePathPage
+  context,
+  pathPages = context?.pathPages,
+  onNavigatePathPage = context?.onNavigatePathPage
 }: PathViewProps) {
   const intl = useIntl()
   const pageStates = usePlayerState().pages
-  const pagesById = new Map(pathPages.map((page) => [page.id, page]))
+  const pages = pathPages ?? []
+  const pagesById = new Map(pages.map((page) => [page.id, page]))
 
   // Status is derived from the shared sequential access policy over the root
   // page order, so a Path entry is only reachable once the presentation itself
   // would allow reaching it. A visited but currently locked entry is still
   // locked: visited status never makes a page navigable on its own.
-  const pageIds = pathPages.map((page) => page.id)
+  const pageIds = pages.map((page) => page.id)
   const done = new Set(pageIds.filter((id) => pageStates[id]?.completed === true))
   const { accessible } = getSequentialAccess(pageIds, done)
 

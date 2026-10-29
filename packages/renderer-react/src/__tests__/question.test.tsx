@@ -2,7 +2,7 @@
 import { act, type ComponentProps } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { QuestionnaireView as QuestionnaireViewBase } from '../../app/components/QuestionnaireView'
+import { QuestionnaireView as QuestionnaireViewBase } from '../../app/components/views/QuestionnaireView'
 import { PageProvider, PlayerProvider } from '../../app/lib/player-context'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
 import type { ContentNode, ContentPackage, PlayerState, QuestionnaireNode } from '../../app/types'

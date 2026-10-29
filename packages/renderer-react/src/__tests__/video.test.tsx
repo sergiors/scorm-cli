@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Video } from '../../app/components/Video'
+import { VideoView as VideoViewBase } from '../../app/components/views/VideoView'
 import { SlidesPresentation } from '../../app/components/SlidesPresentation'
 import { ContentRenderer } from '../../app/components/ContentRenderer'
 import { PageProvider, PlayerProvider } from '../../app/lib/player-context'
@@ -24,6 +24,24 @@ import { reactPlayerMock as players, type RecordedPlayer } from './react-player-
 declare global {
   // eslint-disable-next-line no-var
   var IS_REACT_ACT_ENVIRONMENT: boolean | undefined
+}
+
+/**
+ * Dispatches `VideoViewBase` the way the block registry mounts it, with the
+ * threaded props the view ignores (context, render callbacks) left inert: the
+ * view itself reads only the node and its reading anchor.
+ */
+function VideoView({ node }: { node: VideoNode }) {
+  return (
+    <VideoViewBase
+      node={node}
+      context={{}}
+      anchor={undefined}
+      path={[]}
+      renderNodes={() => null}
+      renderNode={() => null}
+    />
+  )
 }
 
 const VIDEO_ID = 'video:lesson.mdx:1:1'
@@ -86,7 +104,7 @@ function VideoContext({ node }: { node: VideoNode }) {
   return (
     <PlayerProvider contentPackage={videoPackageFor(node)}>
       <PageProvider pageId={VIDEO_PAGE_ID}>
-        <Video node={node} />
+        <VideoView node={node} />
       </PageProvider>
     </PlayerProvider>
   )
@@ -118,7 +136,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-/** Renders a `Video` and returns the props handed to ReactPlayer. */
+/** Renders a `VideoView` and returns the props handed to ReactPlayer. */
 async function mountVideo(
   node: VideoNode,
   position: number | undefined,
@@ -172,7 +190,7 @@ async function mountVideo(
       <PlayerI18nProvider>
         <PlayerProvider contentPackage={contentPackage}>
           <PageProvider pageId={pageId}>
-            <Video node={node} />
+            <VideoView node={node} />
           </PageProvider>
         </PlayerProvider>
       </PlayerI18nProvider>
@@ -390,13 +408,13 @@ describe('Video provider inputs', () => {
 describe('Video page ownership', () => {
   it('refuses to render without a page owner', () => {
     // An ownerless video has no page to scope its persisted position to, so
-    // the context-aware Video demands PageProvider ownership instead of
+    // the context-aware VideoView demands PageProvider ownership instead of
     // silently rendering without save or restore.
     expect(() =>
       renderToStaticMarkup(
         <PlayerI18nProvider>
           <PlayerProvider contentPackage={videoPackageFor(vimeoNode)}>
-            <Video node={vimeoNode} />
+            <VideoView node={vimeoNode} />
           </PlayerProvider>
         </PlayerI18nProvider>
       )
@@ -1155,7 +1173,7 @@ describe('Video watch requirements', () => {
           <PlayerI18nProvider>
             <PlayerProvider contentPackage={contentPackage}>
               <PageProvider pageId={VIDEO_PAGE_ID}>
-                <Video node={youtubeNode} />
+                <VideoView node={youtubeNode} />
               </PageProvider>
             </PlayerProvider>
           </PlayerI18nProvider>
@@ -1240,8 +1258,8 @@ describe('Video watch requirements', () => {
         <PlayerI18nProvider>
           <PlayerProvider contentPackage={videoPackageOf([first, second])}>
             <PageProvider pageId={VIDEO_PAGE_ID}>
-              <Video node={first} />
-              <Video node={second} />
+              <VideoView node={first} />
+              <VideoView node={second} />
             </PageProvider>
           </PlayerProvider>
         </PlayerI18nProvider>
@@ -1281,7 +1299,7 @@ describe('Required viewing through provider playback sequences', () => {
       const onSaveState = vi.fn()
       const record = await mountVideo(node, undefined, vi.fn(), undefined, onWatchSeconds, {
         // The session layer sees the generated semantic summary, while the
-        // rendered Video gets the full lazily loaded node — exactly production.
+        // rendered VideoView gets the full lazily loaded node — exactly production.
         contentPackage: semanticPackage(videoPackageFor(node)),
         onSaveState
       })

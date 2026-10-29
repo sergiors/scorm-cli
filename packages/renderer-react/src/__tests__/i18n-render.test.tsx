@@ -3,8 +3,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { PackageApp } from '../../app/App'
 import { ContentRenderer } from '../../app/components/ContentRenderer'
-import { PathView } from '../../app/components/PathView'
-import { QuestionnaireView } from '../../app/components/QuestionnaireView'
+import { PathView } from '../../app/components/views/PathView'
+import { QuestionnaireView } from '../../app/components/views/QuestionnaireView'
 import { PageProvider, PlayerProvider } from '../../app/lib/player-context'
 import {
   Questionnaire,

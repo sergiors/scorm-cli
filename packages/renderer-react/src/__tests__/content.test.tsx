@@ -5,6 +5,7 @@ import { ContentRenderer } from '../../app/components/ContentRenderer'
 import { InlineContent } from '../../app/components/InlineContent'
 import { PageProvider, PlayerProvider } from '../../app/lib/player-context'
 import { PlayerI18nProvider } from '../../app/lib/player-i18n'
+import { readingAnchorId } from '../../app/lib/reading-anchors'
 import type {
   ContentNode,
   ContentPackage,
@@ -557,6 +558,46 @@ describe('ContentRenderer lists', () => {
     expect(html).toContain('Inner')
     expect((html.match(/<ul/g) ?? []).length).toBe(1)
     expect((html.match(/<ol/g) ?? []).length).toBe(1)
+  })
+
+  it('resolves an anchor for a list-item block child at its exact authored path', () => {
+    // Given an item whose second child is an anchorable paragraph after an
+    // inline run, when the renderer dispatches the item's block children
+    // through the exact-path `renderNode` callback, then the child receives the
+    // anchor stored under that exact authored child path — the inline run
+    // counts as sibling one — instead of a path re-indexed over blocks alone.
+    const pageId = 'page:list-anchor.mdx'
+    const paragraph: ContentNode = {
+      type: 'paragraph',
+      children: [{ type: 'text', value: 'Nested block' }]
+    }
+    const anchors = new Map([['0.0.1', { id: readingAnchorId(pageId, paragraph), pageId }]])
+    const html = renderToStaticMarkup(
+      <ContentRenderer
+        nodes={[
+          {
+            type: 'list',
+            ordered: false,
+            items: [
+              {
+                children: [
+                  { type: 'inlineContent', children: [{ type: 'text', value: 'Run ' }] },
+                  paragraph
+                ]
+              }
+            ]
+          }
+        ]}
+        readingAnchors={anchors}
+      />
+    )
+
+    // The anchor resolves only because the dispatch path counts every sibling
+    // child: a block-only index ('0.0.0') would miss the map.
+    expect(html).toMatch(/<p[^>]*data-reading-anchor="/)
+    expect(html).toContain(`data-reading-anchor-page="${pageId}"`)
+    // The run still renders inline inside the same item, before the block.
+    expect(html.indexOf('Run ')).toBeLessThan(html.indexOf('Nested block'))
   })
 })
 
