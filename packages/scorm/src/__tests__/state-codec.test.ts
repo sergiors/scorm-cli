@@ -605,6 +605,36 @@ describe('compact suspend-data codec', () => {
     })
   })
 
+  it('retains answers decoded before an entry that throws on a malformed manifest question', () => {
+    // resolveAnswer dereferences a manifest question's options record. A
+    // question persisted without one makes its d entry throw mid-pass, and the
+    // decoder keeps the answers decoded before that entry instead of
+    // rejecting the whole restored state.
+    const malformedManifest = structuredClone(manifest)
+    malformedManifest.pages['0']!.questions['1'] = {
+      id: 'q-broken',
+      prompt: '',
+      type: 'single-choice',
+      options: undefined as unknown as Record<string, { value: string; label: string }>,
+      correctAnswers: []
+    }
+    expect(
+      decodeSuspendData(malformedManifest, {
+        v: 1,
+        p: 0,
+        x: '00',
+        d: {
+          // Valid entry decoded before the malformed question's entry.
+          '0.a.0': [1],
+          // Question index 1 lacks its options record, so resolving throws.
+          '0.a.1': 1
+        }
+      })
+    ).toEqual({
+      pages: { 'page-one': { answers: { q1: ['blue'] } } }
+    })
+  })
+
   it('uses the embedded manifest for LMS resume/save while keeping location separate', () => {
     const initial = encodeSuspendData(
       manifest,
@@ -1550,6 +1580,38 @@ describe('questionnaire attempt history in the suspend-data codec', () => {
           activeQuestionnaireRetries: ['quiz-a']
         },
         beta: { questionnaireAttempts: { 'quiz-c': [0] } }
+      }
+    })
+  })
+
+  it('restores attempt histories before r/c markers regardless of payload key order', () => {
+    // Suspend data travels as a JSON string, so a marker key can legitimately
+    // precede the q entry carrying its questionnaire's history. Marker
+    // resolution must observe that history all the same: the decoder may not
+    // rely on q keys arriving first for restoration to succeed.
+    const restored = decodeSuspendData(
+      attemptManifest,
+      JSON.stringify({
+        v: 1,
+        p: 0,
+        x: '10',
+        d: {
+          // Both markers precede every q entry of their questionnaire.
+          '0.r.0': 1,
+          '0.c.2': 1,
+          '0.q.0': [1, 0],
+          '0.q.2': [1]
+        }
+      })
+    )
+    expect(restored).toEqual({
+      pages: {
+        alpha: {
+          visited: true,
+          questionnaireAttempts: { 'quiz-a': [1, 0], 'quiz-u': [1] },
+          activeQuestionnaireRetries: ['quiz-a'],
+          completedQuestionnaires: ['quiz-u']
+        }
       }
     })
   })
