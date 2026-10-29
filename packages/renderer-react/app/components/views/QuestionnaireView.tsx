@@ -1,5 +1,5 @@
-import { ExpandedQuestionnaire } from '../ExpandedQuestionnaire'
-import { StepperQuestionnaire } from '../StepperQuestionnaire'
+import { ExpandedQuestionnaire } from '../questionnaire/ExpandedQuestionnaire'
+import { StepperQuestionnaire } from '../questionnaire/StepperQuestionnaire'
 import { readingAnchorAttributes } from '../../lib/reading-anchors'
 import type { ContentNodeRenderContext } from './types'
 

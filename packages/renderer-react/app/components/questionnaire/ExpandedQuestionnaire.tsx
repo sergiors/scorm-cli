@@ -6,12 +6,12 @@ import {
   getQuestionnaireResult,
   isOptionSelected,
   submittedOptionResult
-} from '../lib/questionnaire'
-import { shuffleQuestionOptions } from '../lib/shuffle'
-import { cn } from '../lib/utils'
-import type { AnswerValue, QuestionNode, QuestionOption, QuestionnaireNode } from '../types'
-import { Button } from './ui/button'
-import { Card, CardContent } from './ui/card'
+} from '../../lib/questionnaire'
+import { shuffleQuestionOptions } from '../../lib/shuffle'
+import { cn } from '../../lib/utils'
+import type { AnswerValue, QuestionNode, QuestionOption, QuestionnaireNode } from '../../types'
+import { Button } from '../ui/button'
+import { Card, CardContent } from '../ui/card'
 import {
   QuestionnaireSubmissionResult,
   submittedChoiceClassName,
@@ -19,7 +19,7 @@ import {
   useQuestionnaireSubmission,
   useQuestionnaireSession
 } from './QuestionnaireShared'
-import { Separator } from './ui/separator'
+import { Separator } from '../ui/separator'
 
 interface QuestionnaireQuestionProps {
   node: QuestionNode

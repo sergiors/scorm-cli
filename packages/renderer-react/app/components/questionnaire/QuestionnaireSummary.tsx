@@ -1,7 +1,7 @@
 import { useId } from 'react'
 import type { ReactNode } from 'react'
 import { FormattedMessage, useIntl } from 'react-intl'
-import { Card, CardContent } from './ui/card'
+import { Card, CardContent } from '../ui/card'
 
 export interface QuestionnaireSummaryProps {
   correct: number

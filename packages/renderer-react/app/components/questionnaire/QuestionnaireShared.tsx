@@ -1,14 +1,14 @@
 import { useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
-import type { AnswerValue, QuestionnaireNode, QuestionNode } from '../types'
-import { allQuestionsAnswered, type SubmittedOptionResult } from '../lib/questionnaire'
+import type { AnswerValue, QuestionnaireNode, QuestionNode } from '../../types'
+import { allQuestionsAnswered, type SubmittedOptionResult } from '../../lib/questionnaire'
 import {
   isQuestionnaireCompleted,
   questionnaireAttemptsRemaining
-} from '../lib/questionnaire-completion'
-import { usePageId, usePlayerActions, usePlayerState } from '../lib/player-context'
+} from '../../lib/questionnaire-completion'
+import { usePageId, usePlayerActions, usePlayerState } from '../../lib/player-context'
 import { QuestionnaireSummary } from './QuestionnaireSummary'
-import { Button } from './ui/button'
+import { Button } from '../ui/button'
 
 /** Reads persisted questionnaire state/actions for the page or item that owns the node. */
 export function useQuestionnaireSession(node: QuestionnaireNode) {

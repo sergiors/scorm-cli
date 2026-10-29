@@ -6,9 +6,9 @@ import {
   getQuestionnaireResult,
   isOptionSelected,
   submittedOptionResult
-} from '../lib/questionnaire'
-import { shuffleQuestionOptions } from '../lib/shuffle'
-import { Card, CardContent } from './ui/card'
+} from '../../lib/questionnaire'
+import { shuffleQuestionOptions } from '../../lib/shuffle'
+import { Card, CardContent } from '../ui/card'
 import {
   Questionnaire,
   QuestionnaireActions,
@@ -21,7 +21,7 @@ import {
   QuestionnaireProgress,
   QuestionnaireSubmit,
   QuestionnaireTitle
-} from './ui/questionnaire'
+} from '../ui/questionnaire'
 import {
   QuestionnaireSubmissionResult,
   submittedChoiceClassName,
@@ -29,7 +29,7 @@ import {
   useQuestionnaireSubmission,
   useQuestionnaireSession
 } from './QuestionnaireShared'
-import type { AnswerValue, QuestionNode, QuestionOption, QuestionnaireNode } from '../types'
+import type { AnswerValue, QuestionNode, QuestionOption, QuestionnaireNode } from '../../types'
 
 interface StepperQuestionProps {
   node: QuestionNode
