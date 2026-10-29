@@ -72,8 +72,12 @@ pnpm exec scorm-cli build ./content
   produce the SCORM package.
 </Callout>
 
-Optionally, a `<Path>` in lesson content can provide in-content navigation to pages declared by the root `<Scroll>`; it supplements the root presentation rather than replacing it:
+Optionally, a `<Path>` in lesson content can provide in-content navigation to pages declared by the root `<Scroll>`; it supplements the root presentation rather than replacing it. Continue with presentation choices, then move through content, images, video, and assessment:
 
 <Path>
-  <Page ref="lessons/start-here.mdx" />
+  <Page ref="lessons/presentations.mdx" />
+  <Page ref="lessons/content-components.mdx" />
+  <Page ref="lessons/images.mdx" />
+  <Page ref="lessons/videos.mdx" />
+  <Page ref="lessons/assessment.mdx" />
 </Path>

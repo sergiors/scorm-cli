@@ -1,29 +1,21 @@
 ---
-title: Start here
+title: What scorm-cli does
 ---
 
-import { Callout, Path, Page } from 'scorm-cli/authoring'
+import { Path, Page } from 'scorm-cli/authoring'
 
-# A guided tour of course components
+# From authored content to a course
 
-This course introduces the small set of authoring components that shapes a SCORM course: presentation containers, reusable content blocks, media, and knowledge checks. Each example is MDX, so familiar Markdown works alongside the components.
+scorm-cli turns course content written in MDX into a learner-ready SCORM package. It parses and validates the authored content, renders it into a player, then packages that player for a learning management system. SCORM 1.2 is the default package format.
 
-<Callout variant="info" title="Two layers of authoring">
-  The course entry file chooses one presentation. Its pages contain flow content such as text,
-  images, videos, callouts, accordions, and questionnaires. Nested structures have their own
-  stricter child rules.
-</Callout>
+Use `scorm-cli preview` to run the player locally with a mock LMS, so you can review the course without connecting to a real learning management system.
 
-## Follow the tour
+## Follow the course
 
-The root `<Scroll>` presents these lessons continuously in the order declared by the course entry file. Optionally, a `<Path>` adds separate in-content navigation alongside that root presentation: its `<Page ref="…" />` children point to pages declared by `<Scroll>`. After setting up the project, continue through the component tour in this order.
+First install and run scorm-cli. Then build up your authoring skills in order: choose a presentation, compose lesson content, add images and video, and finish with an assessment.
 
 <Path>
-  <Page ref="lessons/presentations.mdx" />
-  <Page ref="lessons/content-components.mdx" />
-  <Page ref="lessons/images.mdx" />
-  <Page ref="lessons/videos.mdx" />
-  <Page ref="lessons/assessment.mdx" />
+  <Page ref="lessons/getting-started.mdx" />
 </Path>
 
-Start by comparing the three presentation containers. Then explore content composition, images, video, and finally interactive assessment.
+Continue to installation and setup.
