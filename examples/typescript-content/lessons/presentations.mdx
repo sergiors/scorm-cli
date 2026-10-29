@@ -1,0 +1,56 @@
+---
+title: Choose a presentation
+---
+
+import { Callout, Path, Page } from 'scorm-cli/authoring'
+
+# One course, three presentation styles
+
+Every course entry point has exactly one root presentation: `<Scroll>`, `<Slides>`, or `<Tiles>`. These are not content blocks to place inside a lesson; they organize referenced files at the package root.
+
+## Scroll and Slides use Pages
+
+`<Scroll>` presents its pages as one continuous experience. `<Slides>` presents the same kind of pages as a sequence. Both accept only direct, self-closing `<Page src="…" />` children, and neither has component attributes.
+
+```mdx
+import { Scroll, Page } from 'scorm-cli/authoring'
+
+<Scroll>
+  <Page src="lessons/intro.mdx" />
+  <Page src="lessons/practice.mdx" />
+</Scroll>
+```
+
+The course entry file uses `<Slides>` in the same way. `src` is a package-relative file path; the referenced page has its own frontmatter title and lesson content.
+
+## Tiles use Items instead
+
+`<Tiles>` is a root presentation for choosing among referenced content items. It accepts direct self-closing `<Item src="…" />` children. Its optional `columns` is an integer from 1 to 12.
+
+```mdx
+import { Tiles, Item } from 'scorm-cli/authoring'
+
+<Tiles columns={2}>
+  <Item src="topics/audio.mdx" />
+  <Item src="topics/video.mdx" />
+</Tiles>
+```
+
+This `Item` is not an accordion section: it points to a separate file. An accordion `Item` instead contains a `<Title>` and a `<Content>`; that structure appears in the next lesson.
+
+## Page has two distinct jobs
+
+`<Page src="…" />` belongs directly under root `<Scroll>` or `<Slides>`. Inside a flow-content `<Path>`, a self-closing `<Page ref="…" />` refers to one of those root pages. It is not a nested lesson, and `src` and `ref` are not interchangeable.
+
+<Callout variant="warning" title="Keep the nesting direct">
+  A presentation cannot contain arbitrary content or another presentation. Use only its declared
+  direct children: `<Page src="…" />` for Scroll/Slides, and `<Item src="…" />` for Tiles.
+</Callout>
+
+Continue to the content components.
+
+<Path>
+  <Page ref="lessons/content-components.mdx" />
+  <Page ref="lessons/media.mdx" />
+  <Page ref="lessons/assessment.mdx" />
+</Path>

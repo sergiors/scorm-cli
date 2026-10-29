@@ -1,0 +1,28 @@
+---
+title: Start here
+---
+
+import { Callout, Path, Page } from 'scorm-cli/authoring'
+
+# A guided tour of course components
+
+This course introduces the small set of authoring components that shapes a SCORM course: presentation containers, reusable content blocks, media, and knowledge checks. Each example is MDX, so familiar Markdown works alongside the components.
+
+<Callout variant="info" title="Two layers of authoring">
+  The course entry file chooses one presentation. Its pages contain flow content such as text,
+  images, videos, callouts, accordions, and questionnaires. Nested structures have their own
+  stricter child rules.
+</Callout>
+
+## Follow the tour
+
+The slide deck already gives these lessons an order. A `<Path>` is a separate in-content navigation component: its `<Page ref="…" />` children point to pages declared by the root presentation.
+
+<Path>
+  <Page ref="lessons/presentations.mdx" />
+  <Page ref="lessons/content-components.mdx" />
+  <Page ref="lessons/media.mdx" />
+  <Page ref="lessons/assessment.mdx" />
+</Path>
+
+Start by comparing the three presentation containers. Then explore content composition, media, and finally interactive assessment.

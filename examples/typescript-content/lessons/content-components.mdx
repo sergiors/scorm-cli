@@ -1,0 +1,54 @@
+---
+title: Compose lesson content
+---
+
+import { Accordion, Item, Title, Content, Callout } from 'scorm-cli/authoring'
+
+# Content blocks and nested structure
+
+Components such as `<Callout>` and `<Accordion>` are flow blocks: place them in lesson content where a block belongs, not at the course root. Their bodies accept lesson content, but the accordion's own structural children are deliberately limited.
+
+## Emphasize a message with Callout
+
+`<Callout>` wraps Markdown content. `variant` may be `note` (the default), `info`, `tip`, `warning`, or `danger`; the optional `title` is a non-empty string.
+
+<Callout variant="tip" title="Use the component for its meaning">
+  A note adds context, a warning flags a likely problem, and a danger callout emphasizes a serious
+  risk. The variants change presentation, not the allowed content grammar.
+</Callout>
+
+The body can include ordinary Markdown blocks and other valid flow components. For example, this warning contains a list:
+
+<Callout variant="warning">
+  Before publishing, check that each lesson has a useful title and that every media asset has an
+  appropriate alternative.
+
+Keep the message focused, and put supporting detail in the body.
+
+  </Callout>
+
+## Group related detail with Accordion
+
+An `<Accordion>` contains one or more direct `<Item>` children. Every accordion `Item` must have exactly one direct `<Title>` and one direct `<Content>`. The title supports normal inline Markdown; the content accepts flow content.
+
+`multiple` allows several sections to be open at once. `collapsible` lets the only open section close. These flags cannot both be true. Each `Item` can set the boolean `defaultOpen`; a single-open accordion can have at most one such item.
+
+<Accordion multiple>
+  <Item defaultOpen>
+    <Title>What belongs in a title?</Title>
+    <Content>
+      Keep it short and descriptive. Inline Markdown such as **bold text** is supported.
+    </Content>
+  </Item>
+  <Item>
+    <Title>What belongs in Content?</Title>
+    <Content>
+      Content can hold paragraphs, lists, callouts, media, and other supported flow blocks.
+
+      <Callout variant="note">The Title and Content must remain direct children of their Item.</Callout>
+    </Content>
+
+  </Item>
+</Accordion>
+
+The names `<Item>`, `<Title>`, and `<Content>` are structural markers, not standalone flow components. Their meaning comes from their direct position inside `<Accordion>` and its `<Item>`.

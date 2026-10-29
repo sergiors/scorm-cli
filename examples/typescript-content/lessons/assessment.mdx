@@ -1,0 +1,71 @@
+---
+title: Build a knowledge check
+---
+
+import { Questionnaire, Question, Prompt, Option, Path, Page } from 'scorm-cli/authoring'
+
+# Build a knowledge check
+
+The assessment vocabulary is nested: a flow-level `<Questionnaire>` contains direct `<Question>` children. Each question contains exactly one `<Prompt>` and at least two `<Option>` choices. Prompts and options are plain text fields, not places for nested JSX or Markdown components.
+
+## Choose the question type
+
+Set each `<Question>`'s required `type` to `single-choice`, `multiple-choice`, or `true-false`. An `<Option>` requires a unique string `value` and may set the boolean `correct` attribute. Single-choice and true-false questions need exactly one correct option; true-false needs exactly two options. Multiple-choice needs at least one correct option.
+
+<Questionnaire
+  contributesToScore={true}
+  expanded
+  maxAttempts={2}
+  revealCorrectAnswers={false}
+  shuffleOptions
+>
+  <Question type="single-choice">
+    <Prompt>Which presentation is declared as the single root of a course?</Prompt>
+    <Option value="any-number" correct={false}>
+      Several root presentations
+    </Option>
+    <Option value="one-root" correct>
+      The one Scroll, Slides, or Tiles element
+    </Option>
+    <Option value="lesson-level" correct={false}>
+      A presentation inside every lesson
+    </Option>
+  </Question>
+  <Question type="multiple-choice">
+    <Prompt>Which statements about Image are supported?</Prompt>
+    <Option value="alt-required" correct>
+      It requires explicit alternative text
+    </Option>
+    <Option value="local-asset" correct>
+      Its source refers to an asset in the package
+    </Option>
+    <Option value="video-source" correct={false}>
+      It accepts a Vimeo URL as its source
+    </Option>
+  </Question>
+  <Question type="true-false">
+    <Prompt>An accordion Item and a Tiles Item have the same child structure.</Prompt>
+    <Option value="true" correct={false}>
+      True
+    </Option>
+    <Option value="false" correct>
+      False
+    </Option>
+  </Question>
+</Questionnaire>
+
+## Configure the questionnaire
+
+`contributesToScore`, `expanded`, `revealCorrectAnswers`, and `shuffleOptions` are booleans. By default, a questionnaire contributes to score, reveals correct answers, and is not expanded or shuffled. `maxAttempts` is a positive integer or `-1` for unlimited attempts; its default is one.
+
+Together, these rules make the placement clear: Questionnaire is flow content; Question belongs only inside it; Prompt and Option belong only inside Question.
+
+## Review the component tour
+
+Use the links to revisit the main themes in sequence.
+
+<Path>
+  <Page ref="lessons/presentations.mdx" />
+  <Page ref="lessons/content-components.mdx" />
+  <Page ref="lessons/media.mdx" />
+</Path>
