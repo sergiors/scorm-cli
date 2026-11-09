@@ -80,6 +80,7 @@
     "@types/node": "^25.6.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "esbuild": "^0.27.7",
     "jszip": "^3.10.1",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",

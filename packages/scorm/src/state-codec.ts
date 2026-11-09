@@ -690,24 +690,46 @@ export function decodeSuspendData(scoIndex: ScoIndex, raw: unknown): PlayerState
   return codec.decode(scoIndex, raw)
 }
 
-/** Embeds the same codec implementation used by the Node exports. */
+/** Embeds the same codec module graph used by the Node exports. */
 export function browserCodecSource(): string {
-  // Source runners such as `tsx` compile this function with esbuild's
-  // `keepNames` transform, which wraps nested functions in `__name(...)` calls
-  // to preserve their names. That helper is not part of the serialized
-  // function, so the generated browser script would throw `__name is not
-  // defined` before the runtime can install its bridge. Provide the same tiny
-  // helper before the codec; it is unused by production builds, where
-  // `toString()` contains no wrappers.
-  return `var __name = function (target, name) {
-  try { Object.defineProperty(target, "name", { value: name, configurable: true }); } catch (_) {}
-  return target;
-};
-var suspendCodec = (${createSuspendDataCodec.toString()})();
-  function compactEncode(scoIndex, state, progress) {
-    return JSON.stringify(suspendCodec.encode(scoIndex, state, progress));
+  const moduleApi = process.getBuiltinModule('module') as typeof import('node:module') | undefined
+  if (!moduleApi) throw new Error('Node.js module support is unavailable')
+  const require = moduleApi.createRequire(import.meta.url)
+  const { existsSync } = require('node:fs') as typeof import('node:fs')
+  const { readFileSync } = require('node:fs') as typeof import('node:fs')
+  const { fileURLToPath } = require('node:url') as typeof import('node:url')
+  const path = require('node:path') as typeof import('node:path')
+  const runtimeDir = path.dirname(fileURLToPath(import.meta.url))
+  const assetPath = path.join(runtimeDir, 'browser-codec.js')
+
+  if (import.meta.url.endsWith('.ts')) {
+    // Source runners must follow the current TypeScript module graph even if a
+    // stale generated asset happens to be next to the source files.
+    const { buildSync } = require('esbuild') as typeof import('esbuild')
+    const entryPath = path.join(runtimeDir, 'browser-codec-entry.ts')
+    const result = buildSync({
+      entryPoints: [entryPath],
+      bundle: true,
+      platform: 'browser',
+      format: 'iife',
+      globalName: '__scormCodec',
+      target: 'es2017',
+      minify: true,
+      legalComments: 'none',
+      logLevel: 'silent',
+      write: false
+    })
+    return `${result.outputFiles[0]!.text}
+var compactEncode = __scormCodec.compactEncode;
+var compactDecode = __scormCodec.compactDecode;`
   }
-  function compactDecode(scoIndex, raw) {
-    return suspendCodec.decode(scoIndex, raw);
-  }`
+
+  // Built packages synchronously read the asset produced by the package build;
+  // they do not carry esbuild as a production runtime dependency.
+  if (existsSync(assetPath)) {
+    return `${readFileSync(assetPath, 'utf8')}
+var compactEncode = __scormCodec.compactEncode;
+var compactDecode = __scormCodec.compactDecode;`
+  }
+  throw new Error(`Unable to locate generated browser codec asset: ${assetPath}`)
 }

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import vm from 'node:vm'
@@ -16,22 +16,17 @@ const testDir = fileURLToPath(new URL('.', import.meta.url))
 const repositoryRoot = path.resolve(testDir, '../../../..')
 /** The exact tsx used by `pnpm preview`, which serves the scorm package from TS source. */
 const tsxBinary = path.join(repositoryRoot, 'packages/cli/node_modules/.bin/tsx')
+const previewTsconfigPath = path.join(repositoryRoot, 'packages/cli/tsconfig.preview.json')
 const probePath = path.join(testDir, 'fixtures/keep-names-probe.ts')
 
 /**
- * tsx compiles TypeScript with esbuild's `keepNames` transform, which wraps the
- * codec's nested helpers so their serialized source calls an ambient `__name`.
- * `pnpm preview` serves the runtime from source through tsx, so these tests
- * spawn tsx to serialize `browserCodecSource()` exactly as the browser would
- * receive it. Vitest's own transform does not use `keepNames`, so importing the
- * module here cannot reproduce the failure: without the injected shim the
- * generated script throws `__name is not defined` before `window.scormBridge`
- * can install, leaving `window.scormDevTools` (the mock) alone on the page.
+ * `pnpm preview` serves the runtime from source through tsx. Spawn that exact
+ * source runner to ensure esbuild reads and bundles the codec module graph as
+ * the browser would receive it, rather than relying on Vitest's transform.
  */
 interface SerializedPreview {
   scoIndex: ScoIndex
   codecSource: string
-  codecBody: string
   previewRuntime: string
   mock: string
 }
@@ -43,7 +38,9 @@ beforeAll(async () => {
   tempDir = mkdtempSync(path.join(os.tmpdir(), 'scorm-keep-names-'))
   const resultPath = path.join(tempDir, 'result.json')
   try {
-    await execFileAsync(tsxBinary, [probePath, resultPath], { timeout: 120_000 })
+    await execFileAsync(tsxBinary, ['--tsconfig', previewTsconfigPath, probePath, resultPath], {
+      timeout: 120_000
+    })
   } catch (error) {
     const spawnError = error as { stderr?: string; message: string }
     throw new Error(`tsx keep-names probe failed: ${spawnError.stderr ?? spawnError.message}`, {
@@ -95,18 +92,38 @@ class MemoryStorage {
 }
 
 describe('embedded browser runtime source under tsx keepNames', () => {
-  it('serializes the codec with ambient __name references under tsx', () => {
-    // Documents that this suite models the transform the preview really uses.
-    // When this turns false, tsx no longer injects keepNames `__name` wrappers,
-    // the shim in `browserCodecSource()` would be unnecessary and this
-    // regression scenario has drifted.
-    expect(
-      serialized.codecBody,
-      'expected the tsx-serialized codec to call an ambient __name helper'
-    ).toContain('__name(')
+  it('bundles the codec module graph without serializing tsx-transformed functions', () => {
+    expect(serialized.codecSource).not.toContain('__name(')
+    expect(serialized.codecSource).not.toMatch(/node:|require\(/)
+    expect(serialized.codecSource).toContain('compactEncode')
+    expect(serialized.codecSource).toContain('compactDecode')
   })
 
-  it('evaluates the embedded codec source standalone without an ambient __name helper', () => {
+  it('bundles source even when a stale generated asset is present', async () => {
+    const sourceAssetPath = path.join(repositoryRoot, 'packages/scorm/src/browser-codec.js')
+    expect(existsSync(sourceAssetPath), 'source tree must not contain a generated asset').toBe(
+      false
+    )
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), 'scorm-stale-codec-'))
+    const resultPath = path.join(tempDir, 'result.json')
+    const staleMarker = 'STALE_GENERATED_CODEC_SENTINEL'
+
+    try {
+      writeFileSync(sourceAssetPath, `globalThis.${staleMarker} = true;`)
+      await execFileAsync(tsxBinary, ['--tsconfig', previewTsconfigPath, probePath, resultPath], {
+        timeout: 120_000
+      })
+      const result = JSON.parse(readFileSync(resultPath, 'utf8')) as SerializedPreview
+
+      expect(result.codecSource).not.toContain(staleMarker)
+      expect(result.codecSource).toContain('compactEncode')
+    } finally {
+      unlinkSync(sourceAssetPath)
+      rmSync(tempDir, { recursive: true, force: true })
+    }
+  }, 120_000)
+
+  it('evaluates the bundled codec standalone and matches the Node codec', () => {
     const context: Record<string, unknown> = {}
     vm.runInNewContext(serialized.codecSource, context)
 
@@ -127,8 +144,8 @@ describe('embedded browser runtime source under tsx keepNames', () => {
   it('installs window.scormBridge from the serialized preview runtime and persists writes through the mock', () => {
     const window = createPreviewWindow()
 
-    // The dev mock installs its control surface first; the runtime must still
-    // install its bridge even though its serialized codec references `__name`.
+    // The dev mock installs its control surface first; the runtime must install
+    // its bridge using the codec bundle generated from source.
     expect(window.scormDevTools).toBeDefined()
     expect(window.scormBridge).toBeDefined()
 

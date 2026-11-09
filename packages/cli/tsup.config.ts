@@ -6,6 +6,7 @@ import { defineConfig } from 'tsup'
 const cliRoot = fileURLToPath(new URL('.', import.meta.url))
 const repoRoot = path.resolve(cliRoot, '..', '..')
 const distDir = path.join(cliRoot, 'dist')
+const scormCodecAsset = path.join(repoRoot, 'packages', 'scorm', 'dist', 'browser-codec.js')
 // The player app source is owned by the private `@scorm-cli/renderer-react`
 // package; the published CLI ships an ordinary build copy next to its
 // executable so the bundled renderer can find it at runtime.
@@ -91,9 +92,12 @@ export default defineConfig({
   // consumed as source, never typed, and this keeps the copy clear of the
   // declaration build's cleanup.
   onSuccess: async () => {
-    await cp(rendererApp, path.join(distDir, 'app'), {
-      recursive: true,
-      filter: (source) => !/\.d\.(ts|mts|cts)$/.test(source)
-    })
+    await Promise.all([
+      cp(rendererApp, path.join(distDir, 'app'), {
+        recursive: true,
+        filter: (source) => !/\.d\.(ts|mts|cts)$/.test(source)
+      }),
+      cp(scormCodecAsset, path.join(distDir, 'browser-codec.js'))
+    ])
   }
 })

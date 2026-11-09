@@ -4,15 +4,7 @@ import { scormDevMock } from '../../mock'
 import { createScormPreviewRuntime } from '../../runtime'
 import { browserCodecSource } from '../../state-codec'
 
-/**
- * Executed by `runtime-keep-names.test.ts` through tsx, whose esbuild transform
- * compiles TypeScript with `keepNames`. Running this module from TS source is
- * the only way to observe the serialization the preview runtime is served with:
- * Vitest transpiles the same files without `keepNames`, so importing
- * `browserCodecSource()` there cannot reproduce the failure.
- *
- * Usage: tsx keep-names-probe.ts <result-path>
- */
+/** Executed through tsx to cover direct-source preview runtime generation. */
 const resultPath = process.argv[2]
 if (!resultPath) {
   throw new Error('Usage: tsx keep-names-probe.ts <result-path>')
@@ -53,16 +45,13 @@ const scoIndex: ScoIndex = {
 }
 
 const codecSource = browserCodecSource()
-const codecBodyStart = codecSource.indexOf('var suspendCodec = (')
 
 writeFileSync(
   resultPath,
   JSON.stringify({
     scoIndex,
-    /** The complete embedded codec source, `__name` shim included. */
+    /** The complete in-memory esbuild bundle served to the browser. */
     codecSource,
-    /** The serialized codec body alone; the shim never appears inside it. */
-    codecBody: codecBodyStart === -1 ? codecSource : codecSource.slice(codecBodyStart),
     previewRuntime: createScormPreviewRuntime(scoIndex),
     mock: scormDevMock
   })

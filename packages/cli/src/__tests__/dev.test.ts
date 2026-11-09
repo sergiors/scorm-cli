@@ -1,8 +1,13 @@
+import { mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { ContentPackage, Renderer, RendererDevOptions } from '@scorm-cli/core'
 import { createScoIndex, createScormPreviewRuntime, scormDevMock } from '@scorm-cli/scorm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { LoadedPackage } from '../content'
-import { startDevPackage } from '../dev'
+import { startDevPackage, syncCodecSourcePaths } from '../dev'
+import type { DevSession } from '../dev'
 
 const content: ContentPackage = {
   metadata: { title: 'Demo' },
@@ -28,9 +33,79 @@ function loaded(title: string): LoadedPackage {
   }
 }
 
+const testDir = fileURLToPath(new URL('.', import.meta.url))
+const repositoryRoot = path.resolve(testDir, '../../../..')
+/** The codec entry whose module graph the workspace dev watcher observes. */
+const codecEntryPath = path.join(repositoryRoot, 'packages/scorm/src/browser-codec-entry.ts')
+/** The asset consumed when plain `pnpm dev` resolves the scorm dist package. */
+const codecAssetPath = path.join(repositoryRoot, 'packages/scorm/dist/browser-codec.js')
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+interface WorkspaceSession {
+  session: DevSession
+  updates: Array<{ content: ContentPackage; scripts?: RendererDevOptions['scripts'] }>
+  errors: string[]
+  loads: () => number
+}
+
+/**
+ * Starts a preview through the workspace default watcher — the only setup in
+ * which the codec source watcher is installed. The loader and renderer stay
+ * injected; watching is real, so both the content watcher and the codec
+ * source watcher observe real files.
+ */
+async function startWorkspaceSession(contentRoot: string): Promise<WorkspaceSession> {
+  const updates: WorkspaceSession['updates'] = []
+  const errors: string[] = []
+  let loads = 0
+  const renderer: Renderer = {
+    build: vi.fn(),
+    dev: vi.fn(async () => ({
+      url: 'http://localhost:4173',
+      update: async (next: ContentPackage, scripts?: RendererDevOptions['scripts']) => {
+        updates.push({ content: next, scripts })
+      },
+      reportError: (message: string) => errors.push(message),
+      close: async () => {}
+    }))
+  }
+  const session = await startDevPackage(
+    path.join(contentRoot, 'index.mdx'),
+    { port: 4173 },
+    {
+      loadPackage: async () => {
+        loads += 1
+        return { content, contentRoot, entrypoint: path.join(contentRoot, 'index.mdx') }
+      },
+      loadRenderer: async () => renderer,
+      debounceMs: 20
+      // `watch` deliberately keeps its default: the codec source watcher only
+      // exists alongside the real content watcher.
+    }
+  )
+  return { session, updates, errors, loads: () => loads }
+}
+
 afterEach(() => vi.useRealTimers())
 
 describe('CLI dev orchestration', () => {
+  it('reconciles codec watcher inputs without changing unrelated paths', () => {
+    const add = vi.fn()
+    const unwatch = vi.fn()
+    const watcher = { add, unwatch }
+
+    const paths = syncCodecSourcePaths(
+      watcher,
+      ['/codec/entry.ts', '/codec/removed.ts'],
+      ['/codec/entry.ts', '/codec/helper.ts']
+    )
+
+    expect(add).toHaveBeenCalledExactlyOnceWith(['/codec/helper.ts'])
+    expect(unwatch).toHaveBeenCalledExactlyOnceWith(['/codec/removed.ts'])
+    expect(paths).toEqual(['/codec/entry.ts', '/codec/helper.ts'])
+  })
+
   it('updates valid content, reports parse errors, recovers, and closes cleanly', async () => {
     vi.useFakeTimers()
     let loadMode: 'valid' | 'invalid' = 'valid'
@@ -243,4 +318,122 @@ describe('CLI dev orchestration', () => {
       )
     ).rejects.toThrow('does not support dev mode')
   })
+})
+
+describe('CLI dev codec source refresh', () => {
+  // Ordering matters: the codec scenario advances the mtime of a workspace
+  // source file, and change events for it can surface late. The content
+  // scenario runs first so it observes only its own authored changes.
+  it('keeps authored content changes on the single debounced loader path', async () => {
+    const contentRoot = mkdtempSync(path.join(os.tmpdir(), 'scorm-cli-dev-content-'))
+    const contentFile = path.join(contentRoot, 'index.mdx')
+    writeFileSync(contentFile, '# Lesson')
+    const { session, updates, errors, loads } = await startWorkspaceSession(contentRoot)
+
+    try {
+      // given both workspace watchers are live: provoke the content watcher
+      // until the first reload lands, then let queued events settle.
+      const deadline = Date.now() + 10_000
+      while (updates.length === 0 && Date.now() < deadline) {
+        writeFileSync(contentFile, '# Lesson, edited')
+        await sleep(150)
+      }
+
+      expect(updates.length, 'content change must reach the renderer').toBeGreaterThan(0)
+      await sleep(400)
+      const loadsBefore = loads()
+      const updatesBefore = updates.length
+
+      // when a single authored file changes
+      writeFileSync(contentFile, '# Lesson, revised')
+      const changedAt = Date.now()
+      while (updates.length === updatesBefore && Date.now() - changedAt < 10_000) {
+        await sleep(100)
+      }
+      await sleep(400)
+
+      // then the content loader ran again, and every renderer update so far
+      // was preceded by a content reload: the codec watcher never injected
+      // one of its own for an ordinary authored change.
+      expect(errors).toEqual([])
+      expect(loads()).toBeGreaterThan(loadsBefore)
+      expect(updates.length).toBeGreaterThan(updatesBefore)
+      expect(updates.length, 'every update must come from a content reload').toBe(loads() - 1)
+      expect(updates.at(-1)!.scripts?.[1]?.source).toBe(
+        createScormPreviewRuntime(createScoIndex(content))
+      )
+    } finally {
+      await session.close()
+      rmSync(contentRoot, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('refreshes the runtime when a codec source file changes without reloading content', async () => {
+    const contentRoot = mkdtempSync(path.join(os.tmpdir(), 'scorm-cli-dev-codec-'))
+    writeFileSync(path.join(contentRoot, 'index.mdx'), '# Lesson')
+    const originalCodecTimes = statSync(codecEntryPath)
+    // Let the directory and seed file flush their change events before the
+    // session starts watching, so they can never look like a content reload.
+    await sleep(400)
+    const { session, updates, errors, loads } = await startWorkspaceSession(contentRoot)
+
+    try {
+      // given both watchers are live and quiet: record the baseline the codec
+      // source change must move on its own.
+      await sleep(600)
+      const loadsBaseline = loads()
+      const updatesBaseline = updates.length
+      const assetMtimeBaseline = statSync(codecAssetPath).mtimeMs
+
+      // provoke a source change in the watched codec graph until the refresh
+      // lands (chokidar readiness varies by platform).
+      const deadline = Date.now() + 10_000
+      let touches = 0
+      while (updates.length === updatesBaseline && Date.now() < deadline) {
+        touches += 1
+        // Only the mtime advances; the file bytes stay identical. The original
+        // access and modification times are restored after the watcher closes.
+        const touched = new Date(Date.now() + touches * 1000)
+        utimesSync(codecEntryPath, touched, touched)
+        await sleep(150)
+      }
+
+      // then a refresh happened even though no authored file changed.
+      expect(updates.length, 'codec source change must trigger a refresh').toBeGreaterThan(
+        updatesBaseline
+      )
+      await sleep(300)
+
+      // The refresh re-derived the preview runtime — codec bundle included —
+      // for the current package; the content loader was never consulted, so
+      // ordinary content HMR is a separate path.
+      expect(loads(), 'codec refresh must not reload authored content').toBe(loadsBaseline)
+      expect(errors).toEqual([])
+      expect(
+        statSync(codecAssetPath).mtimeMs,
+        'dist codec asset must be regenerated'
+      ).toBeGreaterThan(assetMtimeBaseline)
+      const latest = updates.at(-1)!
+      expect(latest.content).toEqual(content)
+      expect(latest.scripts?.[1]?.source).toBe(createScormPreviewRuntime(createScoIndex(content)))
+      expect(latest.scripts?.[1]?.source).toContain('__scormCodec')
+
+      // and once the session closes, codec source changes stop refreshing it.
+      await session.close()
+      const closedUpdates = updates.length
+      const afterClose = new Date(Date.now() + 60_000)
+      utimesSync(codecEntryPath, afterClose, afterClose)
+      await sleep(300)
+      expect(updates.length).toBe(closedUpdates)
+    } finally {
+      try {
+        await session.close()
+      } finally {
+        // Touching the source provokes the real watcher; restore both timestamps
+        // so a successful test cannot leave the workspace with a future mtime.
+        utimesSync(codecEntryPath, originalCodecTimes.atime, originalCodecTimes.mtime)
+        rmSync(contentRoot, { recursive: true, force: true })
+      }
+    }
+  }, 30_000)
 })
